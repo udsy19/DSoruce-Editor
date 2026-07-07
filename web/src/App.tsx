@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { EditorCanvas, DocComponent, Metrics, Program, GenResult } from './editor/EditorCanvas'
+import { EditorCanvas, DocComponent, Metrics, Program, GenResult, DEFAULT_PROGRAM } from './editor/EditorCanvas'
 import { CATALOG, catByCategory } from './editor/catalog'
 import { searchBank } from './materialBank/mock'
 import { searchBankLive, bankQueryFor, formatINR, type BankProduct } from './materialBank/client'
@@ -228,6 +228,17 @@ export function App() {
     // Plate-quality feedback. `coverage`/`areaM2` are additive optional fields
     // on PlateResult — guard so this works whether or not they're present.
     const { coverage, areaM2 } = plate as PlateResult & { coverage?: number; areaM2?: number }
+    // Scale the default program to the traced plate so "Generate test-fit"
+    // fills the building instead of dropping 20 desks into 800 m². NBC
+    // business occupancy is ~10 m²/person; ~12 m²/desk leaves meeting/
+    // circulation share. Only nudge when the user hasn't customized desks.
+    if (areaM2 && areaM2 > 100 && ec.program.desks === DEFAULT_PROGRAM.desks) {
+      ec.program = {
+        ...ec.program,
+        desks: Math.min(200, Math.max(10, Math.round(areaM2 / 12))),
+        meeting_rooms: Math.min(8, Math.max(1, Math.round(areaM2 / 200))),
+      }
+    }
     if (coverage !== undefined || areaM2 !== undefined) {
       const traced = [
         areaM2 !== undefined ? `${Math.round(areaM2)} m²` : null,
