@@ -51,8 +51,19 @@ const EYE_HEIGHT = 1.6
 const WALK_SPEED = 3.0 // m/s
 const SPRINT_MULT = 2.0
 const WALK_MARGIN = 4 // how far past the plan bounds you may wander (m)
+const PLAYER_RADIUS = 0.32 // keep this far off walls (m); enables wall-sliding
 
 export type ViewerMode = 'orbit' | 'walk'
+
+/** First-person pose pushed to `onPose` each walk frame: world position (x, z)
+ *  and a horizontal heading unit vector (hx, hz). Coordinates are the viewer's
+ *  (recentered) world space — see {@link Viewer3D.getContentOffset}. */
+export interface Pose {
+  x: number
+  z: number
+  hx: number
+  hz: number
+}
 
 /** Subtle per-zone floor tints (Laiout-style zoning cue). */
 const ZONE_TINT: Record<ZoneType, number> = {
@@ -69,6 +80,10 @@ export class Viewer3D {
   /** Optional overlay callback for the current walkthrough hint (or null). */
   onModeHint?: (text: string | null) => void
 
+  /** Optional callback pushed the first-person {@link Pose} every walk frame,
+   *  for a live minimap. Drawn imperatively by the consumer (no React state). */
+  onPose?: (pose: Pose) => void
+
   private container: HTMLElement
   private renderer: THREE.WebGLRenderer
   private scene: THREE.Scene
@@ -83,6 +98,15 @@ export class Viewer3D {
    *  the scene (lights, ground, grid, environment) survives updates. */
   private content = new THREE.Group()
   private contentBounds = new THREE.Box3()
+  /** Translation subtracted from imported content to recenter it on the origin
+   *  (0 for generated plans). A minimap converts source coords via `p − offset`
+   *  to match the recentered world the pose lives in. */
+  private contentOffset = { x: 0, z: 0 }
+
+  // Walk-mode collision: raycast against `content` at eye height; reused temps.
+  private raycaster = new THREE.Raycaster()
+  private tmpDir = new THREE.Vector3()
+  private rayDir = new THREE.Vector3()
 
   // Shared GPU resources — protected from per-rebuild disposal. Furniture built
   // by buildFurniture3D owns fresh geometry/material each call; those ARE
@@ -242,6 +266,7 @@ export class Viewer3D {
     }
 
     this.contentBounds = this.boundsFromState(state)
+    this.contentOffset = { x: 0, z: 0 } // generated plans render in source coords
     if (!this.framed && !this.contentBounds.isEmpty()) this.frameBox(this.contentBounds)
   }
 
@@ -258,17 +283,31 @@ export class Viewer3D {
   setContent(root: THREE.Group): void {
     this.clearContent()
     const bounds = new THREE.Box3().setFromObject(root)
+    // Offset to map a source point to recentered world space: world = source − offset.
+    this.contentOffset = { x: 0, z: 0 }
     if (!bounds.isEmpty()) {
       const center = bounds.getCenter(new THREE.Vector3())
       root.position.x -= center.x
       root.position.z -= center.z
       root.updateMatrixWorld(true)
       bounds.translate(new THREE.Vector3(-center.x, 0, -center.z))
+      this.contentOffset = { x: center.x, z: center.z }
     }
     this.content.add(root)
     this.contentBounds = bounds
     this.framed = false
     if (!this.contentBounds.isEmpty()) this.frameBox(this.contentBounds)
+  }
+
+  /** The recentered plan bounds (world space). Minimap uses this for scaling. */
+  getContentBounds(): THREE.Box3 {
+    return this.contentBounds.clone()
+  }
+
+  /** Amount subtracted from source coords to recenter (0 for generated plans).
+   *  Map a source point to viewer world space with `p − offset`. */
+  getContentOffset(): { x: number; z: number } {
+    return { x: this.contentOffset.x, z: this.contentOffset.z }
   }
 
   resize(): void {
@@ -527,8 +566,23 @@ export class Viewer3D {
       (this.keys.has('KeyS') || this.keys.has('ArrowDown') ? -1 : 0)
     const strafe = (this.keys.has('KeyD') || this.keys.has('ArrowRight') ? 1 : 0) +
       (this.keys.has('KeyA') || this.keys.has('ArrowLeft') ? -1 : 0)
-    if (fwd) this.walk.moveForward(fwd * dist)
-    if (strafe) this.walk.moveRight(strafe * dist)
+
+    if (fwd || strafe) {
+      // Horizontal forward + right basis from the current look direction.
+      const f = this.camera.getWorldDirection(this.tmpDir)
+      f.y = 0
+      if (f.lengthSq() < 1e-6) f.set(0, 0, -1)
+      f.normalize()
+      const rx = -f.z // right = forward × up  (up = +Y)
+      const rz = f.x
+      // Desired displacement on each world axis, then collide per axis so the
+      // walker slides along a wall instead of sticking (the blocked component
+      // is clamped, the parallel one still moves).
+      const dx = (f.x * fwd + rx * strafe) * dist
+      const dz = (f.z * fwd + rz * strafe) * dist
+      this.camera.position.x += this.collideAxis(dx, 1, 0)
+      this.camera.position.z += this.collideAxis(dz, 0, 1)
+    }
 
     // Clamp to eye height (no fly) and to the plan bounds (no infinite wander).
     const p = this.camera.position
@@ -541,6 +595,36 @@ export class Viewer3D {
       p.x = THREE.MathUtils.clamp(p.x, -100, 100)
       p.z = THREE.MathUtils.clamp(p.z, -100, 100)
     }
+    this.emitPose()
+  }
+
+  /** Resolve a single world-axis move against walls. The eye-height ray only
+   *  intersects tall geometry (walls, glazing, partitions, meeting pods) — desks
+   *  and chairs sit below 1.6 m, so you never snag on furniture. Floors/plates
+   *  (PlaneGeometry) are ignored. Returns the allowed signed distance. */
+  private collideAxis(amount: number, ux: number, uz: number): number {
+    const mag = Math.abs(amount)
+    if (mag < 1e-5) return amount
+    const s = Math.sign(amount)
+    this.raycaster.set(this.camera.position, this.rayDir.set(ux * s, 0, uz * s))
+    this.raycaster.far = mag + PLAYER_RADIUS
+    const hits = this.raycaster.intersectObject(this.content, true)
+    for (const h of hits) {
+      const geo = (h.object as THREE.Mesh).geometry as THREE.BufferGeometry | undefined
+      if (!geo || geo.type === 'PlaneGeometry') continue // floors / zone plates
+      return s * Math.max(0, h.distance - PLAYER_RADIUS)
+    }
+    return amount
+  }
+
+  /** Push the current first-person pose to the minimap consumer. */
+  private emitPose(): void {
+    if (!this.onPose) return
+    const f = this.camera.getWorldDirection(this.tmpDir)
+    f.y = 0
+    if (f.lengthSq() < 1e-6) f.set(0, 0, -1)
+    f.normalize()
+    this.onPose({ x: this.camera.position.x, z: this.camera.position.z, hx: f.x, hz: f.z })
   }
 
   private onKeyDown = (e: KeyboardEvent): void => {
