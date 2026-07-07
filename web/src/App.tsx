@@ -16,6 +16,7 @@ import type { DrawingCanvas } from './import/DrawingCanvas'
 import type { OfficeProduct } from './materialBank/office'
 import { exportPNG } from './export/png'
 import { exportPlanPDF } from './export/pdf'
+import { downloadIFC } from './export/ifc'
 import { downloadDXF, downloadDrawingDXF } from './export/dxf'
 import { CandidateGallery } from './ui/CandidateGallery'
 import { extractPlate, pushPlateToEditor } from './import/testfit'
@@ -513,6 +514,12 @@ function ExportMenu({
     setOpen(false)
   }
 
+  const exportIfc = () => {
+    if (!ec) return
+    downloadIFC(ec.getState(), 'dsource-plan.ifc', { project: 'Untitled Plan' })
+    setOpen(false)
+  }
+
   const source = importMode ? 'imported plan' : 'generated plan'
 
   return (
@@ -544,8 +551,11 @@ function ExportMenu({
             PDF sheet <span className="hint">A3 drawing</span>
           </div>
           <div className="export-sep" />
+          <div className="export-item" role="menuitem" onClick={exportIfc} data-testid="export-ifc">
+            IFC model <span className="hint">BIM</span>
+          </div>
           <div className="export-item disabled" aria-disabled="true">
-            IFC · OBJ · RVT <span className="hint">soon</span>
+            OBJ · RVT <span className="hint">soon</span>
           </div>
           <div className="export-item disabled" aria-disabled="true">
             Share… <span className="hint">soon</span>
