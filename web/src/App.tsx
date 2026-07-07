@@ -13,6 +13,26 @@ import type { Drawing, FurnitureItem } from './import/types'
 import type { DrawingCanvas } from './import/DrawingCanvas'
 import type { OfficeProduct } from './materialBank/office'
 
+// CAD drafting tools (map to EditorCanvas 'cad:<id>' tools).
+const CAD_RAIL: { id: string; icon: string; label: string; hint?: string }[] = [
+  { id: 'select', icon: 'marquee', label: 'Select', hint: 'CAD' },
+  { id: 'line', icon: 'line', label: 'Line' },
+  { id: 'polyline', icon: 'polyline', label: 'Polyline' },
+  { id: 'rect', icon: 'rect', label: 'Rectangle' },
+  { id: 'circle', icon: 'circle', label: 'Circle' },
+  { id: 'arc', icon: 'arc', label: 'Arc' },
+  { id: 'dimension', icon: 'dimension', label: 'Dimension' },
+  { id: 'text', icon: 'text', label: 'Text' },
+  { id: 'door', icon: 'door', label: 'Door' },
+  { id: 'window', icon: 'window', label: 'Window' },
+  { id: 'column', icon: 'column', label: 'Column' },
+  { id: 'move', icon: 'move', label: 'Move' },
+  { id: 'copy', icon: 'copy', label: 'Copy' },
+  { id: 'rotate', icon: 'rotate', label: 'Rotate' },
+  { id: 'mirror', icon: 'mirror', label: 'Mirror' },
+  { id: 'scale', icon: 'scale', label: 'Scale' },
+]
+
 export function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const coordRef = useRef<HTMLSpanElement>(null)
@@ -164,6 +184,18 @@ export function App() {
               tip={it.label}
               hint={`${it.w} × ${it.h} m`}
               swatch={it.color}
+            />
+          ))}
+          <div className="rail-sep" />
+          {CAD_RAIL.map((t) => (
+            <RailButton
+              key={t.id}
+              id={`cad:${t.id}`}
+              tool={tool}
+              onClick={pickTool}
+              icon={t.icon}
+              tip={t.label}
+              hint={t.hint}
             />
           ))}
           <span className="rail-spring" />

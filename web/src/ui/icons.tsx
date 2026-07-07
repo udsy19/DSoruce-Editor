@@ -102,6 +102,119 @@ export function Icon({ name, size = 19 }: Props) {
           <path d="M18 15l.7 1.8 1.8.7-1.8.7L18 20l-.7-1.8-1.8-.7 1.8-.7z" />
         </svg>
       )
+    case 'marquee':
+      return (
+        <svg {...p}>
+          <rect x="4" y="5" width="16" height="14" rx="0.5" strokeDasharray="2.5 2" />
+        </svg>
+      )
+    case 'move':
+      return (
+        <svg {...p}>
+          <path d="M12 3v18M3 12h18" />
+          <path d="M12 3l-2.5 2.5M12 3l2.5 2.5M12 21l-2.5-2.5M12 21l2.5-2.5M3 12l2.5-2.5M3 12l2.5 2.5M21 12l-2.5-2.5M21 12l-2.5 2.5" strokeWidth={1.2} />
+        </svg>
+      )
+    case 'copy':
+      return (
+        <svg {...p}>
+          <rect x="8" y="8" width="11" height="11" rx="1" />
+          <path d="M5 15V5h10" />
+        </svg>
+      )
+    case 'rotate':
+      return (
+        <svg {...p}>
+          <path d="M20 12a8 8 0 1 1-2.3-5.6" />
+          <path d="M20 4v4h-4" strokeWidth={1.2} />
+        </svg>
+      )
+    case 'mirror':
+      return (
+        <svg {...p}>
+          <path d="M12 3v18" strokeDasharray="2.5 2" />
+          <path d="M9 7L4 12l5 5zM15 7l5 5-5 5z" />
+        </svg>
+      )
+    case 'scale':
+      return (
+        <svg {...p}>
+          <rect x="5" y="9" width="10" height="10" rx="0.5" />
+          <path d="M14 10l6-6M20 4v5M20 4h-5" strokeWidth={1.2} />
+        </svg>
+      )
+    case 'line':
+      return (
+        <svg {...p}>
+          <path d="M4 20L20 4" />
+          <circle cx="4" cy="20" r="1.4" fill="currentColor" stroke="none" />
+          <circle cx="20" cy="4" r="1.4" fill="currentColor" stroke="none" />
+        </svg>
+      )
+    case 'polyline':
+      return (
+        <svg {...p}>
+          <path d="M3 18l5-8 5 5 8-11" />
+        </svg>
+      )
+    case 'rect':
+      return (
+        <svg {...p}>
+          <rect x="4" y="6" width="16" height="12" rx="0.5" />
+        </svg>
+      )
+    case 'circle':
+      return (
+        <svg {...p}>
+          <circle cx="12" cy="12" r="8" />
+        </svg>
+      )
+    case 'arc':
+      return (
+        <svg {...p}>
+          <path d="M4 18a12 12 0 0 1 16-4" />
+        </svg>
+      )
+    case 'ellipse':
+      return (
+        <svg {...p}>
+          <ellipse cx="12" cy="12" rx="9" ry="6" />
+        </svg>
+      )
+    case 'dimension':
+      return (
+        <svg {...p}>
+          <path d="M4 8v8M20 8v8M4 12h16" />
+          <path d="M4 12l3-2M4 12l3 2M20 12l-3-2M20 12l-3 2" strokeWidth={1.2} />
+        </svg>
+      )
+    case 'text':
+      return (
+        <svg {...p}>
+          <path d="M5 6h14M12 6v13" />
+        </svg>
+      )
+    case 'door':
+      return (
+        <svg {...p}>
+          <path d="M6 20V5h1" />
+          <path d="M7 5a13 13 0 0 1 12 12" />
+          <path d="M19 17v3" strokeWidth={1.2} />
+        </svg>
+      )
+    case 'window':
+      return (
+        <svg {...p}>
+          <rect x="4" y="9" width="16" height="6" rx="0.5" />
+          <path d="M12 9v6" />
+        </svg>
+      )
+    case 'column':
+      return (
+        <svg {...p}>
+          <rect x="7" y="7" width="10" height="10" rx="0.5" fill="currentColor" fillOpacity="0.25" />
+        </svg>
+      )
     case 'generate':
       return (
         <svg {...p}>

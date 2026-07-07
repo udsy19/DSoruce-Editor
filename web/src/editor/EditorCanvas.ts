@@ -1,6 +1,8 @@
 import init, { Editor } from '../wasm/ds_core'
 import { catByCategory } from './catalog'
 import { drawFurnitureSymbol } from './furniture'
+import { CadController } from '../cad/controller'
+import type { SnapContext } from '../cad/model'
 
 // Types mirroring the Rust core's serialized document (serde field names).
 export interface DocWall {
@@ -203,6 +205,8 @@ export class EditorCanvas {
   onChange: (() => void) | null = null
   /** Last program used to generate — shared source for the generate card + AI. */
   program: Program = { ...DEFAULT_PROGRAM }
+  /** CAD drafting layer (line/rect/arc/dimension/door/… + snapping). */
+  cad!: CadController
 
   private constructor(canvas: HTMLCanvasElement, ed: Editor) {
     this.canvas = canvas
@@ -210,6 +214,13 @@ export class EditorCanvas {
     const ctx = canvas.getContext('2d')
     if (!ctx) throw new Error('2D canvas context unavailable')
     this.ctx = ctx
+    this.cad = new CadController({
+      toScreen: (p) => this.toScreen(p.x, p.y),
+      toWorld: (sx, sy) => this.toWorld(sx, sy),
+      pxPerM: () => this.scale,
+      requestRender: () => this.render(),
+      snapContext: () => this.buildSnapContext(),
+    })
     this.attach()
     this.resize()
     this.render()
@@ -229,6 +240,17 @@ export class EditorCanvas {
   }
   private snap(w: { x: number; y: number }) {
     return { x: Math.round(w.x / SNAP_M) * SNAP_M, y: Math.round(w.y / SNAP_M) * SNAP_M }
+  }
+  private buildSnapContext(): Omit<SnapContext, 'from'> {
+    const st = this.getState()
+    return {
+      entities: this.cad.store.entities,
+      walls: st.walls.map((wl) => ({ a: { x: wl.a.x, y: wl.a.y }, b: { x: wl.b.x, y: wl.b.y } })),
+      components: st.components.map((c) => ({ x: c.x, y: c.y, w: c.w, h: c.h, rotation: c.rotation })),
+      grid: 0.1,
+      pxPerM: this.scale,
+      tolPx: 10,
+    }
   }
 
   // ---- API consumed by React ----
@@ -251,6 +273,7 @@ export class EditorCanvas {
   setTool(t: ToolId) {
     this.tool = t
     this.wallStart = null
+    this.cad.setTool(t.startsWith('cad:') ? t.slice(4) : null)
     this.render()
   }
   assignProduct(id: number, productId: string, name: string) {
@@ -372,6 +395,10 @@ export class EditorCanvas {
       this.panning = true
       return
     }
+    if (this.cad.active) {
+      this.cad.down(s.x, s.y, e)
+      return
+    }
     const w = this.toWorld(s.x, s.y)
     if (this.tool === 'select') {
       const hit = this.ed.select_at(w.x, w.y)
@@ -409,6 +436,12 @@ export class EditorCanvas {
       this.render()
       return
     }
+    if (this.cad.active) {
+      this.cad.move(s.x, s.y)
+      const hint = this.cad.hint()
+      if (hint && this.coordEl) this.coordEl.textContent = hint
+      return
+    }
     if (this.dragging && this.tool === 'select') {
       const dxw = (s.x - this.lastScreen.x) / this.scale
       const dyw = (s.y - this.lastScreen.y) / this.scale
@@ -427,7 +460,11 @@ export class EditorCanvas {
     this.render()
   }
 
-  private onUp = () => {
+  private onUp = (e: MouseEvent) => {
+    if (this.cad.active && !this.panning) {
+      const s = this.screenFromEvent(e)
+      this.cad.up(s.x, s.y)
+    }
     this.panning = false
     this.dragging = false
   }
@@ -445,6 +482,12 @@ export class EditorCanvas {
   }
 
   private onKey = (e: KeyboardEvent) => {
+    if (this.cad.active) {
+      // CAD tools consume typing (text) + shortcuts (door 'f', column 'r', Esc).
+      if (e.key === 'Backspace') e.preventDefault()
+      this.cad.key(e.key)
+      return
+    }
     if (e.key === 'Escape') {
       this.wallStart = null
       this.ed.clear_selection()
@@ -514,6 +557,14 @@ export class EditorCanvas {
       this.drawSegment(this.wallStart, this.snap(this.mouseWorld), 0.1, C.preview)
     }
     for (const c of st.components) this.drawComponent(c, c.id === st.selection)
+
+    // CAD layer: entities + tool preview + snap indicator + grips.
+    this.cad.render(ctx, {
+      toScreen: (p) => this.toScreen(p.x, p.y),
+      pxPerM: this.scale,
+      selected: this.cad.selected,
+      colors: { wall: C.wall, ink: C.label, accent: C.accent, dim: '#2d5bd6', faint: C.rulerText },
+    })
 
     this.drawRulers(w, h)
   }
