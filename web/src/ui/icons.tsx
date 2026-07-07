@@ -222,6 +222,53 @@ export function Icon({ name, size = 19 }: Props) {
           <circle cx="12" cy="12" r="3.2" />
         </svg>
       )
+    case 'check':
+      return (
+        <svg {...p}>
+          <path d="M4 12.5l5 5 11-12" />
+        </svg>
+      )
+    case 'warn':
+      return (
+        <svg {...p}>
+          <path d="M12 3L2 20h20z" />
+          <path d="M12 10v4" />
+          <circle cx="12" cy="17" r="0.6" fill="currentColor" stroke="none" />
+        </svg>
+      )
+    case 'cross':
+      return (
+        <svg {...p}>
+          <path d="M6 6l12 12M18 6L6 18" />
+        </svg>
+      )
+    case 'dash':
+      return (
+        <svg {...p}>
+          <path d="M6 12h12" />
+        </svg>
+      )
+    case 'help':
+      return (
+        <svg {...p}>
+          <circle cx="12" cy="12" r="9" />
+          <path d="M9.2 9.3a2.8 2.8 0 0 1 5.4 1c0 1.9-2.6 2.3-2.6 4" />
+          <circle cx="12" cy="17.2" r="0.7" fill="currentColor" stroke="none" />
+        </svg>
+      )
+    case 'close':
+      return (
+        <svg {...p}>
+          <path d="M6 6l12 12M18 6L6 18" />
+        </svg>
+      )
+    case 'upload':
+      return (
+        <svg {...p}>
+          <path d="M12 16V4M7 9l5-5 5 5" />
+          <path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4" />
+        </svg>
+      )
     default:
       return (
         <svg {...p}>

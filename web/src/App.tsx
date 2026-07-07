@@ -14,7 +14,7 @@ import type { Drawing, FurnitureItem } from './import/types'
 import type { DrawingCanvas } from './import/DrawingCanvas'
 import type { OfficeProduct } from './materialBank/office'
 import { exportPNG } from './export/png'
-import { downloadDXF } from './export/dxf'
+import { downloadDXF, downloadDrawingDXF } from './export/dxf'
 
 // CAD drafting tools (map to EditorCanvas 'cad:<id>' tools).
 const CAD_RAIL: { id: string; icon: string; label: string; hint?: string }[] = [
@@ -51,6 +51,7 @@ export function App() {
   const [importing, setImporting] = useState(false)
   const [importErr, setImportErr] = useState<string | null>(null)
   const [planView, setPlanView] = useState<'2d' | '3d'>('2d')
+  const [helpOpen, setHelpOpen] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const drawCanvasRef = useRef<DrawingCanvas | null>(null)
   const [, setDrawVer] = useState(0)
@@ -112,6 +113,24 @@ export function App() {
   useEffect(() => {
     if (mode === '2d' && ready) ecRef.current?.refresh()
   }, [mode, ready])
+
+  // Global "?" opens the shortcut help; Escape closes it. Ignored while typing so
+  // it never steals focus from the material-bank search or program fields.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null
+      const typing =
+        !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)
+      if (e.key === '?' && !typing) {
+        e.preventDefault()
+        setHelpOpen((o) => !o)
+      } else if (e.key === 'Escape') {
+        setHelpOpen(false)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   const ec = ecRef.current
   const selected = ready && ec ? ec.getSelected() : null
@@ -181,11 +200,30 @@ export function App() {
             className="export-btn"
             onClick={() => fileRef.current?.click()}
             disabled={importing}
+            aria-label="Import a DWG or DXF plan"
+            title="Import a DWG or DXF plan"
             data-testid="import-btn"
           >
-            {importing ? 'Importing…' : 'Import DWG'}
+            {importing ? (
+              <>
+                <span className="btn-spinner" aria-hidden /> Importing…
+              </>
+            ) : (
+              <>
+                <Icon name="upload" size={14} /> Import
+              </>
+            )}
           </button>
-          <ExportMenu ec={ec} />
+          <ExportMenu ec={ec} mode={mode} drawing={drawing} />
+          <button
+            className="icon-btn"
+            onClick={() => setHelpOpen(true)}
+            aria-label="Keyboard shortcuts"
+            title="Keyboard shortcuts (?)"
+            data-testid="help-btn"
+          >
+            <Icon name="help" size={17} />
+          </button>
         </div>
       </header>
 
@@ -250,7 +288,33 @@ export function App() {
               />
             )}
             {!ready && <div className="loading">Loading Rust · Wasm core…</div>}
-            {importErr && <div className="import-err">Import failed: {importErr}</div>}
+            {mode === '2d' && ready && metrics && metrics.wall_count === 0 && metrics.component_count === 0 && (
+              <EmptyState onWall={() => pickTool('wall')} onImport={() => fileRef.current?.click()} />
+            )}
+            {importing && (
+              <div className="import-overlay" role="status" aria-live="polite">
+                <span className="import-spinner" aria-hidden />
+                <span className="import-overlay-text">Converting &amp; parsing CAD…</span>
+                <span className="import-overlay-sub">DWG → DXF → plan</span>
+              </div>
+            )}
+            {importErr && (
+              <div className="import-err" role="alert">
+                <Icon name="warn" size={15} />
+                <div className="import-err-body">
+                  <span className="import-err-title">Import failed</span>
+                  <span className="import-err-msg">{importErr}</span>
+                </div>
+                <button
+                  className="import-err-close"
+                  onClick={() => setImportErr(null)}
+                  aria-label="Dismiss error"
+                  data-testid="import-err-dismiss"
+                >
+                  <Icon name="close" size={14} />
+                </button>
+              </div>
+            )}
           </div>
           {aiOpen && ec && mode !== 'import' && <AgentPanel ec={ec} onClose={() => setAiOpen(false)} />}
         </main>
@@ -287,12 +351,23 @@ export function App() {
             : '—'}
         </span>
       </footer>
+
+      {helpOpen && <ShortcutsOverlay onClose={() => setHelpOpen(false)} />}
     </div>
   )
 }
 
-function ExportMenu({ ec }: { ec: EditorCanvas | null }) {
+function ExportMenu({
+  ec,
+  mode,
+  drawing,
+}: {
+  ec: EditorCanvas | null
+  mode: '2d' | '3d' | 'import'
+  drawing: Drawing | null
+}) {
   const [open, setOpen] = useState(false)
+  const importMode = mode === 'import' && !!drawing
 
   const exportCSV = () => {
     if (!ec) return
@@ -325,47 +400,59 @@ function ExportMenu({ ec }: { ec: EditorCanvas | null }) {
   }
 
   const exportPng = () => {
-    if (!ec) return
-    // The editor's 2D canvas lives in the canvas-wrap; capture its pixels.
-    const canvas = document.querySelector<HTMLCanvasElement>('.canvas-wrap canvas')
-    if (canvas) exportPNG(canvas, 'dsource-plan.png')
+    // Capture the currently-visible canvas in the stage: the 2D editor plan, or
+    // the imported DrawingCanvas when a plan is loaded. (Hidden canvases have no
+    // offsetParent.)
+    const canvases = Array.from(document.querySelectorAll<HTMLCanvasElement>('.canvas-wrap canvas'))
+    const canvas = canvases.find((c) => c.offsetParent !== null) ?? canvases[0]
+    if (canvas) exportPNG(canvas, importMode ? 'dsource-import.png' : 'dsource-plan.png')
     setOpen(false)
   }
 
   const exportDxf = () => {
-    if (!ec) return
-    downloadDXF(ec.getState(), 'dsource-plan.dxf')
+    if (importMode && drawing) {
+      downloadDrawingDXF(drawing, 'dsource-import.dxf')
+    } else if (ec) {
+      downloadDXF(ec.getState(), 'dsource-plan.dxf')
+    }
     setOpen(false)
   }
 
+  const source = importMode ? 'imported plan' : 'generated plan'
+
   return (
     <div className="export">
-      <button className="export-btn" onClick={() => setOpen((o) => !o)} data-testid="export-btn">
+      <button
+        className="export-btn"
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        data-testid="export-btn"
+      >
         Export <Icon name="caret" size={13} />
       </button>
       {open && (
-        <div className="export-menu">
-          <div className="export-item" onClick={exportCSV} data-testid="export-csv">
-            Export CSV
+        <div className="export-menu" role="menu">
+          <div className="export-source">From {source}</div>
+          {!importMode && (
+            <div className="export-item" role="menuitem" onClick={exportCSV} data-testid="export-csv">
+              Data <span className="hint">CSV</span>
+            </div>
+          )}
+          <div className="export-item" role="menuitem" onClick={exportPng} data-testid="export-png">
+            PNG image <span className="hint">raster</span>
           </div>
-          <div className="export-item" onClick={exportPng} data-testid="export-png">
-            PNG image
+          <div className="export-item" role="menuitem" onClick={exportDxf} data-testid="export-dxf">
+            DXF <span className="hint">vector CAD</span>
           </div>
-          <div className="export-item" onClick={exportDxf} data-testid="export-dxf">
-            DXF (CAD)
-          </div>
-          <div className="export-item">
-            Export PDF <span className="hint">soon</span>
-          </div>
-          <div className="export-sep" />
-          <div className="export-item">
-            Export 2D <span className="hint">DWG · DXF</span>
-          </div>
-          <div className="export-item">
-            Export 3D <span className="hint">IFC · OBJ · RVT</span>
+          <div className="export-item disabled" aria-disabled="true">
+            PDF sheet <span className="hint">soon</span>
           </div>
           <div className="export-sep" />
-          <div className="export-item">
+          <div className="export-item disabled" aria-disabled="true">
+            IFC · OBJ · RVT <span className="hint">soon</span>
+          </div>
+          <div className="export-item disabled" aria-disabled="true">
             Share… <span className="hint">soon</span>
           </div>
         </div>
@@ -397,6 +484,7 @@ function RailButton({
       className={active ? 'rail-btn on' : 'rail-btn'}
       onClick={() => onClick(id)}
       aria-pressed={active}
+      aria-label={hint ? `${tip} (${hint})` : tip}
       data-testid={id}
     >
       <Icon name={icon} />
@@ -406,6 +494,112 @@ function RailButton({
         {hint && <span className="rail-tip-hint num">{hint}</span>}
       </span>
     </button>
+  )
+}
+
+/* ------------------------- Empty state + help ----------------------------- */
+
+function EmptyState({ onWall, onImport }: { onWall: () => void; onImport: () => void }) {
+  return (
+    <div className="empty-state" data-testid="empty-state">
+      <div className="empty-card">
+        <span className="empty-glyph" aria-hidden>
+          <Icon name="generate" size={26} />
+        </span>
+        <h2 className="empty-title">Start your plan</h2>
+        <p className="empty-lead">
+          Draw a room boundary and let the engine generate a test-fit — or import a real CAD plan to
+          edit and re-imagine.
+        </p>
+        <div className="empty-actions">
+          <button className="empty-btn primary" onClick={onWall}>
+            <Icon name="wall" size={15} /> Draw walls
+          </button>
+          <button className="empty-btn" onClick={onImport}>
+            <Icon name="upload" size={15} /> Import a plan
+          </button>
+        </div>
+        <p className="empty-hint">
+          Then set the program on the right and hit <strong>Generate test-fit</strong>. Press{' '}
+          <kbd>?</kbd> for shortcuts.
+        </p>
+      </div>
+    </div>
+  )
+}
+
+const SHORTCUT_GROUPS: { title: string; rows: [string, string][] }[] = [
+  {
+    title: 'General',
+    rows: [
+      ['?', 'Toggle this help'],
+      ['Esc', 'Cancel · deselect · close'],
+      ['⌘ / Ctrl Z', 'Undo'],
+    ],
+  },
+  {
+    title: '2D editor',
+    rows: [
+      ['V', 'Select tool'],
+      ['W', 'Wall tool'],
+      ['Scroll', 'Zoom · drag empty space to pan'],
+      ['Tool rail', 'Furniture + CAD tools (hover for keys)'],
+    ],
+  },
+  {
+    title: 'Imported plan',
+    rows: [
+      ['Click', 'Select furniture · drag to move'],
+      ['R / Shift R', 'Rotate selected ±15°'],
+      ['⌘ / Ctrl D', 'Duplicate selected'],
+      ['Del / ⌫', 'Delete selected'],
+    ],
+  },
+  {
+    title: '3D walkthrough',
+    rows: [
+      ['W A S D', 'Walk'],
+      ['Shift', 'Run'],
+      ['Mouse', 'Look around'],
+    ],
+  },
+]
+
+function ShortcutsOverlay({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="help-scrim" onClick={onClose} data-testid="help-overlay">
+      <div
+        className="help-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Keyboard shortcuts"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="help-head">
+          <span className="help-title">Keyboard shortcuts</span>
+          <button className="icon-btn" onClick={onClose} aria-label="Close shortcuts">
+            <Icon name="close" size={16} />
+          </button>
+        </div>
+        <div className="help-grid">
+          {SHORTCUT_GROUPS.map((g) => (
+            <div className="help-group" key={g.title}>
+              <div className="help-group-title">{g.title}</div>
+              {g.rows.map(([keys, desc]) => (
+                <div className="help-row" key={keys}>
+                  <span className="help-keys">
+                    {keys.split(' ').map((k, i) => (
+                      <kbd key={i}>{k}</kbd>
+                    ))}
+                  </span>
+                  <span className="help-desc">{desc}</span>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
   )
 }
 

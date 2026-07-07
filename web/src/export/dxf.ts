@@ -10,6 +10,7 @@
 // keeping the exported geometry consistent with what is drawn on screen.
 
 import type { DocState, DocComponent } from '../editor/EditorCanvas'
+import type { Drawing, DrawEntity } from '../import/types'
 import { triggerDownload } from './png'
 
 // Format a coordinate with enough precision for millimetre-scale geometry
@@ -90,5 +91,74 @@ export function docStateToDXF(state: DocState): string {
 /** Build the DXF for a document state and trigger a download. */
 export function downloadDXF(state: DocState, filename: string): void {
   const blob = new Blob([docStateToDXF(state)], { type: 'application/dxf' })
+  triggerDownload(blob, filename)
+}
+
+// ---------------------------------------------------------------------------
+// Imported-plan export: a `Drawing` (see import/types) -> the same DXF R12.
+//
+// The Drawing is already meters, world-space, Y-up (DXF convention), so no
+// transform is needed. Linework entities become LINEs (a LINE is a 2-point
+// open polyline in this model); furniture blocks are emitted as their bounding
+// rectangle on a FURNITURE layer — matching the "furniture bboxes → rects"
+// contract and keeping the file small and universally readable.
+
+// Emit the LINE segments of one polyline entity on the given layer.
+function polylineLines(layer: string, e: DrawEntity): string[] {
+  const pts = e.pts
+  if (!pts || pts.length < 2) return []
+  const out: string[] = []
+  for (let i = 0; i < pts.length - 1; i++) {
+    out.push(line(layer, pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1]))
+  }
+  if (e.closed && pts.length > 2) {
+    const a = pts[pts.length - 1]
+    const b = pts[0]
+    out.push(line(layer, a[0], a[1], b[0], b[1]))
+  }
+  return out
+}
+
+// A CIRCLE entity (R12) — used for imported circle primitives (e.g. chairs).
+function circle(layer: string, cx: number, cy: number, r: number): string {
+  return ['0', 'CIRCLE', '8', layer, '10', f(cx), '20', f(cy), '30', '0.0', '40', f(r)].join('\n')
+}
+
+// The four LINEs of an axis-aligned bounding rectangle [minX,minY,maxX,maxY].
+function bboxLines(layer: string, bbox: [number, number, number, number]): string[] {
+  const [x0, y0, x1, y1] = bbox
+  return [
+    line(layer, x0, y0, x1, y0),
+    line(layer, x1, y0, x1, y1),
+    line(layer, x1, y1, x0, y1),
+    line(layer, x0, y1, x0, y0),
+  ]
+}
+
+/** Build a minimal valid DXF R12 ASCII string from an imported drawing. */
+export function drawingToDXF(drawing: Drawing): string {
+  const entities: string[] = []
+
+  for (const e of drawing.entities) {
+    const layer = layerName(e.category)
+    if (e.kind === 'polyline') {
+      entities.push(...polylineLines(layer, e))
+    } else if (e.kind === 'circle' && e.cx !== undefined && e.cy !== undefined && e.r !== undefined) {
+      entities.push(circle(layer, e.cx, e.cy, e.r))
+    }
+    // arcs/text are skipped: R12 arc angle semantics + text styling add weight
+    // without helping a clean CAD hand-off; walls/glazing carry the geometry.
+  }
+
+  for (const it of drawing.furniture) {
+    entities.push(...bboxLines('FURNITURE', it.bbox))
+  }
+
+  return ['0', 'SECTION', '2', 'ENTITIES', ...entities, '0', 'ENDSEC', '0', 'EOF', ''].join('\n')
+}
+
+/** Build the DXF for an imported drawing and trigger a download. */
+export function downloadDrawingDXF(drawing: Drawing, filename: string): void {
+  const blob = new Blob([drawingToDXF(drawing)], { type: 'application/dxf' })
   triggerDownload(blob, filename)
 }
