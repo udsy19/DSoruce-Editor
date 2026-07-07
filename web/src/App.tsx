@@ -19,7 +19,8 @@ import { exportPlanPDF } from './export/pdf'
 import { downloadIFC } from './export/ifc'
 import { downloadDXF, downloadDrawingDXF } from './export/dxf'
 import { CandidateGallery } from './ui/CandidateGallery'
-import { extractPlate, pushPlateToEditor } from './import/testfit'
+import { CategoryPlan } from './ui/CategoryPlan'
+import { extractPlate, pushPlateToEditor, type PlateResult } from './import/testfit'
 import { saveProject, openProject, applyProject } from './persist/file'
 import { evaluateCandidates, type SoftVerdict } from './ai/evaluator'
 
@@ -58,14 +59,30 @@ export function App() {
   const [importing, setImporting] = useState(false)
   const [importErr, setImportErr] = useState<string | null>(null)
   const [planView, setPlanView] = useState<'2d' | '3d'>('2d')
+  const [plateNotice, setPlateNotice] = useState<{
+    variant: 'ok' | 'warn'
+    msg: string
+  } | null>(null)
   const [helpOpen, setHelpOpen] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const drawCanvasRef = useRef<DrawingCanvas | null>(null)
   const [, setDrawVer] = useState(0)
 
+  /** Full product data per binding (price ₹, thumbnail) — the item itself only
+   *  carries id/name; the selection card + category plan need the rest. */
+  const [bindings, setBindings] = useState<Map<string, { price: number | null; image: string | null }>>(
+    () => new Map(),
+  )
+
   const bindProduct = (it: FurnitureItem, product: OfficeProduct) => {
     it.productId = product.id
     it.productName = product.name
+    setBindings((prev) =>
+      new Map(prev).set(product.id, {
+        price: Number.isFinite(product.price) && product.price > 0 ? product.price : null,
+        image: product.image ?? null,
+      }),
+    )
     drawCanvasRef.current?.refresh()
     setDrawVer((v) => v + 1)
   }
@@ -171,9 +188,17 @@ export function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
+  // Success notices fade on their own; warnings stay until dismissed.
+  useEffect(() => {
+    if (plateNotice?.variant !== 'ok') return
+    const t = window.setTimeout(() => setPlateNotice(null), 8000)
+    return () => window.clearTimeout(t)
+  }, [plateNotice])
+
   const ec = ecRef.current
   const selected = ready && ec ? ec.getSelected() : null
   const metrics = ready && ec ? ec.getMetrics() : null
+  const docEmpty = !!metrics && metrics.wall_count === 0 && metrics.component_count === 0
 
   const pickTool = (t: string) => {
     setTool(t)
@@ -200,6 +225,27 @@ export function App() {
     ec.clearAll()
     pushPlateToEditor(ec, plate)
     ec.sync()
+    // Plate-quality feedback. `coverage`/`areaM2` are additive optional fields
+    // on PlateResult — guard so this works whether or not they're present.
+    const { coverage, areaM2 } = plate as PlateResult & { coverage?: number; areaM2?: number }
+    if (coverage !== undefined || areaM2 !== undefined) {
+      const traced = [
+        areaM2 !== undefined ? `${Math.round(areaM2)} m²` : null,
+        coverage !== undefined ? `covers ${Math.round(coverage * 100)}% of the furniture` : null,
+      ]
+        .filter(Boolean)
+        .join(' · ')
+      if (coverage !== undefined && coverage < 0.85) {
+        setPlateNotice({
+          variant: 'warn',
+          msg: `${traced} — the boundary may be wrong — check the outline in 2D and adjust walls before generating.`,
+        })
+      } else {
+        setPlateNotice({ variant: 'ok', msg: `${traced}.` })
+      }
+    } else {
+      setPlateNotice(null)
+    }
     setMode('2d')
   }
 
@@ -226,6 +272,7 @@ export function App() {
                 data-testid="mode-import"
               >
                 Plan
+                <span className="seg-dot" aria-hidden />
               </button>
             )}
           </div>
@@ -374,17 +421,47 @@ export function App() {
                   drawCanvasRef.current = c
                   if (import.meta.env.DEV) (window as unknown as { __dc: DrawingCanvas | null }).__dc = c
                 }}
+                price={selItem?.productId ? bindings.get(selItem.productId)?.price : undefined}
+                image={selItem?.productId ? bindings.get(selItem.productId)?.image : undefined}
               />
             )}
             {!ready && <div className="loading">Loading Rust · Wasm core…</div>}
-            {mode === '2d' && ready && metrics && metrics.wall_count === 0 && metrics.component_count === 0 && (
-              <EmptyState onWall={() => pickTool('wall')} onImport={() => fileRef.current?.click()} />
+            {(mode === '2d' || mode === '3d') && ready && docEmpty && drawing && (
+              <EmptyState
+                kind="imported"
+                onGoToPlan={() => setMode('import')}
+                onTestFit={testFitPlan}
+              />
+            )}
+            {mode === '2d' && ready && docEmpty && !drawing && (
+              <EmptyState
+                kind="fresh"
+                onWall={() => pickTool('wall')}
+                onImport={() => fileRef.current?.click()}
+              />
             )}
             {importing && (
               <div className="import-overlay" role="status" aria-live="polite">
                 <span className="import-spinner" aria-hidden />
                 <span className="import-overlay-text">Converting &amp; parsing CAD…</span>
                 <span className="import-overlay-sub">DWG → DXF → plan</span>
+              </div>
+            )}
+            {plateNotice && !importErr && (
+              <div className={`import-err ${plateNotice.variant}`} role="status" data-testid="plate-notice">
+                <Icon name={plateNotice.variant === 'warn' ? 'warn' : 'check'} size={15} />
+                <div className="import-err-body">
+                  <span className="import-err-title">Floor plate traced</span>
+                  <span className="import-err-msg">{plateNotice.msg}</span>
+                </div>
+                <button
+                  className="import-err-close"
+                  onClick={() => setPlateNotice(null)}
+                  aria-label="Dismiss notice"
+                  data-testid="plate-notice-dismiss"
+                >
+                  <Icon name="close" size={14} />
+                </button>
               </div>
             )}
             {importErr && (
@@ -405,12 +482,23 @@ export function App() {
               </div>
             )}
           </div>
-          {aiOpen && ec && mode !== 'import' && <AgentPanel ec={ec} onClose={() => setAiOpen(false)} />}
         </main>
 
         <aside className="inspector">
           {mode === 'import' && drawing ? (
-            <ImportPanel drawing={drawing} item={selItem} onBind={bindProduct} />
+            <ImportPanel
+              drawing={drawing}
+              item={selItem}
+              onBind={bindProduct}
+              bindings={bindings}
+              onPickItem={(name) => {
+                const it = drawing.furniture.find((f) => f.name === name)
+                if (!it) return
+                // Route through the canvas so highlight/anchor stay in sync.
+                if (drawCanvasRef.current) drawCanvasRef.current.select(it)
+                else setSelItem(it)
+              }}
+            />
           ) : selected && ec ? (
             <ReimaginePanel ec={ec} c={selected} />
           ) : ec ? (
@@ -440,6 +528,20 @@ export function App() {
             : '—'}
         </span>
       </footer>
+
+      {/* App-level assistant dock: fixed overlay so the AI works in 2D, 3D and
+          Plan mode alike (it used to be mounted inside the 2D/3D stage only). */}
+      {aiOpen && ec && (
+        <div className="agent-dock">
+          {mode === 'import' && docEmpty && (
+            <div className="agent-note" role="note" data-testid="agent-import-note">
+              The assistant drives the test-fit document — run <strong>Test-fit this plan</strong>{' '}
+              first to give it a floor plate.
+            </div>
+          )}
+          <AgentPanel ec={ec} onClose={() => setAiOpen(false)} />
+        </div>
+      )}
 
       {helpOpen && <ShortcutsOverlay onClose={() => setHelpOpen(false)} />}
     </div>
@@ -604,7 +706,44 @@ function RailButton({
 
 /* ------------------------- Empty state + help ----------------------------- */
 
-function EmptyState({ onWall, onImport }: { onWall: () => void; onImport: () => void }) {
+function EmptyState(
+  props:
+    | { kind: 'fresh'; onWall: () => void; onImport: () => void }
+    | { kind: 'imported'; onGoToPlan: () => void; onTestFit: () => void },
+) {
+  // Import-aware variant: a plan was imported but the generative document is
+  // still empty — point at the Plan tab instead of claiming a blank session.
+  if (props.kind === 'imported') {
+    return (
+      <div className="empty-state" data-testid="empty-state-import">
+        <div className="empty-card">
+          <span className="empty-glyph" aria-hidden>
+            <Icon name="upload" size={26} />
+          </span>
+          <h2 className="empty-title">
+            Your imported plan is open in the <strong>Plan</strong> tab
+          </h2>
+          <p className="empty-lead">
+            This view holds the generative test-fit document, which is still empty. Trace the
+            imported floor plate into it to generate layouts inside your building.
+          </p>
+          <div className="empty-actions">
+            <button className="empty-btn" onClick={props.onGoToPlan}>
+              Go to Plan
+            </button>
+            <button className="empty-btn primary" onClick={props.onTestFit}>
+              <Icon name="sparkles" size={15} /> Test-fit this plan
+            </button>
+          </div>
+          <p className="empty-hint">
+            Test-fit derives the floor plate from the imported walls, then the autonomous generator
+            runs inside it.
+          </p>
+        </div>
+      </div>
+    )
+  }
+  const { onWall, onImport } = props
   return (
     <div className="empty-state" data-testid="empty-state">
       <div className="empty-card">
@@ -824,17 +963,55 @@ function ImportPanel({
   drawing,
   item,
   onBind,
+  bindings,
+  onPickItem,
 }: {
   drawing: Drawing
   item: FurnitureItem | null
   onBind: (it: FurnitureItem, p: OfficeProduct) => void
+  bindings: Map<string, { price: number | null; image: string | null }>
+  onPickItem?: (name: string) => void
 }) {
   const w = drawing.bounds[2] - drawing.bounds[0]
   const h = drawing.bounds[3] - drawing.bounds[1]
-  const counts = new Map<string, number>()
-  for (const f of drawing.furniture) counts.set(f.name, (counts.get(f.name) ?? 0) + 1)
-  const top = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10)
   const bound = drawing.furniture.filter((f) => f.productId).length
+
+  // Materio-style "plan by category": group furniture by category, aggregate
+  // items by name with bound-product price/image rolled in.
+  const groups = (() => {
+    const byCat = new Map<string, Map<string, { qty: number; item: FurnitureItem }>>()
+    for (const f of drawing.furniture) {
+      const cat = byCat.get(f.category) ?? new Map()
+      const agg = cat.get(f.name) ?? { qty: 0, item: f }
+      agg.qty++
+      if (f.productId && !agg.item.productId) agg.item = f // prefer a bound exemplar
+      cat.set(f.name, agg)
+      byCat.set(f.category, cat)
+    }
+    return [...byCat.entries()]
+      .map(([category, items]) => {
+        const rows = [...items.entries()]
+          .map(([name, { qty, item: ex }]) => {
+            const b = ex.productId ? bindings.get(ex.productId) : undefined
+            return {
+              name,
+              qty,
+              priceInr: ex.productId ? (b?.price != null ? b.price * qty : null) : undefined,
+              image: b?.image ?? null,
+              bound: !!ex.productId,
+            }
+          })
+          .sort((a, b) => b.qty - a.qty)
+        const priced = rows.filter((r) => typeof r.priceInr === 'number')
+        return {
+          category,
+          count: rows.reduce((s, r) => s + r.qty, 0),
+          totalInr: priced.length ? priced.reduce((s, r) => s + (r.priceInr as number), 0) : null,
+          items: rows,
+        }
+      })
+      .sort((a, b) => b.count - a.count)
+  })()
 
   // Selected furniture → the re-imagine (material-bank) inspector.
   if (item) return <FurnitureInspector item={item} onBind={onBind} />
@@ -870,15 +1047,7 @@ function ImportPanel({
         Click furniture to re-imagine it · drag to move · R rotate · Del delete · ⌘D duplicate · ⌘Z undo
       </div>
 
-      <div className="panel-eyebrow gap">Furniture schedule</div>
-      <div className="schedule">
-        {top.map(([name, n]) => (
-          <div className="row" key={name}>
-            <span className="row-label import-sched-name">{name}</span>
-            <span className="row-value">{n}</span>
-          </div>
-        ))}
-      </div>
+      <CategoryPlan groups={groups} onPick={onPickItem} />
     </div>
   )
 }

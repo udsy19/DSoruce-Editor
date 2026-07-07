@@ -178,6 +178,16 @@ button {
   color: var(--text);
   box-shadow: var(--shadow-sm);
 }
+/* Discovery badge: the Plan tab holds the imported drawing. */
+.seg-dot {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  margin-left: 6px;
+  vertical-align: 2px;
+}
 
 /* Export dropdown */
 .export {
@@ -1011,20 +1021,41 @@ button {
 }
 
 /* ------------------------------ AI assistant ---------------------------- */
-.agent {
-  position: absolute;
-  right: 16px;
-  bottom: 16px;
+/* App-level dock: a fixed overlay so the assistant is reachable from every
+   mode (2D, 3D, imported Plan), sitting over the stage next to the inspector. */
+.agent-dock {
+  position: fixed;
+  right: calc(var(--inspector) + 16px);
+  bottom: calc(var(--status) + 16px);
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
   width: 380px;
-  max-width: calc(100% - 32px);
-  max-height: min(560px, calc(100% - 32px));
+  max-width: calc(100vw - var(--rail) - var(--inspector) - 32px);
+}
+.agent-note {
+  width: 100%;
+  background: var(--review-soft);
+  color: #7a5313;
+  border: 1px solid rgba(224, 149, 43, 0.4);
+  border-radius: var(--r-md);
+  padding: 9px 12px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  box-shadow: var(--shadow-md);
+  animation: toast-in 0.18s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.agent {
+  width: 100%;
+  max-height: min(560px, calc(100vh - var(--topbar) - var(--status) - 80px));
   display: flex;
   flex-direction: column;
   background: var(--surface);
   border: 1px solid var(--hairline);
   border-radius: var(--r-lg);
   box-shadow: var(--shadow-lg);
-  z-index: 30;
   overflow: hidden;
 }
 .agent-head {
@@ -1359,6 +1390,41 @@ button {
   opacity: 1;
   background: rgba(222, 81, 71, 0.16);
 }
+/* Success / warning variants of the same toast (plate-quality feedback). */
+.import-err.ok {
+  background: var(--ok-soft);
+  color: #23744d;
+  border-color: rgba(47, 163, 107, 0.35);
+}
+.import-err.ok > svg {
+  color: var(--ok);
+}
+.import-err.ok .import-err-msg {
+  color: #2c6647;
+}
+.import-err.ok .import-err-close {
+  color: #23744d;
+}
+.import-err.ok .import-err-close:hover {
+  background: rgba(47, 163, 107, 0.16);
+}
+.import-err.warn {
+  background: var(--review-soft);
+  color: #8a5b16;
+  border-color: rgba(224, 149, 43, 0.4);
+}
+.import-err.warn > svg {
+  color: var(--review);
+}
+.import-err.warn .import-err-msg {
+  color: #7a5313;
+}
+.import-err.warn .import-err-close {
+  color: #8a5b16;
+}
+.import-err.warn .import-err-close:hover {
+  background: rgba(224, 149, 43, 0.18);
+}
 @keyframes toast-in {
   from {
     opacity: 0;
@@ -1491,6 +1557,10 @@ button {
   font-size: 18px;
   font-weight: 700;
   color: var(--text);
+}
+/* The title is already bold — <strong> highlights (e.g. the Plan tab) in accent. */
+.empty-title strong {
+  color: var(--accent);
 }
 .empty-lead {
   margin: 0 0 18px;
@@ -1752,6 +1822,10 @@ kbd {
   }
   .inspector {
     display: none;
+  }
+  .agent-dock {
+    right: 16px;
+    max-width: calc(100vw - var(--rail) - 32px);
   }
   .help-grid {
     grid-template-columns: 1fr;
