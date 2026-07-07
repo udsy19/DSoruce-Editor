@@ -7,12 +7,13 @@ import { StatsPanel } from './ui/StatsPanel'
 import { AgentPanel } from './ai/AgentPanel'
 import { Scene3D } from './three/Scene3D'
 import { DrawingView } from './import/DrawingView'
-import { DrawingScene3D } from './three/DrawingScene3D'
 import { FurnitureInspector } from './import/FurnitureInspector'
 import { parseDrawing } from './import/dxf'
 import type { Drawing, FurnitureItem } from './import/types'
 import type { DrawingCanvas } from './import/DrawingCanvas'
 import type { OfficeProduct } from './materialBank/office'
+import { exportPNG } from './export/png'
+import { downloadDXF } from './export/dxf'
 
 // CAD drafting tools (map to EditorCanvas 'cad:<id>' tools).
 const CAD_RAIL: { id: string; icon: string; label: string; hint?: string }[] = [
@@ -48,7 +49,6 @@ export function App() {
   const [selItem, setSelItem] = useState<FurnitureItem | null>(null)
   const [importing, setImporting] = useState(false)
   const [importErr, setImportErr] = useState<string | null>(null)
-  const [planView, setPlanView] = useState<'2d' | '3d'>('2d')
   const fileRef = useRef<HTMLInputElement>(null)
   const drawCanvasRef = useRef<DrawingCanvas | null>(null)
   const [, setDrawVer] = useState(0)
@@ -146,24 +146,6 @@ export function App() {
               </button>
             )}
           </div>
-          {mode === 'import' && drawing && (
-            <div className="mode-toggle" role="group" aria-label="Plan view">
-              <button
-                className={planView === '2d' ? 'seg on' : 'seg'}
-                onClick={() => setPlanView('2d')}
-                data-testid="plan-2d"
-              >
-                Plan
-              </button>
-              <button
-                className={planView === '3d' ? 'seg on' : 'seg'}
-                onClick={() => setPlanView('3d')}
-                data-testid="plan-3d"
-              >
-                3D
-              </button>
-            </div>
-          )}
           <input
             ref={fileRef}
             type="file"
@@ -233,10 +215,7 @@ export function App() {
           <div className="canvas-wrap">
             <canvas ref={canvasRef} style={{ display: mode === '2d' ? 'block' : 'none' }} />
             {mode === '3d' && ready && ec && <Scene3D state={ec.getState()} />}
-            {mode === 'import' && drawing && planView === '3d' && (
-              <DrawingScene3D drawing={drawing} />
-            )}
-            {mode === 'import' && drawing && planView === '2d' && (
+            {mode === 'import' && drawing && (
               <DrawingView
                 drawing={drawing}
                 onSelect={setSelItem}
@@ -322,6 +301,20 @@ function ExportMenu({ ec }: { ec: EditorCanvas | null }) {
     setOpen(false)
   }
 
+  const exportPng = () => {
+    if (!ec) return
+    // The editor's 2D canvas lives in the canvas-wrap; capture its pixels.
+    const canvas = document.querySelector<HTMLCanvasElement>('.canvas-wrap canvas')
+    if (canvas) exportPNG(canvas, 'dsource-plan.png')
+    setOpen(false)
+  }
+
+  const exportDxf = () => {
+    if (!ec) return
+    downloadDXF(ec.getState(), 'dsource-plan.dxf')
+    setOpen(false)
+  }
+
   return (
     <div className="export">
       <button className="export-btn" onClick={() => setOpen((o) => !o)} data-testid="export-btn">
@@ -332,12 +325,18 @@ function ExportMenu({ ec }: { ec: EditorCanvas | null }) {
           <div className="export-item" onClick={exportCSV} data-testid="export-csv">
             Export CSV
           </div>
+          <div className="export-item" onClick={exportPng} data-testid="export-png">
+            PNG image
+          </div>
+          <div className="export-item" onClick={exportDxf} data-testid="export-dxf">
+            DXF (CAD)
+          </div>
           <div className="export-item">
             Export PDF <span className="hint">soon</span>
           </div>
           <div className="export-sep" />
           <div className="export-item">
-            Export 2D <span className="hint">DWG · DXF</span>
+            Export 2D <span className="hint">DWG soon</span>
           </div>
           <div className="export-item">
             Export 3D <span className="hint">IFC · OBJ · RVT</span>
