@@ -98,6 +98,34 @@ export type ViewerMode = 'orbit' | 'walk'
 export type ViewPreset = 'persp' | 'top'
 export type Quality = 'high' | 'low'
 
+/** Metadata stamped on pickable scene objects via `userData.pick`.
+ *  - `component` — a generated-plan component (setState path); `id` is DocComponent.id.
+ *  - `zone`      — a zone floor plate; clicking the room floor selects the room.
+ *  - `furniture` — an imported-drawing furniture instance; `index` into Drawing.furniture.
+ *  - `shell`     — merged building fabric (walls/glazing/…); reported but not
+ *                  selectable UI-wise (wrappers treat it as a card-close). */
+export interface PickInfo {
+  kind: 'component' | 'zone' | 'furniture' | 'shell'
+  id?: number
+  index?: number
+  name?: string
+  category?: string
+  label?: string
+  zoneType?: string
+}
+
+/** What {@link Viewer3D.onPick} delivers: the picked object's {@link PickInfo}
+ *  plus the click position in CSS px relative to the viewer container (for
+ *  anchoring a selection card). `null` = clicked empty space (close the card). */
+export interface PickHit extends PickInfo {
+  screen: { x: number; y: number }
+}
+
+// Clean-click discrimination: a pick fires only for press→release under both
+// thresholds, so orbit drags / damped rotations never produce phantom picks.
+const CLICK_MAX_MS = 250
+const CLICK_MAX_PX = 5
+
 /** First-person pose pushed to `onPose` each walk frame: world position (x, z)
  *  and a horizontal heading unit vector (hx, hz). Coordinates are the viewer's
  *  (recentered) world space — see {@link Viewer3D.getContentOffset}. */
@@ -151,6 +179,15 @@ export class Viewer3D {
   /** Fired whenever the render quality changes — including the automatic
    *  degrade to 'low' when high quality can't sustain 40 fps. */
   onQualityChange?: (q: Quality) => void
+
+  /** Fired on a clean click in ORBIT mode (press→release < 250 ms, < 5 px of
+   *  movement — drags and orbit rotations never trigger it) with the nearest
+   *  picked object's metadata, or `null` for empty space. The raycast walks up
+   *  the parent chain to the closest ancestor carrying `userData.pick`; hits
+   *  are distance-sorted, so furniture/components (which sit above the zone
+   *  floor plates) win over the zone under them. Double-click refocus still
+   *  works — a pick fires alongside it by design. */
+  onPick?: (hit: PickHit | null) => void
 
   readonly camera: THREE.PerspectiveCamera
 
@@ -210,6 +247,31 @@ export class Viewer3D {
   })
   private highlightMat = new THREE.LineBasicMaterial({ color: 0xe8a13c })
   private shared: Set<THREE.BufferGeometry | THREE.Material>
+
+  // Click-pick state (orbit mode). One persistent amber wireframe box is
+  // repositioned/rescaled around each picked object (its opacity pulses in
+  // animate()) — nothing is allocated per pick, so "disposal on next pick" is
+  // just hiding/moving it; the geometry+material are freed once in dispose().
+  // Separate material from `highlightMat` so the pulse doesn't affect the 2D
+  // selection outline that shares highlightMat.
+  private pickOutlineMat = new THREE.LineBasicMaterial({
+    color: 0xe8a13c,
+    transparent: true,
+    opacity: 0.9,
+  })
+  private pickOutline: THREE.LineSegments
+  private clickValid = false
+  private clickX = 0
+  private clickY = 0
+  private clickTime = 0
+
+  /** Framing staleness: false until the user gives any camera input (pointer,
+   *  wheel, mode switch) after content was framed. While false, resize() re-runs
+   *  the instant framing so late container-size settling (panel layout, view
+   *  toggles) can't leave the plan stuck in a corner. One interaction flips it
+   *  forever (until the next fresh framing) — auto-reframe never fights the
+   *  user's camera. */
+  private userMoved = false
 
   private ground: THREE.Mesh
   private grid: THREE.GridHelper
@@ -375,6 +437,12 @@ export class Viewer3D {
       this.highlightMat,
     ])
 
+    // Pick highlight: lives in `scene` (NOT `content`) so pick raycasts and
+    // walk collision never hit it, and clearContent() can't dispose it.
+    this.pickOutline = new THREE.LineSegments(new THREE.EdgesGeometry(this.unitBox), this.pickOutlineMat)
+    this.pickOutline.visible = false
+    this.scene.add(this.pickOutline)
+
     // Postprocessed pipeline. Order matters in r0.185: RenderPass and SAOPass
     // work in linear HDR (tone mapping is OFF when rendering into a target);
     // OutputPass applies ACES + sRGB; SMAA runs LAST, on display-referred
@@ -432,6 +500,8 @@ export class Viewer3D {
   setMode(mode: ViewerMode): void {
     if (mode === this.mode) return
     this.mode = mode
+    this.userMoved = true // a mode switch is a deliberate camera action
+    this.setPickHighlight(null) // picks are orbit-only; drop the outline
     if (this.walk.isLocked) this.walk.unlock()
     this.keys.clear()
     this.dragging = false
@@ -632,6 +702,21 @@ export class Viewer3D {
     this.composer.setSize(w, h) // propagates to every pass (SAO buffers, SMAA RTs)
     this.camera.aspect = w / h
     this.camera.updateProjectionMatrix()
+
+    // Framing staleness fix: content is framed once when set, but the container
+    // often settles to its real size AFTER that (panel layout, plan/3D toggle) —
+    // leaving the plan shoved into a corner. Until the user touches the camera,
+    // every resize re-runs the instant (non-animated) framing so the plan stays
+    // centered; the first interaction flips `userMoved` and ends auto-reframing.
+    if (
+      !this.userMoved &&
+      this.framed &&
+      this.mode === 'orbit' &&
+      !this.isTransitioning() &&
+      !this.contentBounds.isEmpty()
+    ) {
+      this.frameBox(this.contentBounds)
+    }
   }
 
   /** Release all GPU resources, controls, and listeners; stop the render loop. */
@@ -662,6 +747,10 @@ export class Viewer3D {
     this.meetingMat.dispose()
     this.fallCeilingMat.dispose()
     this.highlightMat.dispose()
+
+    this.scene.remove(this.pickOutline)
+    this.pickOutline.geometry.dispose() // EdgesGeometry owned by the outline
+    this.pickOutlineMat.dispose()
 
     this.ground.geometry.dispose()
     ;(this.ground.material as THREE.Material).dispose()
@@ -710,6 +799,9 @@ export class Viewer3D {
     mesh.rotation.y = -Math.atan2(dz, dx) // see coordinate-mapping note above
     mesh.castShadow = true
     mesh.receiveShadow = true
+    // Shell = building fabric: reported by onPick but not selectable UI-wise.
+    // Stamping it keeps a click on a wall from selecting the zone behind it.
+    mesh.userData.pick = { kind: 'shell', category: 'wall' } satisfies PickInfo
     return mesh
   }
 
@@ -717,6 +809,12 @@ export class Viewer3D {
     const group = new THREE.Group()
     group.position.set(c.x, 0, c.y)
     group.rotation.y = -c.rotation // 2D clockwise θ → world −θ about +Y
+    group.userData.pick = {
+      kind: 'component',
+      id: c.id,
+      category: c.category,
+      label: c.label,
+    } satisfies PickInfo
 
     let obj: THREE.Object3D
     if (c.category === 'MeetingRoom') {
@@ -793,6 +891,13 @@ export class Viewer3D {
       // Walk-mode systems (spawn centroid, collision) must ignore zone plates;
       // ShapeGeometry would otherwise count as real content.
       mesh.userData.zonePlate = true
+      // …but clicking the room floor SELECTS the room (zone) in orbit mode.
+      mesh.userData.pick = {
+        kind: 'zone',
+        id: z.id,
+        label: z.label,
+        zoneType: z.zone_type,
+      } satisfies PickInfo
       mesh.receiveShadow = true
       this.content.add(mesh)
     }
@@ -877,6 +982,8 @@ export class Viewer3D {
     sc.updateProjectionMatrix()
 
     this.framed = true
+    // Fresh framing restarts the auto-reframe-on-resize window (see resize()).
+    this.userMoved = false
   }
 
   /** Size + position the interior ceiling (and its light fixtures) to the plan
@@ -1273,7 +1380,16 @@ export class Viewer3D {
    *  the cursor (drag right → look left). In orbit mode this only cancels any
    *  animated view move so the camera never fights the mouse. */
   private onPointerDown = (e: PointerEvent): void => {
+    this.userMoved = true // any pointer input ends auto-reframe-on-resize
     this.cancelTween()
+    // Arm clean-click pick detection (orbit only): a press that releases within
+    // CLICK_MAX_MS having moved less than CLICK_MAX_PX is a pick, anything
+    // longer/farther is an orbit gesture and must never pick.
+    this.clickValid =
+      this.mode === 'orbit' && e.button === 0 && !this.isTransitioning()
+    this.clickX = e.clientX
+    this.clickY = e.clientY
+    this.clickTime = performance.now()
     if (this.mode !== 'walk' || this.walk.isLocked || this.isTransitioning() || e.button !== 0) return
     this.dragging = true
     this.dragX = e.clientX
@@ -1282,6 +1398,10 @@ export class Viewer3D {
   }
 
   private onPointerMove = (e: PointerEvent): void => {
+    // Invalidate the pending pick as soon as the pointer wanders (drag/orbit).
+    if (this.clickValid && Math.hypot(e.clientX - this.clickX, e.clientY - this.clickY) > CLICK_MAX_PX) {
+      this.clickValid = false
+    }
     if (!this.dragging || this.mode !== 'walk' || this.walk.isLocked) return
     const dx = e.clientX - this.dragX
     const dy = e.clientY - this.dragY
@@ -1292,6 +1412,17 @@ export class Viewer3D {
   }
 
   private onPointerUp = (e: PointerEvent): void => {
+    if (this.clickValid) {
+      this.clickValid = false
+      if (
+        this.mode === 'orbit' &&
+        e.type === 'pointerup' && // pointercancel is never a click
+        performance.now() - this.clickTime < CLICK_MAX_MS &&
+        Math.hypot(e.clientX - this.clickX, e.clientY - this.clickY) <= CLICK_MAX_PX
+      ) {
+        this.doPick(e)
+      }
+    }
     if (!this.dragging) return
     this.dragging = false
     const el = this.renderer.domElement
@@ -1338,6 +1469,7 @@ export class Viewer3D {
    *  notch, consumed smoothly + collision-checked in updateWalk). In orbit
    *  mode OrbitControls owns the wheel; we only cancel animated view moves. */
   private onWheel = (e: WheelEvent): void => {
+    this.userMoved = true // wheel zoom/glide is camera input too
     if (this.mode === 'walk') {
       e.preventDefault()
       if (this.isTransitioning()) return
@@ -1347,6 +1479,79 @@ export class Viewer3D {
     } else {
       this.cancelTween()
     }
+  }
+
+  // ── Click picking (orbit mode) ───────────────────────────────────────────
+
+  /** Raycast a clean click against `content` and report the nearest pickable
+   *  object through {@link onPick}. Hits come back distance-sorted, and the
+   *  metadata lookup walks UP the parent chain to the closest ancestor with
+   *  `userData.pick` — so a chair leg resolves to its furniture group. Because
+   *  furniture/components physically sit above the zone floor plates, the first
+   *  hit that resolves to a pick already prefers them over the zone underneath
+   *  (verified: plates lie at y≈0.006, furniture from y=0 upward, so the ray
+   *  reaches the furniture surface first). Shell hits (building fabric) are
+   *  reported but never highlighted; empty space reports `null`. */
+  private doPick(e: PointerEvent): void {
+    const rect = this.renderer.domElement.getBoundingClientRect()
+    const ndc = new THREE.Vector2(
+      ((e.clientX - rect.left) / Math.max(rect.width, 1)) * 2 - 1,
+      -((e.clientY - rect.top) / Math.max(rect.height, 1)) * 2 + 1,
+    )
+    this.raycaster.setFromCamera(ndc, this.camera)
+    this.raycaster.far = Infinity // collideAxis shortens it; restore for picking
+    const hits = this.raycaster.intersectObject(this.content, true)
+
+    let pickedObj: THREE.Object3D | null = null
+    let picked: PickInfo | null = null
+    for (const h of hits) {
+      let o: THREE.Object3D | null = h.object
+      while (o && o !== this.content) {
+        if (o.userData.pick) {
+          pickedObj = o
+          picked = o.userData.pick as PickInfo
+          break
+        }
+        o = o.parent
+      }
+      if (picked) break
+    }
+
+    if (!picked || !pickedObj) {
+      this.setPickHighlight(null)
+      this.onPick?.(null)
+      return
+    }
+    // Shells are metadata-only: no highlight (the merged mesh's bbox would wrap
+    // the whole building); consumers treat them like a background click.
+    this.setPickHighlight(picked.kind === 'shell' ? null : pickedObj)
+    const crect = this.container.getBoundingClientRect()
+    this.onPick?.({
+      ...picked,
+      screen: { x: e.clientX - crect.left, y: e.clientY - crect.top },
+    })
+  }
+
+  /** Move the persistent amber outline around `obj` (world-space bbox), or hide
+   *  it for `null`. The outline is one reused LineSegments living in `scene`,
+   *  so "disposing the previous highlight" is just this repositioning — its
+   *  GPU resources are freed exactly once, in {@link dispose}. */
+  private setPickHighlight(obj: THREE.Object3D | null): void {
+    if (!obj) {
+      this.pickOutline.visible = false
+      return
+    }
+    const box = new THREE.Box3().setFromObject(obj)
+    if (box.isEmpty()) {
+      this.pickOutline.visible = false
+      return
+    }
+    const size = box.getSize(new THREE.Vector3())
+    const center = box.getCenter(new THREE.Vector3())
+    const pad = 0.04 // small clearance so the outline never z-fights the surfaces
+    this.pickOutline.scale.set(size.x + pad, Math.max(size.y, 0.05) + pad, size.z + pad)
+    this.pickOutline.position.copy(center)
+    this.pickOutline.visible = true
   }
 
   private onWalkLock = (): void => {
@@ -1371,6 +1576,7 @@ export class Viewer3D {
   /** Detach and dispose meshes built by setState()/setContent(). Shared
    *  geometry/materials are protected; furniture-owned resources are freed. */
   private clearContent(): void {
+    this.setPickHighlight(null) // the picked object is about to be destroyed
     this.content.traverse((obj) => {
       const m = obj as THREE.Mesh
       const geo = m.geometry as THREE.BufferGeometry | undefined
@@ -1399,6 +1605,11 @@ export class Viewer3D {
     } else if (!this.isTransitioning()) {
       // orbit.update() also re-aims the camera at a tweening orbit target.
       this.orbit.update()
+    }
+
+    // Gentle emissive-style pulse on the pick outline (opacity 0.55 ↔ 1.0).
+    if (this.pickOutline.visible) {
+      this.pickOutlineMat.opacity = 0.775 + 0.225 * Math.sin(this.clock.elapsedTime * 4)
     }
 
     if (this.quality === 'high') this.composer.render()

@@ -129,6 +129,8 @@ function mergedSegments(
   const mesh = new THREE.Mesh(merged, material)
   mesh.castShadow = true
   mesh.receiveShadow = true
+  // Building fabric: reported by Viewer3D.onPick but not selectable UI-wise.
+  mesh.userData.pick = { kind: 'shell', category }
   return mesh
 }
 
@@ -184,6 +186,8 @@ function mergedSolids(
   const mesh = new THREE.Mesh(merged, material)
   mesh.castShadow = true
   mesh.receiveShadow = true
+  // Building fabric: reported by Viewer3D.onPick but not selectable UI-wise.
+  mesh.userData.pick = { kind: 'shell', category }
   return mesh
 }
 
@@ -250,7 +254,8 @@ export function buildFromDrawing(drawing: Drawing): { root: THREE.Group; bounds:
   if (other) root.add(other)
 
   // ── Furniture ─────────────────────────────────────────────────────────────
-  for (const item of drawing.furniture) {
+  for (let index = 0; index < drawing.furniture.length; index++) {
+    const item = drawing.furniture[index]
     const [bMinX, bMinY, bMaxX, bMaxY] = item.bbox
     const w = Math.max(bMaxX - bMinX, 0.05)
     const d = Math.max(bMaxY - bMinY, 0.05)
@@ -258,6 +263,8 @@ export function buildFromDrawing(drawing: Drawing): { root: THREE.Group; bounds:
     const group = new THREE.Group()
     group.position.set((bMinX + bMaxX) / 2, 0, (bMinY + bMaxY) / 2)
     group.rotation.y = -item.rotation // Y-up plan θ → world −θ about +Y
+    // Click-select metadata (Viewer3D.onPick): `index` into drawing.furniture.
+    group.userData.pick = { kind: 'furniture', index, name: item.name, category: item.category }
     group.add(obj)
     root.add(group)
   }

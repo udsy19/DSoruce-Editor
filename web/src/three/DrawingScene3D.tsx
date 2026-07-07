@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { Viewer3D, type ViewerMode } from './Viewer3D'
+import { Viewer3D, type ViewerMode, type PickHit } from './Viewer3D'
 import { Minimap, type MinimapHandle, type MinimapProps } from './Minimap'
 import { ViewerToolbar, type Quality, type ViewerWithExtras } from './ViewerToolbar'
 import { buildFromDrawing } from './buildFromDrawing'
+// PickCard3D is the shared minimal 3D selection card (see its note about
+// merging with ui/SelectionCard once that component stabilizes).
+import { PickCard3D, PICK_CHIP } from './Scene3D'
 import type { Drawing } from '../import/types'
 
 /**
@@ -24,6 +27,9 @@ export function DrawingScene3D({ drawing }: { drawing: Drawing }) {
   const [hint, setHint] = useState<string | null>(null)
   // Static minimap geometry in world space, recomputed only when the plan does.
   const [map, setMap] = useState<MinimapProps | null>(null)
+  // Current 3D selection (orbit-mode click on imported furniture). Shell hits
+  // (walls/glazing/…) and empty space both close the card.
+  const [picked, setPicked] = useState<PickHit | null>(null)
 
   // Create the viewer once for the lifetime of the mounted container.
   useEffect(() => {
@@ -33,6 +39,7 @@ export function DrawingScene3D({ drawing }: { drawing: Drawing }) {
     viewer.onModeHint = setHint
     setQuality(viewer.getQuality?.() ?? 'high')
     viewer.onQualityChange = setQuality
+    viewer.onPick = (h) => setPicked(h && h.kind !== 'shell' ? h : null)
     viewerRef.current = viewer
 
     const ro = new ResizeObserver(() => viewer.resize())
@@ -41,6 +48,7 @@ export function DrawingScene3D({ drawing }: { drawing: Drawing }) {
     return () => {
       ro.disconnect()
       viewer.onQualityChange = undefined
+      viewer.onPick = undefined
       viewer.dispose()
       viewerRef.current = null
     }
@@ -93,8 +101,9 @@ export function DrawingScene3D({ drawing }: { drawing: Drawing }) {
     }
   }, [mode])
 
-  const pick = (m: ViewerMode) => {
+  const switchMode = (m: ViewerMode) => {
     setMode(m)
+    setPicked(null) // selection card is orbit-only
     viewerRef.current?.setMode(m)
   }
 
@@ -103,7 +112,7 @@ export function DrawingScene3D({ drawing }: { drawing: Drawing }) {
       <ViewerToolbar
         mode={mode}
         quality={quality}
-        onMode={pick}
+        onMode={switchMode}
         onView={(v) => viewerRef.current?.setView?.(v)}
         onFrame={() => viewerRef.current?.frameAll?.()}
         onQuality={(q) => {
@@ -111,6 +120,15 @@ export function DrawingScene3D({ drawing }: { drawing: Drawing }) {
           setQuality(q)
         }}
       />
+      {mode === 'orbit' && picked && picked.kind === 'furniture' && (
+        <PickCard3D
+          screen={picked.screen}
+          hostRef={hostRef}
+          title={picked.name || 'Furniture'}
+          subtitle={picked.category ?? 'furniture'}
+          chip={PICK_CHIP.Furniture}
+        />
+      )}
       {mode === 'walk' && (
         <div
           style={{
