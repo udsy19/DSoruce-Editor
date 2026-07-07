@@ -76,23 +76,47 @@ export class LocalDriver implements AgentDriver {
       )
     }
 
+    // "add 6 desks" is RELATIVE to the current program; "remove 4 desks"
+    // subtracts; "fit 30 people" stays an absolute target. Treating every
+    // number as absolute made "add 6 desks" DROP a 20-desk plan to 6.
+    const relative = /\b(add|more|extra|another|additional)\b/.test(t)
+    const negative = /\b(remove|delete|drop|cut|reduce|fewer|less)\b/.test(t)
+
+    const mr = numAfter(/(\d+)\s*meeting/)
+    if (mr != null) {
+      const n = Math.max(0, Math.round(mr))
+      const target = relative
+        ? ctx.program.meeting_rooms + n
+        : negative
+          ? Math.max(0, ctx.program.meeting_rooms - n)
+          : n
+      return this.regen(
+        { ...ctx.program, meeting_rooms: target },
+        `${relative ? `Add ${n}` : negative ? `Remove ${n}` : `Set ${target}`} meeting room${target === 1 ? '' : 's'} (target ${target}) and regenerate.`,
+        ctx,
+      )
+    }
+
     const people =
       numAfter(/(\d+)\s*(?:desks?|people|pax|seats?|workstations?|staff|persons?)/) ??
       (/\b(add|fit|seat|need|house|accommodate)\b/.test(t) ? numAfter(/(\d+)/) : null)
-    if (people != null)
+    if (people != null) {
+      const n = Math.max(0, Math.round(people))
+      const target = relative
+        ? ctx.program.desks + n
+        : negative
+          ? Math.max(0, ctx.program.desks - n)
+          : n
       return this.regen(
-        { ...ctx.program, desks: Math.max(0, Math.round(people)) },
-        `Target ${Math.max(0, Math.round(people))} workstations and regenerate the fit.`,
+        { ...ctx.program, desks: target },
+        relative
+          ? `Add ${n} desks (target ${target}) and regenerate the fit.`
+          : negative
+            ? `Remove ${n} desks (target ${target}) and regenerate the fit.`
+            : `Target ${target} workstations and regenerate the fit.`,
         ctx,
       )
-
-    const mr = numAfter(/(\d+)\s*meeting/)
-    if (mr != null)
-      return this.regen(
-        { ...ctx.program, meeting_rooms: Math.max(0, Math.round(mr)) },
-        `Set ${Math.max(0, Math.round(mr))} meeting rooms and regenerate.`,
-        ctx,
-      )
+    }
 
     if (/\b(regenerate|re-?generate|generate|re-?fit|new layout|try again|another option)\b/.test(t))
       return this.regen({ ...ctx.program }, 'Regenerate the test-fit.', ctx)

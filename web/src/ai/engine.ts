@@ -11,7 +11,7 @@ import {
 } from '../editor/EditorCanvas'
 import { ToolCall, PreviewDiff, MetricDelta, Consequence } from './contract'
 
-const MIN_CORRIDOR = 1.12 // m — IBC egress minimum (see circulation.rs)
+const MIN_CORRIDOR = 1.5 // m — NBC 2016 Part 4 business-corridor minimum (India-first)
 const MIN_AREA_PER_WS = 6.0 // m² — planning norm (see layout.rs)
 
 /** Apply one tool call to a wasm Editor (live or scratch). May throw a ZoneError string. */
@@ -109,7 +109,7 @@ function buildDiff(before: Snap, after: Snap): PreviewDiff {
   const am = after.m
   const m2 = (n: number) => `${Math.round(n)} m²`
   const one = (n: number) => n.toFixed(1)
-  const money = (n: number) => `$${Math.round(n).toLocaleString('en-US')}`
+  const money = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`
   const kg = (n: number) => `${Math.round(n).toLocaleString('en-US')}`
 
   const deltas: MetricDelta[] = [
@@ -145,7 +145,7 @@ function buildDiff(before: Snap, after: Snap): PreviewDiff {
   if (typeof aCorr === 'number' && aCorr > 0 && aCorr < MIN_CORRIDOR) {
     consequences.push({
       severity: 'danger',
-      text: `Min corridor drops to ${aCorr.toFixed(2)} m — below the ${MIN_CORRIDOR} m egress minimum (IBC).`,
+      text: `Min corridor drops to ${aCorr.toFixed(2)} m — below the ${MIN_CORRIDOR} m corridor minimum (NBC 2016).`,
     })
   }
   const aApw = num(am.area_per_workstation)
