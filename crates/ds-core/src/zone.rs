@@ -57,6 +57,30 @@ impl ZoneShape {
         }
     }
 
+    /// Area clipped to the floor-plate polygon, m². Zone shapes stay
+    /// rectangular even on an L-shaped plate (the model can't represent the
+    /// notch), so honest metrics clip each shape against the plate before
+    /// summing. With no plate (open walls) the full shape area is returned —
+    /// identical for rectangular rooms, where shape ⊆ plate.
+    pub fn area_on(&self, plate: Option<&[crate::geometry::Point]>) -> f64 {
+        let Some(poly) = plate else { return self.area() };
+        let clip = |x: f64, y: f64, w: f64, h: f64| {
+            crate::geometry::rect_polygon_clip_area(
+                poly,
+                x - w / 2.0,
+                y - h / 2.0,
+                x + w / 2.0,
+                y + h / 2.0,
+            )
+        };
+        match *self {
+            ZoneShape::Rect { x, y, w, h } => clip(x, y, w, h),
+            ZoneShape::RectRing { x, y, w, h, in_w, in_h } => {
+                (clip(x, y, w, h) - clip(x, y, in_w, in_h)).max(0.0)
+            }
+        }
+    }
+
     /// Outer AABB `(min_x, min_y, max_x, max_y)` for hit-testing / tiling checks.
     pub fn bbox(&self) -> (f64, f64, f64, f64) {
         match *self {
@@ -105,6 +129,12 @@ impl Zone {
     /// Net internal floor area, m².
     pub fn area(&self) -> f64 {
         self.shape.area()
+    }
+
+    /// Net internal floor area clipped to the plate polygon, m².
+    /// See [`ZoneShape::area_on`].
+    pub fn area_on(&self, plate: Option<&[crate::geometry::Point]>) -> f64 {
+        self.shape.area_on(plate)
     }
 
     /// Nominal seated capacity by an area rule-of-thumb, per `ZoneType`. This is

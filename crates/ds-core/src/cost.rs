@@ -44,17 +44,24 @@ fn carbon_rate(t: ZoneType) -> f64 {
 }
 
 /// Total indicative fit-out cost of the document's zones (currency units).
+/// Areas are clipped to the plate polygon — an L-shaped plate is priced on
+/// the space that exists, not its bounding box.
 pub fn indicative_cost(doc: &Document) -> f64 {
+    let plate = doc.plate_polygon();
+    let plate_ref = plate.as_deref();
     doc.zones
         .iter()
-        .map(|z| z.area() * cost_rate(z.zone_type))
+        .map(|z| z.area_on(plate_ref) * cost_rate(z.zone_type))
         .sum()
 }
 
 /// Total indicative embodied carbon of the document's zones (kgCO2e).
+/// Plate-clipped like [`indicative_cost`].
 pub fn indicative_carbon(doc: &Document) -> f64 {
+    let plate = doc.plate_polygon();
+    let plate_ref = plate.as_deref();
     doc.zones
         .iter()
-        .map(|z| z.area() * carbon_rate(z.zone_type))
+        .map(|z| z.area_on(plate_ref) * carbon_rate(z.zone_type))
         .sum()
 }

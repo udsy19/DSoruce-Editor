@@ -185,10 +185,14 @@ impl Editor {
         serde_wasm_bindgen::to_value(&self.doc).map_err(|e| JsValue::from_str(&e.to_string()))
     }
 
-    /// Live metrics panel data.
+    /// Live metrics panel data. Areas are clipped to the traced floor-plate
+    /// polygon so non-rectangular plates report true numbers (see
+    /// `Document::plate_polygon`); rectangular rooms are unchanged.
     pub fn metrics(&self) -> Result<JsValue, JsValue> {
+        let plate = self.doc.plate_polygon();
+        let plate_ref = plate.as_deref();
         let floor_area = self.doc.floor_area();
-        let nia: f64 = self.doc.zones.iter().map(|z| z.area()).sum();
+        let nia: f64 = self.doc.zones.iter().map(|z| z.area_on(plate_ref)).sum();
         let workstations = self
             .doc
             .components
@@ -205,7 +209,7 @@ impl Editor {
                     ZoneType::Workspace | ZoneType::Meeting | ZoneType::Collaboration
                 )
             })
-            .map(|z| z.area())
+            .map(|z| z.area_on(plate_ref))
             .sum();
         let area_per_workstation = if workstations > 0 {
             nia / workstations as f64
@@ -248,7 +252,9 @@ impl Editor {
     /// Per-zone stats for the Statistics panel + AI reasoning. Array of
     /// `{ id, zone_type, label, area, capacity, seated, pct_of_nia }`.
     pub fn zone_stats(&self) -> Result<JsValue, JsValue> {
-        let nia: f64 = self.doc.zones.iter().map(|z| z.area()).sum();
+        let plate = self.doc.plate_polygon();
+        let plate_ref = plate.as_deref();
+        let nia: f64 = self.doc.zones.iter().map(|z| z.area_on(plate_ref)).sum();
         let stats: Vec<ZoneStat> = self
             .doc
             .zones
@@ -264,7 +270,7 @@ impl Editor {
                             .any(|c| c.id == cid && c.category == "Desk")
                     })
                     .count();
-                let area = z.area();
+                let area = z.area_on(plate_ref);
                 ZoneStat {
                     id: z.id,
                     zone_type: z.zone_type,

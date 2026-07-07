@@ -108,9 +108,21 @@ impl Document {
         Some((min_x, min_y, max_x, max_y))
     }
 
-    /// Axis-aligned floor area from the wall bounding box (meters²).
-    /// A rough v1 metric; replaced by true room polygons later.
+    /// The floor-plate polygon traced from the walls (largest closed loop), or
+    /// `None` when the walls don't close. Metrics clip zone areas against this
+    /// so a non-rectangular plate reports true areas, not its bounding box.
+    pub(crate) fn plate_polygon(&self) -> Option<Vec<crate::geometry::Point>> {
+        let segs: Vec<_> = self.walls.iter().map(|w| (w.a, w.b)).collect();
+        crate::geometry::trace_floor_polygon(&segs, crate::geometry::LOOP_SNAP_TOL)
+    }
+
+    /// True floor area (meters²): the traced plate-polygon area when the walls
+    /// close (exact for any shape, identical to the bbox for rectangles);
+    /// bbox fallback for open walls.
     pub fn floor_area(&self) -> f64 {
+        if let Some(poly) = self.plate_polygon() {
+            return crate::geometry::polygon_area(&poly).abs();
+        }
         match self.wall_bbox() {
             Some((min_x, min_y, max_x, max_y)) => {
                 (max_x - min_x).max(0.0) * (max_y - min_y).max(0.0)
