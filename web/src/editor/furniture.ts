@@ -24,6 +24,11 @@ export interface FurnitureOpts {
 // Below this on-screen size (px) a symbol degrades to a plain rounded rect.
 const MIN_DETAIL = 18
 
+// Categories that keep their symbol at any size: FallCeiling is a grid over a
+// large footprint; Door/Window footprints are thin slabs (~0.15 m deep) whose
+// symbols (swing arc / glazing lines) must always draw.
+const ALWAYS_DETAIL = new Set(['FallCeiling', 'Door', 'Window'])
+
 export function drawFurnitureSymbol(ctx: CanvasRenderingContext2D, o: FurnitureOpts): void {
   const { cx, cy, w, h, rotation } = o
   const line = o.selected ? o.accent : o.stroke
@@ -36,7 +41,7 @@ export function drawFurnitureSymbol(ctx: CanvasRenderingContext2D, o: FurnitureO
   ctx.lineJoin = 'round'
   ctx.lineCap = 'round'
 
-  if (small && o.category !== 'FallCeiling') {
+  if (small && !ALWAYS_DETAIL.has(o.category)) {
     // Too small to read as a real symbol — a clean rounded outline.
     strokeRoundRect(ctx, -w / 2, -h / 2, w, h, Math.min(3, Math.min(w, h) * 0.2), line, lw)
     ctx.restore()
@@ -58,6 +63,15 @@ export function drawFurnitureSymbol(ctx: CanvasRenderingContext2D, o: FurnitureO
       break
     case 'FallCeiling':
       drawFallCeiling(ctx, w, h, line, o.detail, lw, o.selected)
+      break
+    case 'Door':
+      drawDoor(ctx, w, h, line, o.detail, lw)
+      break
+    case 'Window':
+      drawWindow(ctx, w, h, line, o.detail, lw)
+      break
+    case 'Column':
+      drawColumn(ctx, w, h, line, lw)
       break
     default:
       strokeRoundRect(ctx, -w / 2, -h / 2, w, h, Math.min(4, Math.min(w, h) * 0.14), line, lw)
@@ -222,6 +236,99 @@ function drawMeetingRoom(
   const iw = w * 0.5
   const ih = h * 0.5
   drawTable(ctx, iw, ih, line, detail, lw)
+}
+
+// Door plan symbol: opening jambs + leaf shown open 90° + quarter swing arc.
+// Local frame: the footprint spans the opening along x (hinge at -w/2), the
+// thin h is the leaf slab in the wall; the swing draws toward -y.
+function drawDoor(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  line: string,
+  detail: string,
+  lw: number,
+): void {
+  const hx = -w / 2 // hinge
+  ctx.strokeStyle = line
+  ctx.lineWidth = lw
+  // jamb ticks at both ends of the opening
+  ctx.beginPath()
+  ctx.moveTo(hx, -h / 2)
+  ctx.lineTo(hx, h / 2)
+  ctx.moveTo(w / 2, -h / 2)
+  ctx.lineTo(w / 2, h / 2)
+  ctx.stroke()
+  // leaf line: hinge → open position (perpendicular to the wall)
+  ctx.beginPath()
+  ctx.moveTo(hx, 0)
+  ctx.lineTo(hx, -w)
+  ctx.stroke()
+  // quarter-circle swing arc from the leaf tip back to the far jamb
+  ctx.strokeStyle = detail
+  ctx.beginPath()
+  ctx.arc(hx, 0, w, -Math.PI / 2, 0)
+  ctx.stroke()
+}
+
+// Window plan symbol: triple parallel lines (frame–glass–frame) across the
+// footprint with end caps closing the in-wall break.
+function drawWindow(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  line: string,
+  detail: string,
+  lw: number,
+): void {
+  const L = -w / 2
+  const R = w / 2
+  ctx.strokeStyle = line
+  ctx.lineWidth = lw
+  ctx.beginPath()
+  ctx.moveTo(L, -h / 2)
+  ctx.lineTo(R, -h / 2)
+  ctx.moveTo(L, h / 2)
+  ctx.lineTo(R, h / 2)
+  ctx.moveTo(L, -h / 2)
+  ctx.lineTo(L, h / 2)
+  ctx.moveTo(R, -h / 2)
+  ctx.lineTo(R, h / 2)
+  ctx.stroke()
+  // center glazing line
+  ctx.strokeStyle = detail
+  ctx.beginPath()
+  ctx.moveTo(L, 0)
+  ctx.lineTo(R, 0)
+  ctx.stroke()
+}
+
+// Structural column: outlined rect with 45° hatch poché.
+function drawColumn(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  line: string,
+  lw: number,
+): void {
+  const L = -w / 2
+  const T = -h / 2
+  ctx.strokeStyle = line
+  ctx.lineWidth = lw
+  ctx.strokeRect(L, T, w, h)
+  ctx.save()
+  ctx.beginPath()
+  ctx.rect(L, T, w, h)
+  ctx.clip()
+  ctx.lineWidth = lw * 0.7
+  ctx.beginPath()
+  const step = Math.max(3, Math.min(w, h) / 4)
+  for (let x = L - h; x < L + w; x += step) {
+    ctx.moveTo(x, T + h)
+    ctx.lineTo(x + h, T)
+  }
+  ctx.stroke()
+  ctx.restore()
 }
 
 // Fall-ceiling: an evenly spaced ceiling tile grid filling the footprint.

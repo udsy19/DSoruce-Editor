@@ -72,6 +72,14 @@ export function createStore(): CadStore {
       entities.length = 0
       fire()
     },
+
+    load(next): void {
+      entities.length = 0
+      entities.push(...next)
+      nextId = entities.reduce((m, e) => Math.max(m, e.id), 0) + 1
+      undoStack.length = 0
+      fire()
+    },
   }
 
   function pushSnapshot(): void {

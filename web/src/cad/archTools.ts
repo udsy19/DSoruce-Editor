@@ -2,6 +2,11 @@
 // break), column. Each returns a fresh CadTool (see cad/model.ts). The host
 // feeds ALREADY-SNAPPED world points to onDown/onMove — snapped points ideally
 // land on a wall segment, which is how these objects become "wall-hosted".
+//
+// These tools only DRAW as CAD (the placement ghost); committing places a REAL
+// document component via ToolCtx.addComponent ('Door' | 'Window' | 'Column'),
+// so the elements get metrics, 3D, DXF export, product binding, and the
+// decision lifecycle like any other placed component.
 
 import type { CadTool, ToolCtx, Vec2, SnapResult } from './model'
 import { CAD_COLOR } from './model'
@@ -46,6 +51,9 @@ function arcPts(center: Vec2, radius: number, a0: number, a1: number, steps = 24
 const DOOR_MIN = 0.6
 const DOOR_MAX = 1.2
 const DOOR_DEFAULT = 0.9
+/** Committed door/window footprint depth (leaf/glazing slab, m) — the swing
+ *  arc is drawn by the 2D symbol, not the footprint. */
+const LEAF_DEPTH = 0.15
 
 function doorTool(): CadTool {
   let at: Vec2 | null = null
@@ -80,7 +88,11 @@ function doorTool(): CadTool {
       } else {
         const width = liveWidth()
         const angle = liveAngle()
-        ctx.store.add({ kind: 'door', at, width, angle, hinge: 'left', flip: nextFlip } as never)
+        // Footprint centered mid-opening; rotation = wall angle (doc rotation is
+        // clockwise in the Y-down plan — same convention as `angle`). Flip is
+        // approximated by a half-turn, which mirrors the swing across the wall.
+        const c = along(at, angle, width / 2)
+        ctx.addComponent('Door', c.x, c.y, width, LEAF_DEPTH, nextFlip ? angle + Math.PI : angle)
         at = null
         cursor = null
         ctx.requestRender()
@@ -167,7 +179,8 @@ function windowTool(): CadTool {
       } else {
         const width = liveWidth()
         const angle = liveAngle()
-        ctx.store.add({ kind: 'window', at, width, angle, thickness: WIN_THICK } as never)
+        const c = along(at, angle, width / 2)
+        ctx.addComponent('Window', c.x, c.y, width, LEAF_DEPTH, angle)
         at = null
         cursor = null
         ctx.requestRender()
@@ -217,14 +230,9 @@ function columnTool(): CadTool {
   return {
     id: 'column',
     onDown(world: Vec2, _snap: SnapResult, ctx: ToolCtx) {
-      ctx.store.add({
-        kind: 'column',
-        at: world,
-        w: COL_SIZE,
-        h: COL_SIZE,
-        shape,
-        rotation: 0,
-      } as never)
+      // The rect/round toggle only shapes the placement ghost; the committed
+      // component is always a COL_SIZE² 'Column' footprint.
+      ctx.addComponent('Column', world.x, world.y, COL_SIZE, COL_SIZE, 0)
       ctx.requestRender()
     },
     onMove(world: Vec2) {

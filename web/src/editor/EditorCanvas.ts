@@ -2,7 +2,7 @@ import init, { Editor } from '../wasm/ds_core'
 import { catByCategory } from './catalog'
 import { drawFurnitureSymbol } from './furniture'
 import { CadController } from '../cad/controller'
-import type { SnapContext } from '../cad/model'
+import type { CadEntity, SnapContext } from '../cad/model'
 
 // Types mirroring the Rust core's serialized document (serde field names).
 export interface DocWall {
@@ -218,6 +218,8 @@ export class EditorCanvas {
   program: Program = { ...DEFAULT_PROGRAM }
   /** CAD drafting layer (line/rect/arc/dimension/door/… + snapping). */
   cad!: CadController
+  /** True while store.load() replays doc-owned cad_json (skip the write-back). */
+  private cadHydrating = false
 
   private constructor(canvas: HTMLCanvasElement, ed: Editor) {
     this.canvas = canvas
@@ -231,7 +233,20 @@ export class EditorCanvas {
       pxPerM: () => this.scale,
       requestRender: () => this.render(),
       snapContext: () => this.buildSnapContext(),
+      addComponent: (category, x, y, w, h, rotation) => {
+        const id = this.ed.add_component(category, x, y, w, h)
+        if (rotation) this.ed.set_component_rotation(id, rotation)
+        this.commit()
+      },
     })
+    // The CAD layer rides the document as an opaque blob so snapshot()/restore()
+    // (AI undo, candidate gallery) round-trip drafting geometry. The controller
+    // hooked onChange → render; wrap it to also persist into the core.
+    const cadRender = this.cad.store.onChange
+    this.cad.store.onChange = () => {
+      if (!this.cadHydrating) this.ed.set_cad_json(JSON.stringify(this.cad.store.entities))
+      cadRender?.()
+    }
     this.attach()
     this.resize()
     this.render()
@@ -358,10 +373,16 @@ export class EditorCanvas {
     return { best: finalScore, iterations, seed: bestSeed, candidates: kept }
   }
 
-  /** Make a gallery candidate live: restore its snapshot, repaint, notify React. */
+  /** Make a gallery candidate live: restore its snapshot, repaint, notify React.
+   *  The user's CAD drafting layer is preserved across the switch — layout
+   *  options differ in layout, not in drafting; `restore()` (undo) keeps true
+   *  time-travel semantics instead. */
   applyCandidate(snap: unknown): void {
+    const cad = this.ed.get_cad_json()
     this.ed.restore(snap as string)
+    this.ed.set_cad_json(cad)
     this.ed.clear_selection()
+    this.hydrateCad()
     this.refresh()
     this.onChange?.()
   }
@@ -389,13 +410,31 @@ export class EditorCanvas {
   }
   restore(snap: string) {
     this.ed.restore(snap)
+    this.hydrateCad()
     this.sync()
   }
 
   /** Wipe the document to a fresh empty doc (import→test-fit bridge). */
   clearAll() {
     this.ed = new Editor()
+    this.hydrateCad()
     this.sync()
+  }
+
+  /** The CAD drafting entities (live store array) — export/orchestration reads. */
+  cadEntities(): CadEntity[] {
+    return this.cad.store.entities
+  }
+
+  /** Replace the CAD store from the document's cad_json blob (after restore/clear). */
+  private hydrateCad() {
+    this.cadHydrating = true
+    try {
+      const json = this.ed.get_cad_json()
+      this.cad.store.load(json ? (JSON.parse(json) as CadEntity[]) : [])
+    } finally {
+      this.cadHydrating = false
+    }
   }
 
   private commit() {

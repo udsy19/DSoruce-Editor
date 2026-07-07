@@ -32,6 +32,9 @@ export type FurnitureKind =
   | 'mullion'
   | 'meetingRoom'
   | 'fallCeiling'
+  | 'door'
+  | 'window'
+  | 'column'
   | 'default'
 
 /**
@@ -45,6 +48,9 @@ export function normalizeFurnitureCategory(name: string): FurnitureKind {
   const has = (...k: string[]) => k.some((w) => s.includes(w))
 
   if (has('planter', 'plant', 'foliage')) return 'planter'
+  if (has('door')) return 'door'
+  if (has('window')) return 'window'
+  if (has('column', 'pillar')) return 'column'
   if (has('mullion')) return 'mullion'
   if (has('glaz', 'glass')) return 'glazed' // "System Panel Glazed" → glazed wins over "panel"
   if (has('partition', 'panel', 'divider', 'screen')) return 'partition'
@@ -170,6 +176,9 @@ const KIND_H: Partial<Record<FurnitureKind, number>> = {
   mullion: 2.6,
   meetingRoom: 2.7,
   fallCeiling: 0.05,
+  door: 2.1,
+  window: 2.1, // glazing head height; sill fixed at 0.9
+  column: 2.6, // full floor-to-slab height
   default: 0.75,
 }
 // Kinds whose proportions are intrinsic; opts.height scales the whole model in Y.
@@ -356,6 +365,31 @@ function buildMullion(g: THREE.Object3D, w: number, d: number, h: number) {
   }
 }
 
+// Door: wood-tone leaf panel inside a thin metal frame (jambs + head) with a
+// bar handle. The footprint depth d is the leaf slab in the wall.
+function buildDoor(g: THREE.Object3D, w: number, d: number, h: number) {
+  const t = Math.min(d, 0.06)
+  const jx = w / 2 - 0.02
+  box(g, MAT.darkMetal, 0.04, h, t, -jx, h / 2, 0)
+  box(g, MAT.darkMetal, 0.04, h, t, jx, h / 2, 0)
+  box(g, MAT.darkMetal, w, 0.04, t, 0, h - 0.02, 0)
+  box(g, MAT.wood, w - 0.1, h - 0.07, Math.min(t, 0.045), 0, (h - 0.07) / 2 + 0.005, 0)
+  box(g, MAT.alu, 0.12, 0.02, 0.02, jx - 0.14, 1.02, t / 2 + 0.012)
+}
+
+// Window: translucent glazed pane between sill (~0.9) and head (h ≈ 2.1) in a
+// slim aluminium frame. Reuses the shared glass material.
+function buildWindow(g: THREE.Object3D, w: number, d: number, h: number) {
+  const t = Math.min(d, 0.05)
+  const sill = Math.min(0.9, h - 0.3)
+  const glassH = h - sill
+  box(g, MAT.alu, w, 0.05, t, 0, sill, 0)
+  box(g, MAT.alu, w, 0.05, t, 0, h, 0)
+  for (const s of [-1, 1]) box(g, MAT.alu, 0.04, glassH, t, s * (w / 2 - 0.02), sill + glassH / 2, 0)
+  const pane = box(g, MAT.glass, w - 0.08, glassH - 0.05, t * 0.4, 0, sill + glassH / 2, 0)
+  pane.castShadow = false
+}
+
 function buildMeetingRoom(g: THREE.Object3D, w: number, d: number, h: number) {
   const t = 0.06
   // glass enclosure — four translucent panes + a slim frame footprint
@@ -427,6 +461,16 @@ export function buildFurniture3D(
       break
     case 'meetingRoom':
       buildMeetingRoom(g, W, D, h)
+      break
+    case 'door':
+      buildDoor(g, W, D, h)
+      break
+    case 'window':
+      buildWindow(g, W, D, h)
+      break
+    case 'column':
+      // full-height structural column — MAT.pot is the shared stone/concrete tone
+      box(g, MAT.pot, W, h, D, 0, h / 2, 0)
       break
     case 'fallCeiling':
       box(g, accent(opts.color ?? 0xeef0f3), W, h, D, 0, h / 2, 0)

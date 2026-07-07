@@ -25,6 +25,8 @@ export interface CadHost {
   pxPerM(): number
   requestRender(): void
   snapContext(): Omit<SnapContext, 'from'>
+  /** Create a document component (see ToolCtx.addComponent in cad/model.ts). */
+  addComponent(category: string, x: number, y: number, w: number, h: number, rotation: number): void
 }
 
 export class CadController {
@@ -71,6 +73,7 @@ export class CadController {
       pxPerM: this.host.pxPerM(),
       requestRender: () => this.host.requestRender(),
       layer: '0',
+      addComponent: (cat, x, y, w, h, r) => this.host.addComponent(cat, x, y, w, h, r),
     }
   }
 

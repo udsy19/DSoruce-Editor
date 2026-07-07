@@ -443,7 +443,7 @@ function ExportMenu({
     if (importMode && drawing) {
       downloadDrawingDXF(drawing, 'dsource-import.dxf')
     } else if (ec) {
-      downloadDXF(ec.getState(), 'dsource-plan.dxf')
+      downloadDXF(ec.getState(), 'dsource-plan.dxf', ec.cadEntities())
     }
     setOpen(false)
   }

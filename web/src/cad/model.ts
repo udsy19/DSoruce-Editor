@@ -137,6 +137,12 @@ export interface CadStore {
   undo(): void
   canUndo(): boolean
   clear(): void
+  /**
+   * Replace the whole entity list (document hydrate: snapshot restore / clear).
+   * Resets `nextId` to max(id)+1 (1 when empty), drops the undo stack, fires
+   * `onChange`.
+   */
+  load(entities: CadEntity[]): void
   /** notified after any mutation, for re-render */
   onChange: (() => void) | null
 }
@@ -189,6 +195,13 @@ export interface ToolCtx {
   requestRender(): void
   /** the active default layer for new entities */
   layer: string
+  /**
+   * Create a REAL document component (Rust core), not a CAD entity — used by
+   * the arch tools so doors/windows/columns get metrics/3D/export/binding.
+   * (x,y) is the footprint center in meters; `rotation` is radians, clockwise
+   * in the Y-down plan (the doc convention).
+   */
+  addComponent(category: string, x: number, y: number, w: number, h: number, rotation: number): void
 }
 
 /** A drafting tool. EditorCanvas routes pointer/keyboard here while active. */
