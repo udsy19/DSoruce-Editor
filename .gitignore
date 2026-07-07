@@ -9,6 +9,11 @@ web/dist
 # Generated wasm bindings (built via `make wasm`)
 web/src/wasm
 
+# Env / secrets (LLM keys live here — never commit)
+.env
+.env.*
+!.env.example
+
 # Misc
 *.log
 .DS_Store

@@ -1,7 +1,6 @@
 import { useRef, useState } from 'react'
 import { EditorCanvas } from '../editor/EditorCanvas'
 import { AgentDriver, DriverContext, PreviewDiff, ToolCall } from './contract'
-import { LocalDriver } from './intentParser'
 import { applyLive, preview } from './engine'
 
 export type Msg =
@@ -42,12 +41,12 @@ function buildContext(ec: EditorCanvas): DriverContext {
 }
 
 /** The agent loop: interpret → clarify/plan → preview → approve/reject → undo. */
-export function useAgent(ec: EditorCanvas, driver: AgentDriver = new LocalDriver()) {
+export function useAgent(ec: EditorCanvas, driver: AgentDriver) {
   const [messages, setMessages] = useState<Msg[]>([
     {
       id: 0,
       role: 'assistant',
-      text: `Hi — I'm your space assistant (${driver.name}). Tell me how to change the plan, e.g. “add 30 desks”, “widen the corridor to 1.5 m”, or “make the open workspace a collaboration zone”.`,
+      text: `Hi — I'm your space assistant. Tell me how to change the plan, e.g. “add 30 desks”, “widen the corridor to 1.5 m”, or “make the open workspace a collaboration zone”.`,
     },
   ])
   const [busy, setBusy] = useState(false)

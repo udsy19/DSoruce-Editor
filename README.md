@@ -47,6 +47,30 @@ cd web && pnpm install && pnpm dev
 - Live metrics (floor area, component/confirmed/wall counts).
 - All document state lives in the **Rust/Wasm core**; the UI is a thin renderer over it.
 
+## AI assistant
+
+Click the **✦ FAB** (bottom of the tool rail) to open the assistant. Ask it to reshape the plan —
+_"add 30 desks"_, _"widen the corridor to 1.5 m"_, _"make the open workspace a collaboration zone"_,
+_"merge the meeting rooms"_. It proposes a **consequence preview** (before→after workstations, corridor,
+area/person, cost, carbon, with IBC/planning warnings), and nothing changes until you **Apply**; every
+change is **undoable**.
+
+Two brains, switchable in the panel header:
+
+- **Local** (default) — a deterministic intent parser. No key, works offline.
+- **A real LLM** — the `AgentDriver` seam is **provider-agnostic** (OpenAI-compatible function calling),
+  so it does **not** require any specific model. Configure `web/.env.local` (see `web/.env.example`):
+
+  ```bash
+  # any OpenAI-compatible endpoint — the key stays server-side (never in the browser)
+  LLM_BASE_URL=https://api.cerebras.ai/v1   # or OpenAI / Groq / OpenRouter / local Ollama
+  LLM_API_KEY=...                            # omit for a local Ollama server
+  LLM_MODEL=gpt-oss-120b
+  ```
+
+  The proxy is a dev-only Vite middleware at `/api/agent`. Restart `pnpm dev` after editing `.env.local`.
+  Verified end-to-end with **Cerebras `gpt-oss-120b`** and a local **Ollama** model.
+
 ## Roadmap (next slices)
 
 1. Circulation evaluator ("walking place") + more live metrics.

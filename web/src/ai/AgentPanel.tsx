@@ -1,11 +1,36 @@
-import { FormEvent, useEffect, useRef, useState } from 'react'
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { EditorCanvas } from '../editor/EditorCanvas'
 import { useAgent, Msg } from './useAgent'
 import { PreviewDiff, ToolCall } from './contract'
+import { LocalDriver } from './intentParser'
+import { LlmDriver } from './llmDriver'
 import { Icon } from '../ui/icons'
 
 export function AgentPanel({ ec, onClose }: { ec: EditorCanvas; onClose: () => void }) {
-  const { messages, busy, canUndo, send, approve, reject, undo } = useAgent(ec)
+  const localDriver = useMemo(() => new LocalDriver(), [])
+  const llmDriver = useMemo(() => new LlmDriver(), [])
+  const [llm, setLlm] = useState<{ available: boolean; model: string }>({ available: false, model: '' })
+  const [useLlm, setUseLlm] = useState(false)
+
+  useEffect(() => {
+    let alive = true
+    fetch('/api/agent')
+      .then((r) => r.json())
+      .then((d: { configured?: boolean; model?: string }) => {
+        if (!alive) return
+        setLlm({ available: !!d.configured, model: d.model || 'AI' })
+        // Default to the always-available Local driver; the user opts into the
+        // model via the header toggle.
+        if (d.configured) llmDriver.name = d.model || 'AI'
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [llmDriver])
+
+  const driver = useLlm && llm.available ? llmDriver : localDriver
+  const { messages, busy, canUndo, send, approve, reject, undo } = useAgent(ec, driver)
   const [input, setInput] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
 
@@ -26,6 +51,16 @@ export function AgentPanel({ ec, onClose }: { ec: EditorCanvas; onClose: () => v
           <Icon name="sparkles" size={15} /> Assistant
         </span>
         <div className="agent-head-actions">
+          {llm.available && (
+            <div className="agent-driver" role="group" aria-label="Model">
+              <button className={!useLlm ? 'on' : ''} onClick={() => setUseLlm(false)} data-testid="driver-local">
+                Local
+              </button>
+              <button className={useLlm ? 'on' : ''} onClick={() => setUseLlm(true)} data-testid="driver-llm">
+                {llm.model}
+              </button>
+            </div>
+          )}
           {canUndo && (
             <button className="agent-undo" onClick={undo} data-testid="ai-undo">
               Undo
