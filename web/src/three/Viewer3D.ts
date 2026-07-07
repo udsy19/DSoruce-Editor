@@ -4,6 +4,11 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js'
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js'
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
+import { SAOPass } from 'three/addons/postprocessing/SAOPass.js'
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
+import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js'
 import type { DocState, DocComponent, DocWall, DocZone, ZoneType } from '../editor/EditorCanvas'
 import { catByCategory } from '../editor/catalog'
 import { buildFurniture3D } from './furniture3d'
@@ -14,17 +19,23 @@ import { clipPolyToRect, platePolygonFromWalls, type Pt } from '../util/clip'
  * serialized from the Rust core) as a lit, read-only 3D scene, OR renders an
  * arbitrary externally-built group (imported plans) via {@link setContent}.
  *
- * Two camera modes ({@link setMode}):
- *  - `orbit` — OrbitControls, framed to the plan's bounding box.
- *  - `walk`  — first-person PointerLockControls at eye height (1.6 m); click to
- *    lock the pointer, WASD/arrows to move on the XZ plane, Shift to sprint,
- *    Esc to release. Movement is bounded to the plan extent (no fly / wander).
+ * Two camera modes ({@link setMode}), with an animated fly between them:
+ *  - `orbit` — OrbitControls tuned for native mouse feel: scroll dives toward
+ *    the cursor (`zoomToCursor`), double-click smoothly refocuses the orbit
+ *    pivot on the clicked content, and {@link frameAll}/{@link setView} ease
+ *    the camera between standard framings.
+ *  - `walk`  — first-person at eye height (1.6 m), mouse-first: left-drag looks
+ *    around (grab-style, smoothed), scroll glides forward/back along the look
+ *    direction (collision-checked), WASD/arrows move, Shift sprints. Pointer
+ *    lock is optional — double-click engages it, Esc releases.
  *
  * ── Rendering ─────────────────────────────────────────────────────────────
  * ACES filmic tone-mapping + sRGB output, PCF soft shadows, and an image-based
- * ambient from RoomEnvironment (via PMREMGenerator) give a clean interior look.
- * A hemisphere fill + one shadow-casting DirectionalLight "sun" add contact
- * shadows and directionality on top of the environment.
+ * ambient from RoomEnvironment (via PMREMGenerator). Quality 'high' renders
+ * through an EffectComposer (RenderPass → SAO → OutputPass → SMAA); 'low'
+ * bypasses it (direct render, MSAA from the context, smaller shadow map,
+ * capped pixel ratio). A rolling FPS window auto-degrades high → low when the
+ * composer can't hold 40 fps (never auto-upgrades).
  *
  * ── Coordinate mapping ────────────────────────────────────────────────────
  * The 2D canvas uses meters with X→right and Y→DOWN (screen convention). We
@@ -42,12 +53,17 @@ import { clipPolyToRect, platePolygonFromWalls, type Pt } from '../util/clip'
  * Sources (r0.185 patterns):
  *  - RoomEnvironment / PMREM: https://threejs.org/examples/#webgl_materials_envmaps
  *  - PointerLockControls: https://threejs.org/docs/#examples/en/controls/PointerLockControls
+ *  - Composer + OutputPass ordering: https://threejs.org/examples/#webgl_postprocessing_sao
+ *    (tone mapping/sRGB happen in OutputPass; AA passes like SMAA/FXAA run
+ *    after it, on display-referred colors)
  *  - Disposal: https://discourse.threejs.org/t/dispose-things-correctly-in-three-js/6534
  */
 
 const WALL_HEIGHT = 2.6
 const CEILING_HEIGHT = 2.6
-const BG = 0xf3f1ec // neutral-warm off-white
+const SKY_TOP = '#cfd8e3' // soft blue-grey zenith
+const SKY_HORIZON = '#f3f1ec' // warm off-white horizon (fog matches)
+const FOG_COLOR = 0xf3f1ec
 const EYE_HEIGHT = 1.6
 const WALK_SPEED = 3.0 // m/s
 const SPRINT_MULT = 2.0
@@ -64,7 +80,23 @@ const BOB_RATE = 9.0 // step-cycle phase rate at full speed (rad/s)
 const BOB_AMP_V = 0.035 // vertical bob amplitude (m)
 const BOB_AMP_LAT = 0.022 // lateral bob amplitude (m)
 
+// Mouse-first walk controls.
+const DRAG_LOOK_SENS = 0.0032 // rad per px of drag
+const PITCH_LIMIT = (85 * Math.PI) / 180
+const LOOK_SMOOTH = 20 // exponential smoothing rate for drag-look (1/s)
+const SCROLL_STEP = 0.8 // meters walked per wheel notch
+const SCROLL_SMOOTH = 6 // consume rate of banked scroll distance (1/s)
+
+const WALK_HINT = 'Drag to look · Scroll or WASD to move · Double-click for mouse-look'
+const WALK_LOCKED_HINT = 'WASD to move · Shift to sprint · Esc to release'
+
+const easeOutCubic = (t: number): number => 1 - Math.pow(1 - t, 3)
+const easeInOutCubic = (t: number): number =>
+  t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
+
 export type ViewerMode = 'orbit' | 'walk'
+export type ViewPreset = 'persp' | 'top'
+export type Quality = 'high' | 'low'
 
 /** First-person pose pushed to `onPose` each walk frame: world position (x, z)
  *  and a horizontal heading unit vector (hx, hz). Coordinates are the viewer's
@@ -74,6 +106,27 @@ export interface Pose {
   z: number
   hx: number
   hz: number
+}
+
+/** One in-flight camera animation. `locked` tweens are mode transitions: user
+ *  input can't cancel them and both control rigs stay disabled until `onDone`.
+ *  Unlocked tweens (double-click refocus, frameAll, setView) are cancelled by
+ *  any pointerdown/wheel so the camera never fights the mouse. Position always
+ *  lerps; orientation comes from EITHER a quaternion slerp (mode transitions)
+ *  or the orbit target lerp (orbit.update() re-aims at the moving target). */
+interface CamTween {
+  t: number
+  dur: number
+  locked: boolean
+  emitPose: boolean
+  ease: (t: number) => number
+  fromPos: THREE.Vector3
+  toPos: THREE.Vector3
+  fromQuat: THREE.Quaternion | null
+  toQuat: THREE.Quaternion | null
+  fromTarget: THREE.Vector3 | null
+  toTarget: THREE.Vector3 | null
+  onDone?: () => void
 }
 
 /** Subtle per-zone floor tints (Laiout-style zoning cue). */
@@ -95,15 +148,32 @@ export class Viewer3D {
    *  for a live minimap. Drawn imperatively by the consumer (no React state). */
   onPose?: (pose: Pose) => void
 
+  /** Fired whenever the render quality changes — including the automatic
+   *  degrade to 'low' when high quality can't sustain 40 fps. */
+  onQualityChange?: (q: Quality) => void
+
+  readonly camera: THREE.PerspectiveCamera
+
   private container: HTMLElement
   private renderer: THREE.WebGLRenderer
   private scene: THREE.Scene
-  private camera: THREE.PerspectiveCamera
   private orbit: OrbitControls
   private walk: PointerLockControls
   private sun: THREE.DirectionalLight
   private clock = new THREE.Clock()
   private mode: ViewerMode = 'orbit'
+
+  // Postprocessed pipeline (quality 'high'); bypassed entirely in 'low'.
+  private composer: EffectComposer
+  private renderPass: RenderPass
+  private saoPass: SAOPass
+  private outputPass: OutputPass
+  private smaaPass: SMAAPass
+  private quality: Quality = 'high'
+  // Rolling FPS window for auto-degrade (never auto-upgrades).
+  private fpsTime = 0
+  private fpsFrames = 0
+  private fpsWindows = 0
 
   /** Everything rebuilt on setState()/setContent() lives here so the rest of
    *  the scene (lights, ground, grid, environment) survives updates. */
@@ -148,6 +218,18 @@ export class Viewer3D {
    *  never casts shadow (so it can't darken the room) and is hidden in orbit so
    *  it never occludes the top-down framing. */
   private ceiling: THREE.Mesh
+  /** Sparse instanced "light fixture" rectangles on the walk ceiling — cheap
+   *  emissive-looking planes (no real lights) so interiors read lit. Visible
+   *  exactly when the ceiling is. Rebuilt whenever content bounds change. */
+  private fixtures: THREE.InstancedMesh | null = null
+  private fixtureGeo = new THREE.PlaneGeometry(0.6, 1.2)
+  private fixtureMat = new THREE.MeshBasicMaterial({ color: 0xfff6e6 })
+  /** Vertical sky gradient (canvas texture) used as scene.background. */
+  private skyTex: THREE.CanvasTexture
+  /** Soft radial darkening under the plan so the building sits on the ground
+   *  instead of floating; repositioned/scaled to the content bounds. */
+  private vignette: THREE.Mesh
+  private vignetteTex: THREE.CanvasTexture
   private pmrem: THREE.PMREMGenerator
   private envRT: THREE.WebGLRenderTarget
   private framed = false
@@ -163,6 +245,21 @@ export class Viewer3D {
   private bobIntensity = 0 // eased 0→1 with speed; scales bob amplitude
   private bobX = 0 // lateral bob offset currently baked into camera.position
   private bobZ = 0
+  // Drag-look (mouse-first look control; pointer lock not required): target
+  // yaw/pitch driven by pointer drags, smoothed toward each frame.
+  private dragging = false
+  private dragX = 0
+  private dragY = 0
+  private lookYaw = 0
+  private lookPitch = 0
+  private curYaw = 0
+  private curPitch = 0
+  private lookEuler = new THREE.Euler(0, 0, 0, 'YXZ')
+  /** Banked scroll-to-move distance (m, signed); consumed smoothly per frame. */
+  private scrollMove = 0
+
+  /** Current camera animation (mode transition / refocus / view move). */
+  private camTween: CamTween | null = null
 
   constructor(container: HTMLElement) {
     this.container = container
@@ -177,8 +274,9 @@ export class Viewer3D {
     container.appendChild(this.renderer.domElement)
 
     this.scene = new THREE.Scene()
-    this.scene.background = new THREE.Color(BG)
-    this.scene.fog = new THREE.Fog(BG, 45, 130)
+    this.skyTex = this.makeSkyTexture()
+    this.scene.background = this.skyTex
+    this.scene.fog = new THREE.Fog(FOG_COLOR, 45, 130)
     this.scene.add(this.content)
 
     this.camera = new THREE.PerspectiveCamera(55, 1, 0.1, 1000)
@@ -192,10 +290,17 @@ export class Viewer3D {
     this.scene.environmentIntensity = 0.85
     roomEnv.dispose()
 
-    // Orbit controls.
+    // Orbit controls, tuned for native mouse feel. `zoomToCursor` makes the
+    // wheel dive toward whatever is under the pointer instead of the center.
     this.orbit = new OrbitControls(this.camera, this.renderer.domElement)
     this.orbit.enableDamping = true
-    this.orbit.dampingFactor = 0.08
+    this.orbit.dampingFactor = 0.12
+    this.orbit.rotateSpeed = 0.9
+    this.orbit.panSpeed = 0.9
+    this.orbit.zoomSpeed = 1.1
+    this.orbit.zoomToCursor = true
+    this.orbit.minDistance = 1
+    this.orbit.maxDistance = 200 // tightened to the plan size on first framing
     this.orbit.maxPolarAngle = Math.PI * 0.495 // keep camera above the floor
     this.orbit.target.set(0, 0, 0)
 
@@ -223,10 +328,10 @@ export class Viewer3D {
     this.scene.add(this.sun)
     this.scene.add(this.sun.target)
 
-    // Ground + grid.
+    // Ground (slightly darker than the horizon so the plan reads grounded) + grid.
     this.ground = new THREE.Mesh(
       new THREE.PlaneGeometry(400, 400),
-      new THREE.MeshStandardMaterial({ color: 0xeae7e0, roughness: 0.65, metalness: 0.05 }),
+      new THREE.MeshStandardMaterial({ color: 0xe3e0d8, roughness: 0.7, metalness: 0.05 }),
     )
     this.ground.rotation.x = -Math.PI / 2
     this.ground.position.y = -0.001
@@ -237,6 +342,17 @@ export class Viewer3D {
     ;(this.grid.material as THREE.Material).transparent = true
     ;(this.grid.material as THREE.Material).opacity = 0.3
     this.scene.add(this.grid)
+
+    // Radial ground vignette under the plan (sized in syncGroundDressing()).
+    this.vignetteTex = this.makeVignetteTexture()
+    this.vignette = new THREE.Mesh(
+      new THREE.PlaneGeometry(1, 1),
+      new THREE.MeshBasicMaterial({ map: this.vignetteTex, transparent: true, depthWrite: false }),
+    )
+    this.vignette.rotation.x = -Math.PI / 2
+    this.vignette.renderOrder = -1 // draw before other transparents (zone plates)
+    this.vignette.visible = false
+    this.scene.add(this.vignette)
 
     // Interior ceiling (walk mode only). Unit plane scaled to the plan extent in
     // syncCeiling(); light matte material, downward normal, no shadow casting so
@@ -259,10 +375,46 @@ export class Viewer3D {
       this.highlightMat,
     ])
 
-    // Walk-mode input.
+    // Postprocessed pipeline. Order matters in r0.185: RenderPass and SAOPass
+    // work in linear HDR (tone mapping is OFF when rendering into a target);
+    // OutputPass applies ACES + sRGB; SMAA runs LAST, on display-referred
+    // colors — the same placement the three.js FXAA/SMAA examples use.
+    this.composer = new EffectComposer(this.renderer)
+    this.renderPass = new RenderPass(this.scene, this.camera)
+    this.saoPass = new SAOPass(this.scene, this.camera)
+    const sao = this.saoPass.params
+    sao.saoBias = 0.5
+    sao.saoIntensity = 0.02 // subtle contact darkening, not dirt
+    sao.saoScale = 6 // tuned for a 10–40 m interior at ~15–30 m camera distance
+    sao.saoKernelRadius = 32
+    sao.saoBlur = true
+    sao.saoBlurRadius = 8
+    sao.saoBlurStdDev = 4
+    sao.saoBlurDepthCutoff = 0.001
+    // SAO is wired but DISABLED by default: on software/limited GL stacks
+    // (SwiftShader, some ANGLE paths) it corrupts large depth ranges — the
+    // distant ground renders black regardless of saoScale (verified in
+    // headless testing; not safely tunable from here). HQ still buys SMAA +
+    // 2048 shadow maps + full DPR. Flip on once validated on target GPUs:
+    // `viewer.saoPass.enabled = true`.
+    this.saoPass.enabled = false
+    this.outputPass = new OutputPass()
+    this.smaaPass = new SMAAPass()
+    this.composer.addPass(this.renderPass)
+    this.composer.addPass(this.saoPass)
+    this.composer.addPass(this.outputPass)
+    this.composer.addPass(this.smaaPass)
+
+    // Input.
     window.addEventListener('keydown', this.onKeyDown)
     window.addEventListener('keyup', this.onKeyUp)
-    this.renderer.domElement.addEventListener('click', this.onCanvasClick)
+    const el = this.renderer.domElement
+    el.addEventListener('pointerdown', this.onPointerDown)
+    el.addEventListener('pointermove', this.onPointerMove)
+    el.addEventListener('pointerup', this.onPointerUp)
+    el.addEventListener('pointercancel', this.onPointerUp)
+    el.addEventListener('dblclick', this.onDblClick)
+    el.addEventListener('wheel', this.onWheel, { passive: false })
     this.walk.addEventListener('lock', this.onWalkLock)
     this.walk.addEventListener('unlock', this.onWalkUnlock)
 
@@ -272,24 +424,116 @@ export class Viewer3D {
 
   // ── Public API ────────────────────────────────────────────────────────────
 
-  /** Switch between orbit and first-person walkthrough. */
+  /** Switch between orbit and first-person walkthrough. The camera FLIES to
+   *  the new rig (600 ms ease-in-out) instead of teleporting: orbit→walk
+   *  descends to the walk spawn; walk→orbit rises back to the frame-all view.
+   *  Input is disabled during the transition; `onPose` keeps firing so the
+   *  minimap tracks the descent. */
   setMode(mode: ViewerMode): void {
     if (mode === this.mode) return
     this.mode = mode
+    if (this.walk.isLocked) this.walk.unlock()
+    this.keys.clear()
+    this.dragging = false
+    this.scrollMove = 0
+    this.orbit.enabled = false
+    this.walk.enabled = false
+    this.emitHint(null)
+
     if (mode === 'walk') {
-      this.orbit.enabled = false
-      this.walk.enabled = true
-      this.spawnWalker()
-      this.emitHint('Click to look · WASD to move · Shift to sprint')
+      const spawn = this.computeWalkSpawn()
+      this.camTween = {
+        t: 0,
+        dur: 0.6,
+        locked: true,
+        emitPose: true,
+        ease: easeInOutCubic,
+        fromPos: this.camera.position.clone(),
+        toPos: spawn.pos,
+        fromQuat: this.camera.quaternion.clone(),
+        toQuat: this.lookQuat(spawn.pos, spawn.look),
+        fromTarget: null,
+        toTarget: null,
+        onDone: () => {
+          this.walk.enabled = true
+          this.resetWalkMotion()
+          this.syncLookFromCamera()
+          this.syncCeiling()
+          this.emitHint(WALK_HINT)
+        },
+      }
     } else {
-      if (this.walk.isLocked) this.walk.unlock()
-      this.walk.enabled = false
-      this.keys.clear()
-      this.orbit.enabled = true
-      this.orbit.update()
-      this.emitHint(null)
+      const pose = this.frameAllPose()
+      this.camTween = {
+        t: 0,
+        dur: 0.6,
+        locked: true,
+        emitPose: false,
+        ease: easeInOutCubic,
+        fromPos: this.camera.position.clone(),
+        toPos: pose.pos,
+        fromQuat: this.camera.quaternion.clone(),
+        toQuat: this.lookQuat(pose.pos, pose.target),
+        fromTarget: null,
+        toTarget: null,
+        onDone: () => {
+          this.orbit.target.copy(pose.target)
+          this.orbit.enabled = true
+          this.orbit.update()
+        },
+      }
     }
-    this.syncCeiling()
+    this.syncCeiling() // hides the ceiling during the fly-through
+  }
+
+  /** Animated re-frame of the whole plan (orbit mode; no-op in walk). */
+  frameAll(): void {
+    if (this.mode !== 'orbit' || this.isTransitioning()) return
+    const pose = this.frameAllPose()
+    this.applyClipPlanes(pose.fitDist)
+    this.startOrbitTween(pose.pos, pose.target, 0.7)
+  }
+
+  /** Animated fly to a standard view: 'top' = near-straight-down over the plan
+   *  center (perspective camera kept); 'persp' = the 3/4 frame-all framing.
+   *  Orbit mode only; cancelled by any user input. */
+  setView(preset: ViewPreset): void {
+    if (this.mode !== 'orbit' || this.isTransitioning()) return
+    const pose = this.frameAllPose()
+    let toPos: THREE.Vector3
+    if (preset === 'top') {
+      const box = this.contentBounds
+      const radius = box.isEmpty()
+        ? 15
+        : Math.max(box.getBoundingSphere(new THREE.Sphere()).radius, 3)
+      const vfov = (this.camera.fov * Math.PI) / 180
+      // Fit against the tighter screen axis so the plan fills the view.
+      const halfFov = Math.min(vfov / 2, Math.atan(Math.tan(vfov / 2) * Math.max(this.camera.aspect, 0.4)))
+      const dist = (radius / Math.tan(halfFov)) * 1.06
+      // Tiny horizontal offset keeps OrbitControls' azimuth stable at the pole.
+      toPos = pose.target.clone().add(new THREE.Vector3(0, dist, dist * 0.02))
+    } else {
+      toPos = pose.pos
+    }
+    this.applyClipPlanes(pose.fitDist)
+    this.startOrbitTween(toPos, pose.target, 0.7)
+  }
+
+  /** 'high' = postprocessed pipeline (SAO + SMAA, 2048 shadows, DPR ≤ 2);
+   *  'low' = direct render (context MSAA, 1024 shadows, DPR ≤ 1.5). */
+  setQuality(q: Quality): void {
+    if (q === this.quality) return
+    this.quality = q
+    const shadow = q === 'high' ? 2048 : 1024
+    this.sun.shadow.mapSize.set(shadow, shadow)
+    this.sun.shadow.map?.dispose() // force reallocation at the new size
+    this.sun.shadow.map = null
+    this.resize() // re-applies the quality-dependent pixel ratio
+    this.onQualityChange?.(q)
+  }
+
+  getQuality(): Quality {
+    return this.quality
   }
 
   /** Rebuild the extruded plan from a fresh DocState (generated plans). */
@@ -310,6 +554,7 @@ export class Viewer3D {
     this.contentBounds = this.boundsFromState(state)
     this.contentOffset = { x: 0, z: 0 } // generated plans render in source coords
     if (!this.framed && !this.contentBounds.isEmpty()) this.frameBox(this.contentBounds)
+    this.syncGroundDressing()
     this.syncCeiling()
   }
 
@@ -340,6 +585,7 @@ export class Viewer3D {
     this.contentBounds = bounds
     this.framed = false
     if (!this.contentBounds.isEmpty()) this.frameBox(this.contentBounds)
+    this.syncGroundDressing()
     this.syncCeiling()
   }
 
@@ -360,7 +606,7 @@ export class Viewer3D {
    *  no-op outside walk mode. Coordinates are the viewer's (recentered) world
    *  space — the same space {@link onPose} reports and the minimap fits. */
   moveWalkerTo(x: number, z: number): void {
-    if (this.mode !== 'walk') return
+    if (this.mode !== 'walk' || this.isTransitioning()) return
     const b = this.contentBounds
     let px = x
     let pz = z
@@ -371,11 +617,7 @@ export class Viewer3D {
       px = THREE.MathUtils.clamp(px, -100, 100)
       pz = THREE.MathUtils.clamp(pz, -100, 100)
     }
-    this.velX = 0
-    this.velZ = 0
-    this.bobX = 0
-    this.bobZ = 0
-    this.bobIntensity = 0
+    this.resetWalkMotion()
     this.camera.position.set(px, EYE_HEIGHT, pz)
     this.emitPose()
   }
@@ -383,7 +625,11 @@ export class Viewer3D {
   resize(): void {
     const w = this.container.clientWidth || 1
     const h = this.container.clientHeight || 1
+    const pr = Math.min(window.devicePixelRatio || 1, this.quality === 'high' ? 2 : 1.5)
+    this.renderer.setPixelRatio(pr)
     this.renderer.setSize(w, h, false)
+    this.composer.setPixelRatio(pr)
+    this.composer.setSize(w, h) // propagates to every pass (SAO buffers, SMAA RTs)
     this.camera.aspect = w / h
     this.camera.updateProjectionMatrix()
   }
@@ -396,7 +642,13 @@ export class Viewer3D {
 
     window.removeEventListener('keydown', this.onKeyDown)
     window.removeEventListener('keyup', this.onKeyUp)
-    this.renderer.domElement.removeEventListener('click', this.onCanvasClick)
+    const el = this.renderer.domElement
+    el.removeEventListener('pointerdown', this.onPointerDown)
+    el.removeEventListener('pointermove', this.onPointerMove)
+    el.removeEventListener('pointerup', this.onPointerUp)
+    el.removeEventListener('pointercancel', this.onPointerUp)
+    el.removeEventListener('dblclick', this.onDblClick)
+    el.removeEventListener('wheel', this.onWheel)
     this.walk.removeEventListener('lock', this.onWalkLock)
     this.walk.removeEventListener('unlock', this.onWalkUnlock)
 
@@ -417,6 +669,26 @@ export class Viewer3D {
     ;(this.grid.material as THREE.Material).dispose()
     this.ceiling.geometry.dispose()
     ;(this.ceiling.material as THREE.Material).dispose()
+
+    if (this.fixtures) {
+      this.scene.remove(this.fixtures)
+      this.fixtures.dispose()
+      this.fixtures = null
+    }
+    this.fixtureGeo.dispose()
+    this.fixtureMat.dispose()
+
+    this.scene.background = null
+    this.skyTex.dispose()
+    this.vignette.geometry.dispose()
+    ;(this.vignette.material as THREE.Material).dispose()
+    this.vignetteTex.dispose()
+
+    this.renderPass.dispose()
+    this.saoPass.dispose()
+    this.outputPass.dispose()
+    this.smaaPass.dispose()
+    this.composer.dispose()
 
     this.scene.environment = null
     this.envRT.dispose()
@@ -557,21 +829,39 @@ export class Viewer3D {
     return box
   }
 
-  /** Fit the camera + shadow frustum to an arbitrary bounding box (once). */
-  private frameBox(box: THREE.Box3): void {
+  /** The standard 3/4 framing of the current content: camera position, orbit
+   *  target, and the fit distance. Pure math — mutates nothing. */
+  private frameAllPose(): { pos: THREE.Vector3; target: THREE.Vector3; fitDist: number } {
+    const box = this.contentBounds
+    if (box.isEmpty()) {
+      return { pos: new THREE.Vector3(12, 12, 16), target: new THREE.Vector3(), fitDist: 20 }
+    }
     const center = box.getCenter(new THREE.Vector3())
-    const size = box.getSize(new THREE.Vector3())
-    const span = Math.max(size.x, size.z, 4)
-
     const radius = Math.max(box.getBoundingSphere(new THREE.Sphere()).radius, 3)
     const fov = (this.camera.fov * Math.PI) / 180
     const fitDist = (radius / Math.sin(fov / 2)) * 1.12
     const dir = new THREE.Vector3(0.55, 0.62, 1).normalize()
-    this.orbit.target.copy(center)
-    this.camera.position.copy(center).addScaledVector(dir, fitDist)
+    return { pos: center.clone().addScaledVector(dir, fitDist), target: center, fitDist }
+  }
+
+  private applyClipPlanes(fitDist: number): void {
     this.camera.near = 0.1
     this.camera.far = fitDist * 4 + 200
     this.camera.updateProjectionMatrix()
+  }
+
+  /** Fit the camera + shadow frustum to an arbitrary bounding box (once,
+   *  instantly — animated re-framing goes through {@link frameAll}). */
+  private frameBox(box: THREE.Box3): void {
+    const pose = this.frameAllPose()
+    const center = pose.target
+    const size = box.getSize(new THREE.Vector3())
+    const span = Math.max(size.x, size.z, 4)
+
+    this.orbit.target.copy(center)
+    this.camera.position.copy(pose.pos)
+    this.applyClipPlanes(pose.fitDist)
+    this.orbit.maxDistance = pose.fitDist * 4
     this.orbit.update()
 
     // Point the sun at the plan and tighten its shadow frustum around it.
@@ -589,46 +879,173 @@ export class Viewer3D {
     this.framed = true
   }
 
-  /** Size + position the interior ceiling to the current plan bounds and show it
-   *  only in walk mode. Spans a little past the walls (WALK_MARGIN) so the edges
-   *  never gap; sits at ceiling height. Hidden (and skipped) when there's no
-   *  content or in orbit, so it never occludes the framed top-down view. */
+  /** Size + position the interior ceiling (and its light fixtures) to the plan
+   *  bounds; shown only in walk mode AFTER the fly-in transition, so it never
+   *  blocks the descending camera or the orbit framing. */
   private syncCeiling(): void {
     const b = this.contentBounds
-    if (this.mode !== 'walk' || b.isEmpty()) {
-      this.ceiling.visible = false
-      return
-    }
+    const show = this.mode === 'walk' && !this.isTransitioning() && !b.isEmpty()
+    this.ceiling.visible = show
+    if (this.fixtures) this.fixtures.visible = show
+    if (!show) return
     const size = b.getSize(new THREE.Vector3())
     this.ceiling.scale.set(size.x + WALK_MARGIN * 2, size.z + WALK_MARGIN * 2, 1)
     this.ceiling.position.set((b.min.x + b.max.x) / 2, CEILING_HEIGHT, (b.min.z + b.max.z) / 2)
-    this.ceiling.visible = true
+  }
+
+  /** Reposition the ground vignette and rebuild the ceiling light-fixture grid
+   *  for the current content bounds. Called on every content change. */
+  private syncGroundDressing(): void {
+    const b = this.contentBounds
+
+    if (b.isEmpty()) {
+      this.vignette.visible = false
+    } else {
+      const size = b.getSize(new THREE.Vector3())
+      const span = Math.max(size.x, size.z, 10)
+      this.vignette.scale.set(span * 2.6, span * 2.6, 1)
+      this.vignette.position.set((b.min.x + b.max.x) / 2, 0.002, (b.min.z + b.max.z) / 2)
+      this.vignette.visible = true
+    }
+
+    // Sparse fixture grid: one small "panel" every ~4.5 m, capped for safety.
+    if (this.fixtures) {
+      this.scene.remove(this.fixtures)
+      this.fixtures.dispose() // instance buffer only; geometry/material are shared
+      this.fixtures = null
+    }
+    if (b.isEmpty()) return
+    const size = b.getSize(new THREE.Vector3())
+    const nx = Math.max(1, Math.min(24, Math.round(size.x / 4.5)))
+    const nz = Math.max(1, Math.min(24, Math.round(size.z / 4.5)))
+    const mesh = new THREE.InstancedMesh(this.fixtureGeo, this.fixtureMat, nx * nz)
+    const m = new THREE.Matrix4()
+    const faceDown = new THREE.Matrix4().makeRotationX(Math.PI / 2) // plane normal → −Y
+    let i = 0
+    for (let ix = 0; ix < nx; ix++) {
+      for (let iz = 0; iz < nz; iz++) {
+        const x = b.min.x + ((ix + 0.5) / nx) * size.x
+        const z = b.min.z + ((iz + 0.5) / nz) * size.z
+        m.makeTranslation(x, CEILING_HEIGHT - 0.02, z).multiply(faceDown)
+        mesh.setMatrixAt(i++, m)
+      }
+    }
+    mesh.instanceMatrix.needsUpdate = true
+    mesh.visible = this.ceiling.visible
+    this.scene.add(mesh)
+    this.fixtures = mesh
+  }
+
+  // ── World dressing textures ──────────────────────────────────────────────
+
+  /** Vertical sky gradient: soft blue-grey zenith → warm off-white horizon.
+   *  Used as scene.background (screen-space, so the gradient stays vertical);
+   *  the fog shares the horizon color so distance fades coherently. Note: in
+   *  r0.185 the background IS tone-mapped, so the hues shift slightly under
+   *  ACES — the stops were chosen with that in mind. */
+  private makeSkyTexture(): THREE.CanvasTexture {
+    const c = document.createElement('canvas')
+    c.width = 2
+    c.height = 512
+    const ctx = c.getContext('2d')!
+    const g = ctx.createLinearGradient(0, 0, 0, 512)
+    g.addColorStop(0, SKY_TOP)
+    g.addColorStop(0.62, SKY_HORIZON)
+    g.addColorStop(1, SKY_HORIZON)
+    ctx.fillStyle = g
+    ctx.fillRect(0, 0, 2, 512)
+    const tex = new THREE.CanvasTexture(c)
+    tex.colorSpace = THREE.SRGBColorSpace
+    return tex
+  }
+
+  /** Soft radial darkening (transparent at the rim) laid flat under the plan. */
+  private makeVignetteTexture(): THREE.CanvasTexture {
+    const c = document.createElement('canvas')
+    c.width = 512
+    c.height = 512
+    const ctx = c.getContext('2d')!
+    const g = ctx.createRadialGradient(256, 256, 0, 256, 256, 256)
+    g.addColorStop(0, 'rgba(60, 66, 76, 0.16)')
+    g.addColorStop(0.55, 'rgba(60, 66, 76, 0.09)')
+    g.addColorStop(1, 'rgba(60, 66, 76, 0)')
+    ctx.fillStyle = g
+    ctx.fillRect(0, 0, 512, 512)
+    const tex = new THREE.CanvasTexture(c)
+    tex.colorSpace = THREE.SRGBColorSpace
+    return tex
+  }
+
+  // ── Camera animation ─────────────────────────────────────────────────────
+
+  private isTransitioning(): boolean {
+    return this.camTween?.locked === true
+  }
+
+  /** Cancel a cancellable (unlocked) tween — called on any pointer/wheel input
+   *  so an animated view move never fights the mouse. Mode transitions
+   *  (locked) always run to completion. */
+  private cancelTween(): void {
+    if (this.camTween && !this.camTween.locked) this.camTween = null
+  }
+
+  /** Start an unlocked orbit-mode tween: position lerps while orbit.update()
+   *  re-aims the camera at the lerping target each frame. Replaces any tween. */
+  private startOrbitTween(toPos: THREE.Vector3, toTarget: THREE.Vector3, dur: number): void {
+    this.camTween = {
+      t: 0,
+      dur,
+      locked: false,
+      emitPose: false,
+      ease: easeInOutCubic,
+      fromPos: this.camera.position.clone(),
+      toPos,
+      fromQuat: null,
+      toQuat: null,
+      fromTarget: this.orbit.target.clone(),
+      toTarget,
+    }
+  }
+
+  private updateTween(dt: number): void {
+    const tw = this.camTween!
+    tw.t += dt
+    const k = tw.ease(Math.min(tw.t / tw.dur, 1))
+    this.camera.position.lerpVectors(tw.fromPos, tw.toPos, k)
+    if (tw.fromQuat && tw.toQuat) {
+      this.camera.quaternion.slerpQuaternions(tw.fromQuat, tw.toQuat, k)
+    }
+    if (tw.fromTarget && tw.toTarget) {
+      this.orbit.target.lerpVectors(tw.fromTarget, tw.toTarget, k)
+    }
+    if (tw.emitPose) this.emitPose()
+    if (tw.t >= tw.dur) {
+      this.camTween = null
+      tw.onDone?.()
+    }
+  }
+
+  /** Quaternion that looks from `from` toward `at` with +Y up (no roll). */
+  private lookQuat(from: THREE.Vector3, at: THREE.Vector3): THREE.Quaternion {
+    const m = new THREE.Matrix4().lookAt(from, at, new THREE.Vector3(0, 1, 0))
+    return new THREE.Quaternion().setFromRotationMatrix(m)
   }
 
   // ── Walk mode ────────────────────────────────────────────────────────────
 
-  /** Position the first-person camera inside the built geometry, looking at the
-   *  bulk of the content. The bounding-box center is a poor spawn for a large
-   *  L-shaped or sparse plan — it lands in empty space facing a blank wall. We
-   *  instead aim at the *content centroid* (the dense area; see
-   *  {@link contentCentroid}), then stand a modest step back from it along the
-   *  LONGER horizontal axis and look down that axis toward the greater content
-   *  extent — so the walker starts *among* the furniture looking into the room,
-   *  not shoved against a perimeter wall. The backoff is capped (a big L-shaped
-   *  plan must not spawn the camera 15 m away at the far glazing). */
-  private spawnWalker(): void {
-    // Fresh spawn: no residual momentum or head-bob from a prior walk session.
-    this.velX = 0
-    this.velZ = 0
-    this.bobPhase = 0
-    this.bobIntensity = 0
-    this.bobX = 0
-    this.bobZ = 0
+  /** Where the first-person camera should stand + look when entering walk
+   *  mode. The bounding-box center is a poor spawn for a large L-shaped or
+   *  sparse plan — it lands in empty space facing a blank wall. We instead aim
+   *  at the *content centroid* (the dense area; see {@link contentCentroid}),
+   *  then stand a modest step back from it along the LONGER horizontal axis
+   *  and look down that axis toward the greater content extent — so the walker
+   *  starts *among* the furniture looking into the room, not shoved against a
+   *  perimeter wall. The backoff is capped (a big L-shaped plan must not spawn
+   *  the camera 15 m away at the far glazing). Pure math — mutates nothing. */
+  private computeWalkSpawn(): { pos: THREE.Vector3; look: THREE.Vector3 } {
     const b = this.contentBounds
     if (b.isEmpty()) {
-      this.camera.position.set(0, EYE_HEIGHT, 6)
-      this.camera.lookAt(0, EYE_HEIGHT, 0)
-      return
+      return { pos: new THREE.Vector3(0, EYE_HEIGHT, 6), look: new THREE.Vector3(0, EYE_HEIGHT, 0) }
     }
     const c = this.contentCentroid() ?? b.getCenter(new THREE.Vector3())
     const size = b.getSize(new THREE.Vector3())
@@ -643,13 +1060,9 @@ export class Viewer3D {
     const back = Math.min(ahead * 0.3, 6) // step back into the room, capped at 6 m
     const camAxis = cc - sign * back
     const lookAxis = cc + sign * ahead
-    if (alongX) {
-      this.camera.position.set(camAxis, EYE_HEIGHT, c.z)
-      this.camera.lookAt(lookAxis, EYE_HEIGHT, c.z)
-    } else {
-      this.camera.position.set(c.x, EYE_HEIGHT, camAxis)
-      this.camera.lookAt(c.x, EYE_HEIGHT, lookAxis)
-    }
+    return alongX
+      ? { pos: new THREE.Vector3(camAxis, EYE_HEIGHT, c.z), look: new THREE.Vector3(lookAxis, EYE_HEIGHT, c.z) }
+      : { pos: new THREE.Vector3(c.x, EYE_HEIGHT, camAxis), look: new THREE.Vector3(c.x, EYE_HEIGHT, lookAxis) }
   }
 
   /** Average world position of the meaningful solid content (walls, furniture),
@@ -678,11 +1091,43 @@ export class Viewer3D {
     return n > 0 ? acc.multiplyScalar(1 / n) : null
   }
 
+  /** Zero all walk motion (momentum, head-bob, banked scroll) for a clean
+   *  spawn/teleport arrival. */
+  private resetWalkMotion(): void {
+    this.velX = 0
+    this.velZ = 0
+    this.bobPhase = 0
+    this.bobIntensity = 0
+    this.bobX = 0
+    this.bobZ = 0
+    this.scrollMove = 0
+  }
+
+  /** Adopt the camera's current orientation as the drag-look yaw/pitch state —
+   *  called when walk input takes over (after the fly-in, and after pointer
+   *  lock releases, since PointerLockControls rotated the camera meanwhile). */
+  private syncLookFromCamera(): void {
+    this.lookEuler.setFromQuaternion(this.camera.quaternion, 'YXZ')
+    this.lookYaw = this.curYaw = this.lookEuler.y
+    this.lookPitch = this.curPitch = THREE.MathUtils.clamp(this.lookEuler.x, -PITCH_LIMIT, PITCH_LIMIT)
+  }
+
   private updateWalk(dt: number): void {
     // Recover the "true" walker position by removing last frame's lateral bob,
     // so the oscillation never accumulates into real displacement.
     this.camera.position.x -= this.bobX
     this.camera.position.z -= this.bobZ
+
+    // Drag-look: ease the camera toward the target yaw/pitch (slight inertia,
+    // never raw). Skipped while pointer-locked — PointerLockControls owns the
+    // camera orientation then, and we resync on unlock.
+    if (!this.walk.isLocked) {
+      const lk = Math.min(LOOK_SMOOTH * dt, 1)
+      this.curYaw += (this.lookYaw - this.curYaw) * lk
+      this.curPitch += (this.lookPitch - this.curPitch) * lk
+      this.lookEuler.set(this.curPitch, this.curYaw, 0)
+      this.camera.quaternion.setFromEuler(this.lookEuler)
+    }
 
     // Read intent. Shift sprints.
     const sprint = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight')
@@ -732,6 +1177,19 @@ export class Viewer3D {
       const allowed = this.collideAxis(dz, 0, 1)
       this.camera.position.z += allowed
       if (Math.abs(allowed) < Math.abs(dz) - 1e-6) this.velZ = 0
+    }
+
+    // Scroll-to-move: consume the banked wheel distance as a smooth glide along
+    // the horizontal look direction, collision-checked like WASD movement.
+    if (Math.abs(this.scrollMove) > 1e-3) {
+      const step = this.scrollMove * Math.min(SCROLL_SMOOTH * dt, 1)
+      this.scrollMove -= step
+      const sx = f.x * step
+      const sz = f.z * step
+      if (Math.abs(sx) > 1e-6) this.camera.position.x += this.collideAxis(sx, 1, 0)
+      if (Math.abs(sz) > 1e-6) this.camera.position.z += this.collideAxis(sz, 0, 1)
+    } else {
+      this.scrollMove = 0
     }
 
     // Clamp to the plan bounds (no infinite wander).
@@ -794,6 +1252,8 @@ export class Viewer3D {
     this.onPose({ x: this.camera.position.x, z: this.camera.position.z, hx: f.x, hz: f.z })
   }
 
+  // ── Input handlers ───────────────────────────────────────────────────────
+
   private onKeyDown = (e: KeyboardEvent): void => {
     if (this.mode !== 'walk') return
     this.keys.add(e.code)
@@ -809,17 +1269,97 @@ export class Viewer3D {
     this.keys.delete(e.code)
   }
 
-  private onCanvasClick = (): void => {
-    if (this.mode === 'walk' && !this.walk.isLocked) this.walk.lock()
+  /** Left-drag in walk mode = Matterport-style grab-look: the world follows
+   *  the cursor (drag right → look left). In orbit mode this only cancels any
+   *  animated view move so the camera never fights the mouse. */
+  private onPointerDown = (e: PointerEvent): void => {
+    this.cancelTween()
+    if (this.mode !== 'walk' || this.walk.isLocked || this.isTransitioning() || e.button !== 0) return
+    this.dragging = true
+    this.dragX = e.clientX
+    this.dragY = e.clientY
+    this.renderer.domElement.setPointerCapture(e.pointerId)
+  }
+
+  private onPointerMove = (e: PointerEvent): void => {
+    if (!this.dragging || this.mode !== 'walk' || this.walk.isLocked) return
+    const dx = e.clientX - this.dragX
+    const dy = e.clientY - this.dragY
+    this.dragX = e.clientX
+    this.dragY = e.clientY
+    this.lookYaw += dx * DRAG_LOOK_SENS
+    this.lookPitch = THREE.MathUtils.clamp(this.lookPitch + dy * DRAG_LOOK_SENS, -PITCH_LIMIT, PITCH_LIMIT)
+  }
+
+  private onPointerUp = (e: PointerEvent): void => {
+    if (!this.dragging) return
+    this.dragging = false
+    const el = this.renderer.domElement
+    if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId)
+  }
+
+  /** Double-click: in walk mode, engage pointer lock (mouse-look). In orbit
+   *  mode, refocus — raycast the click against real content (zone plates
+   *  excluded; ground/grid aren't in `content`) and ease the orbit pivot (and
+   *  the camera by the same delta) onto the hit point. */
+  private onDblClick = (e: MouseEvent): void => {
+    if (this.isTransitioning()) return
+    if (this.mode === 'walk') {
+      if (!this.walk.isLocked) this.walk.lock()
+      return
+    }
+    const rect = this.renderer.domElement.getBoundingClientRect()
+    const ndc = new THREE.Vector2(
+      ((e.clientX - rect.left) / Math.max(rect.width, 1)) * 2 - 1,
+      -((e.clientY - rect.top) / Math.max(rect.height, 1)) * 2 + 1,
+    )
+    this.raycaster.setFromCamera(ndc, this.camera)
+    this.raycaster.far = Infinity // collideAxis shortens it; restore for picking
+    const hits = this.raycaster.intersectObject(this.content, true)
+    const hit = hits.find((h) => !h.object.userData.zonePlate)
+    if (!hit) return
+    const toPos = this.camera.position.clone().add(hit.point).sub(this.orbit.target)
+    this.camTween = {
+      t: 0,
+      dur: 0.4,
+      locked: false,
+      emitPose: false,
+      ease: easeOutCubic,
+      fromPos: this.camera.position.clone(),
+      toPos,
+      fromQuat: null,
+      toQuat: null,
+      fromTarget: this.orbit.target.clone(),
+      toTarget: hit.point.clone(),
+    }
+  }
+
+  /** Wheel: in walk mode, bank forward/backward glide distance (~0.8 m per
+   *  notch, consumed smoothly + collision-checked in updateWalk). In orbit
+   *  mode OrbitControls owns the wheel; we only cancel animated view moves. */
+  private onWheel = (e: WheelEvent): void => {
+    if (this.mode === 'walk') {
+      e.preventDefault()
+      if (this.isTransitioning()) return
+      const px = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaY // lines → px
+      const notches = THREE.MathUtils.clamp(px / 100, -3, 3)
+      this.scrollMove = THREE.MathUtils.clamp(this.scrollMove - notches * SCROLL_STEP, -10, 10)
+    } else {
+      this.cancelTween()
+    }
   }
 
   private onWalkLock = (): void => {
-    if (this.mode === 'walk') this.emitHint('WASD to move · Shift to sprint · Esc to release')
+    this.dragging = false
+    if (this.mode === 'walk') this.emitHint(WALK_LOCKED_HINT)
   }
 
   private onWalkUnlock = (): void => {
     this.keys.clear()
-    if (this.mode === 'walk') this.emitHint('Click to look · WASD to move · Shift to sprint')
+    // PointerLockControls rotated the camera while locked; adopt that as the
+    // new drag-look state so the view doesn't snap back.
+    this.syncLookFromCamera()
+    if (this.mode === 'walk') this.emitHint(WALK_HINT)
   }
 
   private emitHint(text: string | null): void {
@@ -850,12 +1390,36 @@ export class Viewer3D {
   private animate = (): void => {
     if (this.disposed) return
     this.rafId = requestAnimationFrame(this.animate)
-    const dt = Math.min(this.clock.getDelta(), 0.1)
+    const raw = this.clock.getDelta()
+    const dt = Math.min(raw, 0.1)
+
+    if (this.camTween) this.updateTween(dt)
     if (this.mode === 'walk') {
       if (this.walk.enabled) this.updateWalk(dt)
-    } else {
+    } else if (!this.isTransitioning()) {
+      // orbit.update() also re-aims the camera at a tweening orbit target.
       this.orbit.update()
     }
-    this.renderer.render(this.scene, this.camera)
+
+    if (this.quality === 'high') this.composer.render()
+    else this.renderer.render(this.scene, this.camera)
+
+    // Rolling ~2 s FPS window → auto-degrade high → low below 40 fps. The
+    // first window is discarded (shader compiles / first-frame jank), as is
+    // any window containing a huge delta (backgrounded tab).
+    if (raw > 0.5) {
+      this.fpsTime = 0
+      this.fpsFrames = 0
+    } else {
+      this.fpsTime += raw
+      this.fpsFrames++
+      if (this.fpsTime >= 2) {
+        const fps = this.fpsFrames / this.fpsTime
+        this.fpsWindows++
+        if (this.fpsWindows > 1 && this.quality === 'high' && fps < 40) this.setQuality('low')
+        this.fpsTime = 0
+        this.fpsFrames = 0
+      }
+    }
   }
 }

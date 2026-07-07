@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Viewer3D, type ViewerMode } from './Viewer3D'
 import { Minimap, type MinimapHandle, type MinimapProps } from './Minimap'
+import { ViewerToolbar, type Quality, type ViewerWithExtras } from './ViewerToolbar'
 import type { DocState } from '../editor/EditorCanvas'
 
 /**
@@ -8,14 +9,15 @@ import type { DocState } from '../editor/EditorCanvas'
  * the viewer once, pushes DocState on every change, and disposes on unmount.
  * A ResizeObserver keeps the renderer/camera synced to the container size.
  *
- * Adds an orbit/walk mode toggle and a walkthrough hint overlay driven by the
- * viewer's `onModeHint` callback.
+ * Adds the shared {@link ViewerToolbar} and a walkthrough hint overlay driven
+ * by the viewer's `onModeHint` callback.
  */
 export function Scene3D({ state }: { state: DocState }) {
   const hostRef = useRef<HTMLDivElement>(null)
-  const viewerRef = useRef<Viewer3D | null>(null)
+  const viewerRef = useRef<ViewerWithExtras | null>(null)
   const minimapRef = useRef<MinimapHandle>(null)
   const [mode, setMode] = useState<ViewerMode>('orbit')
+  const [quality, setQuality] = useState<Quality>('high')
   const [hint, setHint] = useState<string | null>(null)
   // Static minimap geometry in world space, recomputed only when the plan does.
   const [map, setMap] = useState<MinimapProps | null>(null)
@@ -24,8 +26,10 @@ export function Scene3D({ state }: { state: DocState }) {
   useEffect(() => {
     const host = hostRef.current
     if (!host) return
-    const viewer = new Viewer3D(host)
+    const viewer: ViewerWithExtras = new Viewer3D(host)
     viewer.onModeHint = setHint
+    setQuality(viewer.getQuality?.() ?? 'high')
+    viewer.onQualityChange = setQuality
     viewerRef.current = viewer
 
     const ro = new ResizeObserver(() => viewer.resize())
@@ -33,6 +37,7 @@ export function Scene3D({ state }: { state: DocState }) {
 
     return () => {
       ro.disconnect()
+      viewer.onQualityChange = undefined
       viewer.dispose()
       viewerRef.current = null
     }
@@ -69,33 +74,19 @@ export function Scene3D({ state }: { state: DocState }) {
     viewerRef.current?.setMode(m)
   }
 
-  const btn = (active: boolean): CSSProperties => ({
-    font: '500 12px/1 "Space Grotesk", system-ui, sans-serif',
-    letterSpacing: '0.02em',
-    padding: '7px 14px',
-    border: '1px solid rgba(0,0,0,0.08)',
-    borderRadius: 7,
-    cursor: 'pointer',
-    color: active ? '#1b1d21' : '#5c626c',
-    background: active ? '#E8A13C' : 'rgba(255,255,255,0.86)',
-    boxShadow: active ? '0 1px 4px rgba(0,0,0,0.14)' : '0 1px 3px rgba(0,0,0,0.08)',
-    backdropFilter: 'blur(6px)',
-  })
-
   return (
     <div ref={hostRef} style={{ width: '100%', height: '100%', position: 'relative' }}>
-      <div style={{ position: 'absolute', top: 12, right: 12, display: 'flex', gap: 6, zIndex: 2 }}>
-        <button style={btn(mode === 'orbit')} onClick={() => pick('orbit')} title="Orbit view">
-          Orbit
-        </button>
-        <button
-          style={btn(mode === 'walk')}
-          onClick={() => pick('walk')}
-          title="First-person walkthrough"
-        >
-          Walk
-        </button>
-      </div>
+      <ViewerToolbar
+        mode={mode}
+        quality={quality}
+        onMode={pick}
+        onView={(v) => viewerRef.current?.setView?.(v)}
+        onFrame={() => viewerRef.current?.frameAll?.()}
+        onQuality={(q) => {
+          viewerRef.current?.setQuality?.(q)
+          setQuality(q)
+        }}
+      />
       {mode === 'walk' && map && (
         <Minimap
           ref={minimapRef}
