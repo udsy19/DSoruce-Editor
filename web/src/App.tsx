@@ -7,8 +7,11 @@ import { StatsPanel } from './ui/StatsPanel'
 import { AgentPanel } from './ai/AgentPanel'
 import { Scene3D } from './three/Scene3D'
 import { DrawingView } from './import/DrawingView'
+import { FurnitureInspector } from './import/FurnitureInspector'
 import { parseDrawing } from './import/dxf'
 import type { Drawing, FurnitureItem } from './import/types'
+import type { DrawingCanvas } from './import/DrawingCanvas'
+import type { OfficeProduct } from './materialBank/office'
 
 export function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -25,6 +28,15 @@ export function App() {
   const [importing, setImporting] = useState(false)
   const [importErr, setImportErr] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  const drawCanvasRef = useRef<DrawingCanvas | null>(null)
+  const [, setDrawVer] = useState(0)
+
+  const bindProduct = (it: FurnitureItem, product: OfficeProduct) => {
+    it.productId = product.id
+    it.productName = product.name
+    drawCanvasRef.current?.refresh()
+    setDrawVer((v) => v + 1)
+  }
 
   const onImportFile = async (file: File) => {
     setImporting(true)
@@ -169,7 +181,17 @@ export function App() {
           <div className="canvas-wrap">
             <canvas ref={canvasRef} style={{ display: mode === '2d' ? 'block' : 'none' }} />
             {mode === '3d' && ready && ec && <Scene3D state={ec.getState()} />}
-            {mode === 'import' && drawing && <DrawingView drawing={drawing} onSelect={setSelItem} />}
+            {mode === 'import' && drawing && (
+              <DrawingView
+                drawing={drawing}
+                onSelect={setSelItem}
+                onChange={() => setDrawVer((v) => v + 1)}
+                onCanvas={(c) => {
+                  drawCanvasRef.current = c
+                  if (import.meta.env.DEV) (window as unknown as { __dc: DrawingCanvas | null }).__dc = c
+                }}
+              />
+            )}
             {!ready && <div className="loading">Loading Rust · Wasm core…</div>}
             {importErr && <div className="import-err">Import failed: {importErr}</div>}
           </div>
@@ -178,7 +200,7 @@ export function App() {
 
         <aside className="inspector">
           {mode === 'import' && drawing ? (
-            <ImportPanel drawing={drawing} item={selItem} />
+            <ImportPanel drawing={drawing} item={selItem} onBind={bindProduct} />
           ) : selected && ec ? (
             <ReimaginePanel ec={ec} c={selected} />
           ) : ec ? (
@@ -397,12 +419,24 @@ function GenerateCard({ ec, metrics }: { ec: EditorCanvas; metrics: Metrics | nu
 
 /* ------------------------------ Imported plan ----------------------------- */
 
-function ImportPanel({ drawing, item }: { drawing: Drawing; item: FurnitureItem | null }) {
+function ImportPanel({
+  drawing,
+  item,
+  onBind,
+}: {
+  drawing: Drawing
+  item: FurnitureItem | null
+  onBind: (it: FurnitureItem, p: OfficeProduct) => void
+}) {
   const w = drawing.bounds[2] - drawing.bounds[0]
   const h = drawing.bounds[3] - drawing.bounds[1]
   const counts = new Map<string, number>()
   for (const f of drawing.furniture) counts.set(f.name, (counts.get(f.name) ?? 0) + 1)
   const top = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10)
+  const bound = drawing.furniture.filter((f) => f.productId).length
+
+  // Selected furniture → the re-imagine (material-bank) inspector.
+  if (item) return <FurnitureInspector item={item} onBind={onBind} />
 
   return (
     <div className="panel-body">
@@ -427,19 +461,13 @@ function ImportPanel({ drawing, item }: { drawing: Drawing; item: FurnitureItem 
         <span className="value">{drawing.layers.length}</span>
       </div>
 
-      {item && (
-        <>
-          <div className="panel-eyebrow gap">Selected</div>
-          <div className="sel-name">{item.name}</div>
-          <div className="sel-cat">{item.category}</div>
-          <div className="spec num" style={{ marginTop: 8 }}>
-            <span>
-              {(item.bbox[2] - item.bbox[0]).toFixed(2)} × {(item.bbox[3] - item.bbox[1]).toFixed(2)} m
-            </span>
-          </div>
-          <div className="mock-note">Bind this to the material bank next.</div>
-        </>
-      )}
+      <div className="metric-row">
+        <span className="label">Specified</span>
+        <span className="value">{bound}</span>
+      </div>
+      <div className="freeze-tip">
+        Click furniture to re-imagine it · drag to move · R rotate · Del delete · ⌘D duplicate · ⌘Z undo
+      </div>
 
       <div className="panel-eyebrow gap">Furniture schedule</div>
       <div className="schedule">

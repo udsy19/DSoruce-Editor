@@ -21,12 +21,18 @@ const MAT = '#f2f4f7'
 const FURNITURE_LINE = '#5c6670'
 const ACCENT = '#2d5bd6'
 const HOVER = 'rgba(45,91,214,0.45)'
+// Bound ("specified"/re-imagined) furniture — muted accent so you can see what's decided.
+const SPECIFIED = 'rgba(45,91,214,0.7)'
 
 const MIN_SCALE = 2
 const MAX_SCALE = 4000
 const FIT_PADDING = 40 // px padding around bounds in fitToView
 const TEXT_MIN_PX = 6.5 // hide text glyphs smaller than this on screen
 const DRAG_THRESHOLD = 4 // px movement below which a mouse-up is a click
+const ROTATE_STEP = Math.PI / 12 // 15° per keypress
+const DUP_OFFSET = 0.3 // meters — nudge for a duplicated item
+const HANDLE_PX = 3 // half-size of selection corner handles, screen px
+const UNDO_CAP = 50 // max snapshots kept
 
 /** Per-category screen lineweight (CSS px), independent of zoom. */
 const LINE_WEIGHT: Record<Category, number> = {
@@ -77,11 +83,17 @@ export class DrawingCanvas {
   private selected: FurnitureItem | null = null
   private hovered: FurnitureItem | null = null
 
-  // pan / click bookkeeping
+  // pan / click / move bookkeeping
   private pointerDown = false
   private didPan = false
+  private movingActive = false
+  private moveCandidate: FurnitureItem | null = null
   private lastScreen = { x: 0, y: 0 }
   private downScreen = { x: 0, y: 0 }
+  private lastWorld = { x: 0, y: 0 }
+
+  // undo: snapshots of drawing.furniture taken before each mutation.
+  private undoStack: FurnitureItem[][] = []
 
   private ro: ResizeObserver | null = null
 
@@ -89,6 +101,8 @@ export class DrawingCanvas {
   onSelect: ((item: FurnitureItem | null) => void) | null = null
   /** Fired when the hovered furniture item changes (optional). */
   onHover: ((item: FurnitureItem | null) => void) | null = null
+  /** Fired after any edit (move/rotate/delete/duplicate/undo) with the mutated drawing. */
+  onChange: ((d: Drawing) => void) | null = null
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas
@@ -107,8 +121,31 @@ export class DrawingCanvas {
     this.drawing = d
     this.selected = null
     this.hovered = null
+    this.undoStack = []
     this.buildBuckets(d)
     this.fitToView() // also renders
+  }
+
+  /** Force a re-render without touching pan/zoom — used after an external edit
+   *  (e.g. the inspector binds a product to the selected item). */
+  refresh(): void {
+    this.render()
+  }
+
+  /** Restore the last pre-edit snapshot of the furniture. No-op if nothing to undo. */
+  undo(): void {
+    const d = this.drawing
+    if (!d || this.undoStack.length === 0) return
+    d.furniture = this.undoStack.pop() as FurnitureItem[]
+    this.selected = null
+    this.hovered = null
+    this.onSelect?.(null)
+    this.render()
+    this.emitChange()
+  }
+
+  canUndo(): boolean {
+    return this.undoStack.length > 0
   }
 
   /** Frame `drawing.bounds` in the viewport with padding. */
@@ -142,6 +179,7 @@ export class DrawingCanvas {
     this.canvas.removeEventListener('wheel', this.onWheel)
     this.canvas.removeEventListener('mouseleave', this.onLeave)
     window.removeEventListener('resize', this.onResize)
+    window.removeEventListener('keydown', this.onKey)
   }
 
   // ---- transforms ----
@@ -186,6 +224,7 @@ export class DrawingCanvas {
     this.canvas.addEventListener('wheel', this.onWheel, { passive: false })
     this.canvas.addEventListener('mouseleave', this.onLeave)
     window.addEventListener('resize', this.onResize)
+    window.addEventListener('keydown', this.onKey)
     // DPR-aware container resize.
     if (typeof ResizeObserver !== 'undefined' && this.canvas.parentElement) {
       this.ro = new ResizeObserver(() => {
@@ -205,29 +244,56 @@ export class DrawingCanvas {
     const s = this.screenFromEvent(e)
     this.pointerDown = true
     this.didPan = false
+    this.movingActive = false
     this.lastScreen = s
     this.downScreen = s
+    // Hitting a furniture item selects it and arms a MOVE (started once we drag
+    // past the threshold). Empty space stays a pan.
+    const hit = this.pickFurniture(s.x, s.y)
+    this.moveCandidate = hit
+    if (hit) {
+      if (this.selected !== hit) {
+        this.selected = hit
+        this.onSelect?.(hit)
+      }
+      this.lastWorld = this.toWorld(s.x, s.y)
+      this.render()
+    }
   }
 
   private onMove = (e: MouseEvent) => {
     const s = this.screenFromEvent(e)
     if (this.pointerDown) {
-      const dx = s.x - this.lastScreen.x
-      const dy = s.y - this.lastScreen.y
-      if (!this.didPan && Math.hypot(s.x - this.downScreen.x, s.y - this.downScreen.y) > DRAG_THRESHOLD) {
-        this.didPan = true
+      if (
+        !this.didPan &&
+        !this.movingActive &&
+        Math.hypot(s.x - this.downScreen.x, s.y - this.downScreen.y) > DRAG_THRESHOLD
+      ) {
+        if (this.moveCandidate) {
+          this.movingActive = true
+          this.pushUndo()
+          this.canvas.style.cursor = 'grabbing'
+        } else {
+          this.didPan = true
+        }
       }
-      if (this.didPan) {
-        this.offset.x += dx
-        this.offset.y += dy
-        this.lastScreen = s
+      if (this.movingActive && this.moveCandidate) {
+        const w = this.toWorld(s.x, s.y)
+        this.translateItem(this.moveCandidate, w.x - this.lastWorld.x, w.y - this.lastWorld.y)
+        this.lastWorld = w
+        this.render()
+      } else if (this.didPan) {
+        this.offset.x += s.x - this.lastScreen.x
+        this.offset.y += s.y - this.lastScreen.y
         this.render()
       }
+      this.lastScreen = s
       return
     }
     // Hover hit-test only when not dragging.
     const within = s.x >= 0 && s.y >= 0 && s.x <= this.cssSize().w && s.y <= this.cssSize().h
     const hit = within ? this.pickFurniture(s.x, s.y) : null
+    this.canvas.style.cursor = hit ? 'move' : 'default'
     if (hit !== this.hovered) {
       this.hovered = hit
       this.onHover?.(hit)
@@ -238,11 +304,23 @@ export class DrawingCanvas {
   private onUp = (e: MouseEvent) => {
     if (!this.pointerDown) return
     this.pointerDown = false
-    if (this.didPan) return // was a pan, not a click
+    const wasPan = this.didPan
+    const wasMoving = this.movingActive
+    this.movingActive = false
+    this.moveCandidate = null
+    this.canvas.style.cursor = 'default'
+    if (wasMoving) {
+      this.emitChange() // a drag-move committed
+      return
+    }
+    if (wasPan) return // was a pan, not a click
+    // Plain click: (de)select the item under the cursor.
     const s = this.screenFromEvent(e)
     const hit = this.pickFurniture(s.x, s.y)
-    this.selected = hit
-    this.onSelect?.(hit)
+    if (hit !== this.selected) {
+      this.selected = hit
+      this.onSelect?.(hit)
+    }
     this.render()
   }
 
@@ -252,6 +330,147 @@ export class DrawingCanvas {
       this.onHover?.(null)
       this.render()
     }
+  }
+
+  // ---- keyboard: rotate / delete / duplicate / undo ----
+  private onKey = (e: KeyboardEvent) => {
+    if (!this.drawing) return
+    const t = e.target as HTMLElement | null
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
+    const mod = e.metaKey || e.ctrlKey
+    const key = e.key.toLowerCase()
+    if (mod && key === 'z') {
+      e.preventDefault()
+      this.undo()
+      return
+    }
+    if (mod && key === 'd') {
+      e.preventDefault()
+      this.duplicateSelected()
+      return
+    }
+    if (mod) return // leave other browser shortcuts alone
+    if (!this.selected) return
+    if (key === 'r') {
+      e.preventDefault()
+      this.rotateSelected(e.shiftKey ? -ROTATE_STEP : ROTATE_STEP)
+    } else if (key === 'delete' || key === 'backspace') {
+      e.preventDefault()
+      this.deleteSelected()
+    }
+  }
+
+  // ---- edit operations (each snapshots for undo, mutates, re-renders, onChange) ----
+  private rotateSelected(angle: number) {
+    if (!this.selected) return
+    this.pushUndo()
+    this.rotateItem(this.selected, angle)
+    this.render()
+    this.emitChange()
+  }
+
+  private deleteSelected() {
+    const d = this.drawing
+    if (!d || !this.selected) return
+    this.pushUndo()
+    const i = d.furniture.indexOf(this.selected)
+    if (i >= 0) d.furniture.splice(i, 1)
+    this.selected = null
+    this.hovered = null
+    this.onSelect?.(null)
+    this.render()
+    this.emitChange()
+  }
+
+  private duplicateSelected() {
+    const d = this.drawing
+    if (!d || !this.selected) return
+    this.pushUndo()
+    const clone = structuredClone(this.selected)
+    clone.id = d.furniture.reduce((m, f) => Math.max(m, f.id), 0) + 1
+    this.translateItem(clone, DUP_OFFSET, -DUP_OFFSET)
+    d.furniture.push(clone)
+    this.selected = clone
+    this.onSelect?.(clone)
+    this.render()
+    this.emitChange()
+  }
+
+  /** Translate one item (origin, all entity geometry, and bbox) by a world delta. */
+  private translateItem(it: FurnitureItem, dx: number, dy: number) {
+    it.origin[0] += dx
+    it.origin[1] += dy
+    for (const e of it.entities) {
+      if (e.pts) for (const p of e.pts) ((p[0] += dx), (p[1] += dy))
+      if (e.cx !== undefined) e.cx += dx
+      if (e.cy !== undefined) e.cy += dy
+      if (e.tx !== undefined) e.tx += dx
+      if (e.ty !== undefined) e.ty += dy
+    }
+    const [minX, minY, maxX, maxY] = it.bbox
+    it.bbox = [minX + dx, minY + dy, maxX + dx, maxY + dy]
+  }
+
+  /** Rotate one item about its bbox center by `angle` (radians, CCW world). */
+  private rotateItem(it: FurnitureItem, angle: number) {
+    const [minX, minY, maxX, maxY] = it.bbox
+    const cx = (minX + maxX) / 2
+    const cy = (minY + maxY) / 2
+    const cos = Math.cos(angle)
+    const sin = Math.sin(angle)
+    const rot = (x: number, y: number): [number, number] => {
+      const px = x - cx
+      const py = y - cy
+      return [cx + px * cos - py * sin, cy + px * sin + py * cos]
+    }
+    ;[it.origin[0], it.origin[1]] = rot(it.origin[0], it.origin[1])
+    for (const e of it.entities) {
+      if (e.pts) for (const p of e.pts) [p[0], p[1]] = rot(p[0], p[1])
+      if (e.cx !== undefined && e.cy !== undefined) [e.cx, e.cy] = rot(e.cx, e.cy)
+      if (e.kind === 'arc') {
+        if (e.start !== undefined) e.start += angle
+        if (e.end !== undefined) e.end += angle
+      }
+      if (e.tx !== undefined && e.ty !== undefined) {
+        ;[e.tx, e.ty] = rot(e.tx, e.ty)
+        e.rot = (e.rot ?? 0) + angle
+      }
+    }
+    it.rotation += angle
+    this.recomputeBbox(it)
+  }
+
+  /** Recompute an item's axis-aligned bbox from its (already-transformed) geometry. */
+  private recomputeBbox(it: FurnitureItem) {
+    let minX = Infinity
+    let minY = Infinity
+    let maxX = -Infinity
+    let maxY = -Infinity
+    const ext = (x: number, y: number) => {
+      if (x < minX) minX = x
+      if (y < minY) minY = y
+      if (x > maxX) maxX = x
+      if (y > maxY) maxY = y
+    }
+    for (const e of it.entities) {
+      if (e.pts) for (const p of e.pts) ext(p[0], p[1])
+      if (e.cx !== undefined && e.cy !== undefined && e.r !== undefined) {
+        ext(e.cx - e.r, e.cy - e.r)
+        ext(e.cx + e.r, e.cy + e.r)
+      }
+      if (e.tx !== undefined && e.ty !== undefined) ext(e.tx, e.ty)
+    }
+    if (minX <= maxX && minY <= maxY) it.bbox = [minX, minY, maxX, maxY]
+  }
+
+  private pushUndo() {
+    if (!this.drawing) return
+    this.undoStack.push(structuredClone(this.drawing.furniture))
+    if (this.undoStack.length > UNDO_CAP) this.undoStack.shift()
+  }
+
+  private emitChange() {
+    if (this.drawing) this.onChange?.(this.drawing)
   }
 
   private onWheel = (e: WheelEvent) => {
@@ -338,14 +557,29 @@ export class DrawingCanvas {
     this.drawHighlights()
   }
 
-  /** All furniture linework as one gray batched stroke. */
+  /** Furniture linework: unbound in gray, bound ("specified") in a muted accent —
+   *  two batched strokes so a re-imagined item reads distinctly. */
   private drawFurniture(d: Drawing) {
     if (d.furniture.length === 0) return
     const ctx = this.ctx
+    let hasBound = false
     ctx.strokeStyle = FURNITURE_LINE
     ctx.lineWidth = 1
     ctx.beginPath()
     for (const it of d.furniture) {
+      if (it.productId) {
+        hasBound = true
+        continue
+      }
+      for (const e of it.entities) this.appendEntity(e)
+    }
+    ctx.stroke()
+    if (!hasBound) return
+    ctx.strokeStyle = SPECIFIED
+    ctx.lineWidth = 1
+    ctx.beginPath()
+    for (const it of d.furniture) {
+      if (!it.productId) continue
       for (const e of it.entities) this.appendEntity(e)
     }
     ctx.stroke()
@@ -396,6 +630,16 @@ export class DrawingCanvas {
       ctx.setLineDash([4, 3])
       ctx.strokeRect(a.x + 0.5, a.y + 0.5, b.x - a.x - 1, b.y - a.y - 1)
       ctx.setLineDash([])
+      // solid corner handles
+      ctx.fillStyle = ACCENT
+      for (const [hx, hy] of [
+        [a.x, a.y],
+        [b.x, a.y],
+        [a.x, b.y],
+        [b.x, b.y],
+      ]) {
+        ctx.fillRect(hx - HANDLE_PX, hy - HANDLE_PX, HANDLE_PX * 2, HANDLE_PX * 2)
+      }
     }
   }
 
