@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { EditorCanvas, DocComponent, Metrics, Program, GenResult } from './editor/EditorCanvas'
 import { CATALOG, catByCategory } from './editor/catalog'
 import { searchBank } from './materialBank/mock'
+import { searchBankLive, bankQueryFor, formatINR, type BankProduct } from './materialBank/client'
 import { Icon } from './ui/icons'
 import { StatsPanel } from './ui/StatsPanel'
 import { AgentPanel } from './ai/AgentPanel'
@@ -804,8 +805,40 @@ const DECISIONS: { key: string; label: string }[] = [
 
 function ReimaginePanel({ ec, c }: { ec: EditorCanvas; c: DocComponent }) {
   const [q, setQ] = useState('')
-  const results = searchBank(c.category, q)
+  const [live, setLive] = useState<BankProduct[] | null>(null)
+  const [bankUp, setBankUp] = useState(true)
   const cat = catByCategory(c.category)
+
+  // Live bank first (semantic search over ~140k real products), debounced;
+  // fall back to the local mock so the panel keeps working offline.
+  useEffect(() => {
+    let cancelled = false
+    const query = q.trim() || bankQueryFor(c.category)
+    const t = window.setTimeout(
+      () => {
+        searchBankLive(query)
+          .then((r) => {
+            if (!cancelled) {
+              setLive(r)
+              setBankUp(true)
+            }
+          })
+          .catch(() => {
+            if (!cancelled) {
+              setLive(null)
+              setBankUp(false)
+            }
+          })
+      },
+      q ? 250 : 0,
+    )
+    return () => {
+      cancelled = true
+      window.clearTimeout(t)
+    }
+  }, [q, c.category])
+
+  const results = searchBank(c.category, q)
 
   return (
     <div className="panel-body">
@@ -848,24 +881,54 @@ function ReimaginePanel({ ec, c }: { ec: EditorCanvas; c: DocComponent }) {
         onChange={(e) => setQ(e.target.value)}
       />
       <div className="products">
-        {results.length === 0 && <div className="inline-note">No matches in the bank.</div>}
-        {results.map((p) => (
+        {live && live.length === 0 && <div className="inline-note">No matches in the bank.</div>}
+        {live?.map((p) => (
           <button
             key={p.id}
             className={c.product_id === p.id ? 'product on' : 'product'}
             onClick={() => ec.assignProduct(c.id, p.id, p.name)}
+            title={p.supplier}
           >
-            <span className="swatch" style={{ background: p.swatch }} />
+            {p.image ? (
+              <img className="p-thumb" src={p.image} alt="" loading="lazy" />
+            ) : (
+              <span className="swatch" style={{ background: '#dfe3e8' }} />
+            )}
             <span className="p-main">
               <span className="p-name">{p.name}</span>
-              <span className="p-vendor">{p.vendor}</span>
+              <span className="p-vendor">
+                {p.vendor}
+                {p.supplier ? ` · ${p.supplier}` : ''}
+              </span>
             </span>
-            <span className="p-price num">${p.price.toLocaleString()}</span>
+            <span className="p-price num">{formatINR(p.price)}</span>
           </button>
         ))}
+        {!live && results.length === 0 && (
+          <div className="inline-note">No matches in the bank.</div>
+        )}
+        {!live &&
+          results.map((p) => (
+            <button
+              key={p.id}
+              className={c.product_id === p.id ? 'product on' : 'product'}
+              onClick={() => ec.assignProduct(c.id, p.id, p.name)}
+            >
+              <span className="swatch" style={{ background: p.swatch }} />
+              <span className="p-main">
+                <span className="p-name">{p.name}</span>
+                <span className="p-vendor">{p.vendor}</span>
+              </span>
+              <span className="p-price num">${p.price.toLocaleString()}</span>
+            </button>
+          ))}
       </div>
 
-      <div className="mock-note">Mock bank — the real searchable material bank connects here.</div>
+      {bankUp ? (
+        <div className="mock-note">Live material bank · 140k+ products · prices in INR.</div>
+      ) : (
+        <div className="mock-note">Bank offline — showing local samples.</div>
+      )}
       <button className="ghost-danger" onClick={() => ec.deleteSelected()}>
         Delete component
       </button>

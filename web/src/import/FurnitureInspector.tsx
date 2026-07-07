@@ -1,12 +1,14 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { FurnitureItem } from '../import/types'
 import { bankCategoryForItem, searchOfficeBank, type OfficeProduct } from '../materialBank/office'
+import { searchBankLive, formatINR, type BankProduct } from '../materialBank/client'
 
 /**
  * Re-imagine panel for an *imported* furniture item: pick the real product it
- * should be bound to from the office material bank. Mirrors App.tsx's
- * `ReimaginePanel` markup/classes so it drops into the import inspector and
- * matches the generative editor's binding UI. Self-contained; the parent owns
+ * should be bound to. Searches the LIVE material bank first — the imported
+ * item's real product name (e.g. "Steelcase Seating SILQ Task Chair") makes an
+ * excellent semantic query — and falls back to the local office bank offline.
+ * Mirrors App.tsx's `ReimaginePanel` markup/classes; the parent owns
  * persistence via `onBind`.
  */
 export function FurnitureInspector({
@@ -17,11 +19,49 @@ export function FurnitureInspector({
   onBind: (item: FurnitureItem, product: OfficeProduct) => void
 }) {
   const [q, setQ] = useState('')
+  const [live, setLive] = useState<BankProduct[] | null>(null)
+  const [bankUp, setBankUp] = useState(true)
   const bankCategory = bankCategoryForItem(item)
   const results = searchOfficeBank(bankCategory, q)
 
+  useEffect(() => {
+    let cancelled = false
+    const query = q.trim() || item.name
+    const t = window.setTimeout(
+      () => {
+        searchBankLive(query)
+          .then((r) => {
+            if (!cancelled) {
+              setLive(r)
+              setBankUp(true)
+            }
+          })
+          .catch(() => {
+            if (!cancelled) {
+              setLive(null)
+              setBankUp(false)
+            }
+          })
+      },
+      q ? 250 : 0,
+    )
+    return () => {
+      cancelled = true
+      window.clearTimeout(t)
+    }
+  }, [q, item])
+
   const w = item.bbox[2] - item.bbox[0]
   const h = item.bbox[3] - item.bbox[1]
+
+  /** Live bank hit → the OfficeProduct shape the parent's onBind expects. */
+  const asOfficeProduct = (p: BankProduct): OfficeProduct => ({
+    id: p.id,
+    name: p.name,
+    vendor: p.vendor,
+    price: p.price ?? 0,
+    swatch: '#dfe3e8',
+  })
 
   return (
     <div className="panel-body">
@@ -50,22 +90,49 @@ export function FurnitureInspector({
         onChange={(e) => setQ(e.target.value)}
       />
       <div className="products">
-        {results.length === 0 && <div className="inline-note">No matches in the bank.</div>}
-        {results.map((p) => (
+        {live && live.length === 0 && <div className="inline-note">No matches in the bank.</div>}
+        {live?.map((p) => (
           <button
             key={p.id}
             className={item.productId === p.id ? 'product on' : 'product'}
-            onClick={() => onBind(item, p)}
+            onClick={() => onBind(item, asOfficeProduct(p))}
+            title={p.supplier}
           >
-            <span className="swatch" style={{ background: p.swatch }} />
+            {p.image ? (
+              <img className="p-thumb" src={p.image} alt="" loading="lazy" />
+            ) : (
+              <span className="swatch" style={{ background: '#dfe3e8' }} />
+            )}
             <span className="p-main">
               <span className="p-name">{p.name}</span>
-              <span className="p-vendor">{p.vendor}</span>
+              <span className="p-vendor">
+                {p.vendor}
+                {p.supplier ? ` · ${p.supplier}` : ''}
+              </span>
             </span>
-            <span className="p-price num">${p.price.toLocaleString()}</span>
+            <span className="p-price num">{formatINR(p.price)}</span>
           </button>
         ))}
+        {!live && results.length === 0 && (
+          <div className="inline-note">No matches in the bank.</div>
+        )}
+        {!live &&
+          results.map((p) => (
+            <button
+              key={p.id}
+              className={item.productId === p.id ? 'product on' : 'product'}
+              onClick={() => onBind(item, p)}
+            >
+              <span className="swatch" style={{ background: p.swatch }} />
+              <span className="p-main">
+                <span className="p-name">{p.name}</span>
+                <span className="p-vendor">{p.vendor}</span>
+              </span>
+              <span className="p-price num">${p.price.toLocaleString()}</span>
+            </button>
+          ))}
       </div>
+      {!bankUp && <div className="mock-note">Bank offline — showing local samples.</div>}
     </div>
   )
 }

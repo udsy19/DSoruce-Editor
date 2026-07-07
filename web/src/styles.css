@@ -917,6 +917,16 @@ button {
   flex: none;
   border: 1px solid rgba(23, 26, 30, 0.1);
 }
+/* Live-bank product thumbnail (real catalog image, replaces the swatch). */
+.p-thumb {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  flex: none;
+  border: 1px solid rgba(23, 26, 30, 0.1);
+  object-fit: cover;
+  background: #eef0f3;
+}
 .p-main {
   display: flex;
   flex-direction: column;

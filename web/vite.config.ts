@@ -100,6 +100,17 @@ export default defineConfig(({ mode }) => {
   }
   return {
     plugins: [react(), agentProxy(), dwgConvertPlugin()],
-    server: { port: 5173 },
+    server: {
+      port: 5173,
+      proxy: {
+        // Live material-bank API (separate repo, hosted on the VPS). Proxied
+        // because the upstream sends no CORS headers; /api/bank/* → /api/*.
+        '/api/bank': {
+          target: 'https://46.202.179.28.sslip.io',
+          changeOrigin: true,
+          rewrite: (p: string) => p.replace(/^\/api\/bank/, '/api'),
+        },
+      },
+    },
   }
 })
