@@ -4,6 +4,7 @@ import {
   useImperativeHandle,
   useRef,
   type CSSProperties,
+  type MouseEvent as ReactMouseEvent,
 } from 'react'
 import type { Pose } from './Viewer3D'
 
@@ -40,6 +41,8 @@ export interface MinimapProps {
   points: [number, number][]
   /** Plan extent in world space (fit target). */
   bounds: MinimapBounds
+  /** Click-to-teleport: called with the world (x, z) of a click on the map. */
+  onPick?: (x: number, z: number) => void
 }
 
 /** Imperative handle so the parent can push a pose every frame without a
@@ -79,7 +82,7 @@ const toX = (f: Fit, x: number) => f.ox + (x - f.minX) * f.scale
 const toY = (f: Fit, z: number) => f.oy + (z - f.minZ) * f.scale
 
 export const Minimap = forwardRef<MinimapHandle, MinimapProps>(function Minimap(
-  { segments, points, bounds },
+  { segments, points, bounds, onPick },
   ref,
 ) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -192,6 +195,19 @@ export const Minimap = forwardRef<MinimapHandle, MinimapProps>(function Minimap(
     [],
   )
 
+  // Click-to-teleport: invert the fit (device px → world). The canvas is SIZE
+  // CSS px wide but `fit` works in device px, so scale the CSS offset by dpr.
+  const handleClick = (e: ReactMouseEvent<HTMLCanvasElement>) => {
+    const fit = fitRef.current
+    if (!onPick || !fit) return
+    const dpr = Math.min(window.devicePixelRatio || 1, 2)
+    const dx = e.nativeEvent.offsetX * dpr
+    const dy = e.nativeEvent.offsetY * dpr
+    const worldX = fit.minX + (dx - fit.ox) / fit.scale
+    const worldZ = fit.minZ + (dy - fit.oy) / fit.scale
+    onPick(worldX, worldZ)
+  }
+
   const boxStyle: CSSProperties = {
     position: 'absolute',
     left: 12,
@@ -213,7 +229,16 @@ export const Minimap = forwardRef<MinimapHandle, MinimapProps>(function Minimap(
     <div style={boxStyle}>
       <canvas
         ref={canvasRef}
-        style={{ width: SIZE, height: SIZE, display: 'block' }}
+        onClick={onPick ? handleClick : undefined}
+        style={{
+          width: SIZE,
+          height: SIZE,
+          display: 'block',
+          // Re-enable pointer events on the canvas (the box disables them) so
+          // clicks land, and hint teleport with a crosshair.
+          pointerEvents: onPick ? 'auto' : 'none',
+          cursor: onPick ? 'crosshair' : 'default',
+        }}
       />
       <div
         style={{
@@ -226,7 +251,7 @@ export const Minimap = forwardRef<MinimapHandle, MinimapProps>(function Minimap(
           pointerEvents: 'none',
         }}
       >
-        YOU ARE HERE
+        {onPick ? 'CLICK TO MOVE' : 'YOU ARE HERE'}
       </div>
     </div>
   )

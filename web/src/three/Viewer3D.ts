@@ -53,6 +53,16 @@ const SPRINT_MULT = 2.0
 const WALK_MARGIN = 4 // how far past the plan bounds you may wander (m)
 const PLAYER_RADIUS = 0.32 // keep this far off walls (m); enables wall-sliding
 
+// Movement smoothing: velocity ramps toward the target instead of snapping, so
+// starts/stops feel weighted rather than instant.
+const WALK_ACCEL = 12 // ramp rate toward target velocity (1/s)
+const WALK_DECEL = 9 // ramp rate toward rest when input released (1/s)
+// Head-bob: a subtle vertical + lateral camera oscillation while moving that
+// eases back to zero when idle. Amplitudes are a few centimeters — felt, not seen.
+const BOB_RATE = 9.0 // step-cycle phase rate at full speed (rad/s)
+const BOB_AMP_V = 0.035 // vertical bob amplitude (m)
+const BOB_AMP_LAT = 0.022 // lateral bob amplitude (m)
+
 export type ViewerMode = 'orbit' | 'walk'
 
 /** First-person pose pushed to `onPose` each walk frame: world position (x, z)
@@ -132,6 +142,11 @@ export class Viewer3D {
 
   private ground: THREE.Mesh
   private grid: THREE.GridHelper
+  /** Interior ceiling plane (normal facing DOWN), spanning the plan bounds at
+   *  ceiling height. Shown only in walk mode so first-person feels enclosed; it
+   *  never casts shadow (so it can't darken the room) and is hidden in orbit so
+   *  it never occludes the top-down framing. */
+  private ceiling: THREE.Mesh
   private pmrem: THREE.PMREMGenerator
   private envRT: THREE.WebGLRenderTarget
   private framed = false
@@ -140,6 +155,13 @@ export class Viewer3D {
 
   // Walk-mode input state.
   private keys = new Set<string>()
+  // Walk-mode motion state: smoothed world-plane velocity + head-bob.
+  private velX = 0
+  private velZ = 0
+  private bobPhase = 0
+  private bobIntensity = 0 // eased 0→1 with speed; scales bob amplitude
+  private bobX = 0 // lateral bob offset currently baked into camera.position
+  private bobZ = 0
 
   constructor(container: HTMLElement) {
     this.container = container
@@ -149,7 +171,7 @@ export class Viewer3D {
     this.renderer.shadowMap.enabled = true
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping
-    this.renderer.toneMappingExposure = 1.0
+    this.renderer.toneMappingExposure = 1.05 // slight lift for a crisp interior read
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
     container.appendChild(this.renderer.domElement)
 
@@ -215,6 +237,19 @@ export class Viewer3D {
     ;(this.grid.material as THREE.Material).opacity = 0.3
     this.scene.add(this.grid)
 
+    // Interior ceiling (walk mode only). Unit plane scaled to the plan extent in
+    // syncCeiling(); light matte material, downward normal, no shadow casting so
+    // it encloses the view without darkening the lit interior.
+    this.ceiling = new THREE.Mesh(
+      new THREE.PlaneGeometry(1, 1),
+      new THREE.MeshStandardMaterial({ color: 0xf1f2f4, roughness: 0.95, metalness: 0, side: THREE.FrontSide }),
+    )
+    this.ceiling.rotation.x = Math.PI / 2 // normal → −Y (faces the walker below)
+    this.ceiling.castShadow = false
+    this.ceiling.receiveShadow = true
+    this.ceiling.visible = false
+    this.scene.add(this.ceiling)
+
     this.shared = new Set<THREE.BufferGeometry | THREE.Material>([
       this.unitBox,
       this.wallMat,
@@ -253,6 +288,7 @@ export class Viewer3D {
       this.orbit.update()
       this.emitHint(null)
     }
+    this.syncCeiling()
   }
 
   /** Rebuild the extruded plan from a fresh DocState (generated plans). */
@@ -268,6 +304,7 @@ export class Viewer3D {
     this.contentBounds = this.boundsFromState(state)
     this.contentOffset = { x: 0, z: 0 } // generated plans render in source coords
     if (!this.framed && !this.contentBounds.isEmpty()) this.frameBox(this.contentBounds)
+    this.syncCeiling()
   }
 
   /** Replace the dynamic content with an arbitrary externally-built group
@@ -297,6 +334,7 @@ export class Viewer3D {
     this.contentBounds = bounds
     this.framed = false
     if (!this.contentBounds.isEmpty()) this.frameBox(this.contentBounds)
+    this.syncCeiling()
   }
 
   /** The recentered plan bounds (world space). Minimap uses this for scaling. */
@@ -308,6 +346,32 @@ export class Viewer3D {
    *  Map a source point to viewer world space with `p − offset`. */
   getContentOffset(): { x: number; z: number } {
     return { x: this.contentOffset.x, z: this.contentOffset.z }
+  }
+
+  /** Teleport the first-person walker to a world (x, z) — e.g. a minimap click.
+   *  Keeps the current heading + eye height, clears momentum + head-bob so the
+   *  arrival is clean, and clamps to the same walkable bounds as movement. A
+   *  no-op outside walk mode. Coordinates are the viewer's (recentered) world
+   *  space — the same space {@link onPose} reports and the minimap fits. */
+  moveWalkerTo(x: number, z: number): void {
+    if (this.mode !== 'walk') return
+    const b = this.contentBounds
+    let px = x
+    let pz = z
+    if (!b.isEmpty()) {
+      px = THREE.MathUtils.clamp(px, b.min.x - WALK_MARGIN, b.max.x + WALK_MARGIN)
+      pz = THREE.MathUtils.clamp(pz, b.min.z - WALK_MARGIN, b.max.z + WALK_MARGIN)
+    } else {
+      px = THREE.MathUtils.clamp(px, -100, 100)
+      pz = THREE.MathUtils.clamp(pz, -100, 100)
+    }
+    this.velX = 0
+    this.velZ = 0
+    this.bobX = 0
+    this.bobZ = 0
+    this.bobIntensity = 0
+    this.camera.position.set(px, EYE_HEIGHT, pz)
+    this.emitPose()
   }
 
   resize(): void {
@@ -345,6 +409,8 @@ export class Viewer3D {
     ;(this.ground.material as THREE.Material).dispose()
     this.grid.geometry.dispose()
     ;(this.grid.material as THREE.Material).dispose()
+    this.ceiling.geometry.dispose()
+    ;(this.ceiling.material as THREE.Material).dispose()
 
     this.scene.environment = null
     this.envRT.dispose()
@@ -493,6 +559,22 @@ export class Viewer3D {
     this.framed = true
   }
 
+  /** Size + position the interior ceiling to the current plan bounds and show it
+   *  only in walk mode. Spans a little past the walls (WALK_MARGIN) so the edges
+   *  never gap; sits at ceiling height. Hidden (and skipped) when there's no
+   *  content or in orbit, so it never occludes the framed top-down view. */
+  private syncCeiling(): void {
+    const b = this.contentBounds
+    if (this.mode !== 'walk' || b.isEmpty()) {
+      this.ceiling.visible = false
+      return
+    }
+    const size = b.getSize(new THREE.Vector3())
+    this.ceiling.scale.set(size.x + WALK_MARGIN * 2, size.z + WALK_MARGIN * 2, 1)
+    this.ceiling.position.set((b.min.x + b.max.x) / 2, CEILING_HEIGHT, (b.min.z + b.max.z) / 2)
+    this.ceiling.visible = true
+  }
+
   // ── Walk mode ────────────────────────────────────────────────────────────
 
   /** Position the first-person camera inside the built geometry, looking at the
@@ -505,6 +587,13 @@ export class Viewer3D {
    *  not shoved against a perimeter wall. The backoff is capped (a big L-shaped
    *  plan must not spawn the camera 15 m away at the far glazing). */
   private spawnWalker(): void {
+    // Fresh spawn: no residual momentum or head-bob from a prior walk session.
+    this.velX = 0
+    this.velZ = 0
+    this.bobPhase = 0
+    this.bobIntensity = 0
+    this.bobX = 0
+    this.bobZ = 0
     const b = this.contentBounds
     if (b.isEmpty()) {
       this.camera.position.set(0, EYE_HEIGHT, 6)
@@ -559,34 +648,63 @@ export class Viewer3D {
   }
 
   private updateWalk(dt: number): void {
-    // Move along the look direction on the XZ plane; Shift sprints.
+    // Recover the "true" walker position by removing last frame's lateral bob,
+    // so the oscillation never accumulates into real displacement.
+    this.camera.position.x -= this.bobX
+    this.camera.position.z -= this.bobZ
+
+    // Read intent. Shift sprints.
     const sprint = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight')
-    const dist = WALK_SPEED * (sprint ? SPRINT_MULT : 1) * dt
+    const targetSpeed = WALK_SPEED * (sprint ? SPRINT_MULT : 1)
     const fwd = (this.keys.has('KeyW') || this.keys.has('ArrowUp') ? 1 : 0) +
       (this.keys.has('KeyS') || this.keys.has('ArrowDown') ? -1 : 0)
     const strafe = (this.keys.has('KeyD') || this.keys.has('ArrowRight') ? 1 : 0) +
       (this.keys.has('KeyA') || this.keys.has('ArrowLeft') ? -1 : 0)
 
-    if (fwd || strafe) {
-      // Horizontal forward + right basis from the current look direction.
-      const f = this.camera.getWorldDirection(this.tmpDir)
-      f.y = 0
-      if (f.lengthSq() < 1e-6) f.set(0, 0, -1)
-      f.normalize()
-      const rx = -f.z // right = forward × up  (up = +Y)
-      const rz = f.x
-      // Desired displacement on each world axis, then collide per axis so the
-      // walker slides along a wall instead of sticking (the blocked component
-      // is clamped, the parallel one still moves).
-      const dx = (f.x * fwd + rx * strafe) * dist
-      const dz = (f.z * fwd + rz * strafe) * dist
-      this.camera.position.x += this.collideAxis(dx, 1, 0)
-      this.camera.position.z += this.collideAxis(dz, 0, 1)
+    // Horizontal forward + right basis from the current look direction.
+    const f = this.camera.getWorldDirection(this.tmpDir)
+    f.y = 0
+    if (f.lengthSq() < 1e-6) f.set(0, 0, -1)
+    f.normalize()
+    const rx = -f.z // right = forward × up  (up = +Y)
+    const rz = f.x
+
+    // Desired world-plane velocity, then ramp the actual velocity toward it
+    // (gentle acceleration on press, deceleration on release — no snapping).
+    let desVX = 0
+    let desVZ = 0
+    const moving = fwd !== 0 || strafe !== 0
+    if (moving) {
+      let dirX = f.x * fwd + rx * strafe
+      let dirZ = f.z * fwd + rz * strafe
+      const l = Math.hypot(dirX, dirZ) || 1
+      dirX /= l
+      dirZ /= l
+      desVX = dirX * targetSpeed
+      desVZ = dirZ * targetSpeed
+    }
+    const k = Math.min((moving ? WALK_ACCEL : WALK_DECEL) * dt, 1)
+    this.velX += (desVX - this.velX) * k
+    this.velZ += (desVZ - this.velZ) * k
+
+    // Integrate + collide per axis so the walker slides along a wall instead of
+    // sticking; a blocked axis also drops its velocity so momentum doesn't pile
+    // up against the wall (and head-bob settles).
+    const dx = this.velX * dt
+    const dz = this.velZ * dt
+    if (Math.abs(dx) > 1e-6) {
+      const allowed = this.collideAxis(dx, 1, 0)
+      this.camera.position.x += allowed
+      if (Math.abs(allowed) < Math.abs(dx) - 1e-6) this.velX = 0
+    }
+    if (Math.abs(dz) > 1e-6) {
+      const allowed = this.collideAxis(dz, 0, 1)
+      this.camera.position.z += allowed
+      if (Math.abs(allowed) < Math.abs(dz) - 1e-6) this.velZ = 0
     }
 
-    // Clamp to eye height (no fly) and to the plan bounds (no infinite wander).
+    // Clamp to the plan bounds (no infinite wander).
     const p = this.camera.position
-    p.y = EYE_HEIGHT
     const b = this.contentBounds
     if (!b.isEmpty()) {
       p.x = THREE.MathUtils.clamp(p.x, b.min.x - WALK_MARGIN, b.max.x + WALK_MARGIN)
@@ -595,7 +713,24 @@ export class Viewer3D {
       p.x = THREE.MathUtils.clamp(p.x, -100, 100)
       p.z = THREE.MathUtils.clamp(p.z, -100, 100)
     }
+
+    // Report the steady (un-bobbed) pose so the minimap marker doesn't jitter.
+    p.y = EYE_HEIGHT
     this.emitPose()
+
+    // Head-bob: intensity eases toward the current speed fraction; the phase
+    // advances with it. Vertical rides at 2× the step rate (both feet per cycle),
+    // lateral at 1× (a subtle side-to-side sway). Both vanish smoothly at rest.
+    const speedFrac = Math.min(Math.hypot(this.velX, this.velZ) / WALK_SPEED, 1)
+    this.bobIntensity += (speedFrac - this.bobIntensity) * Math.min(6 * dt, 1)
+    this.bobPhase += dt * BOB_RATE * (0.6 + 0.4 * speedFrac)
+    const vBob = Math.sin(this.bobPhase * 2) * BOB_AMP_V * this.bobIntensity
+    const latAmt = Math.sin(this.bobPhase) * BOB_AMP_LAT * this.bobIntensity
+    this.bobX = rx * latAmt
+    this.bobZ = rz * latAmt
+    p.y = EYE_HEIGHT + vBob
+    p.x += this.bobX
+    p.z += this.bobZ
   }
 
   /** Resolve a single world-axis move against walls. The eye-height ray only

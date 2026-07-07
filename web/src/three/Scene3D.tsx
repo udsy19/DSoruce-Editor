@@ -97,7 +97,13 @@ export function Scene3D({ state }: { state: DocState }) {
         </button>
       </div>
       {mode === 'walk' && map && (
-        <Minimap ref={minimapRef} segments={map.segments} points={map.points} bounds={map.bounds} />
+        <Minimap
+          ref={minimapRef}
+          segments={map.segments}
+          points={map.points}
+          bounds={map.bounds}
+          onPick={(x, z) => viewerRef.current?.moveWalkerTo(x, z)}
+        />
       )}
       {mode === 'walk' && hint && (
         <div
