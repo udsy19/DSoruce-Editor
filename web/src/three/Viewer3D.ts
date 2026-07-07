@@ -7,6 +7,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
 import type { DocState, DocComponent, DocWall, DocZone, ZoneType } from '../editor/EditorCanvas'
 import { catByCategory } from '../editor/catalog'
 import { buildFurniture3D } from './furniture3d'
+import { clipPolyToRect, platePolygonFromWalls, type Pt } from '../util/clip'
 
 /**
  * Framework-agnostic Three.js viewer that renders a 2D office plan (DocState,
@@ -295,7 +296,12 @@ export class Viewer3D {
   setState(state: DocState): void {
     this.clearContent()
 
-    if (state.zones) for (const z of state.zones) this.buildZonePlate(z)
+    if (state.zones) {
+      // Trace the floor-plate polygon ONCE per rebuild; zone plates are clipped
+      // to it so tinted floors never stick out past an L-shaped building edge.
+      const plate = platePolygonFromWalls(state.walls)
+      for (const z of state.zones) this.buildZonePlate(z, plate)
+    }
     for (const w of state.walls) this.content.add(this.buildWall(w))
     for (const c of state.components) {
       this.content.add(this.buildComponent(c, c.id === state.selection))
@@ -476,23 +482,47 @@ export class Viewer3D {
     return group
   }
 
-  /** Thin colored floor plate under a zone (Rect or RectRing footprint). */
-  private buildZonePlate(z: DocZone): void {
+  /** Thin colored floor plate under a zone (Rect or RectRing footprint). When
+   *  the walls close into a floor-plate polygon (`plate`), each rect is clipped
+   *  to it so zone tint never spills past an L-shaped building edge; with open
+   *  walls (`plate` null) the original full-rect plates are kept. */
+  private buildZonePlate(z: DocZone, plate: Pt[] | null): void {
     const tint = ZONE_TINT[z.zone_type] ?? 0x9aa2b1
-    const mat = new THREE.MeshStandardMaterial({
-      color: tint,
-      roughness: 0.85,
-      metalness: 0,
-      transparent: true,
-      opacity: 0.16,
-    })
+    // Lazy: a zone fully outside the plate would otherwise orphan the material.
+    let mat: THREE.MeshStandardMaterial | null = null
+    const materialFor = () =>
+      (mat ??= new THREE.MeshStandardMaterial({
+        color: tint,
+        roughness: 0.85,
+        metalness: 0,
+        transparent: true,
+        opacity: 0.16,
+      }))
     const add = (x: number, y: number, w: number, h: number) => {
-      const geo = new THREE.PlaneGeometry(Math.max(w, 0.05), Math.max(h, 0.05))
-      const plate = new THREE.Mesh(geo, mat)
-      plate.rotation.x = -Math.PI / 2
-      plate.position.set(x + w / 2, 0.006, y + h / 2)
-      plate.receiveShadow = true
-      this.content.add(plate)
+      let mesh: THREE.Mesh
+      if (plate) {
+        const clipped = clipPolyToRect(plate, x, y, x + w, y + h)
+        if (clipped.length < 3) return // rect lies wholly outside the plate
+        // Orientation: plan (px, py) must land at world (px, 0.006, py). The
+        // Shape lives in local XY; we bake plan points as local (px, −py) and
+        // apply rotation.x = −π/2, which maps local (x, y, z) → (x, z, −y):
+        // (px, −py, 0) → (px, 0, py) ✓, and the shape normal local +Z →
+        // world +Y (faces up, so the single-sided material is visible).
+        const shape = new THREE.Shape(clipped.map(([px, py]) => new THREE.Vector2(px, -py)))
+        mesh = new THREE.Mesh(new THREE.ShapeGeometry(shape), materialFor())
+        mesh.rotation.x = -Math.PI / 2
+        mesh.position.y = 0.006 // no centering: the shape carries absolute plan coords
+      } else {
+        const geo = new THREE.PlaneGeometry(Math.max(w, 0.05), Math.max(h, 0.05))
+        mesh = new THREE.Mesh(geo, materialFor())
+        mesh.rotation.x = -Math.PI / 2
+        mesh.position.set(x + w / 2, 0.006, y + h / 2)
+      }
+      // Walk-mode systems (spawn centroid, collision) must ignore zone plates;
+      // ShapeGeometry would otherwise count as real content.
+      mesh.userData.zonePlate = true
+      mesh.receiveShadow = true
+      this.content.add(mesh)
     }
     const s = z.shape
     if (s.kind === 'Rect') {
@@ -624,8 +654,9 @@ export class Viewer3D {
 
   /** Average world position of the meaningful solid content (walls, furniture),
    *  which lands in the dense area rather than the geometric bbox center. Floor
-   *  and zone plates (PlaneGeometry) are excluded so a large empty footprint
-   *  doesn't pull the spawn into a void. Returns null if nothing qualifies. */
+   *  planes (PlaneGeometry) and zone plates (`userData.zonePlate`, which may be
+   *  clipped ShapeGeometry) are excluded so a large empty footprint doesn't
+   *  pull the spawn into a void. Returns null if nothing qualifies. */
   private contentCentroid(): THREE.Vector3 | null {
     this.content.updateMatrixWorld(true)
     const acc = new THREE.Vector3()
@@ -635,7 +666,7 @@ export class Viewer3D {
       const mesh = obj as THREE.Mesh
       if (!mesh.isMesh || !mesh.geometry) return
       const geo = mesh.geometry as THREE.BufferGeometry
-      if (geo.type === 'PlaneGeometry') return // floors / zone plates
+      if (geo.type === 'PlaneGeometry' || mesh.userData.zonePlate) return // floors / zone plates
       if (!geo.boundingBox) geo.computeBoundingBox()
       const bb = geo.boundingBox
       if (!bb) return
@@ -735,8 +766,9 @@ export class Viewer3D {
 
   /** Resolve a single world-axis move against walls. The eye-height ray only
    *  intersects tall geometry (walls, glazing, partitions, meeting pods) — desks
-   *  and chairs sit below 1.6 m, so you never snag on furniture. Floors/plates
-   *  (PlaneGeometry) are ignored. Returns the allowed signed distance. */
+   *  and chairs sit below 1.6 m, so you never snag on furniture. Floor planes
+   *  (PlaneGeometry) and zone plates (`userData.zonePlate`, possibly clipped
+   *  ShapeGeometry) are ignored. Returns the allowed signed distance. */
   private collideAxis(amount: number, ux: number, uz: number): number {
     const mag = Math.abs(amount)
     if (mag < 1e-5) return amount
@@ -746,7 +778,7 @@ export class Viewer3D {
     const hits = this.raycaster.intersectObject(this.content, true)
     for (const h of hits) {
       const geo = (h.object as THREE.Mesh).geometry as THREE.BufferGeometry | undefined
-      if (!geo || geo.type === 'PlaneGeometry') continue // floors / zone plates
+      if (!geo || geo.type === 'PlaneGeometry' || h.object.userData.zonePlate) continue // floors / zone plates
       return s * Math.max(0, h.distance - PLAYER_RADIUS)
     }
     return amount
