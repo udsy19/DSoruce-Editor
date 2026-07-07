@@ -160,7 +160,7 @@ export function App() {
                 onClick={() => setPlanView('3d')}
                 data-testid="plan-3d"
               >
-                Walk 3D
+                3D
               </button>
             </div>
           )}
@@ -234,7 +234,7 @@ export function App() {
             <canvas ref={canvasRef} style={{ display: mode === '2d' ? 'block' : 'none' }} />
             {mode === '3d' && ready && ec && <Scene3D state={ec.getState()} />}
             {mode === 'import' && drawing && planView === '3d' && (
-              <DrawingScene3D drawing={drawing} mode="walk" />
+              <DrawingScene3D drawing={drawing} />
             )}
             {mode === 'import' && drawing && planView === '2d' && (
               <DrawingView

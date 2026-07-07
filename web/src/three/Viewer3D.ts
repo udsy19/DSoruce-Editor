@@ -247,11 +247,26 @@ export class Viewer3D {
 
   /** Replace the dynamic content with an arbitrary externally-built group
    *  (imported plans) and frame the camera to its bounding box. Takes over
-   *  ownership: the previous content's owned resources are disposed. */
+   *  ownership: the previous content's owned resources are disposed.
+   *
+   *  Imported plans carry their source DXF world coordinates and can sit
+   *  ~1000 m from the origin, where the origin-anchored ground/grid/fog no
+   *  longer surround them. We therefore recenter the group so its horizontal
+   *  bounding-box center sits at the world origin (Y is preserved) and update
+   *  `contentBounds` to the recentered extent, so framing + walk clamping use
+   *  the same coordinates. (`setState` plans are already near origin.) */
   setContent(root: THREE.Group): void {
     this.clearContent()
+    const bounds = new THREE.Box3().setFromObject(root)
+    if (!bounds.isEmpty()) {
+      const center = bounds.getCenter(new THREE.Vector3())
+      root.position.x -= center.x
+      root.position.z -= center.z
+      root.updateMatrixWorld(true)
+      bounds.translate(new THREE.Vector3(-center.x, 0, -center.z))
+    }
     this.content.add(root)
-    this.contentBounds = new THREE.Box3().setFromObject(root)
+    this.contentBounds = bounds
     this.framed = false
     if (!this.contentBounds.isEmpty()) this.frameBox(this.contentBounds)
   }
@@ -441,18 +456,67 @@ export class Viewer3D {
 
   // ── Walk mode ────────────────────────────────────────────────────────────
 
-  /** Position the first-person camera inside the plan at eye height. */
+  /** Position the first-person camera inside the built geometry, looking at the
+   *  bulk of the content. The bounding-box center is a poor spawn for a large
+   *  L-shaped or sparse plan — it lands in empty space facing a blank wall. We
+   *  instead aim at the *content centroid* (the dense area; see
+   *  {@link contentCentroid}), then stand a modest step back from it along the
+   *  LONGER horizontal axis and look down that axis toward the greater content
+   *  extent — so the walker starts *among* the furniture looking into the room,
+   *  not shoved against a perimeter wall. The backoff is capped (a big L-shaped
+   *  plan must not spawn the camera 15 m away at the far glazing). */
   private spawnWalker(): void {
     const b = this.contentBounds
-    if (!b.isEmpty()) {
-      const center = b.getCenter(new THREE.Vector3())
-      const size = b.getSize(new THREE.Vector3())
-      this.camera.position.set(center.x, EYE_HEIGHT, center.z + size.z * 0.35)
-      this.camera.lookAt(center.x, EYE_HEIGHT, center.z)
-    } else {
+    if (b.isEmpty()) {
       this.camera.position.set(0, EYE_HEIGHT, 6)
       this.camera.lookAt(0, EYE_HEIGHT, 0)
+      return
     }
+    const c = this.contentCentroid() ?? b.getCenter(new THREE.Vector3())
+    const size = b.getSize(new THREE.Vector3())
+    const alongX = size.x >= size.z
+    // Distance from the centroid to each end of the longer axis.
+    const cc = alongX ? c.x : c.z
+    const lo = alongX ? b.min.x : b.min.z
+    const hi = alongX ? b.max.x : b.max.z
+    // Face the side with the greater remaining extent (more content ahead).
+    const sign = hi - cc >= cc - lo ? 1 : -1
+    const ahead = Math.max(hi - cc, cc - lo)
+    const back = Math.min(ahead * 0.3, 6) // step back into the room, capped at 6 m
+    const camAxis = cc - sign * back
+    const lookAxis = cc + sign * ahead
+    if (alongX) {
+      this.camera.position.set(camAxis, EYE_HEIGHT, c.z)
+      this.camera.lookAt(lookAxis, EYE_HEIGHT, c.z)
+    } else {
+      this.camera.position.set(c.x, EYE_HEIGHT, camAxis)
+      this.camera.lookAt(c.x, EYE_HEIGHT, lookAxis)
+    }
+  }
+
+  /** Average world position of the meaningful solid content (walls, furniture),
+   *  which lands in the dense area rather than the geometric bbox center. Floor
+   *  and zone plates (PlaneGeometry) are excluded so a large empty footprint
+   *  doesn't pull the spawn into a void. Returns null if nothing qualifies. */
+  private contentCentroid(): THREE.Vector3 | null {
+    this.content.updateMatrixWorld(true)
+    const acc = new THREE.Vector3()
+    const v = new THREE.Vector3()
+    let n = 0
+    this.content.traverse((obj) => {
+      const mesh = obj as THREE.Mesh
+      if (!mesh.isMesh || !mesh.geometry) return
+      const geo = mesh.geometry as THREE.BufferGeometry
+      if (geo.type === 'PlaneGeometry') return // floors / zone plates
+      if (!geo.boundingBox) geo.computeBoundingBox()
+      const bb = geo.boundingBox
+      if (!bb) return
+      bb.getCenter(v)
+      mesh.localToWorld(v)
+      acc.add(v)
+      n++
+    })
+    return n > 0 ? acc.multiplyScalar(1 / n) : null
   }
 
   private updateWalk(dt: number): void {

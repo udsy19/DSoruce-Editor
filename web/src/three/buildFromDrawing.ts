@@ -26,6 +26,16 @@ import type { Drawing, DrawEntity } from '../import/types'
  *    ONE wall material (likewise glazing, doors);
  *  - furniture reuses `buildFurniture3D` (which shares its own materials);
  *  - floor/materials are each created once.
+ *
+ * ── What we render ─────────────────────────────────────────────────────────
+ * Linework categories that read as thin extruded shells (outline × thickness):
+ * `wall`, `glazing`, `door` (a thin door leaf at the opening). Closed-polygon
+ * categories that read as SOLID low masses (filled footprint, extruded up):
+ * `casework` (~0.9 m laminate counters/cabinets), `fixture` (~0.6 m plumbing/
+ * appliance masses), and `other` — but only *closed* `other` polylines whose
+ * footprint is small (columns / built masses); large closed `other` outlines
+ * (rooms, site boundary) and every open `other` line are skipped so stray
+ * leaders/room outlines don't become slabs.
  */
 
 const WALL_HEIGHT = 2.7
@@ -35,6 +45,11 @@ const GLAZING_HEAD = 2.4
 const GLAZING_THICKNESS = 0.06
 const DOOR_HEIGHT = 2.1
 const DOOR_THICKNESS = 0.06
+const CASEWORK_HEIGHT = 0.9 // counter / base-cabinet mass
+const FIXTURE_HEIGHT = 0.6 // plumbing fixture / appliance low mass
+const OTHER_HEIGHT = 0.4 // conservative low plinth / column mass
+/** m²: skip closed `other` polylines larger than this (rooms/site outlines). */
+const OTHER_MAX_FOOTPRINT = 4
 
 /**
  * Fallback name → furniture-category mapper, used only until the furniture3d
@@ -117,6 +132,61 @@ function mergedSegments(
   return mesh
 }
 
+/**
+ * Fuse the *closed* polylines of a category into one SOLID low-mass mesh: each
+ * footprint is triangulated (THREE.Shape) and extruded upward to `height`,
+ * sitting on the floor (base at y=0). Unlike {@link mergedSegments} (a thin
+ * outline shell), this fills the footprint — the right read for cabinetry,
+ * fixtures and columns. Open polylines and footprints larger than
+ * `maxFootprint` (m², bbox proxy) are skipped. Shares ONE material.
+ *
+ * Extrude → world mapping: THREE builds the shape in XY and extrudes along +Z.
+ * `rotateX(+π/2)` maps (x, y, z) → (x, −z, y) so plan Y → world Z and the
+ * extrude axis → world −Y; translating up by `height` seats it at [0, height].
+ * This is a proper rotation (no reflection), so cap/side normals stay outward.
+ */
+function mergedSolids(
+  entities: DrawEntity[],
+  category: string,
+  height: number,
+  material: THREE.Material,
+  maxFootprint = Infinity,
+): THREE.Mesh | null {
+  const geoms: THREE.BufferGeometry[] = []
+  for (const e of entities) {
+    if (e.category !== category) continue
+    if (e.kind !== 'polyline' || !e.closed) continue
+    const pts = e.pts
+    if (!pts || pts.length < 3) continue
+
+    let mnx = Infinity, mny = Infinity, mxx = -Infinity, mxy = -Infinity
+    for (const [x, y] of pts) {
+      if (x < mnx) mnx = x
+      if (x > mxx) mxx = x
+      if (y < mny) mny = y
+      if (y > mxy) mxy = y
+    }
+    if ((mxx - mnx) * (mxy - mny) > maxFootprint) continue
+
+    const shape = new THREE.Shape()
+    shape.moveTo(pts[0][0], pts[0][1])
+    for (let i = 1; i < pts.length; i++) shape.lineTo(pts[i][0], pts[i][1])
+    shape.closePath()
+
+    const geo = new THREE.ExtrudeGeometry(shape, { depth: height, bevelEnabled: false, steps: 1 })
+    geo.rotateX(Math.PI / 2)
+    geo.translate(0, height, 0)
+    geoms.push(geo)
+  }
+  if (geoms.length === 0) return null
+  const merged = mergeGeometries(geoms, false)
+  for (const g of geoms) g.dispose()
+  const mesh = new THREE.Mesh(merged, material)
+  mesh.castShadow = true
+  mesh.receiveShadow = true
+  return mesh
+}
+
 export function buildFromDrawing(drawing: Drawing): { root: THREE.Group; bounds: THREE.Box3 } {
   const root = new THREE.Group()
   root.name = 'imported-drawing'
@@ -147,6 +217,9 @@ export function buildFromDrawing(drawing: Drawing): { root: THREE.Group; bounds:
     side: THREE.DoubleSide,
   })
   const doorMat = new THREE.MeshStandardMaterial({ color: 0x8a5a34, roughness: 0.8, metalness: 0.0 })
+  const caseworkMat = new THREE.MeshStandardMaterial({ color: 0xaf9b7d, roughness: 0.6, metalness: 0.05 }) // laminate/wood
+  const fixtureMat = new THREE.MeshStandardMaterial({ color: 0xd3d7da, roughness: 0.35, metalness: 0.0 }) // porcelain/appliance
+  const otherMat = new THREE.MeshStandardMaterial({ color: 0xbfc3c7, roughness: 0.85, metalness: 0.0 }) // neutral built mass
 
   // ── Walls / glazing / doors (each fused to one mesh) ─────────────────────
   const wall = mergedSegments(drawing.entities, 'wall', WALL_HEIGHT, WALL_THICKNESS, WALL_HEIGHT / 2, wallMat)
@@ -165,6 +238,16 @@ export function buildFromDrawing(drawing: Drawing): { root: THREE.Group; bounds:
 
   const door = mergedSegments(drawing.entities, 'door', DOOR_HEIGHT, DOOR_THICKNESS, DOOR_HEIGHT / 2, doorMat)
   if (door) root.add(door)
+
+  // ── Solid low masses: casework / fixture / (small closed) other ──────────
+  const casework = mergedSolids(drawing.entities, 'casework', CASEWORK_HEIGHT, caseworkMat)
+  if (casework) root.add(casework)
+
+  const fixture = mergedSolids(drawing.entities, 'fixture', FIXTURE_HEIGHT, fixtureMat)
+  if (fixture) root.add(fixture)
+
+  const other = mergedSolids(drawing.entities, 'other', OTHER_HEIGHT, otherMat, OTHER_MAX_FOOTPRINT)
+  if (other) root.add(other)
 
   // ── Furniture ─────────────────────────────────────────────────────────────
   for (const item of drawing.furniture) {
