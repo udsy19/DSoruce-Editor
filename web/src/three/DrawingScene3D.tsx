@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { Viewer3D, type ViewerMode } from './Viewer3D'
+import { Minimap, type MinimapHandle, type MinimapProps } from './Minimap'
 import { buildFromDrawing } from './buildFromDrawing'
 import type { Drawing } from '../import/types'
 
@@ -16,8 +17,11 @@ import type { Drawing } from '../import/types'
 export function DrawingScene3D({ drawing }: { drawing: Drawing }) {
   const hostRef = useRef<HTMLDivElement>(null)
   const viewerRef = useRef<Viewer3D | null>(null)
+  const minimapRef = useRef<MinimapHandle>(null)
   const [mode, setMode] = useState<ViewerMode>('orbit')
   const [hint, setHint] = useState<string | null>(null)
+  // Static minimap geometry in world space, recomputed only when the plan does.
+  const [map, setMap] = useState<MinimapProps | null>(null)
 
   // Create the viewer once for the lifetime of the mounted container.
   useEffect(() => {
@@ -37,11 +41,52 @@ export function DrawingScene3D({ drawing }: { drawing: Drawing }) {
     }
   }, [])
 
-  // Rebuild the scene whenever the imported drawing changes.
+  // Rebuild the scene whenever the imported drawing changes, and derive the
+  // minimap's static geometry. Drawing coords are SOURCE coords; the viewer
+  // recenters imported plans, so we subtract getContentOffset() from every
+  // point to reach the viewer's world space (world = source − offset).
   useEffect(() => {
+    const viewer = viewerRef.current
+    if (!viewer) return
     const { root } = buildFromDrawing(drawing)
-    viewerRef.current?.setContent(root)
+    viewer.setContent(root)
+    const { x: ox, z: oz } = viewer.getContentOffset()
+    const b = viewer.getContentBounds()
+
+    const segments: MinimapProps['segments'] = []
+    for (const e of drawing.entities) {
+      if (e.category !== 'wall' || e.kind !== 'polyline' || !e.pts) continue
+      const pts = e.pts
+      for (let i = 0; i < pts.length - 1; i++) {
+        segments.push([pts[i][0] - ox, pts[i][1] - oz, pts[i + 1][0] - ox, pts[i + 1][1] - oz])
+      }
+      if (e.closed && pts.length > 2) {
+        const a = pts[pts.length - 1]
+        const z = pts[0]
+        segments.push([a[0] - ox, a[1] - oz, z[0] - ox, z[1] - oz])
+      }
+    }
+    const points: MinimapProps['points'] = drawing.furniture.map((f) => {
+      const [minX, minY, maxX, maxY] = f.bbox
+      return [(minX + maxX) / 2 - ox, (minY + maxY) / 2 - oz]
+    })
+    setMap({
+      segments,
+      points,
+      bounds: { minX: b.min.x, minZ: b.min.z, maxX: b.max.x, maxZ: b.max.z },
+    })
   }, [drawing])
+
+  // Feed the live first-person pose to the minimap while walking (imperative,
+  // no re-render per frame). Cleared when leaving walk mode or unmounting.
+  useEffect(() => {
+    const viewer = viewerRef.current
+    if (!viewer) return
+    if (mode === 'walk') viewer.onPose = (p) => minimapRef.current?.setPose(p)
+    return () => {
+      if (viewer) viewer.onPose = undefined
+    }
+  }, [mode])
 
   const pick = (m: ViewerMode) => {
     setMode(m)
@@ -92,6 +137,9 @@ export function DrawingScene3D({ drawing }: { drawing: Drawing }) {
             zIndex: 2,
           }}
         />
+      )}
+      {mode === 'walk' && map && (
+        <Minimap ref={minimapRef} segments={map.segments} points={map.points} bounds={map.bounds} />
       )}
       {mode === 'walk' && hint && (
         <div

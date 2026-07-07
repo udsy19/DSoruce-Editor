@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { Viewer3D, type ViewerMode } from './Viewer3D'
+import { Minimap, type MinimapHandle, type MinimapProps } from './Minimap'
 import type { DocState } from '../editor/EditorCanvas'
 
 /**
@@ -13,8 +14,11 @@ import type { DocState } from '../editor/EditorCanvas'
 export function Scene3D({ state }: { state: DocState }) {
   const hostRef = useRef<HTMLDivElement>(null)
   const viewerRef = useRef<Viewer3D | null>(null)
+  const minimapRef = useRef<MinimapHandle>(null)
   const [mode, setMode] = useState<ViewerMode>('orbit')
   const [hint, setHint] = useState<string | null>(null)
+  // Static minimap geometry in world space, recomputed only when the plan does.
+  const [map, setMap] = useState<MinimapProps | null>(null)
 
   // Create the viewer once for the lifetime of the mounted container.
   useEffect(() => {
@@ -34,10 +38,31 @@ export function Scene3D({ state }: { state: DocState }) {
     }
   }, [])
 
-  // Rebuild the scene whenever the document changes.
+  // Rebuild the scene whenever the document changes, and derive the minimap's
+  // static geometry. Generated plans render in source coords (offset {0,0}), so
+  // walls/components are already the viewer's world space — used directly.
   useEffect(() => {
-    viewerRef.current?.setState(state)
+    const viewer = viewerRef.current
+    if (!viewer) return
+    viewer.setState(state)
+    const b = viewer.getContentBounds()
+    setMap({
+      segments: state.walls.map((w) => [w.a.x, w.a.y, w.b.x, w.b.y]),
+      points: state.components.map((c) => [c.x, c.y]),
+      bounds: { minX: b.min.x, minZ: b.min.z, maxX: b.max.x, maxZ: b.max.z },
+    })
   }, [state])
+
+  // Feed the live first-person pose to the minimap while walking (imperative,
+  // no re-render per frame). Cleared when leaving walk mode or unmounting.
+  useEffect(() => {
+    const viewer = viewerRef.current
+    if (!viewer) return
+    if (mode === 'walk') viewer.onPose = (p) => minimapRef.current?.setPose(p)
+    return () => {
+      if (viewer) viewer.onPose = undefined
+    }
+  }, [mode])
 
   const pick = (m: ViewerMode) => {
     setMode(m)
@@ -71,6 +96,9 @@ export function Scene3D({ state }: { state: DocState }) {
           Walk
         </button>
       </div>
+      {mode === 'walk' && map && (
+        <Minimap ref={minimapRef} segments={map.segments} points={map.points} bounds={map.bounds} />
+      )}
       {mode === 'walk' && hint && (
         <div
           style={{
