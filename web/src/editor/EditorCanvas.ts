@@ -111,10 +111,21 @@ export interface CirculationScore {
   grid_rows: number
   cell_size: number
 }
+/** One retained test-fit option from the autonomous search (Laiout-style gallery). */
+export interface Candidate {
+  seed: number
+  score: LayoutScore
+  /** Opaque document snapshot — pass to `applyCandidate` to make it live. */
+  snap: unknown
+  /** Small plan-schematic dataURL for the gallery card. */
+  thumb: string
+}
 export interface GenResult {
   best: LayoutScore
   iterations: number
   seed: number
+  /** Top-K distinct candidates, best first. */
+  candidates: Candidate[]
 }
 
 /** Default program — the single source used by the generate card and the AI. */
@@ -306,13 +317,15 @@ export class EditorCanvas {
    */
   autoGenerate(
     program: Program,
-    opts: { maxIter: number; target: number; keepConfirmed?: boolean },
+    opts: { maxIter: number; target: number; keepConfirmed?: boolean; candidates?: number },
   ): GenResult {
     const keep = opts.keepConfirmed ?? false
+    const topK = Math.max(1, opts.candidates ?? 4)
     this.program = { ...program }
     let best: LayoutScore | null = null
     let bestSeed = 1
     let iterations = 0
+    const kept: Candidate[] = []
     for (let seed = 1; seed <= opts.maxIter; seed++) {
       iterations = seed
       const sc = this.ed.generate(program, BigInt(seed), keep) as LayoutScore
@@ -320,12 +333,37 @@ export class EditorCanvas {
         best = sc
         bestSeed = seed
       }
+      // Cheap near-duplicate filter: same workstation count and ~equal total
+      // means the same layout family — keep only the better of the pair.
+      const dup = kept.findIndex(
+        (k) =>
+          Math.abs(k.score.total - sc.total) < 0.5 && k.score.placed_desks === sc.placed_desks,
+      )
+      if (dup >= 0 && kept[dup].score.total >= sc.total) continue
+      const cand: Candidate = {
+        seed,
+        score: sc,
+        snap: this.ed.snapshot(),
+        thumb: renderThumb(this.getState()),
+      }
+      if (dup >= 0) kept[dup] = cand
+      else kept.push(cand)
+      kept.sort((a, b) => b.score.total - a.score.total)
+      if (kept.length > topK) kept.length = topK
       if (best.total >= opts.target) break
     }
     const finalScore = this.ed.generate(program, BigInt(bestSeed), keep) as LayoutScore
     this.ed.clear_selection()
     this.commit()
-    return { best: finalScore, iterations, seed: bestSeed }
+    return { best: finalScore, iterations, seed: bestSeed, candidates: kept }
+  }
+
+  /** Make a gallery candidate live: restore its snapshot, repaint, notify React. */
+  applyCandidate(snap: unknown): void {
+    this.ed.restore(snap as string)
+    this.ed.clear_selection()
+    this.refresh()
+    this.onChange?.()
   }
 
   /** Circulation / "walking place" evaluation of the current document. */
@@ -775,6 +813,89 @@ export class EditorCanvas {
 }
 
 // ---- module helpers ----
+
+// Thumbnail fills by category — desks cool blue, meeting rooms translucent teal.
+const THUMB_FILL: Record<string, string> = {
+  Desk: 'rgba(91, 141, 239, 0.85)',
+  MeetingRoom: 'rgba(70, 179, 166, 0.35)',
+}
+const THUMB_OTHER = 'rgba(138, 144, 153, 0.55)'
+
+/**
+ * Minimal plan schematic of a document state → dataURL, for gallery cards.
+ * Deliberately NOT the interactive render() pipeline: render() draws to the
+ * live canvas with pan/zoom transforms, rulers, and CAD overlays; thumbnails
+ * need an isolated fit-to-frame offscreen scene.
+ */
+function renderThumb(st: DocState, w = 200, h = 140): string {
+  const cv = document.createElement('canvas')
+  cv.width = w
+  cv.height = h
+  const ctx = cv.getContext('2d')
+  if (!ctx) return ''
+
+  // Fit the wall bbox (fall back to component extents) into the frame.
+  let bb = wallBbox(st.walls)
+  if (!bb && st.components.length) {
+    bb = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity }
+    for (const c of st.components) {
+      bb.minX = Math.min(bb.minX, c.x - c.w / 2)
+      bb.minY = Math.min(bb.minY, c.y - c.h / 2)
+      bb.maxX = Math.max(bb.maxX, c.x + c.w / 2)
+      bb.maxY = Math.max(bb.maxY, c.y + c.h / 2)
+    }
+  }
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(0, 0, w, h)
+  if (!bb) return cv.toDataURL()
+
+  const pad = 8
+  const spanX = Math.max(bb.maxX - bb.minX, 0.001)
+  const spanY = Math.max(bb.maxY - bb.minY, 0.001)
+  const k = Math.min((w - pad * 2) / spanX, (h - pad * 2) / spanY)
+  const ox = (w - spanX * k) / 2 - bb.minX * k
+  const oy = (h - spanY * k) / 2 - bb.minY * k
+  const X = (m: number) => m * k + ox
+  const Y = (m: number) => m * k + oy
+
+  // Zone tints (rect + ring), same pastels as the main canvas.
+  for (const z of st.zones ?? []) {
+    const pal = ZONE[z.zone_type] ?? ZONE.Core
+    ctx.fillStyle = pal.fill
+    const s = z.shape
+    if (s.kind === 'RectRing') {
+      ctx.beginPath()
+      ctx.rect(X(s.x - s.w / 2), Y(s.y - s.h / 2), s.w * k, s.h * k)
+      ctx.rect(X(s.x - s.in_w / 2), Y(s.y - s.in_h / 2), s.in_w * k, s.in_h * k)
+      ctx.fill('evenodd')
+    } else {
+      ctx.fillRect(X(s.x - s.w / 2), Y(s.y - s.h / 2), s.w * k, s.h * k)
+    }
+  }
+
+  // Components as flat category-colored rects (no symbols at this size).
+  for (const c of st.components) {
+    ctx.fillStyle = THUMB_FILL[c.category] ?? THUMB_OTHER
+    ctx.save()
+    ctx.translate(X(c.x), Y(c.y))
+    ctx.rotate(c.rotation)
+    ctx.fillRect((-c.w / 2) * k, (-c.h / 2) * k, c.w * k, c.h * k)
+    ctx.restore()
+  }
+
+  // Wall outlines on top.
+  ctx.strokeStyle = '#2e343b'
+  ctx.lineCap = 'round'
+  for (const wl of st.walls) {
+    ctx.lineWidth = Math.max(1, wl.thickness * k)
+    ctx.beginPath()
+    ctx.moveTo(X(wl.a.x), Y(wl.a.y))
+    ctx.lineTo(X(wl.b.x), Y(wl.b.y))
+    ctx.stroke()
+  }
+  return cv.toDataURL()
+}
+
 function wallBbox(
   walls: DocWall[],
 ): { minX: number; minY: number; maxX: number; maxY: number } | null {

@@ -15,6 +15,7 @@ import type { DrawingCanvas } from './import/DrawingCanvas'
 import type { OfficeProduct } from './materialBank/office'
 import { exportPNG } from './export/png'
 import { downloadDXF, downloadDrawingDXF } from './export/dxf'
+import { CandidateGallery } from './ui/CandidateGallery'
 
 // CAD drafting tools (map to EditorCanvas 'cad:<id>' tools).
 const CAD_RAIL: { id: string; icon: string; label: string; hint?: string }[] = [
@@ -609,6 +610,7 @@ function GenerateCard({ ec, metrics }: { ec: EditorCanvas; metrics: Metrics | nu
   const [program, setProgram] = useState<Program>(ec.program)
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<GenResult | null>(null)
+  const [activeSeed, setActiveSeed] = useState<number | null>(null)
   const [note, setNote] = useState<string | null>(null)
 
   const set = (patch: Partial<Program>) => setProgram((p) => ({ ...p, ...patch }))
@@ -624,6 +626,7 @@ function GenerateCard({ ec, metrics }: { ec: EditorCanvas; metrics: Metrics | nu
     window.setTimeout(() => {
       const res = ec.autoGenerate(program, { maxIter: 18, target: 82, keepConfirmed })
       setResult(res)
+      setActiveSeed(res.seed)
       setBusy(false)
     }, 16)
   }
@@ -682,6 +685,15 @@ function GenerateCard({ ec, metrics }: { ec: EditorCanvas; metrics: Metrics | nu
           <ScoreBar label="Adjacency" v={result.best.adjacency} />
           <ScoreBar label="Circulation" v={result.best.circulation} />
           <ScoreBar label="Density" v={result.best.density} />
+          <CandidateGallery
+            candidates={result.candidates}
+            activeSeed={activeSeed}
+            onPick={(c) => {
+              ec.applyCandidate(c.snap)
+              setActiveSeed(c.seed)
+              setResult((r) => (r ? { ...r, best: c.score } : r))
+            }}
+          />
         </div>
       )}
     </div>
