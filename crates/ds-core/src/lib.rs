@@ -152,10 +152,15 @@ impl Editor {
     /// Autonomously generate a test-fit from a `Program` (plain JS object).
     /// Clears existing components, places desks + meeting rooms deterministically
     /// for `seed`, and returns the resulting `LayoutScore`.
-    pub fn generate(&mut self, program: JsValue, seed: u64) -> Result<JsValue, JsValue> {
+    pub fn generate(
+        &mut self,
+        program: JsValue,
+        seed: u64,
+        keep_confirmed: bool,
+    ) -> Result<JsValue, JsValue> {
         let program: layout::Program =
             serde_wasm_bindgen::from_value(program).map_err(|e| JsValue::from_str(&e.to_string()))?;
-        layout::generate(&mut self.doc, &program, seed);
+        layout::generate(&mut self.doc, &program, seed, keep_confirmed);
         serde_wasm_bindgen::to_value(&layout::score(&self.doc, &program))
             .map_err(|e| JsValue::from_str(&e.to_string()))
     }

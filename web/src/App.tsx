@@ -55,6 +55,8 @@ export function App() {
       ec.coordEl = coordRef.current
       ec.scaleEl = scaleRef.current
       ec.refresh()
+      // Dev-only handle for E2E/browser testing.
+      if (import.meta.env.DEV) (window as unknown as { __ec: EditorCanvas }).__ec = ec
       setReady(true)
     })
     return () => {
@@ -203,7 +205,9 @@ function OverviewPanel({ ec, metrics }: { ec: EditorCanvas | null; metrics: Metr
 
   const set = (patch: Partial<Program>) => setProgram((p) => ({ ...p, ...patch }))
 
-  const generate = () => {
+  const confirmed = metrics?.confirmed ?? 0
+
+  const run = (keepConfirmed: boolean) => {
     if (!ec) return
     if (ec.getState().walls.length === 0) {
       setNote('Draw a closed room boundary first, then generate.')
@@ -211,9 +215,9 @@ function OverviewPanel({ ec, metrics }: { ec: EditorCanvas | null; metrics: Metr
     }
     setNote(null)
     setBusy(true)
-    // Defer so the "Generating…" state paints before the synchronous search runs.
+    // Defer so the "Searching…" state paints before the synchronous search runs.
     window.setTimeout(() => {
-      const res = ec.autoGenerate(program, { maxIter: 18, target: 82 })
+      const res = ec.autoGenerate(program, { maxIter: 18, target: 82, keepConfirmed })
       setResult(res)
       setBusy(false)
     }, 16)
@@ -259,9 +263,21 @@ function OverviewPanel({ ec, metrics }: { ec: EditorCanvas | null; metrics: Metr
         onChange={(v) => set({ target_corridor_m: v })}
       />
 
-      <button className="cta" onClick={generate} disabled={busy} data-testid="generate">
+      <button className="cta" onClick={() => run(false)} disabled={busy} data-testid="generate">
         {busy ? 'Searching layouts…' : 'Generate test-fit'}
       </button>
+      {confirmed > 0 ? (
+        <button
+          className="cta-ghost"
+          onClick={() => run(true)}
+          disabled={busy}
+          data-testid="regenerate"
+        >
+          Regenerate · keep {confirmed} frozen
+        </button>
+      ) : (
+        <div className="freeze-tip">Confirm a component to freeze it, then regenerate around it.</div>
+      )}
       {note && <div className="inline-note">{note}</div>}
 
       {result && (

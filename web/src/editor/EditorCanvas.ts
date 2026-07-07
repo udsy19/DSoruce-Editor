@@ -192,8 +192,8 @@ export class EditorCanvas {
   }
 
   /** One deterministic test-fit for `seed`; mutates the document. */
-  generateOnce(program: Program, seed: number): LayoutScore {
-    return this.ed.generate(program, BigInt(seed)) as LayoutScore
+  generateOnce(program: Program, seed: number, keepConfirmed = false): LayoutScore {
+    return this.ed.generate(program, BigInt(seed), keepConfirmed) as LayoutScore
   }
 
   /**
@@ -202,21 +202,28 @@ export class EditorCanvas {
    * generator is deterministic per seed, we re-generate the winning seed at the
    * end so the document reflects the best candidate. This is the "recursive
    * until criteria met" loop on top of the deterministic engine.
+   *
+   * When `keepConfirmed` is set, Confirmed components are frozen and every
+   * candidate packs around them (Freeze/Regenerate).
    */
-  autoGenerate(program: Program, opts: { maxIter: number; target: number }): GenResult {
+  autoGenerate(
+    program: Program,
+    opts: { maxIter: number; target: number; keepConfirmed?: boolean },
+  ): GenResult {
+    const keep = opts.keepConfirmed ?? false
     let best: LayoutScore | null = null
     let bestSeed = 1
     let iterations = 0
     for (let seed = 1; seed <= opts.maxIter; seed++) {
       iterations = seed
-      const sc = this.ed.generate(program, BigInt(seed)) as LayoutScore
+      const sc = this.ed.generate(program, BigInt(seed), keep) as LayoutScore
       if (!best || sc.total > best.total) {
         best = sc
         bestSeed = seed
       }
       if (best.total >= opts.target) break
     }
-    const finalScore = this.ed.generate(program, BigInt(bestSeed)) as LayoutScore
+    const finalScore = this.ed.generate(program, BigInt(bestSeed), keep) as LayoutScore
     this.ed.clear_selection()
     this.commit()
     return { best: finalScore, iterations, seed: bestSeed }
@@ -459,9 +466,10 @@ export class EditorCanvas {
     ctx.save()
     ctx.translate(p.x, p.y)
     ctx.rotate(c.rotation)
-    ctx.fillStyle = hexA(color, c.decision === 'Confirmed' ? 0.9 : 0.4)
-    ctx.strokeStyle = selected ? C.accent : color
-    ctx.lineWidth = selected ? 2 : 1.25
+    const frozen = c.decision === 'Confirmed'
+    ctx.fillStyle = hexA(color, frozen ? 0.9 : 0.4)
+    ctx.strokeStyle = selected ? C.accent : frozen ? DECISION_DOT.Confirmed : color
+    ctx.lineWidth = selected || frozen ? 2 : 1.25
     roundRect(ctx, -w / 2, -h / 2, w, h, Math.min(5, Math.min(w, h) * 0.14))
     ctx.fill()
     ctx.stroke()

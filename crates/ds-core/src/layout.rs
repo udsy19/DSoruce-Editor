@@ -162,14 +162,46 @@ fn push_component(doc: &mut Document, category: &str, x: f64, y: f64, w: f64, h:
     });
 }
 
+/// Axis-aligned overlap test between a candidate footprint (center cx,cy, size
+/// w×h) and any obstacle rect, expanded by `pad` on every side.
+fn footprint_overlaps(
+    obstacles: &[(f64, f64, f64, f64)],
+    cx: f64,
+    cy: f64,
+    w: f64,
+    h: f64,
+    pad: f64,
+) -> bool {
+    obstacles.iter().any(|&(ox, oy, ow, oh)| {
+        (cx - ox).abs() < (w + ow) / 2.0 + pad && (cy - oy).abs() < (h + oh) / 2.0 + pad
+    })
+}
+
 /// Deterministically generate a test-fit into `doc` for `program`, seeded by `seed`.
 ///
-/// Clears existing components (walls are preserved). Frozen components — those
-/// left `Confirmed` — are the Freeze/Regenerate hook; v1 clears all, a later
-/// version will retain `Confirmed` ones and pack around them (see design §4).
-pub fn generate(doc: &mut Document, program: &Program, seed: u64) {
-    doc.components.clear();
+/// Walls are preserved. When `keep_confirmed` is true, components left `Confirmed`
+/// are **frozen** — kept in place and treated as obstacles so newly-placed items
+/// pack around them (Laiout-style Freeze/Regenerate, design §4). When false, all
+/// components are cleared for a fresh fit. Frozen items count toward the program
+/// targets, so regenerating tops the plan up to the requested counts.
+pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed: bool) {
+    // Freeze: keep Confirmed components, drop the rest. Frozen footprints become
+    // obstacles the new placement must avoid.
+    let mut obstacles: Vec<(f64, f64, f64, f64)> = Vec::new();
+    if keep_confirmed {
+        doc.components.retain(|c| c.decision == DecisionState::Confirmed);
+        for c in &doc.components {
+            obstacles.push((c.x, c.y, c.w, c.h));
+        }
+    } else {
+        doc.components.clear();
+    }
     doc.selection = None;
+    // Only frozen footprints block new placement. Items placed in this call are
+    // laid out on non-overlapping pitches by construction, so they must NOT be
+    // checked against each other (their spacing == the overlap threshold, which
+    // floating-point rounding would otherwise flag as a collision).
+    let frozen_len = obstacles.len();
 
     let (min_x, min_y, max_x, max_y) = match wall_bbox(doc) {
         Some(b) => b,
@@ -191,13 +223,18 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64) {
 
     let mut rng = Rng::new(seed);
 
+    // Frozen items already count toward the program targets.
+    let mut rooms_placed = doc.components.iter().filter(|c| c.category == "MeetingRoom").count() as u32;
+    let mut desks_placed = doc.components.iter().filter(|c| c.category == "Desk").count() as u32;
+
     // --- 1. Meeting rooms: a column down the right edge of the work zone.
     // A side column (vs a full-width top band) keeps the desk field contiguous —
     // better for circulation and bench adjacency — and we only claim the column
     // if at least one desk column still fits beside it, so a shallow room never
-    // ends up with meeting rooms and zero desks. Room size is clamped to fit. ---
+    // ends up with meeting rooms and zero desks. Room size is clamped to fit.
+    // Slots that would collide with a frozen component are skipped. ---
     let mut dz_x1 = x1;
-    if program.meeting_rooms > 0 && program.meeting_w > 0.0 && program.meeting_h > 0.0 {
+    if rooms_placed < program.meeting_rooms && program.meeting_w > 0.0 && program.meeting_h > 0.0 {
         let mw = program.meeting_w.min(x1 - x0);
         let mh = program.meeting_h.min(y1 - y0);
         let col_x0 = x1 - mw;
@@ -205,24 +242,30 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64) {
         let rows = (((y1 - y0) + clear) / mr_pitch).floor() as i64;
         // Require room for a desk column to the left before claiming the strip.
         if rows > 0 && (col_x0 - clear - x0) >= program.desk_w {
-            let mut placed = 0u32;
+            let mut claimed = false;
             for r in 0..rows {
-                if placed >= program.meeting_rooms {
+                if rooms_placed >= program.meeting_rooms {
                     break;
                 }
                 let cx = col_x0 + mw / 2.0;
                 let cy = y0 + mh / 2.0 + (r as f64) * mr_pitch;
+                if footprint_overlaps(&obstacles[..frozen_len], cx, cy, mw, mh, clear) {
+                    continue;
+                }
                 push_component(doc, "MeetingRoom", cx, cy, mw, mh);
-                placed += 1;
+                obstacles.push((cx, cy, mw, mh));
+                rooms_placed += 1;
+                claimed = true;
             }
-            if placed > 0 {
+            if claimed {
                 dz_x1 = col_x0 - clear;
             }
         }
     }
 
-    // --- 2. Desk grid fills the remaining work zone (full height) ---
-    if program.desks == 0 || program.desk_w <= 0.0 || program.desk_h <= 0.0 {
+    // --- 2. Desk grid fills the remaining work zone (full height), skipping
+    // any grid cell that would collide with a frozen or just-placed obstacle. ---
+    if program.desk_w <= 0.0 || program.desk_h <= 0.0 {
         return;
     }
     let dz_x0 = x0;
@@ -244,10 +287,9 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64) {
     // Jitter is bounded to 25 % of the clearance so it can never eat the gap.
     let jitter = clear * 0.25;
 
-    let mut placed = 0u32;
     'grid: for r in 0..rows {
         for c in 0..cols {
-            if placed >= program.desks {
+            if desks_placed >= program.desks {
                 break 'grid;
             }
             // extra aisle offset: one clearance gap per completed cluster to the left
@@ -264,8 +306,12 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64) {
             let jy = rng.signed() * jitter;
             let fx = (cx + jx).clamp(dz_x0 + program.desk_w / 2.0, dz_x1 - program.desk_w / 2.0);
             let fy = (cy + jy).clamp(dz_y0 + program.desk_h / 2.0, dz_y1 - program.desk_h / 2.0);
+            if footprint_overlaps(&obstacles, fx, fy, program.desk_w, program.desk_h, clear * 0.5) {
+                continue;
+            }
             push_component(doc, "Desk", fx, fy, program.desk_w, program.desk_h);
-            placed += 1;
+            obstacles.push((fx, fy, program.desk_w, program.desk_h));
+            desks_placed += 1;
         }
     }
 }
@@ -394,8 +440,8 @@ mod tests {
         let program = Program::default();
         let mut a = room(20.0, 15.0);
         let mut b = room(20.0, 15.0);
-        generate(&mut a, &program, 42);
-        generate(&mut b, &program, 42);
+        generate(&mut a, &program, 42, false);
+        generate(&mut b, &program, 42, false);
         assert_eq!(a.components.len(), b.components.len());
         for (ca, cb) in a.components.iter().zip(b.components.iter()) {
             assert_eq!(ca.category, cb.category);
@@ -409,8 +455,8 @@ mod tests {
         let program = Program::default();
         let mut a = room(20.0, 15.0);
         let mut b = room(20.0, 15.0);
-        generate(&mut a, &program, 1);
-        generate(&mut b, &program, 2);
+        generate(&mut a, &program, 1, false);
+        generate(&mut b, &program, 2, false);
         // same counts, but jittered positions must differ somewhere
         let differs = a
             .components
@@ -424,7 +470,7 @@ mod tests {
     fn everything_stays_inside_the_perimeter_corridor() {
         let program = Program::default();
         let mut doc = room(20.0, 15.0);
-        generate(&mut doc, &program, 7);
+        generate(&mut doc, &program, 7, false);
         let c = program.target_corridor_m;
         for comp in &doc.components {
             let left = comp.x - comp.w / 2.0;
@@ -444,7 +490,7 @@ mod tests {
         program.desks = 12;
         program.meeting_rooms = 1;
         let mut doc = room(30.0, 20.0);
-        generate(&mut doc, &program, 3);
+        generate(&mut doc, &program, 3, false);
         let desks = doc.components.iter().filter(|c| c.category == "Desk").count();
         let mrs = doc.components.iter().filter(|c| c.category == "MeetingRoom").count();
         assert_eq!(desks, 12, "large room should seat all requested desks");
@@ -452,13 +498,25 @@ mod tests {
     }
 
     #[test]
+    fn places_multiple_meeting_rooms_when_they_fit() {
+        let mut program = Program::default();
+        program.meeting_rooms = 2;
+        let mut doc = room(30.0, 20.0);
+        generate(&mut doc, &program, 1, false);
+        let mrs = doc.components.iter().filter(|c| c.category == "MeetingRoom").count();
+        // The right-side column must stack both requested rooms (regression:
+        // exact-pitch self-collision used to drop the 2nd).
+        assert_eq!(mrs, 2, "column should stack both requested meeting rooms");
+    }
+
+    #[test]
     fn generate_clears_previous_components() {
         let program = Program::default();
         let mut doc = room(20.0, 15.0);
-        generate(&mut doc, &program, 1);
+        generate(&mut doc, &program, 1, false);
         let first = doc.components.len();
         assert!(first > 0);
-        generate(&mut doc, &program, 1);
+        generate(&mut doc, &program, 1, false);
         assert_eq!(doc.components.len(), first, "re-generate must not accumulate");
     }
 
@@ -466,7 +524,7 @@ mod tests {
     fn no_walls_is_a_noop() {
         let program = Program::default();
         let mut doc = Document::new();
-        generate(&mut doc, &program, 1);
+        generate(&mut doc, &program, 1, false);
         assert!(doc.components.is_empty());
     }
 
@@ -474,7 +532,7 @@ mod tests {
     fn score_fields_are_bounded_and_capacity_tracks_placement() {
         let program = Program::default();
         let mut doc = room(30.0, 20.0);
-        generate(&mut doc, &program, 5);
+        generate(&mut doc, &program, 5, false);
         let s = score(&doc, &program);
         for v in [s.capacity, s.adjacency, s.circulation, s.density, s.total] {
             assert!((0.0..=100.0).contains(&v), "score {} out of range", v);
@@ -489,9 +547,58 @@ mod tests {
         let mut program = Program::default();
         program.desks = 200; // won't fit
         let mut doc = room(12.0, 10.0);
-        generate(&mut doc, &program, 1);
+        generate(&mut doc, &program, 1, false);
         let s = score(&doc, &program);
         assert!(s.capacity < 100.0, "cramped room should not reach full capacity");
         assert!(s.placed_desks < 200);
+    }
+
+    #[test]
+    fn keep_confirmed_freezes_components_and_packs_around_them() {
+        let program = Program::default();
+        let mut doc = room(30.0, 20.0);
+        generate(&mut doc, &program, 3, false);
+
+        // Confirm (freeze) the first two desks; remember id + position.
+        let frozen: Vec<(u32, f64, f64)> = doc
+            .components
+            .iter_mut()
+            .filter(|c| c.category == "Desk")
+            .take(2)
+            .map(|c| {
+                c.decision = DecisionState::Confirmed;
+                (c.id, c.x, c.y)
+            })
+            .collect();
+        assert_eq!(frozen.len(), 2);
+
+        // Regenerate with a different seed, keeping confirmed.
+        generate(&mut doc, &program, 9, true);
+
+        for (id, x, y) in &frozen {
+            let kept = doc
+                .components
+                .iter()
+                .find(|c| c.id == *id)
+                .expect("frozen desk was dropped on regenerate");
+            assert!(
+                (kept.x - x).abs() < 1e-9 && (kept.y - y).abs() < 1e-9,
+                "frozen desk moved"
+            );
+            assert_eq!(kept.decision, DecisionState::Confirmed);
+            // No other component overlaps this frozen footprint.
+            for c in &doc.components {
+                if c.id == *id {
+                    continue;
+                }
+                let overlaps = (c.x - x).abs() < (c.w + program.desk_w) / 2.0
+                    && (c.y - y).abs() < (c.h + program.desk_h) / 2.0;
+                assert!(!overlaps, "{} overlaps a frozen desk", c.label);
+            }
+        }
+
+        // Total desks never exceed the requested target.
+        let desks = doc.components.iter().filter(|c| c.category == "Desk").count();
+        assert!(desks <= program.desks as usize, "over-placed past target");
     }
 }
