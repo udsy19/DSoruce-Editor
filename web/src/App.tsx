@@ -6,6 +6,9 @@ import { Icon } from './ui/icons'
 import { StatsPanel } from './ui/StatsPanel'
 import { AgentPanel } from './ai/AgentPanel'
 import { Scene3D } from './three/Scene3D'
+import { DrawingView } from './import/DrawingView'
+import { parseDrawing } from './import/dxf'
+import type { Drawing, FurnitureItem } from './import/types'
 
 export function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -15,8 +18,37 @@ export function App() {
   const [ready, setReady] = useState(false)
   const [, setTick] = useState(0)
   const [tool, setTool] = useState('select')
-  const [mode, setMode] = useState<'2d' | '3d'>('2d')
+  const [mode, setMode] = useState<'2d' | '3d' | 'import'>('2d')
   const [aiOpen, setAiOpen] = useState(false)
+  const [drawing, setDrawing] = useState<Drawing | null>(null)
+  const [selItem, setSelItem] = useState<FurnitureItem | null>(null)
+  const [importing, setImporting] = useState(false)
+  const [importErr, setImportErr] = useState<string | null>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  const onImportFile = async (file: File) => {
+    setImporting(true)
+    setImportErr(null)
+    try {
+      let dxf: string
+      if (file.name.toLowerCase().endsWith('.dwg')) {
+        const resp = await fetch('/api/dwg', { method: 'POST', body: await file.arrayBuffer() })
+        const data = await resp.json()
+        if (!resp.ok) throw new Error(data.error || 'DWG conversion failed')
+        dxf = data.dxf
+      } else {
+        dxf = await file.text()
+      }
+      const d = parseDrawing(dxf)
+      setDrawing(d)
+      setSelItem(null)
+      setMode('import')
+    } catch (e) {
+      setImportErr(e instanceof Error ? e.message : String(e))
+    } finally {
+      setImporting(false)
+    }
+  }
 
   useEffect(() => {
     let inst: EditorCanvas | null = null
@@ -70,7 +102,35 @@ export function App() {
             <button className={mode === '3d' ? 'seg on' : 'seg'} onClick={() => setMode('3d')} data-testid="mode-3d">
               3D
             </button>
+            {drawing && (
+              <button
+                className={mode === 'import' ? 'seg on' : 'seg'}
+                onClick={() => setMode('import')}
+                data-testid="mode-import"
+              >
+                Plan
+              </button>
+            )}
           </div>
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".dwg,.dxf"
+            style={{ display: 'none' }}
+            onChange={(e) => {
+              const f = e.target.files?.[0]
+              if (f) onImportFile(f)
+              e.target.value = ''
+            }}
+          />
+          <button
+            className="export-btn"
+            onClick={() => fileRef.current?.click()}
+            disabled={importing}
+            data-testid="import-btn"
+          >
+            {importing ? 'Importing…' : 'Import DWG'}
+          </button>
           <ExportMenu ec={ec} />
         </div>
       </header>
@@ -107,15 +167,19 @@ export function App() {
 
         <main className="stage">
           <div className="canvas-wrap">
-            <canvas ref={canvasRef} style={{ display: mode === '3d' ? 'none' : 'block' }} />
+            <canvas ref={canvasRef} style={{ display: mode === '2d' ? 'block' : 'none' }} />
             {mode === '3d' && ready && ec && <Scene3D state={ec.getState()} />}
+            {mode === 'import' && drawing && <DrawingView drawing={drawing} onSelect={setSelItem} />}
             {!ready && <div className="loading">Loading Rust · Wasm core…</div>}
+            {importErr && <div className="import-err">Import failed: {importErr}</div>}
           </div>
-          {aiOpen && ec && <AgentPanel ec={ec} onClose={() => setAiOpen(false)} />}
+          {aiOpen && ec && mode !== 'import' && <AgentPanel ec={ec} onClose={() => setAiOpen(false)} />}
         </main>
 
         <aside className="inspector">
-          {selected && ec ? (
+          {mode === 'import' && drawing ? (
+            <ImportPanel drawing={drawing} item={selItem} />
+          ) : selected && ec ? (
             <ReimaginePanel ec={ec} c={selected} />
           ) : ec ? (
             <>
@@ -327,6 +391,65 @@ function GenerateCard({ ec, metrics }: { ec: EditorCanvas; metrics: Metrics | nu
           <ScoreBar label="Density" v={result.best.density} />
         </div>
       )}
+    </div>
+  )
+}
+
+/* ------------------------------ Imported plan ----------------------------- */
+
+function ImportPanel({ drawing, item }: { drawing: Drawing; item: FurnitureItem | null }) {
+  const w = drawing.bounds[2] - drawing.bounds[0]
+  const h = drawing.bounds[3] - drawing.bounds[1]
+  const counts = new Map<string, number>()
+  for (const f of drawing.furniture) counts.set(f.name, (counts.get(f.name) ?? 0) + 1)
+  const top = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10)
+
+  return (
+    <div className="panel-body">
+      <div className="panel-eyebrow">Imported plan</div>
+      <div className="metric-row">
+        <span className="label">Extent</span>
+        <span className="value">
+          {w.toFixed(1)} × {h.toFixed(1)}
+          <span className="unit">m</span>
+        </span>
+      </div>
+      <div className="metric-row">
+        <span className="label">Furniture items</span>
+        <span className="value">{drawing.furniture.length}</span>
+      </div>
+      <div className="metric-row">
+        <span className="label">Line entities</span>
+        <span className="value">{drawing.entities.length}</span>
+      </div>
+      <div className="metric-row">
+        <span className="label">Layers</span>
+        <span className="value">{drawing.layers.length}</span>
+      </div>
+
+      {item && (
+        <>
+          <div className="panel-eyebrow gap">Selected</div>
+          <div className="sel-name">{item.name}</div>
+          <div className="sel-cat">{item.category}</div>
+          <div className="spec num" style={{ marginTop: 8 }}>
+            <span>
+              {(item.bbox[2] - item.bbox[0]).toFixed(2)} × {(item.bbox[3] - item.bbox[1]).toFixed(2)} m
+            </span>
+          </div>
+          <div className="mock-note">Bind this to the material bank next.</div>
+        </>
+      )}
+
+      <div className="panel-eyebrow gap">Furniture schedule</div>
+      <div className="schedule">
+        {top.map(([name, n]) => (
+          <div className="row" key={name}>
+            <span className="row-label import-sched-name">{name}</span>
+            <span className="row-value">{n}</span>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

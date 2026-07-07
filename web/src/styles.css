@@ -1291,6 +1291,28 @@ button {
   color: var(--faint);
 }
 
+/* ------------------------------ Import ---------------------------------- */
+.import-err {
+  position: absolute;
+  left: 16px;
+  bottom: 16px;
+  max-width: 440px;
+  background: var(--danger-soft);
+  color: #a3352c;
+  padding: 10px 12px;
+  border-radius: var(--r-md);
+  font-size: 12.5px;
+  box-shadow: var(--shadow-md);
+  z-index: 25;
+}
+.import-sched-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 210px;
+  display: inline-block;
+}
+
 /* ------------------------------ Responsive ------------------------------ */
 @media (max-width: 900px) {
   :root {

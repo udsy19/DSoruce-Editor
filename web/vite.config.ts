@@ -2,6 +2,7 @@ import { defineConfig, loadEnv, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { OPENAI_TOOLS, buildSystem } from './src/ai/llmSchema'
+import { dwgConvertPlugin } from './src/import/dwgConvert'
 
 // Dev-only agent proxy. Holds the LLM key server-side and relays to any
 // OpenAI-compatible endpoint (OpenAI / Groq / OpenRouter / Together / local
@@ -98,7 +99,7 @@ export default defineConfig(({ mode }) => {
     if (env[k] && !process.env[k]) process.env[k] = env[k]
   }
   return {
-    plugins: [react(), agentProxy()],
+    plugins: [react(), agentProxy(), dwgConvertPlugin()],
     server: { port: 5173 },
   }
 })
