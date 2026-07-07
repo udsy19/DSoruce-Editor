@@ -34,6 +34,8 @@ Product vision: **`vision.md`**.
 ## Commands
 
 ```bash
+./run.sh      # one-command run: auto-bootstraps, rebuilds wasm only if Rust changed, starts dev
+              #   ./run.sh build → production build · ./run.sh fresh → force wasm rebuild + dev
 make wasm     # rebuild Rust → wasm into web/src/wasm  (REQUIRED after ANY Rust change)
 make dev      # make wasm + vite dev server on http://localhost:5173
 make build    # make wasm + tsc --noEmit + vite build
