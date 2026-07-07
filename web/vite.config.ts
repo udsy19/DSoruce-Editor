@@ -76,6 +76,66 @@ function agentProxy(): Plugin {
   }
 }
 
+// Dev-only Claude proxy for the soft-goal candidate evaluator. Holds the
+// Anthropic key server-side and relays a single Messages API call. Configure
+// via env (shell or gitignored web/.env.local):
+//   ANTHROPIC_API_KEY   (required for POST; GET reports configured=false without it)
+//   ANTHROPIC_MODEL     (default claude-sonnet-5)
+function claudeProxy(): Plugin {
+  return {
+    name: 'ds-claude-proxy',
+    configureServer(server) {
+      server.middlewares.use('/api/claude', async (req: IncomingMessage, res: ServerResponse) => {
+        const apiKey = process.env.ANTHROPIC_API_KEY || ''
+        const model = process.env.ANTHROPIC_MODEL || 'claude-sonnet-5'
+        res.setHeader('content-type', 'application/json')
+
+        if (req.method === 'GET') {
+          res.end(JSON.stringify({ configured: !!apiKey, model }))
+          return
+        }
+        if (req.method !== 'POST') {
+          res.statusCode = 405
+          res.end('{}')
+          return
+        }
+        if (!apiKey) {
+          res.statusCode = 503
+          res.end(JSON.stringify({ error: 'No ANTHROPIC_API_KEY configured' }))
+          return
+        }
+        try {
+          const body = await readJson(req)
+          const upstream = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              'x-api-key': apiKey,
+              'anthropic-version': '2023-06-01',
+            },
+            body: JSON.stringify({
+              model,
+              system: body.system,
+              messages: body.messages,
+              max_tokens: typeof body.max_tokens === 'number' ? body.max_tokens : 1024,
+            }),
+          })
+          const data = await upstream.json()
+          if (!upstream.ok) {
+            res.statusCode = 502
+            res.end(JSON.stringify({ error: data?.error ?? data }))
+            return
+          }
+          res.end(JSON.stringify(data))
+        } catch (e) {
+          res.statusCode = 500
+          res.end(JSON.stringify({ error: e instanceof Error ? e.message : String(e) }))
+        }
+      })
+    },
+  }
+}
+
 function readJson(req: IncomingMessage): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
     let body = ''
@@ -92,14 +152,14 @@ function readJson(req: IncomingMessage): Promise<Record<string, unknown>> {
 }
 
 export default defineConfig(({ mode }) => {
-  // Let the LLM_* config live in a gitignored web/.env.local as well as the
-  // shell env. Command-line env wins over .env files.
-  const env = loadEnv(mode, process.cwd(), 'LLM_')
-  for (const k of ['LLM_BASE_URL', 'LLM_API_KEY', 'LLM_MODEL']) {
+  // Let the LLM_* / ANTHROPIC_* config live in a gitignored web/.env.local as
+  // well as the shell env. Command-line env wins over .env files.
+  const env = loadEnv(mode, process.cwd(), ['LLM_', 'ANTHROPIC_'])
+  for (const k of ['LLM_BASE_URL', 'LLM_API_KEY', 'LLM_MODEL', 'ANTHROPIC_API_KEY', 'ANTHROPIC_MODEL']) {
     if (env[k] && !process.env[k]) process.env[k] = env[k]
   }
   return {
-    plugins: [react(), agentProxy(), dwgConvertPlugin()],
+    plugins: [react(), agentProxy(), claudeProxy(), dwgConvertPlugin()],
     server: {
       port: 5173,
       proxy: {

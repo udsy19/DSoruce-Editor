@@ -18,6 +18,8 @@ import { exportPNG } from './export/png'
 import { downloadDXF, downloadDrawingDXF } from './export/dxf'
 import { CandidateGallery } from './ui/CandidateGallery'
 import { extractPlate, pushPlateToEditor } from './import/testfit'
+import { saveProject, openProject, applyProject } from './persist/file'
+import { evaluateCandidates, type SoftVerdict } from './ai/evaluator'
 
 // CAD drafting tools (map to EditorCanvas 'cad:<id>' tools).
 const CAD_RAIL: { id: string; icon: string; label: string; hint?: string }[] = [
@@ -117,8 +119,37 @@ export function App() {
     if (mode === '2d' && ready) ecRef.current?.refresh()
   }, [mode, ready])
 
-  // Global "?" opens the shortcut help; Escape closes it. Ignored while typing so
-  // it never steals focus from the material-bank search or program fields.
+  // Save the whole session (document snapshot incl. CAD layer, program,
+  // import session, view hints) to a local .dsource file. Routed through a
+  // ref so the []-dep keydown effect below always calls the fresh closure.
+  const onSave = () => {
+    const ec = ecRef.current
+    if (!ec) return
+    saveProject({ ec, drawing, ui: { mode, planView } })
+  }
+  const onSaveRef = useRef(onSave)
+  onSaveRef.current = onSave
+
+  const projectFileRef = useRef<HTMLInputElement>(null)
+  const onOpenProject = async (file: File) => {
+    const ec = ecRef.current
+    if (!ec) return
+    try {
+      const f = await openProject(file)
+      applyProject(ec, f) // document snapshot + program (core state)
+      setDrawing(f.drawing ?? null) // React-owned import session
+      setSelItem(null)
+      // Best-effort UI restore — fall back safely when hints are absent.
+      const m = f.ui?.mode
+      setMode(m === '3d' ? '3d' : m === 'import' && f.drawing ? 'import' : '2d')
+      setPlanView(f.ui?.planView === '3d' ? '3d' : '2d')
+    } catch (e) {
+      setImportErr(e instanceof Error ? e.message : String(e))
+    }
+  }
+
+  // Global "?" opens the shortcut help; Escape closes it; ⌘S saves. Ignored
+  // while typing so it never steals focus from search or program fields.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null
@@ -127,6 +158,9 @@ export function App() {
       if (e.key === '?' && !typing) {
         e.preventDefault()
         setHelpOpen((o) => !o)
+      } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's' && !typing) {
+        e.preventDefault()
+        onSaveRef.current()
       } else if (e.key === 'Escape') {
         setHelpOpen(false)
       }
@@ -216,6 +250,28 @@ export function App() {
               Test-fit this plan
             </button>
           )}
+          <button className="export-btn" onClick={onSave} data-testid="save-project" title="Save project (⌘S)">
+            Save
+          </button>
+          <button
+            className="export-btn"
+            onClick={() => projectFileRef.current?.click()}
+            data-testid="open-project"
+            title="Open a .dsource project"
+          >
+            Open
+          </button>
+          <input
+            ref={projectFileRef}
+            type="file"
+            accept=".dsource,application/json"
+            style={{ display: 'none' }}
+            onChange={(e) => {
+              const f = e.target.files?.[0]
+              if (f) onOpenProject(f)
+              e.target.value = ''
+            }}
+          />
           <input
             ref={fileRef}
             type="file"
@@ -641,6 +697,7 @@ function GenerateCard({ ec, metrics }: { ec: EditorCanvas; metrics: Metrics | nu
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<GenResult | null>(null)
   const [activeSeed, setActiveSeed] = useState<number | null>(null)
+  const [verdicts, setVerdicts] = useState<Record<number, SoftVerdict> | null>(null)
   const [note, setNote] = useState<string | null>(null)
 
   const set = (patch: Partial<Program>) => setProgram((p) => ({ ...p, ...patch }))
@@ -658,6 +715,18 @@ function GenerateCard({ ec, metrics }: { ec: EditorCanvas; metrics: Metrics | nu
       setResult(res)
       setActiveSeed(res.seed)
       setBusy(false)
+      // Claude soft-goal evaluation. Gate = the best achieved score capped at
+      // the hard target: when the search hits 82 the gate is vision-strict
+      // (only passing plans spend tokens); when the room tops out below it,
+      // the best candidates still get judged — junk never reaches the API
+      // because the gallery already keeps only the top-K. Silently skipped
+      // when no ANTHROPIC_API_KEY is configured.
+      setVerdicts(null)
+      const gate = Math.min(82, Math.floor(res.best.total))
+      void evaluateCandidates(res.candidates, program, gate).then((ai) => {
+        if (!ai) return
+        setVerdicts(Object.fromEntries(ai.verdicts.map((v) => [v.seed, v])))
+      })
     }, 16)
   }
 
@@ -718,6 +787,7 @@ function GenerateCard({ ec, metrics }: { ec: EditorCanvas; metrics: Metrics | nu
           <CandidateGallery
             candidates={result.candidates}
             activeSeed={activeSeed}
+            verdicts={verdicts ?? undefined}
             onPick={(c) => {
               ec.applyCandidate(c.snap)
               setActiveSeed(c.seed)
