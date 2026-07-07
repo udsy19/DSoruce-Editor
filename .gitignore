@@ -21,3 +21,6 @@ web/src/wasm
 # Browser-test artifacts
 .playwright-mcp/
 /*.png
+
+# Generated from the sample DWG via dwg2dxf
+samples/*.dxf
