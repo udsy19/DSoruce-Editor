@@ -33,7 +33,7 @@ import { catByCategory } from '../editor/catalog'
 
 const WALL_HEIGHT = 2.6
 const CEILING_HEIGHT = 2.6
-const BG = 0x0f1420
+const BG = 0xf2f4f7
 
 /** Per-category extruded height (meters). */
 function componentHeight(category: string): number {
@@ -71,7 +71,7 @@ export class Viewer3D {
   private materials = new Map<string, THREE.Material>()
   private highlightMat = new THREE.LineBasicMaterial({ color: 0xffffff })
   private wallMat = new THREE.MeshStandardMaterial({
-    color: 0xcdd6e4,
+    color: 0xd7dbe0,
     roughness: 0.9,
     metalness: 0.0,
   })
@@ -107,7 +107,7 @@ export class Viewer3D {
     this.controls.target.set(0, 0, 0)
 
     // Lighting: hemisphere fill + a shadow-casting sun.
-    const hemi = new THREE.HemisphereLight(0xbdd4ff, 0x141a26, 0.9)
+    const hemi = new THREE.HemisphereLight(0xffffff, 0xe8eaee, 1.0)
     this.scene.add(hemi)
 
     this.sun = new THREE.DirectionalLight(0xffffff, 2.2)
@@ -128,14 +128,14 @@ export class Viewer3D {
     // Ground + grid.
     this.ground = new THREE.Mesh(
       new THREE.PlaneGeometry(400, 400),
-      new THREE.MeshStandardMaterial({ color: 0x0b0f18, roughness: 1 }),
+      new THREE.MeshStandardMaterial({ color: 0xeef0f3, roughness: 1 }),
     )
     this.ground.rotation.x = -Math.PI / 2
     this.ground.position.y = -0.001
     this.ground.receiveShadow = true
     this.scene.add(this.ground)
 
-    this.grid = new THREE.GridHelper(200, 200, 0x2a3348, 0x1a2032)
+    this.grid = new THREE.GridHelper(200, 200, 0xcfd4da, 0xe2e5e9)
     ;(this.grid.material as THREE.Material).transparent = true
     ;(this.grid.material as THREE.Material).opacity = 0.35
     this.scene.add(this.grid)

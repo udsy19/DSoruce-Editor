@@ -1,10 +1,12 @@
 // Self-hosted fonts (no runtime network dependency).
-// Space Grotesk = UI/display (technical, geometric). IBM Plex Mono = all data/dimensions.
-import '@fontsource/space-grotesk/400.css'
-import '@fontsource/space-grotesk/500.css'
-import '@fontsource/space-grotesk/700.css'
-import '@fontsource/ibm-plex-mono/400.css'
-import '@fontsource/ibm-plex-mono/500.css'
+// Hanken Grotesk = UI, body, and ALL data/numbers (tabular figures — no monospace).
+// Schibsted Grotesk = large display headlines only.
+import '@fontsource/hanken-grotesk/400.css'
+import '@fontsource/hanken-grotesk/500.css'
+import '@fontsource/hanken-grotesk/600.css'
+import '@fontsource/hanken-grotesk/700.css'
+import '@fontsource/schibsted-grotesk/500.css'
+import '@fontsource/schibsted-grotesk/700.css'
 
 import { createRoot } from 'react-dom/client'
 import { App } from './App'

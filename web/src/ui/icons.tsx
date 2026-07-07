@@ -62,6 +62,46 @@ export function Icon({ name, size = 19 }: Props) {
           <path d="M4 12h16M12 4v16" strokeDasharray="2 2.4" strokeWidth={1.2} />
         </svg>
       )
+    case 'bolt':
+      return (
+        <svg {...p}>
+          <path d="M13 2L4 14h6l-1 8 9-12h-6z" />
+        </svg>
+      )
+    case 'people':
+      return (
+        <svg {...p}>
+          <circle cx="9" cy="8" r="3" />
+          <path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6" />
+          <path d="M16 5.5a3 3 0 0 1 0 5.6M21 20c0-2.5-1.4-4.6-3.4-5.6" />
+        </svg>
+      )
+    case 'leaf':
+      return (
+        <svg {...p}>
+          <path d="M4 20c0-9 7-16 16-16 0 9-7 16-16 16z" />
+          <path d="M4 20C8 14 12 11 18 8" />
+        </svg>
+      )
+    case 'dollar':
+      return (
+        <svg {...p}>
+          <path d="M12 3v18M16 7.5c0-1.9-1.8-3-4-3s-4 1.1-4 3 1.8 2.7 4 3.2 4 1.3 4 3.3-1.8 3-4 3-4-1.1-4-3" />
+        </svg>
+      )
+    case 'caret':
+      return (
+        <svg {...p}>
+          <path d="M6 9l6 6 6-6" />
+        </svg>
+      )
+    case 'sparkles':
+      return (
+        <svg {...p}>
+          <path d="M12 3l1.8 4.7L18.5 9.5 13.8 11.3 12 16l-1.8-4.7L5.5 9.5l4.7-1.8z" />
+          <path d="M18 15l.7 1.8 1.8.7-1.8.7L18 20l-.7-1.8-1.8-.7 1.8-.7z" />
+        </svg>
+      )
     case 'generate':
       return (
         <svg {...p}>

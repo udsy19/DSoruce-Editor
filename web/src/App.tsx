@@ -1,16 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import {
-  EditorCanvas,
-  DocComponent,
-  Metrics,
-  Program,
-  LayoutScore,
-  CirculationScore,
-  GenResult,
-} from './editor/EditorCanvas'
+import { EditorCanvas, DocComponent, Metrics, Program, GenResult } from './editor/EditorCanvas'
 import { CATALOG, catByCategory } from './editor/catalog'
 import { searchBank } from './materialBank/mock'
 import { Icon } from './ui/icons'
+import { StatsPanel } from './ui/StatsPanel'
 import { Scene3D } from './three/Scene3D'
 
 // Full program sent to the Rust engine. The panel exposes a few fields; the rest
@@ -55,7 +48,6 @@ export function App() {
       ec.coordEl = coordRef.current
       ec.scaleEl = scaleRef.current
       ec.refresh()
-      // Dev-only handle for E2E/browser testing.
       if (import.meta.env.DEV) (window as unknown as { __ec: EditorCanvas }).__ec = ec
       setReady(true)
     })
@@ -65,7 +57,6 @@ export function App() {
     }
   }, [])
 
-  // Repaint the 2D canvas when returning from 3D (it was display:none → 0-size).
   useEffect(() => {
     if (mode === '2d' && ready) ecRef.current?.refresh()
   }, [mode, ready])
@@ -96,11 +87,14 @@ export function App() {
               3D
             </button>
           </div>
+          <ExportMenu ec={ec} />
         </div>
       </header>
 
       <div className="body">
         <nav className="rail" aria-label="Tools">
+          <span className="rail-avatar" aria-hidden />
+          <div className="rail-sep" />
           <RailButton id="select" tool={tool} onClick={pickTool} icon="select" tip="Select" hint="V" />
           <RailButton id="wall" tool={tool} onClick={pickTool} icon="wall" tip="Wall" hint="W" />
           <div className="rail-sep" />
@@ -116,6 +110,7 @@ export function App() {
               swatch={it.color}
             />
           ))}
+          <span className="rail-spring" />
         </nav>
 
         <main className="stage">
@@ -129,30 +124,96 @@ export function App() {
         <aside className="inspector">
           {selected && ec ? (
             <ReimaginePanel ec={ec} c={selected} />
-          ) : (
-            <OverviewPanel ec={ec} metrics={metrics} />
-          )}
+          ) : ec ? (
+            <>
+              <StatsPanel ec={ec} />
+              <GenerateCard ec={ec} metrics={metrics} />
+            </>
+          ) : null}
         </aside>
       </div>
 
       <footer className="statusbar">
         <span className="sb-coord">
           <span className="sb-glyph">⌖</span>
-          <span ref={coordRef} className="mono">
+          <span ref={coordRef} className="num">
             x —  y —
           </span>
         </span>
         <span className="sb-dot" />
-        <span className="mono muted" ref={scaleRef}>
+        <span className="num muted" ref={scaleRef}>
           46 px/m
         </span>
         <span className="sb-spring" />
-        <span className="mono sb-metrics">
+        <span className="num sb-metrics">
           {metrics
             ? `${metrics.floor_area.toFixed(1)} m²  ·  ${metrics.component_count} items  ·  ${metrics.confirmed} confirmed`
             : '—'}
         </span>
       </footer>
+    </div>
+  )
+}
+
+function ExportMenu({ ec }: { ec: EditorCanvas | null }) {
+  const [open, setOpen] = useState(false)
+
+  const exportCSV = () => {
+    if (!ec) return
+    const m = ec.getMetrics()
+    const zs = ec.getZoneStats()
+    const rows = [
+      'metric,value',
+      `gross_external_area_m2,${(m.gross_external_area ?? 0).toFixed(2)}`,
+      `net_internal_area_m2,${(m.net_internal_area ?? 0).toFixed(2)}`,
+      `workstations,${m.workstations ?? 0}`,
+      `area_per_workstation_m2,${(m.area_per_workstation ?? 0).toFixed(2)}`,
+      `efficiency_pct,${(m.efficiency_pct ?? 0).toFixed(1)}`,
+      `indicative_cost,${Math.round(m.indicative_cost ?? 0)}`,
+      `indicative_carbon_kgco2e,${Math.round(m.indicative_carbon ?? 0)}`,
+      '',
+      'zone_id,zone_type,label,area_m2,capacity,seated,pct_of_nia',
+      ...zs.map(
+        (z) =>
+          `${z.id},${z.zone_type},"${z.label}",${z.area.toFixed(2)},${z.capacity},${z.seated},${z.pct_of_nia.toFixed(1)}`,
+      ),
+    ]
+    const blob = new Blob([rows.join('\n')], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'dsource-plan.csv'
+    a.click()
+    URL.revokeObjectURL(url)
+    setOpen(false)
+  }
+
+  return (
+    <div className="export">
+      <button className="export-btn" onClick={() => setOpen((o) => !o)} data-testid="export-btn">
+        Export <Icon name="caret" size={13} />
+      </button>
+      {open && (
+        <div className="export-menu">
+          <div className="export-item" onClick={exportCSV} data-testid="export-csv">
+            Export CSV
+          </div>
+          <div className="export-item">
+            Export PDF <span className="hint">soon</span>
+          </div>
+          <div className="export-sep" />
+          <div className="export-item">
+            Export 2D <span className="hint">DWG · DXF</span>
+          </div>
+          <div className="export-item">
+            Export 3D <span className="hint">IFC · OBJ · RVT</span>
+          </div>
+          <div className="export-sep" />
+          <div className="export-item">
+            Share… <span className="hint">soon</span>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -186,36 +247,30 @@ function RailButton({
       {swatch && <span className="rail-swatch" style={{ background: swatch }} />}
       <span className="rail-tip">
         <span className="rail-tip-name">{tip}</span>
-        {hint && <span className="rail-tip-hint mono">{hint}</span>}
+        {hint && <span className="rail-tip-hint num">{hint}</span>}
       </span>
     </button>
   )
 }
 
-/* -------------------------------- Overview -------------------------------- */
+/* ---------------------------- Autonomous test-fit -------------------------- */
 
-function OverviewPanel({ ec, metrics }: { ec: EditorCanvas | null; metrics: Metrics | null }) {
+function GenerateCard({ ec, metrics }: { ec: EditorCanvas; metrics: Metrics | null }) {
   const [program, setProgram] = useState<Program>(DEFAULT_PROGRAM)
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<GenResult | null>(null)
   const [note, setNote] = useState<string | null>(null)
 
-  const circ: CirculationScore | null =
-    ec && metrics && metrics.wall_count > 0 ? ec.circulation() : null
-
   const set = (patch: Partial<Program>) => setProgram((p) => ({ ...p, ...patch }))
-
   const confirmed = metrics?.confirmed ?? 0
 
   const run = (keepConfirmed: boolean) => {
-    if (!ec) return
     if (ec.getState().walls.length === 0) {
       setNote('Draw a closed room boundary first, then generate.')
       return
     }
     setNote(null)
     setBusy(true)
-    // Defer so the "Searching…" state paints before the synchronous search runs.
     window.setTimeout(() => {
       const res = ec.autoGenerate(program, { maxIter: 18, target: 82, keepConfirmed })
       setResult(res)
@@ -224,34 +279,23 @@ function OverviewPanel({ ec, metrics }: { ec: EditorCanvas | null; metrics: Metr
   }
 
   return (
-    <div className="panel-body">
-      <div className="panel-eyebrow">Plan</div>
-
-      <div className="schedule">
-        <Row label="Floor area" value={metrics ? `${metrics.floor_area.toFixed(1)} m²` : '—'} />
-        <Row label="Components" value={metrics ? String(metrics.component_count) : '—'} />
-        <Row label="Confirmed" value={metrics ? String(metrics.confirmed) : '—'} />
-        <Row label="Walls" value={metrics ? String(metrics.wall_count) : '—'} />
-        {circ && (
-          <>
-            <Row label="Min corridor" value={`${circ.min_corridor_width.toFixed(2)} m`} />
-            <Row label="Circulation" value={`${Math.round(circ.score)}/100`} />
-          </>
-        )}
-      </div>
-
-      <div className="panel-eyebrow gap">
-        <Icon name="generate" size={13} /> Autonomous test-fit
+    <div className="panel-body" style={{ borderTop: '1px solid var(--hairline)' }}>
+      <div className="panel-eyebrow">
+        <Icon name="sparkles" size={13} /> Autonomous test-fit
       </div>
       <p className="panel-lead">
         Set the program. The engine searches layouts and keeps the best-scoring fit for your criteria.
       </p>
 
       <div className="field-grid">
-        <NumberField label="Desks" value={program.desks} min={0} max={400}
-          onChange={(v) => set({ desks: v })} />
-        <NumberField label="Meeting rooms" value={program.meeting_rooms} min={0} max={40}
-          onChange={(v) => set({ meeting_rooms: v })} />
+        <NumberField label="Desks" value={program.desks} min={0} max={400} onChange={(v) => set({ desks: v })} />
+        <NumberField
+          label="Meeting rooms"
+          value={program.meeting_rooms}
+          min={0}
+          max={40}
+          onChange={(v) => set({ meeting_rooms: v })}
+        />
       </div>
       <SliderField
         label="Target corridor"
@@ -267,12 +311,7 @@ function OverviewPanel({ ec, metrics }: { ec: EditorCanvas | null; metrics: Metr
         {busy ? 'Searching layouts…' : 'Generate test-fit'}
       </button>
       {confirmed > 0 ? (
-        <button
-          className="cta-ghost"
-          onClick={() => run(true)}
-          disabled={busy}
-          data-testid="regenerate"
-        >
+        <button className="cta-ghost" onClick={() => run(true)} disabled={busy} data-testid="regenerate">
           Regenerate · keep {confirmed} frozen
         </button>
       ) : (
@@ -283,9 +322,9 @@ function OverviewPanel({ ec, metrics }: { ec: EditorCanvas | null; metrics: Metr
       {result && (
         <div className="score-card">
           <div className="score-head">
-            <span className="score-total mono">{Math.round(result.best.total)}</span>
-            <span className="score-of mono">/100</span>
-            <span className="score-meta mono">
+            <span className="score-total num">{Math.round(result.best.total)}</span>
+            <span className="score-of num">/100</span>
+            <span className="score-meta num">
               {result.best.placed_desks} desks · {result.iterations} iterations
             </span>
           </div>
@@ -315,7 +354,7 @@ function ReimaginePanel({ ec, c }: { ec: EditorCanvas; c: DocComponent }) {
   return (
     <div className="panel-body">
       <div className="sel-head">
-        <span className="sel-tag mono" style={{ color: cat?.color }}>
+        <span className="sel-tag num" style={{ color: cat?.color }}>
           #{String(c.id).padStart(2, '0')}
         </span>
         <div className="sel-title">
@@ -324,8 +363,10 @@ function ReimaginePanel({ ec, c }: { ec: EditorCanvas; c: DocComponent }) {
         </div>
       </div>
 
-      <div className="spec mono">
-        <span>{c.w.toFixed(2)} × {c.h.toFixed(2)} m</span>
+      <div className="spec num">
+        <span>
+          {c.w.toFixed(2)} × {c.h.toFixed(2)} m
+        </span>
         <span className="spec-sep" />
         <span>{(c.w * c.h).toFixed(2)} m²</span>
       </div>
@@ -363,7 +404,7 @@ function ReimaginePanel({ ec, c }: { ec: EditorCanvas; c: DocComponent }) {
               <span className="p-name">{p.name}</span>
               <span className="p-vendor">{p.vendor}</span>
             </span>
-            <span className="p-price mono">${p.price.toLocaleString()}</span>
+            <span className="p-price num">${p.price.toLocaleString()}</span>
           </button>
         ))}
       </div>
@@ -378,15 +419,6 @@ function ReimaginePanel({ ec, c }: { ec: EditorCanvas; c: DocComponent }) {
 
 /* -------------------------------- Fields ---------------------------------- */
 
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="row">
-      <span className="row-label">{label}</span>
-      <span className="row-value mono">{value}</span>
-    </div>
-  )
-}
-
 function ScoreBar({ label, v }: { label: string; v: number }) {
   return (
     <div className="bar">
@@ -394,7 +426,7 @@ function ScoreBar({ label, v }: { label: string; v: number }) {
       <span className="bar-track">
         <span className="bar-fill" style={{ width: `${Math.max(0, Math.min(100, v))}%` }} />
       </span>
-      <span className="bar-val mono">{Math.round(v)}</span>
+      <span className="bar-val num">{Math.round(v)}</span>
     </div>
   )
 }
@@ -416,7 +448,7 @@ function NumberField({
     <label className="field">
       <span className="field-label">{label}</span>
       <input
-        className="field-input mono"
+        className="field-input num"
         type="number"
         value={value}
         min={min}
@@ -448,7 +480,7 @@ function SliderField({
     <label className="field slider-field">
       <span className="field-label">
         {label}
-        <span className="field-value mono">
+        <span className="field-value num">
           {value.toFixed(1)}
           {suffix ? ` ${suffix}` : ''}
         </span>

@@ -7,23 +7,57 @@
 //! `docs/adr/0001-rendering-staging.md`).
 
 mod circulation;
+mod cost;
 mod document;
 mod geometry;
 mod layout;
 mod model;
+mod zone;
 
 use document::Document;
 use geometry::Point;
 use model::{Component, DecisionState, Wall};
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
+use zone::ZoneType;
 
 #[derive(Serialize)]
 struct Metrics {
+    // --- existing (Scene3D / App depend on these) ---
     floor_area: f64,
     wall_count: usize,
     component_count: usize,
     confirmed: usize,
+    // --- Slice 2: Laiout Statistics-panel headline metrics (additive) ---
+    /// Wall-bbox area (m²); same value as `floor_area`, named for the panel.
+    gross_external_area: f64,
+    /// Σ zone areas (m²); the usable/tiled area the donut sums over.
+    net_internal_area: f64,
+    /// Count of `Desk` components.
+    workstations: usize,
+    /// NIA / workstations (m²); 0 when there are no workstations.
+    area_per_workstation: f64,
+    /// (Workspace + Meeting + Collaboration area) / NIA × 100; 0 when NIA is 0.
+    efficiency_pct: f64,
+    /// Indicative fit-out cost (currency units) — see `cost.rs`.
+    indicative_cost: f64,
+    /// Indicative embodied carbon (kgCO2e) — see `cost.rs`.
+    indicative_carbon: f64,
+}
+
+/// Per-zone row for the Statistics panel + AI reasoning. Serialized as an array
+/// element by `zone_stats()`.
+#[derive(Serialize)]
+struct ZoneStat {
+    id: u32,
+    zone_type: ZoneType,
+    label: String,
+    area: f64,
+    capacity: u32,
+    /// Count of this zone's components whose category is "Desk".
+    seated: usize,
+    /// area / NIA × 100 (0 when NIA is 0). Slices sum to ~100 because zones tile.
+    pct_of_nia: f64,
 }
 
 /// The editor handle exposed to JavaScript. Holds the single source-of-truth
@@ -135,8 +169,38 @@ impl Editor {
 
     /// Live metrics panel data.
     pub fn metrics(&self) -> Result<JsValue, JsValue> {
+        let floor_area = self.doc.floor_area();
+        let nia: f64 = self.doc.zones.iter().map(|z| z.area()).sum();
+        let workstations = self
+            .doc
+            .components
+            .iter()
+            .filter(|c| c.category == "Desk")
+            .count();
+        let programmed: f64 = self
+            .doc
+            .zones
+            .iter()
+            .filter(|z| {
+                matches!(
+                    z.zone_type,
+                    ZoneType::Workspace | ZoneType::Meeting | ZoneType::Collaboration
+                )
+            })
+            .map(|z| z.area())
+            .sum();
+        let area_per_workstation = if workstations > 0 {
+            nia / workstations as f64
+        } else {
+            0.0
+        };
+        let efficiency_pct = if nia > 0.0 {
+            programmed / nia * 100.0
+        } else {
+            0.0
+        };
         let m = Metrics {
-            floor_area: self.doc.floor_area(),
+            floor_area,
             wall_count: self.doc.walls.len(),
             component_count: self.doc.components.len(),
             confirmed: self
@@ -145,8 +209,56 @@ impl Editor {
                 .iter()
                 .filter(|c| c.decision == DecisionState::Confirmed)
                 .count(),
+            gross_external_area: floor_area,
+            net_internal_area: nia,
+            workstations,
+            area_per_workstation,
+            efficiency_pct,
+            indicative_cost: cost::indicative_cost(&self.doc),
+            indicative_carbon: cost::indicative_carbon(&self.doc),
         };
         serde_wasm_bindgen::to_value(&m).map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
+    /// All zones, for rendering. Part of `state()`, but exposed standalone for a
+    /// cheap re-read after a zone-only edit.
+    pub fn zones(&self) -> Result<JsValue, JsValue> {
+        serde_wasm_bindgen::to_value(&self.doc.zones)
+            .map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
+    /// Per-zone stats for the Statistics panel + AI reasoning. Array of
+    /// `{ id, zone_type, label, area, capacity, seated, pct_of_nia }`.
+    pub fn zone_stats(&self) -> Result<JsValue, JsValue> {
+        let nia: f64 = self.doc.zones.iter().map(|z| z.area()).sum();
+        let stats: Vec<ZoneStat> = self
+            .doc
+            .zones
+            .iter()
+            .map(|z| {
+                let seated = z
+                    .component_ids
+                    .iter()
+                    .filter(|&&cid| {
+                        self.doc
+                            .components
+                            .iter()
+                            .any(|c| c.id == cid && c.category == "Desk")
+                    })
+                    .count();
+                let area = z.area();
+                ZoneStat {
+                    id: z.id,
+                    zone_type: z.zone_type,
+                    label: z.label.clone(),
+                    area,
+                    capacity: z.capacity(),
+                    seated,
+                    pct_of_nia: if nia > 0.0 { area / nia * 100.0 } else { 0.0 },
+                }
+            })
+            .collect();
+        serde_wasm_bindgen::to_value(&stats).map_err(|e| JsValue::from_str(&e.to_string()))
     }
 
     /// Autonomously generate a test-fit from a `Program` (plain JS object).

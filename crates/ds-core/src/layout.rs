@@ -25,6 +25,7 @@
 use crate::circulation::{self, CirculationConfig};
 use crate::document::Document;
 use crate::model::{Component, DecisionState};
+use crate::zone::{Zone, ZoneShape, ZoneType};
 use serde::{Deserialize, Serialize};
 
 /// The user-set program + criteria. `desks`/`meeting_rooms` and the footprint
@@ -162,6 +163,20 @@ fn push_component(doc: &mut Document, category: &str, x: f64, y: f64, w: f64, h:
     });
 }
 
+/// Mirror of `push_component` for zones: mint a shared id and record a tiled
+/// floor region. `component_ids` is filled later by `reassign_components`.
+fn push_zone(doc: &mut Document, zone_type: ZoneType, shape: ZoneShape, label: &str) {
+    let id = doc.alloc_id();
+    doc.zones.push(Zone {
+        id,
+        zone_type,
+        shape,
+        label: label.to_string(),
+        component_ids: Vec::new(),
+        group: None,
+    });
+}
+
 /// Axis-aligned overlap test between a candidate footprint (center cx,cy, size
 /// w×h) and any obstacle rect, expanded by `pad` on every side.
 fn footprint_overlaps(
@@ -196,6 +211,9 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
     } else {
         doc.components.clear();
     }
+    // Zones are regenerated wholesale each call (like components), including under
+    // keep_confirmed — frozen components are simply re-bucketed into the new zones.
+    doc.zones.clear();
     doc.selection = None;
     // Only frozen footprints block new placement. Items placed in this call are
     // laid out on non-overlapping pitches by construction, so they must NOT be
@@ -227,93 +245,171 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
     let mut rooms_placed = doc.components.iter().filter(|c| c.category == "MeetingRoom").count() as u32;
     let mut desks_placed = doc.components.iter().filter(|c| c.category == "Desk").count() as u32;
 
+    // --- Zone tiling, part 1: perimeter Circulation ring ------------------
+    // The corridor is a rectangular ring: the wall bbox minus the work-zone hole
+    // (the concentric inset). Ring + work zone tile the whole bbox with no gap.
+    push_zone(
+        doc,
+        ZoneType::Circulation,
+        ZoneShape::RectRing {
+            x: (min_x + max_x) / 2.0,
+            y: (min_y + max_y) / 2.0,
+            w: max_x - min_x,
+            h: max_y - min_y,
+            in_w: x1 - x0,
+            in_h: y1 - y0,
+        },
+        "Circulation",
+    );
+
     // --- 1. Meeting rooms: a column down the right edge of the work zone.
     // A side column (vs a full-width top band) keeps the desk field contiguous —
     // better for circulation and bench adjacency — and we only claim the column
     // if at least one desk column still fits beside it, so a shallow room never
     // ends up with meeting rooms and zero desks. Room size is clamped to fit.
-    // Slots that would collide with a frozen component are skipped. ---
+    // Slots that would collide with a frozen component are skipped. Each placed
+    // room also emits a `Meeting` zone matching its footprint. ---
     let mut dz_x1 = x1;
+    let mut claimed = false;
+    let mut col_x0 = x1; // meeting-column left edge; stays x1 when no column claimed
+    let mut col_mw = 0.0f64;
+    let mut meeting_intervals: Vec<(f64, f64)> = Vec::new(); // (top, bottom) per placed room
     if rooms_placed < program.meeting_rooms && program.meeting_w > 0.0 && program.meeting_h > 0.0 {
         let mw = program.meeting_w.min(x1 - x0);
         let mh = program.meeting_h.min(y1 - y0);
-        let col_x0 = x1 - mw;
+        let cx0 = x1 - mw;
         let mr_pitch = mh + clear;
         let rows = (((y1 - y0) + clear) / mr_pitch).floor() as i64;
         // Require room for a desk column to the left before claiming the strip.
-        if rows > 0 && (col_x0 - clear - x0) >= program.desk_w {
-            let mut claimed = false;
+        if rows > 0 && (cx0 - clear - x0) >= program.desk_w {
             for r in 0..rows {
                 if rooms_placed >= program.meeting_rooms {
                     break;
                 }
-                let cx = col_x0 + mw / 2.0;
+                let cx = cx0 + mw / 2.0;
                 let cy = y0 + mh / 2.0 + (r as f64) * mr_pitch;
                 if footprint_overlaps(&obstacles[..frozen_len], cx, cy, mw, mh, clear) {
                     continue;
                 }
                 push_component(doc, "MeetingRoom", cx, cy, mw, mh);
+                let room_no = rooms_placed + 1;
+                push_zone(
+                    doc,
+                    ZoneType::Meeting,
+                    ZoneShape::Rect { x: cx, y: cy, w: mw, h: mh },
+                    &format!("Meeting Room {}", room_no),
+                );
                 obstacles.push((cx, cy, mw, mh));
+                meeting_intervals.push((cy - mh / 2.0, cy + mh / 2.0));
                 rooms_placed += 1;
                 claimed = true;
             }
             if claimed {
-                dz_x1 = col_x0 - clear;
+                dz_x1 = cx0 - clear;
+                col_x0 = cx0;
+                col_mw = mw;
             }
         }
+    }
+
+    // --- Zone tiling, part 2: Workspace + Core ----------------------------
+    // Workspace covers the desk field with its right edge EXTENDED to the meeting
+    // column (absorbing the clear-wide aisle, v1 option (a)); when no column was
+    // claimed it spans the full work-zone width. This makes ring · workspace ·
+    // meeting-column a strict tile of the bbox.
+    let ws_x1 = if claimed { col_x0 } else { x1 };
+    push_zone(
+        doc,
+        ZoneType::Workspace,
+        ZoneShape::Rect {
+            x: (x0 + ws_x1) / 2.0,
+            y: (y0 + y1) / 2.0,
+            w: ws_x1 - x0,
+            h: y1 - y0,
+        },
+        "Open Workspace",
+    );
+    // Fill the meeting column's leftover bands (between stacked rooms and below
+    // the last one) with `Core` zones so the column tiles exactly. Slivers under
+    // ~1 m² are skipped to avoid noise.
+    if claimed {
+        meeting_intervals.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+        let cx = col_x0 + col_mw / 2.0;
+        let mut prev_bottom = y0;
+        let emit_core = |top: f64, bottom: f64, doc: &mut Document| {
+            let h = bottom - top;
+            if h * col_mw >= 1.0 {
+                push_zone(
+                    doc,
+                    ZoneType::Core,
+                    ZoneShape::Rect { x: cx, y: (top + bottom) / 2.0, w: col_mw, h },
+                    "Core",
+                );
+            }
+        };
+        for &(top, bottom) in &meeting_intervals {
+            emit_core(prev_bottom, top, doc);
+            prev_bottom = bottom;
+        }
+        emit_core(prev_bottom, y1, doc);
     }
 
     // --- 2. Desk grid fills the remaining work zone (full height), skipping
     // any grid cell that would collide with a frozen or just-placed obstacle. ---
-    if program.desk_w <= 0.0 || program.desk_h <= 0.0 {
-        return;
-    }
-    let dz_x0 = x0;
-    let dz_y0 = y0;
-    let dz_y1 = y1;
-    if dz_x1 <= dz_x0 || dz_y1 <= dz_y0 {
-        return;
-    }
+    'desks: {
+        if program.desk_w <= 0.0 || program.desk_h <= 0.0 {
+            break 'desks;
+        }
+        let dz_x0 = x0;
+        let dz_y0 = y0;
+        let dz_y1 = y1;
+        if dz_x1 <= dz_x0 || dz_y1 <= dz_y0 {
+            break 'desks;
+        }
 
-    let pitch_x = program.desk_w + clear;
-    let pitch_y = program.desk_h + clear;
-    let cols = (((dz_x1 - dz_x0) + clear) / pitch_x).floor() as i64;
-    let rows = (((dz_y1 - dz_y0) + clear) / pitch_y).floor() as i64;
-    if cols <= 0 || rows <= 0 {
-        return;
-    }
+        let pitch_x = program.desk_w + clear;
+        let pitch_y = program.desk_h + clear;
+        let cols = (((dz_x1 - dz_x0) + clear) / pitch_x).floor() as i64;
+        let rows = (((dz_y1 - dz_y0) + clear) / pitch_y).floor() as i64;
+        if cols <= 0 || rows <= 0 {
+            break 'desks;
+        }
 
-    let cluster_cols = program.cluster_cols.max(1);
-    // Jitter is bounded to 25 % of the clearance so it can never eat the gap.
-    let jitter = clear * 0.25;
+        let cluster_cols = program.cluster_cols.max(1);
+        // Jitter is bounded to 25 % of the clearance so it can never eat the gap.
+        let jitter = clear * 0.25;
 
-    'grid: for r in 0..rows {
-        for c in 0..cols {
-            if desks_placed >= program.desks {
-                break 'grid;
+        'grid: for r in 0..rows {
+            for c in 0..cols {
+                if desks_placed >= program.desks {
+                    break 'grid;
+                }
+                // extra aisle offset: one clearance gap per completed cluster to the left
+                let aisle = ((c as u32) / cluster_cols) as f64 * clear;
+                let cx = dz_x0 + program.desk_w / 2.0 + (c as f64) * pitch_x + aisle;
+                let cy = dz_y0 + program.desk_h / 2.0 + (r as f64) * pitch_y;
+                // stop if the aisle pushed this column past the zone edge
+                if cx + program.desk_w / 2.0 > dz_x1 {
+                    continue;
+                }
+                // Apply bounded jitter, then clamp so the footprint can never leave
+                // the work zone (and thus never the perimeter corridor).
+                let jx = rng.signed() * jitter;
+                let jy = rng.signed() * jitter;
+                let fx = (cx + jx).clamp(dz_x0 + program.desk_w / 2.0, dz_x1 - program.desk_w / 2.0);
+                let fy = (cy + jy).clamp(dz_y0 + program.desk_h / 2.0, dz_y1 - program.desk_h / 2.0);
+                if footprint_overlaps(&obstacles, fx, fy, program.desk_w, program.desk_h, clear * 0.5) {
+                    continue;
+                }
+                push_component(doc, "Desk", fx, fy, program.desk_w, program.desk_h);
+                obstacles.push((fx, fy, program.desk_w, program.desk_h));
+                desks_placed += 1;
             }
-            // extra aisle offset: one clearance gap per completed cluster to the left
-            let aisle = ((c as u32) / cluster_cols) as f64 * clear;
-            let cx = dz_x0 + program.desk_w / 2.0 + (c as f64) * pitch_x + aisle;
-            let cy = dz_y0 + program.desk_h / 2.0 + (r as f64) * pitch_y;
-            // stop if the aisle pushed this column past the zone edge
-            if cx + program.desk_w / 2.0 > dz_x1 {
-                continue;
-            }
-            // Apply bounded jitter, then clamp so the footprint can never leave
-            // the work zone (and thus never the perimeter corridor).
-            let jx = rng.signed() * jitter;
-            let jy = rng.signed() * jitter;
-            let fx = (cx + jx).clamp(dz_x0 + program.desk_w / 2.0, dz_x1 - program.desk_w / 2.0);
-            let fy = (cy + jy).clamp(dz_y0 + program.desk_h / 2.0, dz_y1 - program.desk_h / 2.0);
-            if footprint_overlaps(&obstacles, fx, fy, program.desk_w, program.desk_h, clear * 0.5) {
-                continue;
-            }
-            push_component(doc, "Desk", fx, fy, program.desk_w, program.desk_h);
-            obstacles.push((fx, fy, program.desk_w, program.desk_h));
-            desks_placed += 1;
         }
     }
+
+    // Fill each zone's component_ids by point-in-zone on component centers.
+    doc.reassign_components();
 }
 
 /// Score a layout against the program. Sub-scores are 0..100; `total` is the
@@ -551,6 +647,76 @@ mod tests {
         let s = score(&doc, &program);
         assert!(s.capacity < 100.0, "cramped room should not reach full capacity");
         assert!(s.placed_desks < 200);
+    }
+
+    #[test]
+    fn zones_tile_the_bbox_without_overlap() {
+        let program = Program::default();
+        let mut doc = room(20.0, 14.0);
+        generate(&mut doc, &program, 1, false);
+
+        // At least the ring + workspace + meeting rooms exist.
+        assert!(doc.zones.len() >= 3, "expected a tiling, got {} zones", doc.zones.len());
+
+        // (a) Σ zone areas ≈ wall-bbox area.
+        let bbox_area = 20.0 * 14.0;
+        let sum: f64 = doc.zones.iter().map(|z| z.area()).sum();
+        assert!(
+            (sum - bbox_area).abs() < 0.5,
+            "zone areas {} should tile bbox {}",
+            sum,
+            bbox_area
+        );
+
+        // No two Rect zones overlap (interiors). The Circulation RectRing is the
+        // complement of the work zone, so it never overlaps the interior rects.
+        let rects: Vec<(f64, f64, f64, f64)> = doc
+            .zones
+            .iter()
+            .filter_map(|z| match z.shape {
+                ZoneShape::Rect { x, y, w, h } => Some((x, y, w, h)),
+                _ => None,
+            })
+            .collect();
+        for (i, &(ax, ay, aw, ah)) in rects.iter().enumerate() {
+            for &(bx, by, bw, bh) in rects.iter().skip(i + 1) {
+                let ox = (aw + bw) / 2.0 - (ax - bx).abs();
+                let oy = (ah + bh) / 2.0 - (ay - by).abs();
+                assert!(
+                    ox <= 1e-6 || oy <= 1e-6,
+                    "rect zones overlap by ({}, {})",
+                    ox,
+                    oy
+                );
+            }
+        }
+
+        // (b) zone_stats' pct_of_nia (= area / NIA * 100) sums to ~100.
+        let nia = sum;
+        let pct_sum: f64 = doc.zones.iter().map(|z| z.area() / nia * 100.0).sum();
+        assert!((pct_sum - 100.0).abs() < 1e-6, "pct_of_nia sum was {}", pct_sum);
+    }
+
+    #[test]
+    fn every_component_is_bucketed_into_a_zone() {
+        let program = Program::default();
+        let mut doc = room(20.0, 14.0);
+        generate(&mut doc, &program, 1, false);
+        // Every component center lands in exactly one zone's component_ids.
+        let assigned: usize = doc.zones.iter().map(|z| z.component_ids.len()).sum();
+        assert_eq!(
+            assigned,
+            doc.components.len(),
+            "every component must be reassigned to a zone"
+        );
+        // Desks live in the Workspace zone.
+        let ws = doc
+            .zones
+            .iter()
+            .find(|z| z.zone_type == ZoneType::Workspace)
+            .expect("a workspace zone");
+        let desks = doc.components.iter().filter(|c| c.category == "Desk").count();
+        assert_eq!(ws.component_ids.len(), desks, "all desks in workspace");
     }
 
     #[test]

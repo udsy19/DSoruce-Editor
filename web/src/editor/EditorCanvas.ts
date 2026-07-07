@@ -20,9 +20,28 @@ export interface DocComponent {
   product_id: string | null
   decision: 'Open' | 'InReview' | 'Confirmed'
 }
+export type ZoneType =
+  | 'Circulation'
+  | 'Workspace'
+  | 'Meeting'
+  | 'Collaboration'
+  | 'Core'
+  | 'ClosedOffice'
+  | 'Amenity'
+export type ZoneShape =
+  | { kind: 'Rect'; x: number; y: number; w: number; h: number }
+  | { kind: 'RectRing'; x: number; y: number; w: number; h: number; in_w: number; in_h: number }
+export interface DocZone {
+  id: number
+  zone_type: ZoneType
+  shape: ZoneShape
+  label: string
+  component_ids: number[]
+}
 export interface DocState {
   walls: DocWall[]
   components: DocComponent[]
+  zones?: DocZone[]
   selection: number | null
 }
 export interface Metrics {
@@ -30,6 +49,23 @@ export interface Metrics {
   wall_count: number
   component_count: number
   confirmed: number
+  // Slice 2 additive Statistics-panel fields (optional for backward-compat).
+  gross_external_area?: number
+  net_internal_area?: number
+  workstations?: number
+  area_per_workstation?: number
+  efficiency_pct?: number
+  indicative_cost?: number
+  indicative_carbon?: number
+}
+export interface ZoneStat {
+  id: number
+  zone_type: ZoneType
+  label: string
+  area: number
+  capacity: number
+  seated: number
+  pct_of_nia: number
 }
 
 export type ToolId = string // 'select' | 'wall' | 'place:<Category>'
@@ -83,26 +119,40 @@ const MAJOR_EVERY = 5 // heavier line every 5 m
 const SNAP_M = 0.1 // 10 cm snap
 const RULER = 22 // px ruler gutter (top + left)
 
-// "Drafting instrument" palette — warm-graphite surface, cool content, amber active.
+// Light "floor-plate" palette — mirrors styles.css tokens (Laiout aesthetic).
 const C = {
-  surface: '#14161b',
-  gridMinor: 'rgba(255,255,255,0.038)',
-  gridMajor: 'rgba(255,255,255,0.075)',
-  axis: 'rgba(232,161,60,0.22)',
-  wall: '#e7e9ee',
-  preview: 'rgba(232,161,60,0.75)',
-  accent: '#e8a13c',
-  label: '#e7e9ee',
-  rulerBg: '#101216',
-  rulerCorner: '#0d0e11',
-  rulerText: '#5f6672',
-  rulerTick: 'rgba(255,255,255,0.16)',
+  surface: '#ffffff', // floor plate
+  mat: '#f2f4f7', // outside the building footprint
+  gridMinor: 'rgba(23,26,30,0.035)',
+  gridMajor: 'rgba(23,26,30,0.075)',
+  axis: 'rgba(45,91,214,0.20)',
+  wall: '#2e343b',
+  wallExt: '#1e2329',
+  furniture: '#8a9099',
+  preview: 'rgba(45,91,214,0.70)',
+  accent: '#2d5bd6',
+  label: '#1a1d21',
+  rulerBg: '#ffffff',
+  rulerCorner: '#f7f8fa',
+  rulerText: '#9aa2ad',
+  rulerTick: 'rgba(23,26,30,0.18)',
 }
 
 const DECISION_DOT: Record<string, string> = {
-  Confirmed: '#3fb27f',
-  InReview: '#e8a13c',
-  Open: '#5f6672',
+  Confirmed: '#2fa36b',
+  InReview: '#e0952b',
+  Open: '#9aa2ad',
+}
+
+// Zone fills keyed by ZoneType serde tag → { fill, line } (Laiout pastels).
+const ZONE: Record<string, { fill: string; line: string }> = {
+  Circulation: { fill: '#dcebfb', line: '#4a82c4' },
+  Workspace: { fill: '#fbf3d6', line: '#b99527' },
+  Meeting: { fill: '#e9e3f7', line: '#7e63c0' },
+  Collaboration: { fill: '#def1e2', line: '#4b9e66' },
+  Core: { fill: '#eceef1', line: '#8b939e' },
+  ClosedOffice: { fill: '#fce6d6', line: '#cb8150' },
+  Amenity: { fill: '#d9f0ef', line: '#3f9c95' },
 }
 
 /**
@@ -167,6 +217,11 @@ export class EditorCanvas {
   }
   getMetrics(): Metrics {
     return this.ed.metrics() as Metrics
+  }
+  getZoneStats(): ZoneStat[] {
+    const ed = this.ed as unknown as { zone_stats?: () => unknown }
+    if (typeof ed.zone_stats !== 'function') return []
+    return (ed.zone_stats() as ZoneStat[]) ?? []
   }
   getSelected(): DocComponent | null {
     const s = this.getState()
@@ -400,11 +455,24 @@ export class EditorCanvas {
     const h = this.canvas.height / this.dpr
     if (w === 0 || h === 0) return
 
-    ctx.fillStyle = C.surface
-    ctx.fillRect(0, 0, w, h)
-    this.drawGrid(w, h)
-
     const st = this.getState()
+
+    // Gray mat everywhere, white floor plate over the building footprint.
+    ctx.fillStyle = C.mat
+    ctx.fillRect(0, 0, w, h)
+    const bb = wallBbox(st.walls)
+    if (bb) {
+      const p0 = this.toScreen(bb.minX, bb.minY)
+      const p1 = this.toScreen(bb.maxX, bb.maxY)
+      ctx.fillStyle = C.surface
+      ctx.fillRect(p0.x, p0.y, p1.x - p0.x, p1.y - p0.y)
+    } else {
+      ctx.fillStyle = C.surface
+      ctx.fillRect(0, 0, w, h)
+    }
+    this.drawGrid(w, h)
+    this.drawZones(st.zones)
+
     for (const wall of st.walls) this.drawSegment(wall.a, wall.b, wall.thickness, C.wall)
     if (this.tool === 'wall' && this.wallStart) {
       this.drawSegment(this.wallStart, this.snap(this.mouseWorld), 0.1, C.preview)
@@ -412,6 +480,40 @@ export class EditorCanvas {
     for (const c of st.components) this.drawComponent(c, c.id === st.selection)
 
     this.drawRulers(w, h)
+  }
+
+  private drawZones(zones?: DocZone[]) {
+    if (!zones || zones.length === 0) return
+    const ctx = this.ctx
+    for (const z of zones) {
+      const pal = ZONE[z.zone_type] ?? ZONE.Core
+      ctx.fillStyle = pal.fill
+      if (z.shape.kind === 'RectRing') {
+        const s = z.shape
+        const o = this.toScreen(s.x - s.w / 2, s.y - s.h / 2)
+        const io = this.toScreen(s.x - s.in_w / 2, s.y - s.in_h / 2)
+        ctx.beginPath()
+        ctx.rect(o.x, o.y, s.w * this.scale, s.h * this.scale)
+        ctx.rect(io.x, io.y, s.in_w * this.scale, s.in_h * this.scale)
+        ctx.fill('evenodd')
+      } else {
+        const s = z.shape
+        const p = this.toScreen(s.x - s.w / 2, s.y - s.h / 2)
+        const w = s.w * this.scale
+        const h = s.h * this.scale
+        ctx.fillRect(p.x, p.y, w, h)
+        ctx.strokeStyle = pal.line
+        ctx.lineWidth = 1
+        ctx.strokeRect(p.x + 0.5, p.y + 0.5, w - 1, h - 1)
+        if (w > 60 && h > 26) {
+          ctx.fillStyle = pal.line
+          ctx.font = '600 10px "Hanken Grotesk", system-ui, sans-serif'
+          ctx.textAlign = 'left'
+          ctx.textBaseline = 'top'
+          ctx.fillText(z.label.toUpperCase(), p.x + 6, p.y + 5)
+        }
+      }
+    }
   }
 
   private drawGrid(w: number, h: number) {
@@ -457,37 +559,40 @@ export class EditorCanvas {
 
   private drawComponent(c: DocComponent, selected: boolean) {
     const ctx = this.ctx
-    const item = catByCategory(c.category)
-    const color = item?.color ?? '#5B8DEF'
     const p = this.toScreen(c.x, c.y)
     const w = c.w * this.scale
     const h = c.h * this.scale
+    const frozen = c.decision === 'Confirmed'
 
+    // Furniture reads as a thin gray line-glyph on the pastel zone (Laiout style).
     ctx.save()
     ctx.translate(p.x, p.y)
     ctx.rotate(c.rotation)
-    const frozen = c.decision === 'Confirmed'
-    ctx.fillStyle = hexA(color, frozen ? 0.9 : 0.4)
-    ctx.strokeStyle = selected ? C.accent : frozen ? DECISION_DOT.Confirmed : color
-    ctx.lineWidth = selected || frozen ? 2 : 1.25
-    roundRect(ctx, -w / 2, -h / 2, w, h, Math.min(5, Math.min(w, h) * 0.14))
+    ctx.fillStyle = frozen ? hexA(DECISION_DOT.Confirmed, 0.14) : 'rgba(255,255,255,0.55)'
+    ctx.strokeStyle = selected ? C.accent : frozen ? DECISION_DOT.Confirmed : C.furniture
+    ctx.lineWidth = selected ? 1.8 : frozen ? 1.5 : 1.1
+    roundRect(ctx, -w / 2, -h / 2, w, h, Math.min(4, Math.min(w, h) * 0.14))
     ctx.fill()
     ctx.stroke()
     ctx.restore()
 
-    if (this.scale > 20 && Math.min(w, h) > 26) {
+    // Label only for the selected item — zone labels carry the room names, so the
+    // plan stays clean.
+    if (selected) {
       ctx.fillStyle = C.label
-      ctx.font = '11px "Space Grotesk", system-ui, sans-serif'
+      ctx.font = '600 11px "Hanken Grotesk", system-ui, sans-serif'
       ctx.textAlign = 'center'
       ctx.textBaseline = 'middle'
-      ctx.fillText(clip(c.label, w), p.x, p.y)
+      ctx.fillText(clip(c.label, Math.max(w, 64)), p.x, p.y - h / 2 - 9)
     }
 
-    // decision dot (top-right)
-    ctx.fillStyle = DECISION_DOT[c.decision] ?? DECISION_DOT.Open
-    ctx.beginPath()
-    ctx.arc(p.x + w / 2 - 5.5, p.y - h / 2 + 5.5, 3, 0, Math.PI * 2)
-    ctx.fill()
+    // decision dot (top-right) — only for non-Open, to keep the plate clean
+    if (c.decision !== 'Open') {
+      ctx.fillStyle = DECISION_DOT[c.decision]
+      ctx.beginPath()
+      ctx.arc(p.x + w / 2 - 5.5, p.y - h / 2 + 5.5, 3, 0, Math.PI * 2)
+      ctx.fill()
+    }
 
     // selection corner ticks (CAD handles)
     if (selected) {
@@ -526,7 +631,7 @@ export class EditorCanvas {
     ctx.fillRect(0, 0, RULER, RULER)
 
     const stepM = niceStep(this.scale)
-    ctx.font = '9px "IBM Plex Mono", ui-monospace, monospace'
+    ctx.font = '9px "Hanken Grotesk", system-ui, sans-serif'
     ctx.fillStyle = C.rulerText
     ctx.strokeStyle = C.rulerTick
     ctx.lineWidth = 1
@@ -572,6 +677,25 @@ export class EditorCanvas {
 }
 
 // ---- module helpers ----
+function wallBbox(
+  walls: DocWall[],
+): { minX: number; minY: number; maxX: number; maxY: number } | null {
+  if (!walls.length) return null
+  let minX = Infinity
+  let minY = Infinity
+  let maxX = -Infinity
+  let maxY = -Infinity
+  for (const wl of walls) {
+    for (const pt of [wl.a, wl.b]) {
+      minX = Math.min(minX, pt.x)
+      minY = Math.min(minY, pt.y)
+      maxX = Math.max(maxX, pt.x)
+      maxY = Math.max(maxY, pt.y)
+    }
+  }
+  return { minX, minY, maxX, maxY }
+}
+
 function line(ctx: CanvasRenderingContext2D, x1: number, y1: number, x2: number, y2: number) {
   ctx.beginPath()
   ctx.moveTo(x1, y1)
