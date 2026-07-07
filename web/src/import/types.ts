@@ -62,6 +62,9 @@ export interface FurnitureItem {
   rotation: number
   /** Fully-resolved world-space geometry (block flattened + transformed). */
   entities: DrawEntity[]
+  /** Bound material-bank product (re-imagine), if any. */
+  productId?: string
+  productName?: string
 }
 
 export interface Drawing {
