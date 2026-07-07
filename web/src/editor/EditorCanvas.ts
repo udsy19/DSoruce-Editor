@@ -594,6 +594,7 @@ export class EditorCanvas {
       ctx.fillRect(0, 0, w, h)
     }
     this.drawGrid(w, h)
+    this.updatePlate(st.walls)
     this.drawZones(st.zones)
 
     for (const wall of st.walls) this.drawSegment(wall.a, wall.b, wall.thickness, C.wall)
@@ -613,9 +614,43 @@ export class EditorCanvas {
     this.drawRulers(w, h)
   }
 
+  /** Floor-plate polygon for zone clipping, cached on a cheap wall fingerprint
+   *  (walls change rarely; `ed.plate()` re-traces + serializes on every call). */
+  private platePoly: [number, number][] | null = null
+  private plateKey = ''
+
+  private updatePlate(walls: DocWall[]) {
+    let sum = 0
+    for (const w of walls) sum += w.a.x + w.a.y * 7 + w.b.x * 13 + w.b.y * 31
+    const key = `${walls.length}:${sum.toFixed(4)}`
+    if (key === this.plateKey) return
+    this.plateKey = key
+    this.platePoly = (this.ed.plate() as [number, number][] | null | undefined) ?? null
+  }
+
   private drawZones(zones?: DocZone[]) {
     if (!zones || zones.length === 0) return
     const ctx = this.ctx
+
+    // Zone shapes are rectangles even on an L-shaped plate; clip their fills to
+    // the plate polygon so tints never spill past the building boundary.
+    // Labels draw after restore so they stay legible near clipped corners.
+    const clipped = this.platePoly && this.platePoly.length >= 3
+    if (clipped) {
+      ctx.save()
+      ctx.beginPath()
+      const poly = this.platePoly!
+      const p0 = this.toScreen(poly[0][0], poly[0][1])
+      ctx.moveTo(p0.x, p0.y)
+      for (let i = 1; i < poly.length; i++) {
+        const p = this.toScreen(poly[i][0], poly[i][1])
+        ctx.lineTo(p.x, p.y)
+      }
+      ctx.closePath()
+      ctx.clip()
+    }
+
+    const labels: { text: string; x: number; y: number; color: string }[] = []
     for (const z of zones) {
       const pal = ZONE[z.zone_type] ?? ZONE.Core
       ctx.fillStyle = pal.fill
@@ -637,13 +672,18 @@ export class EditorCanvas {
         ctx.lineWidth = 1
         ctx.strokeRect(p.x + 0.5, p.y + 0.5, w - 1, h - 1)
         if (w > 60 && h > 26) {
-          ctx.fillStyle = pal.line
-          ctx.font = '600 10px "Hanken Grotesk", system-ui, sans-serif'
-          ctx.textAlign = 'left'
-          ctx.textBaseline = 'top'
-          ctx.fillText(z.label.toUpperCase(), p.x + 6, p.y + 5)
+          labels.push({ text: z.label.toUpperCase(), x: p.x + 6, y: p.y + 5, color: pal.line })
         }
       }
+    }
+    if (clipped) ctx.restore()
+
+    ctx.font = '600 10px "Hanken Grotesk", system-ui, sans-serif'
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'top'
+    for (const l of labels) {
+      ctx.fillStyle = l.color
+      ctx.fillText(l.text, l.x, l.y)
     }
   }
 

@@ -39,6 +39,9 @@ const GRID_CELL = 0.25 // m — occupancy-grid resolution for the fallback
 const GRID_DILATE = 2 // cells — closing radius (2 * 0.25 m bridges ~1 m door gaps)
 const MIN_PLATE_AREA = 1 // m² — below this a "loop" is noise, not a plate
 const EDITOR_MARGIN = 1 // m — where the plate's min corner lands in the editor
+const DESPIKE_WEDGE_DEG = 25 // ° — wedge at a vertex below this is a spike candidate
+const DESPIKE_AREA_FRAC = 0.005 // fraction of |ring area| a single removal may change
+const SIMPLIFY_POST = 0.05 // m — light DP pass to collapse collinear runs left by despiking
 
 // ---- public API --------------------------------------------------------
 
@@ -65,7 +68,8 @@ export function extractPlate(drawing: Drawing): PlateResult | null {
     }
   }
   if (best && bestArea >= plausible) {
-    const ring = simplify(orientCCW(best), SIMPLIFY_LOOP, true)
+    // Simplify → despike → light simplify (despiking leaves collinear runs).
+    const ring = simplify(despike(simplify(orientCCW(best), SIMPLIFY_LOOP, true)), SIMPLIFY_POST, true)
     if (ring.length >= 3) return finishPlate(ring, 'loop')
   }
 
@@ -76,7 +80,10 @@ export function extractPlate(drawing: Drawing): PlateResult | null {
   for (const dilate of [GRID_DILATE, GRID_DILATE * 2, GRID_DILATE * 4]) {
     const contour = gridContour(segments, GRID_CELL, dilate)
     if (contour && contour.length >= 3 && Math.abs(signedArea(contour)) >= plausible) {
-      return finishPlate(orientCCW(contour), 'hull')
+      // gridContour already ran DP; despike the needles the tracer squeezes
+      // through wall gaps, then a light simplify for leftover collinear runs.
+      const ring = simplify(despike(orientCCW(contour)), SIMPLIFY_POST, true)
+      if (ring.length >= 3) return finishPlate(ring, 'hull')
     }
   }
 
@@ -415,6 +422,54 @@ export function signedArea(ring: Pt[]): number {
 
 function orientCCW(ring: Pt[]): Pt[] {
   return signedArea(ring) < 0 ? [...ring].reverse() : ring
+}
+
+/**
+ * Remove needle spikes from a closed ring (first vertex not repeated).
+ *
+ * A vertex is a spike candidate when the wedge between its two edges is below
+ * `wedgeDeg` (the edges nearly double back — |turn| > 180° − wedgeDeg). It is
+ * only removed when doing so changes the ring's |area| by at most `areaFrac`
+ * of the total — that guard is what separates a contour-tracer needle from a
+ * genuine narrow wing of the building. Iterates until a full pass removes
+ * nothing; never drops below 3 vertices; preserves vertex order/orientation.
+ */
+export function despike(
+  ring: Pt[],
+  opts: { wedgeDeg?: number; areaFrac?: number } = {},
+): Pt[] {
+  const wedgeDeg = opts.wedgeDeg ?? DESPIKE_WEDGE_DEG
+  const areaFrac = opts.areaFrac ?? DESPIKE_AREA_FRAC
+  const cosMin = Math.cos((wedgeDeg * Math.PI) / 180) // wedge < wedgeDeg ⇔ cos(wedge) > cosMin
+  const out = [...ring]
+  const totalArea = Math.abs(signedArea(out))
+  const maxAreaDelta = totalArea * areaFrac
+
+  let removed = true
+  while (removed && out.length > 3) {
+    removed = false
+    for (let i = 0; i < out.length && out.length > 3; i++) {
+      const p = out[(i - 1 + out.length) % out.length]
+      const v = out[i]
+      const n = out[(i + 1) % out.length]
+      const ax = p[0] - v[0]
+      const ay = p[1] - v[1]
+      const bx = n[0] - v[0]
+      const by = n[1] - v[1]
+      const la = Math.hypot(ax, ay)
+      const lb = Math.hypot(bx, by)
+      // Degenerate (duplicate neighbor) counts as a zero-area spike.
+      const isSpike = la < 1e-9 || lb < 1e-9 || (ax * bx + ay * by) / (la * lb) > cosMin
+      if (!isSpike) continue
+      // Removing v changes the area by the triangle (p, v, n).
+      const triArea = Math.abs(ax * by - ay * bx) / 2
+      if (triArea > maxAreaDelta) continue
+      out.splice(i, 1)
+      i--
+      removed = true
+    }
+  }
+  return out
 }
 
 /** Douglas-Peucker simplification. `closed` treats pts as a ring. */

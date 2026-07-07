@@ -155,6 +155,15 @@ impl Editor {
         }
     }
 
+    /// Set a component's rotation (radians, clockwise in the Y-down plan).
+    /// Doors/windows placed along angled walls need this; renderers already
+    /// honor `Component::rotation`.
+    pub fn set_component_rotation(&mut self, id: u32, radians: f64) {
+        if let Some(c) = self.doc.component_mut(id) {
+            c.rotation = radians;
+        }
+    }
+
     /// Delete a component **by id** (complements `delete_selected`). Clears the
     /// selection if it pointed at the deleted component.
     pub fn delete_component(&mut self, id: u32) {
@@ -307,6 +316,24 @@ impl Editor {
             serde_wasm_bindgen::from_value(program).map_err(|e| JsValue::from_str(&e.to_string()))?;
         serde_wasm_bindgen::to_value(&layout::score(&self.doc, &program))
             .map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
+    /// The traced floor-plate polygon as `[[x, y], ...]`, or `null` when the
+    /// walls don't close. For frontend zone-render clipping.
+    pub fn plate(&self) -> Result<JsValue, JsValue> {
+        serde_wasm_bindgen::to_value(&self.doc.plate_points())
+            .map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
+    /// Store the frontend CAD drafting-layer blob (opaque JSON; the core never
+    /// parses it). It rides in snapshots, so undo/save round-trip it.
+    pub fn set_cad_json(&mut self, json: String) {
+        self.doc.cad_json = if json.is_empty() { None } else { Some(json) };
+    }
+
+    /// The stored CAD drafting-layer blob, or `""` when none.
+    pub fn get_cad_json(&self) -> String {
+        self.doc.cad_json.clone().unwrap_or_default()
     }
 
     /// Circulation / "walking place" evaluation of the current document.

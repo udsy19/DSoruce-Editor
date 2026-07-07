@@ -18,6 +18,11 @@ pub struct Document {
     /// keeps older/partial JSON deserializable.
     #[serde(default)]
     pub(crate) next_id: u32,
+    /// Opaque TS-side CAD drafting layer (lines, dimensions, text…), serialized
+    /// by the frontend. Carried in the document so snapshot/undo/save round-trip
+    /// it; the core never interprets it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) cad_json: Option<String>,
 }
 
 impl Document {
@@ -114,6 +119,14 @@ impl Document {
     pub(crate) fn plate_polygon(&self) -> Option<Vec<crate::geometry::Point>> {
         let segs: Vec<_> = self.walls.iter().map(|w| (w.a, w.b)).collect();
         crate::geometry::trace_floor_polygon(&segs, crate::geometry::LOOP_SNAP_TOL)
+    }
+
+    /// `plate_polygon` mapped to plain `[x, y]` pairs — the wire shape the
+    /// frontend consumes (`Editor::plate`). Pure, so it is natively testable;
+    /// the wasm method only serializes this.
+    pub(crate) fn plate_points(&self) -> Option<Vec<[f64; 2]>> {
+        self.plate_polygon()
+            .map(|poly| poly.into_iter().map(|p| [p.x, p.y]).collect())
     }
 
     /// True floor area (meters²): the traced plate-polygon area when the walls
@@ -433,6 +446,69 @@ mod tests {
             before,
             "restored document is field-for-field identical"
         );
+    }
+
+    #[test]
+    fn cad_json_round_trips_through_snapshot() {
+        let mut doc = Document::new();
+        doc.cad_json = Some(r#"{"lines":[{"a":[0,0],"b":[3,4]}]}"#.to_string());
+
+        let snap = serde_json::to_string(&doc).unwrap();
+        let restored: Document = serde_json::from_str(&snap).unwrap();
+        assert_eq!(restored.cad_json, doc.cad_json, "cad_json survives snapshot/restore");
+    }
+
+    #[test]
+    fn old_snapshot_without_cad_json_restores_fine() {
+        // Capture a snapshot BEFORE cad_json is ever set — this is byte-for-byte
+        // what pre-cad_json builds produced, since `None` is skipped on serialize.
+        let doc = Document::new();
+        let old_snap = serde_json::to_string(&doc).unwrap();
+        assert!(
+            !old_snap.contains("cad_json"),
+            "unset cad_json must not appear in snapshots (old-format equivalence)"
+        );
+
+        let restored: Document = serde_json::from_str(&old_snap).unwrap();
+        assert_eq!(restored.cad_json, None, "missing field defaults to None");
+    }
+
+    fn wall(id: u32, ax: f64, ay: f64, bx: f64, by: f64) -> Wall {
+        Wall {
+            id,
+            a: Point::new(ax, ay),
+            b: Point::new(bx, by),
+            thickness: 0.2,
+        }
+    }
+
+    #[test]
+    fn plate_points_is_four_corners_for_rect_room() {
+        let mut doc = Document::new();
+        doc.walls.push(wall(1, 0.0, 0.0, 10.0, 0.0));
+        doc.walls.push(wall(2, 10.0, 0.0, 10.0, 6.0));
+        doc.walls.push(wall(3, 10.0, 6.0, 0.0, 6.0));
+        doc.walls.push(wall(4, 0.0, 6.0, 0.0, 0.0));
+
+        let pts = doc.plate_points().expect("closed rectangle traces a plate");
+        assert_eq!(pts.len(), 4, "rectangular room has 4 corners");
+        for corner in [[0.0, 0.0], [10.0, 0.0], [10.0, 6.0], [0.0, 6.0]] {
+            assert!(
+                pts.iter()
+                    .any(|p| (p[0] - corner[0]).abs() < 1e-6 && (p[1] - corner[1]).abs() < 1e-6),
+                "missing corner {corner:?} in {pts:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn plate_points_is_none_for_open_walls() {
+        let mut doc = Document::new();
+        // Three sides only — the loop never closes.
+        doc.walls.push(wall(1, 0.0, 0.0, 10.0, 0.0));
+        doc.walls.push(wall(2, 10.0, 0.0, 10.0, 6.0));
+        doc.walls.push(wall(3, 10.0, 6.0, 0.0, 6.0));
+        assert_eq!(doc.plate_points(), None);
     }
 }
 
