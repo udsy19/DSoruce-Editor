@@ -6,8 +6,10 @@
 //! TS frontend; it migrates into a Rust/WebGL renderer later (see
 //! `docs/adr/0001-rendering-staging.md`).
 
+mod circulation;
 mod document;
 mod geometry;
+mod layout;
 mod model;
 
 use document::Document;
@@ -145,6 +147,31 @@ impl Editor {
                 .count(),
         };
         serde_wasm_bindgen::to_value(&m).map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
+    /// Autonomously generate a test-fit from a `Program` (plain JS object).
+    /// Clears existing components, places desks + meeting rooms deterministically
+    /// for `seed`, and returns the resulting `LayoutScore`.
+    pub fn generate(&mut self, program: JsValue, seed: u64) -> Result<JsValue, JsValue> {
+        let program: layout::Program =
+            serde_wasm_bindgen::from_value(program).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        layout::generate(&mut self.doc, &program, seed);
+        serde_wasm_bindgen::to_value(&layout::score(&self.doc, &program))
+            .map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
+    /// Score the current document against a `Program` without regenerating.
+    pub fn layout_score(&self, program: JsValue) -> Result<JsValue, JsValue> {
+        let program: layout::Program =
+            serde_wasm_bindgen::from_value(program).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        serde_wasm_bindgen::to_value(&layout::score(&self.doc, &program))
+            .map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
+    /// Circulation / "walking place" evaluation of the current document.
+    pub fn circulation(&self) -> Result<JsValue, JsValue> {
+        let score = circulation::evaluate(&self.doc, &circulation::CirculationConfig::new());
+        serde_wasm_bindgen::to_value(&score).map_err(|e| JsValue::from_str(&e.to_string()))
     }
 }
 
