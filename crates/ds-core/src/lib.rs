@@ -19,7 +19,7 @@ use geometry::Point;
 use model::{Component, DecisionState, Wall};
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
-use zone::ZoneType;
+use zone::{Axis, ZoneShape, ZoneType};
 
 #[derive(Serialize)]
 struct Metrics {
@@ -143,6 +143,24 @@ impl Editor {
     pub fn delete_selected(&mut self) {
         if let Some(id) = self.doc.selection.take() {
             self.doc.components.retain(|c| c.id != id);
+        }
+    }
+
+    /// Move a component **by id** to absolute center `(x, y)` meters. The by-id
+    /// primitive the AI uses; complements the selection-based `move_selected`.
+    pub fn move_component(&mut self, id: u32, x: f64, y: f64) {
+        if let Some(c) = self.doc.component_mut(id) {
+            c.x = x;
+            c.y = y;
+        }
+    }
+
+    /// Delete a component **by id** (complements `delete_selected`). Clears the
+    /// selection if it pointed at the deleted component.
+    pub fn delete_component(&mut self, id: u32) {
+        self.doc.components.retain(|c| c.id != id);
+        if self.doc.selection == Some(id) {
+            self.doc.selection = None;
         }
     }
 
@@ -289,6 +307,87 @@ impl Editor {
     pub fn circulation(&self) -> Result<JsValue, JsValue> {
         let score = circulation::evaluate(&self.doc, &circulation::CirculationConfig::new());
         serde_wasm_bindgen::to_value(&score).map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
+    // ----- Undo primitive: lossless Document snapshot/restore (Conflict §5).
+    // A snapshot is an opaque JSON string carrying the whole document *including*
+    // `next_id`, so a restore can never collide ids. -----
+
+    /// Serialize the whole document to an opaque snapshot (JSON string). Pass it
+    /// back to `restore` / `from_snapshot` to undo.
+    pub fn snapshot(&self) -> Result<JsValue, JsValue> {
+        let s = serde_json::to_string(&self.doc).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        Ok(JsValue::from_str(&s))
+    }
+
+    /// Replace the current document with a previously taken `snapshot`.
+    pub fn restore(&mut self, snap: JsValue) -> Result<(), JsValue> {
+        let s = snap
+            .as_string()
+            .ok_or_else(|| JsValue::from_str("snapshot must be a string"))?;
+        self.doc = serde_json::from_str(&s).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        Ok(())
+    }
+
+    /// Construct a fresh `Editor` from a `snapshot` (scratch-clone for previews).
+    pub fn from_snapshot(snap: JsValue) -> Result<Editor, JsValue> {
+        let s = snap
+            .as_string()
+            .ok_or_else(|| JsValue::from_str("snapshot must be a string"))?;
+        let doc: Document =
+            serde_json::from_str(&s).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        Ok(Editor { doc })
+    }
+
+    // ----- Zone ops — thin wrappers over `Document` methods. Each returns the
+    // new id(s) or throws the `ZoneError` reason as a string JsValue. -----
+
+    /// Merge zones `a` and `b`; returns the resulting zone id (a clean rect union
+    /// reuses `a`'s id) or the shared group id (logical L-room) as a number.
+    pub fn merge_zones(&mut self, a: u32, b: u32) -> Result<JsValue, JsValue> {
+        let id = self
+            .doc
+            .merge_zones(a, b)
+            .map_err(|e| JsValue::from_str(&e.to_string()))?;
+        Ok(JsValue::from_f64(id as f64))
+    }
+
+    /// Split zone `id` along `axis` ("Vertical" | "Horizontal") at world coord
+    /// `at`; returns `[id1, id2]`.
+    pub fn split_zone(&mut self, id: u32, axis: &str, at: f64) -> Result<JsValue, JsValue> {
+        let axis = match axis {
+            "Vertical" => Axis::Vertical,
+            "Horizontal" => Axis::Horizontal,
+            _ => return Err(JsValue::from_str("axis must be \"Vertical\" or \"Horizontal\"")),
+        };
+        let (a, b) = self
+            .doc
+            .split_zone(id, axis, at)
+            .map_err(|e| JsValue::from_str(&e.to_string()))?;
+        serde_wasm_bindgen::to_value(&[a, b]).map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
+    /// Reclassify zone `id` to `zone_type` (one of the serde `ZoneType` tags,
+    /// e.g. "Workspace"). Distinct from the component-level `set_decision`.
+    pub fn set_zone_type(&mut self, id: u32, zone_type: &str) -> Result<(), JsValue> {
+        let t: ZoneType = serde_json::from_str(&format!("\"{}\"", zone_type))
+            .map_err(|_| JsValue::from_str("unknown zone type"))?;
+        self.doc
+            .set_zone_type(id, t)
+            .map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
+    /// Resize/move zone `id` to a `Rect` (center `x,y`, size `w,h`). Rejected if
+    /// the new bbox exceeds the wall bbox.
+    pub fn resize_zone(&mut self, id: u32, x: f64, y: f64, w: f64, h: f64) -> Result<(), JsValue> {
+        self.doc
+            .resize_zone(id, ZoneShape::Rect { x, y, w, h })
+            .map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
+    /// The most-specific zone id containing world point `(x, y)`, or undefined.
+    pub fn zone_at(&self, x: f64, y: f64) -> Option<u32> {
+        self.doc.zone_at(x, y)
     }
 }
 

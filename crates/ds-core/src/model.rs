@@ -8,10 +8,10 @@
 //!   4. decision      — `decision` lifecycle state
 
 use crate::geometry::Point;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// Selection/approval lifecycle, mirroring Materio's open → in-review → confirmed.
-#[derive(Clone, Copy, Debug, Serialize, PartialEq)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
 pub enum DecisionState {
     Open,
     InReview,
@@ -28,7 +28,7 @@ impl DecisionState {
     }
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Wall {
     pub id: u32,
     pub a: Point,
@@ -37,7 +37,7 @@ pub struct Wall {
     pub thickness: f64,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Component {
     pub id: u32,
     /// e.g. "Desk", "Chair", "Table", "MeetingRoom", "FallCeiling"

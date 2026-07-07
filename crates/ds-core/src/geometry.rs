@@ -1,9 +1,9 @@
 //! Primitive 2D geometry. Units are **meters** throughout the core; the frontend
 //! owns pixels-per-meter scaling. Kept free of any browser/JS dependency.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Copy, Debug, Serialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct Point {
     pub x: f64,
     pub y: f64,

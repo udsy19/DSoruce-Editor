@@ -58,7 +58,6 @@ impl ZoneShape {
     }
 
     /// Outer AABB `(min_x, min_y, max_x, max_y)` for hit-testing / tiling checks.
-    #[allow(dead_code)]
     pub fn bbox(&self) -> (f64, f64, f64, f64) {
         match *self {
             ZoneShape::Rect { x, y, w, h }
@@ -125,14 +124,35 @@ impl Zone {
 }
 
 /// Typed failure reasons for zone ops, so the AI can report *why* an op can't
-/// happen ("those two rooms aren't adjacent"). Op mutators land in Slice 6.
+/// happen ("those two rooms aren't adjacent"). `Display` surfaces the reason to
+/// the JS/AI layer through the wasm wrappers.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[allow(dead_code)]
 pub enum ZoneError {
     NotFound,
     NotMergeable,
     OutOfBounds,
     InvalidCut,
+}
+
+impl std::fmt::Display for ZoneError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let msg = match self {
+            ZoneError::NotFound => "no zone with that id",
+            ZoneError::NotMergeable => "those zones aren't adjacent",
+            ZoneError::OutOfBounds => "that shape falls outside the floor plate",
+            ZoneError::InvalidCut => "the cut line must be strictly inside the zone",
+        };
+        f.write_str(msg)
+    }
+}
+
+/// Cut direction for `split_zone`. `Vertical` cuts along a vertical line
+/// (`at` = world x), producing left/right halves; `Horizontal` cuts along a
+/// horizontal line (`at` = world y), producing top/bottom halves.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Axis {
+    Vertical,
+    Horizontal,
 }
 
 #[cfg(test)]

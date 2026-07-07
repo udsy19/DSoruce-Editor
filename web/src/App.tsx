@@ -4,25 +4,8 @@ import { CATALOG, catByCategory } from './editor/catalog'
 import { searchBank } from './materialBank/mock'
 import { Icon } from './ui/icons'
 import { StatsPanel } from './ui/StatsPanel'
+import { AgentPanel } from './ai/AgentPanel'
 import { Scene3D } from './three/Scene3D'
-
-// Full program sent to the Rust engine. The panel exposes a few fields; the rest
-// are sensible defaults grounded in ADA/IBC clearances (see circulation.rs).
-const DEFAULT_PROGRAM: Program = {
-  desks: 20,
-  meeting_rooms: 2,
-  desk_w: 1.6,
-  desk_h: 0.8,
-  meeting_w: 3,
-  meeting_h: 3,
-  cluster_cols: 4,
-  target_corridor_m: 1.2,
-  desk_clearance_m: 0.9,
-  w_capacity: 0.35,
-  w_adjacency: 0.2,
-  w_circulation: 0.25,
-  w_density: 0.2,
-}
 
 export function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -33,6 +16,7 @@ export function App() {
   const [, setTick] = useState(0)
   const [tool, setTool] = useState('select')
   const [mode, setMode] = useState<'2d' | '3d'>('2d')
+  const [aiOpen, setAiOpen] = useState(false)
 
   useEffect(() => {
     let inst: EditorCanvas | null = null
@@ -111,6 +95,14 @@ export function App() {
             />
           ))}
           <span className="rail-spring" />
+          <button
+            className={aiOpen ? 'rail-fab on' : 'rail-fab'}
+            onClick={() => setAiOpen((o) => !o)}
+            title="AI assistant"
+            data-testid="ai-fab"
+          >
+            <Icon name="sparkles" size={20} />
+          </button>
         </nav>
 
         <main className="stage">
@@ -119,6 +111,7 @@ export function App() {
             {mode === '3d' && ready && ec && <Scene3D state={ec.getState()} />}
             {!ready && <div className="loading">Loading Rust · Wasm core…</div>}
           </div>
+          {aiOpen && ec && <AgentPanel ec={ec} onClose={() => setAiOpen(false)} />}
         </main>
 
         <aside className="inspector">
@@ -256,7 +249,7 @@ function RailButton({
 /* ---------------------------- Autonomous test-fit -------------------------- */
 
 function GenerateCard({ ec, metrics }: { ec: EditorCanvas; metrics: Metrics | null }) {
-  const [program, setProgram] = useState<Program>(DEFAULT_PROGRAM)
+  const [program, setProgram] = useState<Program>(ec.program)
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<GenResult | null>(null)
   const [note, setNote] = useState<string | null>(null)

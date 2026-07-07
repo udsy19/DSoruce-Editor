@@ -114,6 +114,23 @@ export interface GenResult {
   seed: number
 }
 
+/** Default program — the single source used by the generate card and the AI. */
+export const DEFAULT_PROGRAM: Program = {
+  desks: 20,
+  meeting_rooms: 2,
+  desk_w: 1.6,
+  desk_h: 0.8,
+  meeting_w: 3,
+  meeting_h: 3,
+  cluster_cols: 4,
+  target_corridor_m: 1.2,
+  desk_clearance_m: 0.9,
+  w_capacity: 0.35,
+  w_adjacency: 0.2,
+  w_circulation: 0.25,
+  w_density: 0.2,
+}
+
 const GRID_M = 1 // 1-meter minor grid
 const MAJOR_EVERY = 5 // heavier line every 5 m
 const SNAP_M = 0.1 // 10 cm snap
@@ -183,6 +200,8 @@ export class EditorCanvas {
   private lastScreen = { x: 0, y: 0 }
 
   onChange: (() => void) | null = null
+  /** Last program used to generate — shared source for the generate card + AI. */
+  program: Program = { ...DEFAULT_PROGRAM }
 
   private constructor(canvas: HTMLCanvasElement, ed: Editor) {
     this.canvas = canvas
@@ -266,6 +285,7 @@ export class EditorCanvas {
     opts: { maxIter: number; target: number; keepConfirmed?: boolean },
   ): GenResult {
     const keep = opts.keepConfirmed ?? false
+    this.program = { ...program }
     let best: LayoutScore | null = null
     let bestSeed = 1
     let iterations = 0
@@ -293,6 +313,21 @@ export class EditorCanvas {
     this.resize()
     this.render()
     this.updateScaleReadout()
+  }
+
+  /** Repaint + notify React. Call after mutating the doc directly (e.g. the AI). */
+  sync() {
+    this.render()
+    this.onChange?.()
+  }
+
+  /** Opaque lossless snapshot of the whole document (undo + dry-run source). */
+  snapshot(): string {
+    return this.ed.snapshot() as string
+  }
+  restore(snap: string) {
+    this.ed.restore(snap)
+    this.sync()
   }
 
   private commit() {

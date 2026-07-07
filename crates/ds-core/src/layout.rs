@@ -126,27 +126,6 @@ impl Rng {
     }
 }
 
-/// Axis-aligned bbox of all wall endpoints (mirrors `Document::floor_area`).
-/// Returns None when there are no walls (nothing to place into).
-fn wall_bbox(doc: &Document) -> Option<(f64, f64, f64, f64)> {
-    if doc.walls.is_empty() {
-        return None;
-    }
-    let mut min_x = f64::INFINITY;
-    let mut min_y = f64::INFINITY;
-    let mut max_x = f64::NEG_INFINITY;
-    let mut max_y = f64::NEG_INFINITY;
-    for w in &doc.walls {
-        for p in [w.a, w.b] {
-            min_x = min_x.min(p.x);
-            min_y = min_y.min(p.y);
-            max_x = max_x.max(p.x);
-            max_y = max_y.max(p.y);
-        }
-    }
-    Some((min_x, min_y, max_x, max_y))
-}
-
 fn push_component(doc: &mut Document, category: &str, x: f64, y: f64, w: f64, h: f64) {
     let id = doc.alloc_id();
     doc.components.push(Component {
@@ -221,7 +200,7 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
     // floating-point rounding would otherwise flag as a collision).
     let frozen_len = obstacles.len();
 
-    let (min_x, min_y, max_x, max_y) = match wall_bbox(doc) {
+    let (min_x, min_y, max_x, max_y) = match doc.wall_bbox() {
         Some(b) => b,
         None => return, // no boundary → nothing to place
     };
