@@ -6,27 +6,33 @@
 //! explainable order-of-magnitude that moves the right direction when zones
 //! change. The UI owns the "indicative" caveat label.
 //!
-//! Rates are rough industry order-of-magnitude:
-//!   - Cost: category-B office fit-out commonly ~£/$ 1–2.5k per m², higher for
-//!     serviced/enclosed rooms and amenities, near-nil for bare circulation.
-//!   - Carbon: fit-out embodied carbon commonly ~100–400 kgCO2e/m² depending on
-//!     partitioning, joinery and services density.
+//! Rates are calibrated for the **Indian commercial fit-out market (₹, INR)**:
+//!   - Cost: Indian industry norm quotes ₹/sqft; we convert ×10.764 to ₹/m².
+//!     Mid-spec (cat-B equivalent) office fit-out in India runs roughly
+//!     ₹1,600–2,600/sqft all-in (~₹17k–28k/m²) — open workspace at the low end,
+//!     meeting/conference above it (AV + acoustics), amenity/cafeteria high
+//!     (plumbing + kitchen equipment), core/service low because WCs/MEP/risers
+//!     are largely base-build (landlord) scope, and bare circulation near-nil.
+//!   - Carbon: cat-B fit-out embodied carbon commonly ~100–400 kgCO2e/m²
+//!     (LETI / RICS fit-out benchmarks) depending on partitioning, joinery and
+//!     services density; the Indian material mix is comparable in magnitude.
 //! They are deliberately tunable in one place; Slice 8's consequence engine
 //! reuses this module verbatim (no second copy).
 
 use crate::document::Document;
 use crate::zone::ZoneType;
 
-/// Indicative fit-out cost, currency-units per m², by zone purpose.
+/// Indicative fit-out cost, **₹ (INR) per m²**, by zone purpose.
+/// Each rate is a ₹/sqft ballpark × 10.764, rounded to a planning figure.
 fn cost_rate(t: ZoneType) -> f64 {
     match t {
-        ZoneType::Circulation => 400.0,   // finishes only, minimal fit-out
-        ZoneType::Workspace => 1_200.0,   // open desk field: power/data, flooring
-        ZoneType::Meeting => 2_000.0,     // enclosed: partitions, AV, glazing
-        ZoneType::Collaboration => 1_500.0,
-        ZoneType::Core => 2_500.0,        // WCs / MEP / risers: services-heavy
-        ZoneType::ClosedOffice => 1_800.0,
-        ZoneType::Amenity => 2_200.0,     // kitchen / cafe: plumbing, equipment
+        ZoneType::Circulation => 6_000.0, // ~₹560/sqft: finishes + lighting only
+        ZoneType::Workspace => 15_000.0,  // ~₹1,400/sqft: open desk field — flooring, power/data, loose furniture
+        ZoneType::Meeting => 26_000.0,    // ~₹2,400/sqft: enclosed — partitions, glazing, AV, acoustics
+        ZoneType::Collaboration => 18_500.0, // ~₹1,700/sqft: semi-open — soft seating, writable walls
+        ZoneType::Core => 9_500.0,        // ~₹880/sqft: WCs/MEP/risers mostly landlord scope; tenant finish only
+        ZoneType::ClosedOffice => 21_500.0, // ~₹2,000/sqft: full-height partitions, dedicated HVAC/lighting
+        ZoneType::Amenity => 28_000.0,    // ~₹2,600/sqft: cafeteria/kitchen — plumbing, equipment, ventilation
     }
 }
 
@@ -43,7 +49,7 @@ fn carbon_rate(t: ZoneType) -> f64 {
     }
 }
 
-/// Total indicative fit-out cost of the document's zones (currency units).
+/// Total indicative fit-out cost of the document's zones (**₹, INR**).
 /// Areas are clipped to the plate polygon — an L-shaped plate is priced on
 /// the space that exists, not its bounding box.
 pub fn indicative_cost(doc: &Document) -> f64 {

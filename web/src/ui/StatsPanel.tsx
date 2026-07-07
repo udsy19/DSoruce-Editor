@@ -23,6 +23,8 @@ const ZONE_ORDER: ZoneType[] = [
 ]
 
 const int = (n: number) => Math.round(n).toLocaleString('en-US')
+/** Whole rupees with Indian digit grouping, e.g. ₹12,34,567. */
+const inr = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`
 
 export function StatsPanel({ ec }: { ec: EditorCanvas }) {
   const [tab, setTab] = useState<'Statistics' | 'Regulations'>('Statistics')
@@ -45,7 +47,7 @@ export function StatsPanel({ ec }: { ec: EditorCanvas }) {
     sub === 'CO2'
       ? int(m.indicative_carbon ?? 0)
       : sub === 'Costs'
-        ? `$${int(m.indicative_cost ?? 0)}`
+        ? inr(m.indicative_cost ?? 0)
         : int(nia)
   const centerUnit = sub === 'CO2' ? 'kgCO₂e' : sub === 'Costs' ? 'fit-out' : 'm² NIA'
 
@@ -68,7 +70,7 @@ export function StatsPanel({ ec }: { ec: EditorCanvas }) {
             <ChipTile kind="efficiency" icon="bolt" value={`${Math.round(m.efficiency_pct ?? 0)}%`} label="Efficiency" />
             <ChipTile kind="people" icon="people" value={int(m.workstations ?? 0)} label="Workstations" />
             <ChipTile kind="carbon" icon="leaf" value={int(m.indicative_carbon ?? 0)} label="kgCO₂e" />
-            <ChipTile kind="cost" icon="dollar" value={`$${int(m.indicative_cost ?? 0)}`} label="Fit-out" />
+            <ChipTile kind="cost" icon="dollar" value={inr(m.indicative_cost ?? 0)} label="Fit-out" />
           </div>
 
           <MetricRow label="Gross External Area" value={int(m.gross_external_area ?? 0)} unit="m²" />
@@ -81,7 +83,7 @@ export function StatsPanel({ ec }: { ec: EditorCanvas }) {
           />
           <MetricRow label="Efficiency" value={(m.efficiency_pct ?? 0).toFixed(0)} unit="%" />
           <MetricRow label="Carbon Footprint" value={int(m.indicative_carbon ?? 0)} unit="kgCO₂e" />
-          <MetricRow label="Total Cost" value={`$${int(m.indicative_cost ?? 0)}`} unit="" />
+          <MetricRow label="Total Cost" value={inr(m.indicative_cost ?? 0)} unit="" />
 
           <div className="subtabs">
             {(['Areas', 'Zones', 'CO2', 'Costs'] as const).map((s) => (
@@ -127,9 +129,10 @@ interface RegCheck {
 }
 
 /**
- * IBC/ADA-style plan checks derived purely from the metrics + zone stats the
- * core already exposes (getMetrics / getZoneStats). Heuristics — indicative, not
- * a stamped code review — but grounded in real thresholds so the panel is useful.
+ * NBC 2016 (National Building Code of India)-grounded plan checks derived
+ * purely from the metrics + zone stats the core already exposes (getMetrics /
+ * getZoneStats). Heuristics — indicative, not a stamped code review — but
+ * grounded in real NBC Part 4 thresholds so the panel is useful.
  */
 function buildChecks(m: Metrics, zoneStats: ZoneStat[], nia: number): RegCheck[] {
   const workstations = m.workstations ?? 0
@@ -138,72 +141,77 @@ function buildChecks(m: Metrics, zoneStats: ZoneStat[], nia: number): RegCheck[]
     .reduce((s, z) => s + z.area, 0)
   const circShare = nia > 0 ? (circArea / nia) * 100 : 0
   const seated = zoneStats.reduce((s, z) => s + z.seated, 0)
-  const occLoad = Math.max(seated, workstations)
+  // NBC 2016 Part 4 Table 1: business occupancy = 10 m² of NIA per person.
+  const nbcOcc = nia > 0 ? Math.ceil(nia / 10) : 0
+  // Design occupancy for egress: the worse of the code load and the actual plan.
+  const designOcc = Math.max(nbcOcc, workstations, seated)
   const areaPer = m.area_per_workstation ?? 0
-  const eff = m.efficiency_pct ?? 0
-
-  const band = (v: number, lo: number, hi: number): CheckStatus =>
-    v >= lo && v <= hi ? 'pass' : 'warn'
 
   return [
     {
-      code: 'IBC 1004',
-      label: 'Occupant load & egress',
-      value: `${occLoad} occ`,
-      target: '≤ 49 for single exit',
-      status: occLoad === 0 ? 'na' : occLoad <= 49 ? 'pass' : 'warn',
+      code: 'NBC 2016 Pt.4 T.1',
+      label: 'Occupant load (business)',
+      value: nbcOcc > 0 ? `${nbcOcc} occ` : '—',
+      target: 'NIA ÷ 10 m²/person',
+      status: nbcOcc === 0 ? 'na' : workstations <= nbcOcc ? 'pass' : 'warn',
       note:
-        occLoad === 0
-          ? 'Add workstations or a test-fit to evaluate egress.'
-          : occLoad <= 49
-            ? 'Within single-exit occupant load for Business use.'
-            : 'Over 49 occupants — two remote exits required (IBC 1006.2.1).',
+        nbcOcc === 0
+          ? 'Draw a boundary or generate a test-fit to compute occupant load.'
+          : workstations <= nbcOcc
+            ? `Plan seats ${workstations} — within the NBC occupant load of ${nbcOcc}.`
+            : `Plan seats ${workstations} — exceeds the NBC occupant load of ${nbcOcc}; egress must be sized for the higher figure.`,
     },
     {
-      code: 'Space std.',
-      label: 'Area per workstation',
-      value: areaPer > 0 ? `${areaPer.toFixed(1)} m²` : '—',
-      target: '≥ 8 m² (BCO typical)',
-      status: areaPer === 0 ? 'na' : areaPer >= 8 ? 'pass' : areaPer >= 4.6 ? 'warn' : 'fail',
+      code: 'NBC 2016 Pt.4',
+      label: 'Exit requirement',
+      value: designOcc > 0 ? `${designOcc} occ` : '—',
+      target: '≤ 50 for single exit',
+      status: designOcc === 0 ? 'na' : designOcc <= 50 ? 'pass' : 'warn',
       note:
-        areaPer === 0
-          ? 'No workstations placed yet.'
-          : areaPer >= 8
-            ? 'Comfortable density for open-plan workspace.'
-            : areaPer >= 4.6
-              ? 'Dense — below the 8 m² planning guide but workable.'
-              : 'Very tight — under ~4.6 m² per person.',
+        designOcc === 0
+          ? 'Add workstations or a test-fit to evaluate exits.'
+          : designOcc <= 50
+            ? 'Within single-exit occupant load for business occupancy — guidance only; exits are not counted yet.'
+            : 'Over 50 occupants — 2+ remote exits required. Guidance only; exits are not counted yet.',
     },
     {
-      code: 'ADA / egress',
-      label: 'Circulation provision',
-      value: nia > 0 ? `${circShare.toFixed(0)}%` : '—',
-      target: '20–40% of NIA',
+      code: 'NBC 2016 Pt.4',
+      label: 'Corridor width (min 1.5 m)',
+      value: nia > 0 ? `${circShare.toFixed(0)}% circ.` : '—',
+      target: '~20–40% of NIA',
       status:
         circArea === 0 ? 'na' : circShare >= 18 && circShare <= 45 ? 'pass' : 'warn',
       note:
         circArea === 0
           ? 'No circulation zone — generate a test-fit.'
           : circShare < 18
-            ? 'Low circulation share — corridors/aisles may run tight for accessible routes.'
+            ? 'Low circulation share — corridors likely fall below the NBC 1.5 m minimum for business buildings.'
             : circShare > 45
-              ? 'High circulation share — usable area is being lost to routes.'
-              : 'Healthy circulation share for accessible routes.',
+              ? 'High circulation share — widths are fine but usable area is being lost to routes.'
+              : 'Circulation share consistent with 1.5 m+ corridors throughout.',
     },
     {
-      code: 'Fit metric',
-      label: 'Space efficiency (NIA/GEA)',
-      value: eff > 0 ? `${eff.toFixed(0)}%` : '—',
-      target: '80–90% target',
-      status: eff === 0 ? 'na' : band(eff, 75, 92),
+      code: 'NBC / workplace',
+      label: 'Area per workstation',
+      value: areaPer > 0 ? `${areaPer.toFixed(1)} m²` : '—',
+      target: '6–10 m²/person',
+      status: areaPer === 0 ? 'na' : areaPer >= 6 && areaPer <= 14 ? 'pass' : 'warn',
       note:
-        eff === 0
-          ? 'Draw a boundary and generate to measure efficiency.'
-          : eff < 75
-            ? 'Below target — a lot of gross area is core/structure.'
-            : eff > 92
-              ? 'Unusually high — confirm the wall/core allowance is realistic.'
-              : 'Efficient net-to-gross ratio.',
+        areaPer === 0
+          ? 'No workstations placed yet.'
+          : areaPer < 6
+            ? 'Cramped — below the ~6 m²/person office planning floor.'
+            : areaPer > 14
+              ? 'Wasteful — well above the ~10 m²/person guide; density can improve.'
+              : 'Within the 6–10 m²/person office planning band.',
+    },
+    {
+      code: 'NBC 2016 Pt.4',
+      label: 'Travel distance to exit',
+      value: 'not yet measured',
+      target: '≤ 30 m (sprinklered)',
+      status: 'na',
+      note: 'NBC caps travel distance at 30 m for sprinklered business occupancy. Path measurement is on the roadmap — informational only.',
     },
     {
       code: 'Precondition',
@@ -236,8 +244,9 @@ function RegulationsPanel({ m, zoneStats, nia }: { m: Metrics; zoneStats: ZoneSt
   return (
     <>
       <p className="panel-lead">
-        Indicative IBC / ADA-style checks derived from the live plan. Not a stamped code review — a
-        planning-stage guide; full code checks are on the roadmap.
+        Indicative checks against the National Building Code of India (NBC 2016), derived from the
+        live plan. Not a stamped code review — a planning-stage guide; full code checks are on the
+        roadmap.
       </p>
 
       <div className="reg-summary" role="status">
