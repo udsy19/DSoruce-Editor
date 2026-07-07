@@ -70,8 +70,8 @@ export function drawFurnitureSymbol(ctx: CanvasRenderingContext2D, o: FurnitureO
 // Symbols
 // ---------------------------------------------------------------------------
 
-// Desk workstation: worktop + monitor on the back edge + a task chair arc in
-// front. "Back" is -y (top in local space), the user sits toward +y.
+// Desk workstation: worktop + monitor on the back edge + keyboard + a task
+// chair in front. "Back" is -y (top in local space), the user sits toward +y.
 function drawDesk(
   ctx: CanvasRenderingContext2D,
   w: number,
@@ -81,37 +81,53 @@ function drawDesk(
   lw: number,
 ): void {
   const L = -w / 2
-  const R = w / 2
   const T = -h / 2
   const B = h / 2
 
   // The chair sits in front and overhangs the worktop slightly, so the desk
-  // occupies the back ~72% of the footprint.
-  const deskB = T + h * 0.72
+  // occupies the back ~70% of the footprint.
+  const deskB = T + h * 0.7
   strokeRoundRect(ctx, L, T, w, deskB - T, Math.min(3, h * 0.08), line, lw)
 
-  // Monitor: a short bar centered on the back edge, with a stand tick.
-  const monW = Math.min(w * 0.34, 26)
-  const monH = Math.max(2.2, h * 0.09)
+  // Monitor: a solid short bar centered on the back edge reads as a screen at a
+  // glance; a tiny stand tick joins it to the worktop.
+  const monW = Math.min(w * 0.36, 30)
+  const monH = Math.max(2.2, h * 0.08)
+  const monY = T + h * 0.05
+  ctx.fillStyle = detail
   ctx.strokeStyle = detail
   ctx.lineWidth = lw
-  ctx.strokeRect(-monW / 2, T + h * 0.06, monW, monH)
+  ctx.fillRect(-monW / 2, monY, monW, monH)
   ctx.beginPath()
-  ctx.moveTo(0, T + h * 0.06 + monH)
-  ctx.lineTo(0, T + h * 0.06 + monH + Math.min(3, h * 0.06))
+  ctx.moveTo(0, monY + monH)
+  ctx.lineTo(0, monY + monH + Math.min(3, h * 0.05))
   ctx.stroke()
 
-  // Task chair in front: seat square + curved backrest hugging the desk edge.
-  const seat = Math.min(w * 0.4, (B - deskB) * 1.35, h * 0.42)
+  // Keyboard: a thin rounded rect on the worktop in front of the monitor.
+  const kbW = Math.min(w * 0.44, 34)
+  const kbH = Math.max(2, h * 0.06)
+  if (kbW > 8) {
+    strokeRoundRect(ctx, -kbW / 2, deskB - kbH - h * 0.06, kbW, kbH, kbH * 0.4, detail, lw * 0.9)
+  }
+
+  // Task chair in front: seat + curved backrest hugging the desk edge + arms.
+  const seat = Math.min(w * 0.42, (B - deskB) * 1.4, h * 0.42)
   if (seat > 6) {
     const seatT = B - seat
-    // seat
     strokeRoundRect(ctx, -seat / 2, seatT, seat, seat, seat * 0.22, detail, lw)
-    // backrest arc between the seat and the desk (opens toward the desk, -y)
     ctx.strokeStyle = detail
     ctx.lineWidth = lw
+    // backrest arc between the seat and the desk (opens toward the desk, -y)
     ctx.beginPath()
     ctx.arc(0, seatT + seat * 0.08, seat * 0.6, Math.PI * 1.15, Math.PI * 1.85)
+    ctx.stroke()
+    // short armrests down each side of the seat
+    const ax = seat * 0.5 + seat * 0.08
+    ctx.beginPath()
+    ctx.moveTo(-ax, seatT + seat * 0.28)
+    ctx.lineTo(-ax, seatT + seat * 0.78)
+    ctx.moveTo(ax, seatT + seat * 0.28)
+    ctx.lineTo(ax, seatT + seat * 0.78)
     ctx.stroke()
   }
 }

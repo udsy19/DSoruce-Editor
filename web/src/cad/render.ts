@@ -378,74 +378,159 @@ function drawColumn(
 // ---------------------------------------------------------------------------
 // public: snap indicator glyph
 // ---------------------------------------------------------------------------
+
+/** Short uppercase tag drawn beside each osnap marker (AutoCAD-style). */
+const SNAP_LABEL: Record<string, string> = {
+  endpoint: 'END',
+  midpoint: 'MID',
+  center: 'CEN',
+  quadrant: 'QUA',
+  intersection: 'INT',
+  perpendicular: 'PER',
+  nearest: 'NEA',
+  extension: 'EXT',
+  grid: 'GRID',
+}
+
+/** Loose snaps (grid / nearest) get a dimmer marker than precise object snaps. */
+const LOOSE_SNAP = new Set(['grid', 'nearest'])
+
+/** round to a device-friendly half-pixel so 1px strokes stay crisp */
+function crisp(v: number): number {
+  return Math.round(v) + 0.5
+}
+
 export function renderSnapIndicator(
   g: CanvasRenderingContext2D,
   snap: SnapResult,
   rc: RenderCtx,
 ): void {
   if (snap.type === 'none') return
-  const p = rc.toScreen(snap.point)
-  const r = 4.5
+  const raw = rc.toScreen(snap.point)
+  const cx = crisp(raw.x)
+  const cy = crisp(raw.y)
+  const r = 5
+  const loose = LOOSE_SNAP.has(snap.type)
+  const accent = rc.colors.accent
+
   g.save()
-  g.strokeStyle = rc.colors.accent
-  g.fillStyle = rc.colors.accent
-  g.lineWidth = 1.5
   g.setLineDash([])
+  g.lineJoin = 'miter'
+  g.lineCap = 'butt'
+
+  // Soft highlight halo so the pick point pops against busy linework.
+  g.fillStyle = withAlpha(accent, loose ? 0.1 : 0.16)
+  g.beginPath()
+  g.arc(cx, cy, r + 3, 0, Math.PI * 2)
+  g.fill()
+
+  g.strokeStyle = accent
+  g.fillStyle = accent
+  g.lineWidth = loose ? 1.25 : 1.6
   g.beginPath()
   switch (snap.type) {
     case 'endpoint':
-      g.strokeRect(p.x - r, p.y - r, r * 2, r * 2)
+      g.rect(cx - r, cy - r, r * 2, r * 2)
+      g.stroke()
       break
     case 'midpoint':
-      g.moveTo(p.x, p.y - r)
-      g.lineTo(p.x + r, p.y + r)
-      g.lineTo(p.x - r, p.y + r)
+      // upright triangle
+      g.moveTo(cx, cy - r)
+      g.lineTo(cx + r, cy + r)
+      g.lineTo(cx - r, cy + r)
       g.closePath()
       g.stroke()
       break
     case 'center':
+      g.arc(cx, cy, r, 0, Math.PI * 2)
+      g.stroke()
+      break
     case 'quadrant':
-      g.arc(p.x, p.y, r, 0, Math.PI * 2)
-      g.stroke()
-      break
-    case 'intersection':
-      g.moveTo(p.x - r, p.y - r)
-      g.lineTo(p.x + r, p.y + r)
-      g.moveTo(p.x + r, p.y - r)
-      g.lineTo(p.x - r, p.y + r)
-      g.stroke()
-      break
-    case 'perpendicular':
-      // right-angle mark
-      g.moveTo(p.x - r, p.y - r)
-      g.lineTo(p.x - r, p.y + r)
-      g.lineTo(p.x + r, p.y + r)
-      g.moveTo(p.x - r, p.y)
-      g.lineTo(p.x, p.y)
-      g.lineTo(p.x, p.y + r)
-      g.stroke()
-      break
-    case 'nearest':
-      // hourglass
-      g.moveTo(p.x - r, p.y - r)
-      g.lineTo(p.x + r, p.y - r)
-      g.lineTo(p.x - r, p.y + r)
-      g.lineTo(p.x + r, p.y + r)
+      // diamond
+      g.moveTo(cx, cy - r)
+      g.lineTo(cx + r, cy)
+      g.lineTo(cx, cy + r)
+      g.lineTo(cx - r, cy)
       g.closePath()
       g.stroke()
       break
-    case 'grid':
+    case 'intersection':
+      g.moveTo(cx - r, cy - r)
+      g.lineTo(cx + r, cy + r)
+      g.moveTo(cx + r, cy - r)
+      g.lineTo(cx - r, cy + r)
+      g.stroke()
+      break
+    case 'perpendicular':
+      // right-angle mark: left + bottom leg with an inner corner tick
+      g.moveTo(cx - r, cy - r)
+      g.lineTo(cx - r, cy + r)
+      g.lineTo(cx + r, cy + r)
+      g.moveTo(cx - r, cy + r - r * 0.55)
+      g.lineTo(cx - r + r * 0.55, cy + r - r * 0.55)
+      g.lineTo(cx - r + r * 0.55, cy + r)
+      g.stroke()
+      break
+    case 'nearest':
+      // bowtie / hourglass
+      g.moveTo(cx - r, cy - r)
+      g.lineTo(cx + r, cy - r)
+      g.lineTo(cx - r, cy + r)
+      g.lineTo(cx + r, cy + r)
+      g.closePath()
+      g.stroke()
+      break
     case 'extension':
+      // dashed cross-hair suggesting an inferred line
+      g.setLineDash([2, 2])
+      g.moveTo(cx - r - 1, cy)
+      g.lineTo(cx + r + 1, cy)
+      g.moveTo(cx, cy - r - 1)
+      g.lineTo(cx, cy + r + 1)
+      g.stroke()
+      g.setLineDash([])
+      break
+    case 'grid':
     default:
       // small plus
-      g.moveTo(p.x - r, p.y)
-      g.lineTo(p.x + r, p.y)
-      g.moveTo(p.x, p.y - r)
-      g.lineTo(p.x, p.y + r)
+      g.moveTo(cx - r, cy)
+      g.lineTo(cx + r, cy)
+      g.moveTo(cx, cy - r)
+      g.lineTo(cx, cy + r)
       g.stroke()
       break
   }
+
+  // Type label, offset up-right of the marker (dimension typeface).
+  const label = SNAP_LABEL[snap.type]
+  if (label) {
+    g.font = '9px "IBM Plex Mono", monospace'
+    g.textAlign = 'left'
+    g.textBaseline = 'alphabetic'
+    const tx = cx + r + 4
+    const ty = cy - r - 2
+    // subtle backing so the tag stays legible over dark linework
+    const tw = g.measureText(label).width
+    g.fillStyle = withAlpha(rc.colors.faint, 0.85)
+    g.fillRect(tx - 1, ty - 8, tw + 2, 10)
+    g.fillStyle = accent
+    g.fillText(label, tx, ty)
+  }
   g.restore()
+}
+
+/** Blend an #rrggbb (or shorthand) color toward a given alpha; passthrough otherwise. */
+function withAlpha(color: string, alpha: number): string {
+  if (color.startsWith('#')) {
+    let hex = color.slice(1)
+    if (hex.length === 3) hex = hex.split('').map((c) => c + c).join('')
+    const n = parseInt(hex, 16)
+    const rC = (n >> 16) & 255
+    const gC = (n >> 8) & 255
+    const bC = n & 255
+    return `rgba(${rC},${gC},${bC},${alpha})`
+  }
+  return color
 }
 
 // ---------------------------------------------------------------------------
@@ -458,17 +543,43 @@ export function renderGrips(
   rc: RenderCtx,
 ): void {
   const s = 3.5
+  const accent = rc.colors.accent
   g.save()
-  g.lineWidth = 1.25
-  g.strokeStyle = rc.colors.accent
-  g.fillStyle = '#ffffff'
   g.setLineDash([])
+
+  // Pass 1: a faint dashed selection halo around each entity's bbox so the whole
+  // object reads as "picked" (not just the little corner handles).
+  g.lineWidth = 1
+  g.strokeStyle = withAlpha(accent, 0.5)
+  for (const e of entities) {
+    if (!selectedIds.has(e.id)) continue
+    // A bare line/polyline has no meaningful box outline — its grips say enough.
+    if (e.kind === 'line' || e.kind === 'polyline') continue
+    const [minX, minY, maxX, maxY] = entityBBox(e)
+    const a = rc.toScreen({ x: minX, y: minY })
+    const b = rc.toScreen({ x: maxX, y: maxY })
+    const x = Math.min(a.x, b.x)
+    const y = Math.min(a.y, b.y)
+    const w = Math.abs(b.x - a.x)
+    const h = Math.abs(b.y - a.y)
+    const pad = 3
+    g.setLineDash([4, 3])
+    g.strokeRect(crisp(x - pad), crisp(y - pad), w + pad * 2, h + pad * 2)
+  }
+  g.setLineDash([])
+
+  // Pass 2: crisp square grips at each control point (white fill, amber edge).
+  g.lineWidth = 1.25
+  g.strokeStyle = accent
+  g.fillStyle = '#ffffff'
   for (const e of entities) {
     if (!selectedIds.has(e.id)) continue
     for (const gp of entityGrips(e)) {
       const p = rc.toScreen(gp)
+      const px = crisp(p.x)
+      const py = crisp(p.y)
       g.beginPath()
-      g.rect(p.x - s, p.y - s, s * 2, s * 2)
+      g.rect(px - s, py - s, s * 2, s * 2)
       g.fill()
       g.stroke()
     }

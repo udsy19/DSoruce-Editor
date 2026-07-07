@@ -17,12 +17,16 @@ import { CATEGORY_COLOR } from './types'
 
 // Mat behind the plate — matches EditorCanvas C.mat.
 const MAT = '#f2f4f7'
-// Furniture linework (gray), and selection/hover accents.
+// Furniture linework (gray).
 const FURNITURE_LINE = '#5c6670'
-const ACCENT = '#2d5bd6'
-const HOVER = 'rgba(45,91,214,0.45)'
-// Bound ("specified"/re-imagined) furniture — muted accent so you can see what's decided.
-const SPECIFIED = 'rgba(45,91,214,0.7)'
+// Selection = warm amber accent; hover = a lighter amber wash. Kept distinct
+// from the blue used for product-bound items so the two never read the same.
+const ACCENT = '#E8A13C'
+const ACCENT_HALO = 'rgba(232,161,60,0.28)'
+const HOVER = 'rgba(232,161,60,0.55)'
+// Bound ("specified"/re-imagined) furniture — solid data-blue so a decided item
+// reads distinctly from both unbound gray linework and the amber selection.
+const SPECIFIED = '#2d5bd6'
 
 const MIN_SCALE = 2
 const MAX_SCALE = 4000
@@ -605,23 +609,33 @@ export class DrawingCanvas {
     void d
   }
 
-  /** Hovered (faint accent) + selected (accent outline + bbox) furniture. */
+  /** Hovered (soft amber wash) + selected (amber halo + crisp outline + bbox). */
   private drawHighlights() {
     const ctx = this.ctx
+    ctx.lineCap = 'round'
+    ctx.lineJoin = 'round'
     if (this.hovered && this.hovered !== this.selected) {
+      // soft thick wash so a hovered item reads as "pickable" without hiding its linework
       ctx.strokeStyle = HOVER
-      ctx.lineWidth = 1.5
+      ctx.lineWidth = 3
       ctx.beginPath()
       for (const e of this.hovered.entities) this.appendEntity(e)
       ctx.stroke()
     }
     if (this.selected) {
+      // 1) translucent halo underneath — makes the selection glow over dense plans
+      ctx.strokeStyle = ACCENT_HALO
+      ctx.lineWidth = 4
+      ctx.beginPath()
+      for (const e of this.selected.entities) this.appendEntity(e)
+      ctx.stroke()
+      // 2) crisp amber outline on top
       ctx.strokeStyle = ACCENT
       ctx.lineWidth = 1.6
       ctx.beginPath()
       for (const e of this.selected.entities) this.appendEntity(e)
       ctx.stroke()
-      // bbox rectangle
+      // 3) dashed bbox + solid corner handles
       const [minX, minY, maxX, maxY] = this.selected.bbox
       const a = this.toScreen(minX, maxY)
       const b = this.toScreen(maxX, minY)
@@ -630,7 +644,6 @@ export class DrawingCanvas {
       ctx.setLineDash([4, 3])
       ctx.strokeRect(a.x + 0.5, a.y + 0.5, b.x - a.x - 1, b.y - a.y - 1)
       ctx.setLineDash([])
-      // solid corner handles
       ctx.fillStyle = ACCENT
       for (const [hx, hy] of [
         [a.x, a.y],
@@ -638,7 +651,12 @@ export class DrawingCanvas {
         [a.x, b.y],
         [b.x, b.y],
       ]) {
-        ctx.fillRect(hx - HANDLE_PX, hy - HANDLE_PX, HANDLE_PX * 2, HANDLE_PX * 2)
+        ctx.fillRect(
+          Math.round(hx) - HANDLE_PX,
+          Math.round(hy) - HANDLE_PX,
+          HANDLE_PX * 2,
+          HANDLE_PX * 2,
+        )
       }
     }
   }

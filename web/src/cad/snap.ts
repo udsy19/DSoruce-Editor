@@ -30,6 +30,22 @@ const PRIORITY: Record<SnapType, number> = {
   none: 0,
 }
 
+// Per-type grab radius as a multiple of the base tolerance. High-value point
+// snaps get a slightly larger "magnet" (AutoCAD aperture feel); the loose
+// `nearest` snap grabs a touch tighter so the cursor doesn't stick to edges.
+const TOL_MULT: Record<SnapType, number> = {
+  endpoint: 1.25,
+  intersection: 1.2,
+  midpoint: 1.1,
+  center: 1.1,
+  quadrant: 1.05,
+  perpendicular: 1.0,
+  nearest: 0.85,
+  grid: 1,
+  extension: 1,
+  none: 1,
+}
+
 interface Cand {
   point: Vec2
   type: SnapType
@@ -230,12 +246,15 @@ export function snap(cursor: Vec2, ctx: SnapContext): SnapResult {
   }
 
   // ---- pick the best in-tolerance candidate by priority, then distance ----
+  // Each type carries its own grab radius (tol · TOL_MULT), so a nearby endpoint
+  // still wins over a loose `nearest` point even when marginally farther away.
   let best: Cand | null = null
   let bestPr = -1
   let bestD = Infinity
   for (const c of cands) {
     const d = dist2(cursor, c.point)
-    if (d > tol2) continue
+    const m = TOL_MULT[c.type]
+    if (d > tol2 * m * m) continue
     const pr = PRIORITY[c.type]
     if (pr > bestPr || (pr === bestPr && d < bestD)) {
       best = c
