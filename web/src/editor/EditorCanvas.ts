@@ -392,6 +392,12 @@ export class EditorCanvas {
     this.sync()
   }
 
+  /** Wipe the document to a fresh empty doc (import→test-fit bridge). */
+  clearAll() {
+    this.ed = new Editor()
+    this.sync()
+  }
+
   private commit() {
     this.render()
     this.onChange?.()

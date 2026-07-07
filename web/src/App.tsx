@@ -16,6 +16,7 @@ import type { OfficeProduct } from './materialBank/office'
 import { exportPNG } from './export/png'
 import { downloadDXF, downloadDrawingDXF } from './export/dxf'
 import { CandidateGallery } from './ui/CandidateGallery'
+import { extractPlate, pushPlateToEditor } from './import/testfit'
 
 // CAD drafting tools (map to EditorCanvas 'cad:<id>' tools).
 const CAD_RAIL: { id: string; icon: string; label: string; hint?: string }[] = [
@@ -142,6 +143,29 @@ export function App() {
     ec?.setTool(t)
   }
 
+  /** The qbiq loop: extract the imported floor plate → seed the document with
+   *  its boundary walls → jump to 2D where the autonomous generator runs
+   *  inside the real building shell. */
+  const testFitPlan = () => {
+    if (!ec || !drawing) return
+    const plate = extractPlate(drawing)
+    if (!plate) {
+      setImportErr('No wall geometry found in this drawing to derive a floor plate from.')
+      return
+    }
+    const m = ec.getMetrics()
+    if (
+      (m.wall_count > 0 || m.component_count > 0) &&
+      !window.confirm('Replace the current document with the imported floor plate?')
+    ) {
+      return
+    }
+    ec.clearAll()
+    pushPlateToEditor(ec, plate)
+    ec.sync()
+    setMode('2d')
+  }
+
   return (
     <div className="app">
       <header className="topbar">
@@ -185,6 +209,11 @@ export function App() {
                 3D
               </button>
             </div>
+          )}
+          {mode === 'import' && drawing && (
+            <button className="export-btn" onClick={testFitPlan} data-testid="testfit-plan">
+              Test-fit this plan
+            </button>
           )}
           <input
             ref={fileRef}
