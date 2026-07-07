@@ -249,6 +249,8 @@ interface RawEntity {
   layer?: string
   name?: string
   position?: RawVec
+  /** TEXT stores its insertion point here (MTEXT uses `position`). */
+  startPoint?: RawVec
   rotation?: number
   xScale?: number
   yScale?: number
@@ -425,8 +427,11 @@ function flatten(
       }
       case 'TEXT':
       case 'MTEXT': {
-        if (!e.position) return
-        const [tx, ty] = apply(m, e.position.x, e.position.y)
+        // dxf-parser puts TEXT's insertion point in `startPoint`; MTEXT in
+        // `position`. Reading only `position` silently dropped every TEXT.
+        const at = e.position ?? e.startPoint
+        if (!at) return
+        const [tx, ty] = apply(m, at.x, at.y)
         out.push({
           kind: 'text',
           layer,

@@ -1,8 +1,13 @@
-// Vector export: DocState -> minimal DXF R12 ASCII.
+// Vector export: DocState -> DXF R12 ASCII.
 //
-// DXF R12 is the most widely-readable ASCII CAD format. We emit only the
-// ENTITIES section (LINEs), which R12 readers accept — layers referenced by
-// entities are auto-created, so no TABLES section is required for a valid file.
+// DXF R12 is the most widely-readable ASCII CAD format. Every file we emit has
+// three sections: a tiny HEADER declaring $INSUNITS = 6 (meters — the core's
+// unit; without it AutoCAD-class readers, and our own importer, assume
+// inches), a TABLES section declaring every layer used (strict readers want
+// layers declared before ENTITIES), and the ENTITIES section itself.
+//
+// R12-safe entity set only: LINE, POLYLINE/VERTEX/SEQEND, CIRCLE, ARC, TEXT.
+// No LWPOLYLINE (R2000+), no ELLIPSE (tessellated instead).
 //
 // Units: the core is in meters and DXF is unitless, so 1 drawing unit = 1 m.
 // Coordinates are taken straight from DocState and component rectangles are
@@ -22,9 +27,16 @@ function f(n: number): string {
   return n.toFixed(4)
 }
 
-// A DXF layer name: no spaces, non-empty. Fall back to layer "0".
-function layerName(category: string): string {
-  const clean = category.trim().replace(/\s+/g, '_').toUpperCase()
+// A valid DXF layer name from any source string (category or original CAD
+// layer): uppercase, spaces → '_', characters illegal in DXF symbol-table
+// names stripped (only letters, digits, '_', '-', '$' and '.' survive).
+// Fall back to layer "0".
+function layerName(source: string): string {
+  const clean = source
+    .trim()
+    .replace(/\s+/g, '_')
+    .toUpperCase()
+    .replace(/[^A-Z0-9_\-$.]/g, '')
   return clean.length > 0 ? clean : '0'
 }
 
@@ -84,9 +96,27 @@ function vecLines(layer: string, pts: Vec2[], closed: boolean): string[] {
   return out
 }
 
+// A single R12 POLYLINE / VERTEX… / SEQEND chain. Group 66 = 1 ("vertices
+// follow", required in R12), group 70 bit 1 = closed. One entity instead of
+// N LINEs keeps the round-tripped file editable as the polyline it was.
+function polylineEnt(layer: string, pts: Array<[number, number]>, closed: boolean): string {
+  const out = [
+    '0', 'POLYLINE', '8', layer,
+    '66', '1',
+    '10', '0.0', '20', '0.0', '30', '0.0',
+    '70', closed ? '1' : '0',
+  ]
+  for (const [x, y] of pts) {
+    out.push('0', 'VERTEX', '8', layer, '10', f(x), '20', f(y), '30', '0.0')
+  }
+  out.push('0', 'SEQEND', '8', layer)
+  return out.join('\n')
+}
+
 // An ARC entity (R12): center (10/20), radius (40), start/end angles in
-// DEGREES (50/51). DXF sweeps from 50 to 51 with increasing angle on the same
-// cos/sin parametrization the CAD model uses, so radians→degrees is exact.
+// DEGREES (50/51). DXF sweeps CCW from 50 to 51 on the same cos/sin
+// parametrization the model uses (radians CCW — see import/types.ts), so
+// radians→degrees is exact; the importer converts back with π/180.
 function arcEnt(layer: string, cx: number, cy: number, r: number, start: number, end: number): string {
   return [
     '0', 'ARC', '8', layer,
@@ -96,13 +126,54 @@ function arcEnt(layer: string, cx: number, cy: number, r: number, start: number,
 }
 
 // A TEXT entity (R12): insertion point (10/20), height (40), value (1),
-// rotation in degrees (50).
+// rotation in degrees (50). `rot` is radians (model convention).
 function textEnt(layer: string, x: number, y: number, h: number, value: string, rot = 0): string {
   return [
     '0', 'TEXT', '8', layer,
     '10', f(x), '20', f(y), '30', '0.0',
     '40', f(h), '1', value, '50', f(rot * DEG),
   ].join('\n')
+}
+
+// ---------------------------------------------------------------------------
+// File assembly: HEADER + TABLES(LAYER) + ENTITIES + EOF.
+// ---------------------------------------------------------------------------
+
+// Every layer referenced by the generated entity strings. Entity strings are
+// strictly code/value pairs, so group codes sit at even indices — a value that
+// happens to be "8" can never be mistaken for the layer group code.
+function usedLayers(entities: string[]): string[] {
+  const set = new Set<string>()
+  for (const ent of entities) {
+    const lines = ent.split('\n')
+    for (let i = 0; i < lines.length - 1; i += 2) {
+      if (lines[i] === '8') set.add(lines[i + 1])
+    }
+  }
+  if (set.size === 0) set.add('0')
+  return [...set].sort()
+}
+
+// Wrap finished entity strings into a complete R12 file:
+//   HEADER  — $INSUNITS 6 (meters) so units survive the round trip
+//   TABLES  — a LAYER table declaring every layer used (color 7, CONTINUOUS)
+//   ENTITIES, then EOF.
+function assembleDXF(entities: string[]): string {
+  const layers = usedLayers(entities)
+  const out = [
+    '0', 'SECTION', '2', 'HEADER',
+    '9', '$INSUNITS', '70', '6',
+    '0', 'ENDSEC',
+    '0', 'SECTION', '2', 'TABLES',
+    '0', 'TABLE', '2', 'LAYER', '70', String(layers.length),
+  ]
+  for (const name of layers) {
+    out.push('0', 'LAYER', '2', name, '70', '0', '62', '7', '6', 'CONTINUOUS')
+  }
+  out.push('0', 'ENDTAB', '0', 'ENDSEC')
+  return [...out, '0', 'SECTION', '2', 'ENTITIES', ...entities, '0', 'ENDSEC', '0', 'EOF', ''].join(
+    '\n',
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -166,7 +237,7 @@ function cadEntityToDXF(e: CadEntity): string[] {
   }
 }
 
-/** Build a minimal valid DXF R12 ASCII string from a document state, plus any
+/** Build a valid DXF R12 ASCII string from a document state, plus any
  *  CAD drafting entities (see `EditorCanvas.cadEntities()`). */
 export function docStateToDXF(state: DocState, cadEntities?: CadEntity[]): string {
   const entities: string[] = []
@@ -184,7 +255,7 @@ export function docStateToDXF(state: DocState, cadEntities?: CadEntity[]): strin
     entities.push(...cadEntityToDXF(e))
   }
 
-  return ['0', 'SECTION', '2', 'ENTITIES', ...entities, '0', 'ENDSEC', '0', 'EOF', ''].join('\n')
+  return assembleDXF(entities)
 }
 
 /** Build the DXF for a document state (+ CAD drafting) and trigger a download. */
@@ -197,63 +268,77 @@ export function downloadDXF(state: DocState, filename: string, cadEntities?: Cad
 // Imported-plan export: a `Drawing` (see import/types) -> the same DXF R12.
 //
 // The Drawing is already meters, world-space, Y-up (DXF convention), so no
-// transform is needed. Linework entities become LINEs (a LINE is a 2-point
-// open polyline in this model); furniture blocks are emitted as their bounding
-// rectangle on a FURNITURE layer — matching the "furniture bboxes → rects"
-// contract and keeping the file small and universally readable.
-
-// Emit the LINE segments of one polyline entity on the given layer.
-function polylineLines(layer: string, e: DrawEntity): string[] {
-  const pts = e.pts
-  if (!pts || pts.length < 2) return []
-  const out: string[] = []
-  for (let i = 0; i < pts.length - 1; i++) {
-    out.push(line(layer, pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1]))
-  }
-  if (e.closed && pts.length > 2) {
-    const a = pts[pts.length - 1]
-    const b = pts[0]
-    out.push(line(layer, a[0], a[1], b[0], b[1]))
-  }
-  return out
-}
+// transform is needed. Fidelity contract:
+//   - every entity exports on its ORIGINAL source layer (sanitized), so a
+//     round-tripped file looks native in the source CAD's layer manager;
+//   - real geometry, not tessellation: arcs → ARC, circles → CIRCLE,
+//     3+-point polylines → one POLYLINE chain (2-point ones stay LINE),
+//     text → TEXT with height + rotation;
+//   - furniture blocks export as their bounding rectangle on a
+//     FURN_<source-layer-or-category> layer with the item name as a small
+//     TEXT label alongside, so furniture schedules survive the hand-off.
 
 // A CIRCLE entity (R12) — used for imported circle primitives (e.g. chairs).
 function circle(layer: string, cx: number, cy: number, r: number): string {
   return ['0', 'CIRCLE', '8', layer, '10', f(cx), '20', f(cy), '30', '0.0', '40', f(r)].join('\n')
 }
 
-// The four LINEs of an axis-aligned bounding rectangle [minX,minY,maxX,maxY].
-function bboxLines(layer: string, bbox: [number, number, number, number]): string[] {
-  const [x0, y0, x1, y1] = bbox
-  return [
-    line(layer, x0, y0, x1, y0),
-    line(layer, x1, y0, x1, y1),
-    line(layer, x1, y1, x0, y1),
-    line(layer, x0, y1, x0, y0),
-  ]
+// One imported DrawEntity → its DXF entity string(s) on the given layer.
+function drawEntityToDXF(layer: string, e: DrawEntity): string[] {
+  switch (e.kind) {
+    case 'polyline': {
+      const pts = e.pts
+      if (!pts || pts.length < 2) return []
+      // A plain 2-point open polyline is just a LINE — export it as one.
+      if (pts.length === 2 && !e.closed) {
+        return [line(layer, pts[0][0], pts[0][1], pts[1][0], pts[1][1])]
+      }
+      return [polylineEnt(layer, pts, !!e.closed)]
+    }
+    case 'arc':
+      if (e.cx === undefined || e.cy === undefined || e.r === undefined) return []
+      return [arcEnt(layer, e.cx, e.cy, e.r, e.start ?? 0, e.end ?? Math.PI * 2)]
+    case 'circle':
+      if (e.cx === undefined || e.cy === undefined || e.r === undefined) return []
+      return [circle(layer, e.cx, e.cy, e.r)]
+    case 'text':
+      if (!e.text || e.tx === undefined || e.ty === undefined) return []
+      return [textEnt(layer, e.tx, e.ty, e.h ?? DIM_TEXT_H, e.text, e.rot ?? 0)]
+    default:
+      return []
+  }
 }
 
-/** Build a minimal valid DXF R12 ASCII string from an imported drawing. */
+/** Build a valid DXF R12 ASCII string from an imported drawing. */
 export function drawingToDXF(drawing: Drawing): string {
   const entities: string[] = []
 
   for (const e of drawing.entities) {
-    const layer = layerName(e.category)
-    if (e.kind === 'polyline') {
-      entities.push(...polylineLines(layer, e))
-    } else if (e.kind === 'circle' && e.cx !== undefined && e.cy !== undefined && e.r !== undefined) {
-      entities.push(circle(layer, e.cx, e.cy, e.r))
-    }
-    // arcs/text are skipped: R12 arc angle semantics + text styling add weight
-    // without helping a clean CAD hand-off; walls/glazing carry the geometry.
+    entities.push(...drawEntityToDXF(layerName(e.layer || e.category), e))
   }
 
+  const FURN_LABEL_H = 0.15 // meters — small schedule-friendly label
   for (const it of drawing.furniture) {
-    entities.push(...bboxLines('FURNITURE', it.bbox))
+    // Original source layer when the block geometry carries one; category
+    // bucket otherwise (both sanitized).
+    const layer = `FURN_${layerName(it.entities[0]?.layer || it.category)}`
+    const [x0, y0, x1, y1] = it.bbox
+    entities.push(
+      polylineEnt(
+        layer,
+        [
+          [x0, y0],
+          [x1, y0],
+          [x1, y1],
+          [x0, y1],
+        ],
+        true,
+      ),
+    )
+    if (it.name) entities.push(textEnt(layer, x0, y0, FURN_LABEL_H, it.name))
   }
 
-  return ['0', 'SECTION', '2', 'ENTITIES', ...entities, '0', 'ENDSEC', '0', 'EOF', ''].join('\n')
+  return assembleDXF(entities)
 }
 
 /** Build the DXF for an imported drawing and trigger a download. */
