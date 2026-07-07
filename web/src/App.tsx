@@ -15,6 +15,7 @@ import type { Drawing, FurnitureItem } from './import/types'
 import type { DrawingCanvas } from './import/DrawingCanvas'
 import type { OfficeProduct } from './materialBank/office'
 import { exportPNG } from './export/png'
+import { exportPlanPDF } from './export/pdf'
 import { downloadDXF, downloadDrawingDXF } from './export/dxf'
 import { CandidateGallery } from './ui/CandidateGallery'
 import { extractPlate, pushPlateToEditor } from './import/testfit'
@@ -505,6 +506,13 @@ function ExportMenu({
     setOpen(false)
   }
 
+  const exportPdf = () => {
+    if (!ec) return
+    // Exports the editor document (in import mode that's the test-fit doc).
+    void exportPlanPDF(ec.getState(), ec.getMetrics(), { project: 'Untitled Plan' })
+    setOpen(false)
+  }
+
   const source = importMode ? 'imported plan' : 'generated plan'
 
   return (
@@ -532,8 +540,8 @@ function ExportMenu({
           <div className="export-item" role="menuitem" onClick={exportDxf} data-testid="export-dxf">
             DXF <span className="hint">vector CAD</span>
           </div>
-          <div className="export-item disabled" aria-disabled="true">
-            PDF sheet <span className="hint">soon</span>
+          <div className="export-item" role="menuitem" onClick={exportPdf} data-testid="export-pdf">
+            PDF sheet <span className="hint">A3 drawing</span>
           </div>
           <div className="export-sep" />
           <div className="export-item disabled" aria-disabled="true">
