@@ -1,5 +1,6 @@
 import init, { Editor } from '../wasm/ds_core'
 import { catByCategory } from './catalog'
+import { drawFurnitureSymbol } from './furniture'
 
 // Types mirroring the Rust core's serialized document (serde field names).
 export interface DocWall {
@@ -599,17 +600,28 @@ export class EditorCanvas {
     const h = c.h * this.scale
     const frozen = c.decision === 'Confirmed'
 
-    // Furniture reads as a thin gray line-glyph on the pastel zone (Laiout style).
+    // Very-light plate so the glyph sits cleanly on the pastel zone.
     ctx.save()
     ctx.translate(p.x, p.y)
     ctx.rotate(c.rotation)
-    ctx.fillStyle = frozen ? hexA(DECISION_DOT.Confirmed, 0.14) : 'rgba(255,255,255,0.55)'
-    ctx.strokeStyle = selected ? C.accent : frozen ? DECISION_DOT.Confirmed : C.furniture
-    ctx.lineWidth = selected ? 1.8 : frozen ? 1.5 : 1.1
+    ctx.fillStyle = frozen ? hexA(DECISION_DOT.Confirmed, 0.12) : 'rgba(255,255,255,0.5)'
     roundRect(ctx, -w / 2, -h / 2, w, h, Math.min(4, Math.min(w, h) * 0.14))
     ctx.fill()
-    ctx.stroke()
     ctx.restore()
+
+    // Recognizable top-view CAD furniture line-symbol.
+    drawFurnitureSymbol(ctx, {
+      category: c.category,
+      cx: p.x,
+      cy: p.y,
+      w,
+      h,
+      rotation: c.rotation,
+      stroke: frozen ? DECISION_DOT.Confirmed : C.furniture,
+      detail: '#b4b9c1',
+      accent: C.accent,
+      selected,
+    })
 
     // Label only for the selected item — zone labels carry the room names, so the
     // plan stays clean.

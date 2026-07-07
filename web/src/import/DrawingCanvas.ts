@@ -1,0 +1,439 @@
+import type { Drawing, DrawEntity, FurnitureItem, Category } from './types'
+import { CATEGORY_COLOR } from './types'
+
+/**
+ * Framework-agnostic CAD renderer for an imported {@link Drawing}. Renders
+ * real architectural linework (walls, glazing, doors, casework, annotation) at
+ * CAD fidelity plus selectable furniture blocks. Mirrors the light "floor-plate"
+ * aesthetic of {@link ../editor/EditorCanvas} (white plate on #f2f4f7 mat, thin
+ * dark walls) with pan/zoom/DPR handling.
+ *
+ * ── Coordinates ───────────────────────────────────────────────────────────
+ * The Drawing is in METERS, world-space, Y-UP (DXF/CAD convention). This
+ * renderer flips Y for the screen: screenX = wx·scale + ox, screenY = −wy·scale
+ * + oy. Arc/text angles (radians, CCW in world) become clockwise on screen, so
+ * we negate them when drawing.
+ */
+
+// Mat behind the plate — matches EditorCanvas C.mat.
+const MAT = '#f2f4f7'
+// Furniture linework (gray), and selection/hover accents.
+const FURNITURE_LINE = '#5c6670'
+const ACCENT = '#2d5bd6'
+const HOVER = 'rgba(45,91,214,0.45)'
+
+const MIN_SCALE = 2
+const MAX_SCALE = 4000
+const FIT_PADDING = 40 // px padding around bounds in fitToView
+const TEXT_MIN_PX = 6.5 // hide text glyphs smaller than this on screen
+const DRAG_THRESHOLD = 4 // px movement below which a mouse-up is a click
+
+/** Per-category screen lineweight (CSS px), independent of zoom. */
+const LINE_WEIGHT: Record<Category, number> = {
+  wall: 1.6,
+  glazing: 1,
+  door: 1,
+  furniture: 1,
+  casework: 1,
+  fixture: 1,
+  annotation: 0.75,
+  dimension: 0.75,
+  other: 1,
+}
+
+/** Draw order rank — faint annotation underneath, architecture on top. */
+const RANK: Record<Category, number> = {
+  dimension: 0,
+  annotation: 1,
+  other: 2,
+  fixture: 3,
+  casework: 4,
+  door: 6,
+  glazing: 7,
+  wall: 8,
+  furniture: 5, // furniture is drawn in its own pass; kept for completeness
+}
+const FURNITURE_RANK = 5
+
+interface StyleBucket {
+  color: string
+  lw: number
+  rank: number
+  ents: DrawEntity[]
+}
+
+export class DrawingCanvas {
+  private canvas: HTMLCanvasElement
+  private ctx: CanvasRenderingContext2D
+  private dpr = Math.max(1, window.devicePixelRatio || 1)
+
+  private drawing: Drawing | null = null
+  private buckets: StyleBucket[] = []
+  private texts: DrawEntity[] = []
+
+  private scale = 40 // px per meter
+  private offset = { x: 0, y: 0 } // screen px of world origin
+
+  private selected: FurnitureItem | null = null
+  private hovered: FurnitureItem | null = null
+
+  // pan / click bookkeeping
+  private pointerDown = false
+  private didPan = false
+  private lastScreen = { x: 0, y: 0 }
+  private downScreen = { x: 0, y: 0 }
+
+  private ro: ResizeObserver | null = null
+
+  /** Fired on click: the furniture item under the cursor, or null on empty space. */
+  onSelect: ((item: FurnitureItem | null) => void) | null = null
+  /** Fired when the hovered furniture item changes (optional). */
+  onHover: ((item: FurnitureItem | null) => void) | null = null
+
+  constructor(canvas: HTMLCanvasElement) {
+    this.canvas = canvas
+    const ctx = canvas.getContext('2d')
+    if (!ctx) throw new Error('2D canvas context unavailable')
+    this.ctx = ctx
+    this.attach()
+    this.resize()
+    this.render()
+  }
+
+  // ---- public API ----
+
+  /** Store a drawing, precompute style buckets, frame it, and render. */
+  setDrawing(d: Drawing): void {
+    this.drawing = d
+    this.selected = null
+    this.hovered = null
+    this.buildBuckets(d)
+    this.fitToView() // also renders
+  }
+
+  /** Frame `drawing.bounds` in the viewport with padding. */
+  fitToView(): void {
+    const d = this.drawing
+    const { w, h } = this.cssSize()
+    if (!d || w === 0 || h === 0) {
+      this.render()
+      return
+    }
+    const [minX, minY, maxX, maxY] = d.bounds
+    const worldW = Math.max(1e-3, maxX - minX)
+    const worldH = Math.max(1e-3, maxY - minY)
+    const sx = (w - 2 * FIT_PADDING) / worldW
+    const sy = (h - 2 * FIT_PADDING) / worldH
+    this.scale = clamp(Math.min(sx, sy), MIN_SCALE, MAX_SCALE)
+    // Center the world bbox center at the viewport center (Y flipped).
+    const cx = (minX + maxX) / 2
+    const cy = (minY + maxY) / 2
+    this.offset.x = w / 2 - cx * this.scale
+    this.offset.y = h / 2 + cy * this.scale
+    this.render()
+  }
+
+  dispose(): void {
+    this.ro?.disconnect()
+    this.ro = null
+    this.canvas.removeEventListener('mousedown', this.onDown)
+    window.removeEventListener('mousemove', this.onMove)
+    window.removeEventListener('mouseup', this.onUp)
+    this.canvas.removeEventListener('wheel', this.onWheel)
+    this.canvas.removeEventListener('mouseleave', this.onLeave)
+    window.removeEventListener('resize', this.onResize)
+  }
+
+  // ---- transforms ----
+  private toScreen(wx: number, wy: number) {
+    return { x: wx * this.scale + this.offset.x, y: -wy * this.scale + this.offset.y }
+  }
+  private toWorld(sx: number, sy: number) {
+    return { x: (sx - this.offset.x) / this.scale, y: -(sy - this.offset.y) / this.scale }
+  }
+
+  private cssSize() {
+    return { w: this.canvas.width / this.dpr, h: this.canvas.height / this.dpr }
+  }
+
+  // ---- setup: precompute style buckets so pan/zoom stay cheap ----
+  private buildBuckets(d: Drawing) {
+    const byKey = new Map<string, StyleBucket>()
+    this.texts = []
+    for (const e of d.entities) {
+      if (e.kind === 'text') {
+        this.texts.push(e)
+        continue
+      }
+      const color = e.color ?? CATEGORY_COLOR[e.category] ?? CATEGORY_COLOR.other
+      const lw = LINE_WEIGHT[e.category] ?? 1
+      const key = `${color}|${lw}`
+      let b = byKey.get(key)
+      if (!b) {
+        b = { color, lw, rank: RANK[e.category] ?? 2, ents: [] }
+        byKey.set(key, b)
+      }
+      b.ents.push(e)
+    }
+    this.buckets = [...byKey.values()].sort((a, b) => a.rank - b.rank)
+  }
+
+  // ---- events ----
+  private attach() {
+    this.canvas.addEventListener('mousedown', this.onDown)
+    window.addEventListener('mousemove', this.onMove)
+    window.addEventListener('mouseup', this.onUp)
+    this.canvas.addEventListener('wheel', this.onWheel, { passive: false })
+    this.canvas.addEventListener('mouseleave', this.onLeave)
+    window.addEventListener('resize', this.onResize)
+    // DPR-aware container resize.
+    if (typeof ResizeObserver !== 'undefined' && this.canvas.parentElement) {
+      this.ro = new ResizeObserver(() => {
+        this.resize()
+        this.render()
+      })
+      this.ro.observe(this.canvas.parentElement)
+    }
+  }
+
+  private screenFromEvent(e: MouseEvent) {
+    const r = this.canvas.getBoundingClientRect()
+    return { x: e.clientX - r.left, y: e.clientY - r.top }
+  }
+
+  private onDown = (e: MouseEvent) => {
+    const s = this.screenFromEvent(e)
+    this.pointerDown = true
+    this.didPan = false
+    this.lastScreen = s
+    this.downScreen = s
+  }
+
+  private onMove = (e: MouseEvent) => {
+    const s = this.screenFromEvent(e)
+    if (this.pointerDown) {
+      const dx = s.x - this.lastScreen.x
+      const dy = s.y - this.lastScreen.y
+      if (!this.didPan && Math.hypot(s.x - this.downScreen.x, s.y - this.downScreen.y) > DRAG_THRESHOLD) {
+        this.didPan = true
+      }
+      if (this.didPan) {
+        this.offset.x += dx
+        this.offset.y += dy
+        this.lastScreen = s
+        this.render()
+      }
+      return
+    }
+    // Hover hit-test only when not dragging.
+    const within = s.x >= 0 && s.y >= 0 && s.x <= this.cssSize().w && s.y <= this.cssSize().h
+    const hit = within ? this.pickFurniture(s.x, s.y) : null
+    if (hit !== this.hovered) {
+      this.hovered = hit
+      this.onHover?.(hit)
+      this.render()
+    }
+  }
+
+  private onUp = (e: MouseEvent) => {
+    if (!this.pointerDown) return
+    this.pointerDown = false
+    if (this.didPan) return // was a pan, not a click
+    const s = this.screenFromEvent(e)
+    const hit = this.pickFurniture(s.x, s.y)
+    this.selected = hit
+    this.onSelect?.(hit)
+    this.render()
+  }
+
+  private onLeave = () => {
+    if (this.hovered) {
+      this.hovered = null
+      this.onHover?.(null)
+      this.render()
+    }
+  }
+
+  private onWheel = (e: WheelEvent) => {
+    e.preventDefault()
+    const s = this.screenFromEvent(e)
+    const before = this.toWorld(s.x, s.y)
+    const factor = Math.exp(-e.deltaY * 0.0015)
+    this.scale = clamp(this.scale * factor, MIN_SCALE, MAX_SCALE)
+    // Keep the world point under the cursor fixed (Y flipped).
+    this.offset.x = s.x - before.x * this.scale
+    this.offset.y = s.y + before.y * this.scale
+    this.render()
+  }
+
+  private onResize = () => {
+    this.resize()
+    this.render()
+  }
+
+  private resize() {
+    const parent = this.canvas.parentElement
+    if (!parent) return
+    const rect = parent.getBoundingClientRect()
+    if (rect.width === 0 || rect.height === 0) return // hidden
+    this.dpr = Math.max(1, window.devicePixelRatio || 1)
+    this.canvas.width = Math.floor(rect.width * this.dpr)
+    this.canvas.height = Math.floor(rect.height * this.dpr)
+    this.canvas.style.width = `${rect.width}px`
+    this.canvas.style.height = `${rect.height}px`
+  }
+
+  // ---- furniture hit-test (topmost by draw order) ----
+  private pickFurniture(sx: number, sy: number): FurnitureItem | null {
+    const d = this.drawing
+    if (!d) return null
+    const w = this.toWorld(sx, sy)
+    for (let i = d.furniture.length - 1; i >= 0; i--) {
+      const it = d.furniture[i]
+      const [minX, minY, maxX, maxY] = it.bbox
+      if (w.x >= minX && w.x <= maxX && w.y >= minY && w.y <= maxY) return it
+    }
+    return null
+  }
+
+  // ---- rendering ----
+  private render() {
+    const ctx = this.ctx
+    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0)
+    const { w, h } = this.cssSize()
+    if (w === 0 || h === 0) return
+
+    ctx.fillStyle = MAT
+    ctx.fillRect(0, 0, w, h)
+
+    const d = this.drawing
+    if (!d) return
+
+    // White floor plate over the drawing bounds (Rayon/Revit look).
+    const [minX, minY, maxX, maxY] = d.bounds
+    const p0 = this.toScreen(minX, maxY) // top-left on screen (maxY = top)
+    const p1 = this.toScreen(maxX, minY) // bottom-right
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(p0.x, p0.y, p1.x - p0.x, p1.y - p0.y)
+
+    // Style-batched linework: architecture buckets, with furniture woven in at
+    // its rank so walls/glazing/doors sit on top.
+    let furnitureDrawn = false
+    ctx.lineCap = 'round'
+    ctx.lineJoin = 'round'
+    for (const b of this.buckets) {
+      if (!furnitureDrawn && b.rank >= FURNITURE_RANK) {
+        this.drawFurniture(d)
+        furnitureDrawn = true
+      }
+      ctx.strokeStyle = b.color
+      ctx.lineWidth = b.lw
+      ctx.beginPath()
+      for (const e of b.ents) this.appendEntity(e)
+      ctx.stroke()
+    }
+    if (!furnitureDrawn) this.drawFurniture(d)
+
+    this.drawTexts(d)
+    this.drawHighlights()
+  }
+
+  /** All furniture linework as one gray batched stroke. */
+  private drawFurniture(d: Drawing) {
+    if (d.furniture.length === 0) return
+    const ctx = this.ctx
+    ctx.strokeStyle = FURNITURE_LINE
+    ctx.lineWidth = 1
+    ctx.beginPath()
+    for (const it of d.furniture) {
+      for (const e of it.entities) this.appendEntity(e)
+    }
+    ctx.stroke()
+  }
+
+  private drawTexts(d: Drawing) {
+    const ctx = this.ctx
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'alphabetic'
+    for (const e of this.texts) {
+      if (!e.text || e.tx === undefined || e.ty === undefined) continue
+      const px = (e.h ?? 0.2) * this.scale
+      if (px < TEXT_MIN_PX) continue // too small to be legible; skip for clarity + perf
+      const p = this.toScreen(e.tx, e.ty)
+      ctx.save()
+      ctx.translate(p.x, p.y)
+      if (e.rot) ctx.rotate(-e.rot) // world CCW → screen CW
+      ctx.fillStyle = e.color ?? CATEGORY_COLOR[e.category] ?? '#9aa2ad'
+      ctx.font = `${px.toFixed(1)}px "IBM Plex Mono", ui-monospace, monospace`
+      ctx.fillText(e.text, 0, 0)
+      ctx.restore()
+    }
+    void d
+  }
+
+  /** Hovered (faint accent) + selected (accent outline + bbox) furniture. */
+  private drawHighlights() {
+    const ctx = this.ctx
+    if (this.hovered && this.hovered !== this.selected) {
+      ctx.strokeStyle = HOVER
+      ctx.lineWidth = 1.5
+      ctx.beginPath()
+      for (const e of this.hovered.entities) this.appendEntity(e)
+      ctx.stroke()
+    }
+    if (this.selected) {
+      ctx.strokeStyle = ACCENT
+      ctx.lineWidth = 1.6
+      ctx.beginPath()
+      for (const e of this.selected.entities) this.appendEntity(e)
+      ctx.stroke()
+      // bbox rectangle
+      const [minX, minY, maxX, maxY] = this.selected.bbox
+      const a = this.toScreen(minX, maxY)
+      const b = this.toScreen(maxX, minY)
+      ctx.strokeStyle = ACCENT
+      ctx.lineWidth = 1
+      ctx.setLineDash([4, 3])
+      ctx.strokeRect(a.x + 0.5, a.y + 0.5, b.x - a.x - 1, b.y - a.y - 1)
+      ctx.setLineDash([])
+    }
+  }
+
+  /**
+   * Append one entity's geometry to the CURRENT path (caller sets style +
+   * begins/strokes the path). Each subpath is self-contained (moveTo first) so
+   * many entities batch into a single stroke().
+   */
+  private appendEntity(e: DrawEntity) {
+    const ctx = this.ctx
+    if (e.kind === 'polyline') {
+      const pts = e.pts
+      if (!pts || pts.length === 0) return
+      const first = this.toScreen(pts[0][0], pts[0][1])
+      ctx.moveTo(first.x, first.y)
+      for (let i = 1; i < pts.length; i++) {
+        const p = this.toScreen(pts[i][0], pts[i][1])
+        ctx.lineTo(p.x, p.y)
+      }
+      if (e.closed) ctx.lineTo(first.x, first.y)
+    } else if (e.kind === 'circle') {
+      if (e.cx === undefined || e.cy === undefined || e.r === undefined) return
+      const c = this.toScreen(e.cx, e.cy)
+      const rPx = e.r * this.scale
+      ctx.moveTo(c.x + rPx, c.y)
+      ctx.arc(c.x, c.y, rPx, 0, Math.PI * 2)
+    } else if (e.kind === 'arc') {
+      if (e.cx === undefined || e.cy === undefined || e.r === undefined) return
+      const c = this.toScreen(e.cx, e.cy)
+      const rPx = e.r * this.scale
+      const a0 = -(e.start ?? 0) // world CCW → screen (Y flipped)
+      const a1 = -(e.end ?? Math.PI * 2)
+      ctx.moveTo(c.x + rPx * Math.cos(a0), c.y + rPx * Math.sin(a0))
+      ctx.arc(c.x, c.y, rPx, a0, a1, true)
+    }
+  }
+}
+
+function clamp(v: number, lo: number, hi: number): number {
+  return Math.min(hi, Math.max(lo, v))
+}
