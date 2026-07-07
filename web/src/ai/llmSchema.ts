@@ -58,6 +58,34 @@ export const OPENAI_TOOLS = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'split_zone',
+      description: 'Split one room/zone into two halves through its center. Use a zone id from the list.',
+      parameters: {
+        type: 'object',
+        properties: {
+          zone_id: { type: 'integer' },
+          axis: {
+            type: 'string',
+            enum: ['Vertical', 'Horizontal'],
+            description: 'Vertical = a left/right split; Horizontal = a top/bottom split',
+          },
+        },
+        required: ['zone_id'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'remove_selection',
+      description:
+        'Delete the currently selected component (only call this when an item is selected — see the state).',
+      parameters: { type: 'object', properties: {} },
+    },
+  },
 ]
 
 export function buildSystem(ctx: DriverContext): string {
@@ -70,6 +98,7 @@ Current plan state:
 - Boundary walls: ${ctx.walls} ${ctx.walls > 0 ? '(a room boundary exists)' : '(NO boundary drawn yet)'}
 - Workstations placed: ${ctx.workstations}
 - Program: ${ctx.program.desks} desks, ${ctx.program.meeting_rooms} meeting rooms, ${ctx.program.target_corridor_m} m corridor
+- Selected component: ${ctx.selection ? `${ctx.selection.category} #${ctx.selection.id}` : 'none'}
 - Zones:
 ${zones}
 

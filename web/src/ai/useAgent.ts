@@ -21,9 +21,11 @@ function buildContext(ec: EditorCanvas): DriverContext {
   const zones = (st.zones ?? []).map((z) => ({ id: z.id, zone_type: z.zone_type, label: z.label }))
   const m = ec.getMetrics()
   let selectionZoneId: number | null = null
+  let selection: { id: number; category: string } | null = null
   if (st.selection != null) {
     const c = st.components.find((x) => x.id === st.selection)
     if (c) {
+      selection = { id: c.id, category: c.category }
       const zid = (ec.ed as unknown as { zone_at?: (x: number, y: number) => number | undefined }).zone_at?.(
         c.x,
         c.y,
@@ -35,6 +37,7 @@ function buildContext(ec: EditorCanvas): DriverContext {
     program: ec.program,
     zones,
     selectionZoneId,
+    selection,
     walls: st.walls.length,
     workstations: m.workstations ?? 0,
   }

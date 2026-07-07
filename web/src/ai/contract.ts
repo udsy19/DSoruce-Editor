@@ -3,7 +3,12 @@ import { Program, ZoneType } from '../editor/EditorCanvas'
 // The tool vocabulary the agent (local parser now, Claude later) speaks. Each
 // ToolCall maps to a wasm Editor mutation. ZoneType strings byte-match the Rust
 // serde tags (redesign plan Conflict §1).
-export type ToolName = 'regenerate' | 'merge_zones' | 'set_zone_type'
+export type ToolName =
+  | 'regenerate'
+  | 'merge_zones'
+  | 'set_zone_type'
+  | 'split_zone'
+  | 'remove_selection'
 
 export interface ToolCall {
   name: ToolName
@@ -15,6 +20,7 @@ export interface ToolCall {
     zone_b?: number
     zone_id?: number
     zone_type?: ZoneType
+    axis?: 'Vertical' | 'Horizontal'
   }
   /** One-line human description of this call, for the plan/preview. */
   summary: string
@@ -50,6 +56,7 @@ export interface DriverContext {
   program: Program
   zones: { id: number; zone_type: ZoneType; label: string }[]
   selectionZoneId: number | null
+  selection: { id: number; category: string } | null
   walls: number
   workstations: number
 }

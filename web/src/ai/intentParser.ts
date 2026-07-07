@@ -41,6 +41,19 @@ export class LocalDriver implements AgentDriver {
 
     if (/\bmerge\b/.test(t)) return this.merge(t, ctx)
 
+    if (/\bsplit\b/.test(t)) return this.split(t, ctx)
+
+    if (
+      /\b(delete|remove|clear)\b/.test(t) &&
+      ctx.selection &&
+      /\b(this|it|that|selected|selection)\b/.test(t)
+    )
+      return {
+        kind: 'plan',
+        say: `Delete the selected ${ctx.selection.category}.`,
+        calls: [{ name: 'remove_selection', args: {}, summary: `delete ${ctx.selection.category}` }],
+      }
+
     if (/\b(make|turn|convert|change|reclassify)\b/.test(t) && lastZoneType(t))
       return this.setType(t, ctx)
 
@@ -150,6 +163,31 @@ export class LocalDriver implements AgentDriver {
       for (let j = i + 1; j < nonCirc.length && pairs.length < 6; j++)
         pairs.push(`Merge ${nonCirc[i].label} + ${nonCirc[j].label}`)
     return { kind: 'clarify', say: 'Which two rooms should I merge?', options: pairs }
+  }
+
+  private split(t: string, ctx: DriverContext): DriverResult {
+    const axis = /\b(horizontal|top|bottom|across|rows?)\b/.test(t) ? 'Horizontal' : 'Vertical'
+    let zoneId = ctx.selectionZoneId
+    if (zoneId == null) {
+      const byLabel = ctx.zones.find((z) => z.label && t.includes(z.label.toLowerCase()))
+      if (byLabel) zoneId = byLabel.id
+      else {
+        const type = lastZoneType(t)
+        const z = type && ctx.zones.find((zz) => zz.zone_type === type && zz.zone_type !== 'Circulation')
+        if (z) zoneId = z.id
+      }
+    }
+    if (zoneId == null) {
+      const opts = ctx.zones.filter((z) => z.zone_type !== 'Circulation')
+      if (opts.length === 0) return { kind: 'chat', say: 'Generate a fit first, then I can split a room.' }
+      return { kind: 'clarify', say: 'Which room should I split?', options: opts.map((z) => `Split ${z.label}`) }
+    }
+    const z = ctx.zones.find((zz) => zz.id === zoneId)!
+    return {
+      kind: 'plan',
+      say: `Split “${z.label}” into two ${axis === 'Vertical' ? '(left / right)' : '(top / bottom)'}.`,
+      calls: [{ name: 'split_zone', args: { zone_id: zoneId, axis }, summary: `split ${z.label}` }],
+    }
   }
 
   private mergePlan(a: { id: number; label: string }, b: { id: number; label: string }): DriverResult {

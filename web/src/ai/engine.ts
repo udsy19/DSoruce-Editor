@@ -26,6 +26,19 @@ function applyCall(ed: Editor, call: ToolCall): void {
     case 'set_zone_type':
       ed.set_zone_type(call.args.zone_id as number, call.args.zone_type as string)
       break
+    case 'split_zone': {
+      const zid = call.args.zone_id as number
+      const axis = call.args.axis === 'Horizontal' ? 'Horizontal' : 'Vertical'
+      const z = ((ed.state() as DocState).zones ?? []).find((zz) => zz.id === zid)
+      if (!z) throw new Error('no zone with that id')
+      // Cut through the zone's center along the chosen axis.
+      const at = axis === 'Vertical' ? z.shape.x : z.shape.y
+      ed.split_zone(zid, axis, at)
+      break
+    }
+    case 'remove_selection':
+      ed.delete_selected()
+      break
   }
 }
 

@@ -83,6 +83,16 @@ function mapCall(name: string, args: Record<string, unknown>, ctx: DriverContext
       summary: 'reclassify room',
     }
   }
+  if (name === 'split_zone') {
+    const id = n(args.zone_id)
+    if (!Number.isFinite(id)) return null
+    const axis = args.axis === 'Horizontal' ? 'Horizontal' : 'Vertical'
+    return { name: 'split_zone', args: { zone_id: id, axis }, summary: 'split room' }
+  }
+  if (name === 'remove_selection') {
+    if (ctx.selection == null) return null
+    return { name: 'remove_selection', args: {}, summary: `delete ${ctx.selection.category}` }
+  }
   return null
 }
 
