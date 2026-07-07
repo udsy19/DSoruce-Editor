@@ -24,6 +24,7 @@
 
 use crate::circulation::{self, CirculationConfig};
 use crate::document::Document;
+use crate::geometry::{self, Point};
 use crate::model::{Component, DecisionState};
 use crate::zone::{Zone, ZoneShape, ZoneType};
 use serde::{Deserialize, Serialize};
@@ -171,6 +172,31 @@ fn footprint_overlaps(
     })
 }
 
+/// The walls' centerline segments, ready for `geometry::trace_floor_polygon`.
+fn wall_segments(doc: &Document) -> Vec<(Point, Point)> {
+    doc.walls.iter().map(|w| (w.a, w.b)).collect()
+}
+
+/// True when a candidate footprint (center `cx,cy`, size `w`×`h`) is a valid
+/// slot on the floor plate: its center lies inside the plate polygon and the
+/// whole rect keeps ≥ `margin` clearance to **every** plate edge. Because the
+/// rect is connected, "center inside + no edge closer than `margin` > 0" is an
+/// exact containment-with-clearance test (the rect cannot cross the boundary
+/// without an edge at distance 0) — this is what keeps the perimeter corridor
+/// intact around notches of L/U-shaped plates. `plate == None` (open walls, no
+/// closed loop) accepts everything: pure bounding-box behavior, as before.
+fn slot_fits_plate(plate: Option<&[Point]>, cx: f64, cy: f64, w: f64, h: f64, margin: f64) -> bool {
+    let Some(poly) = plate else { return true };
+    if !geometry::point_in_polygon(cx, cy, poly) {
+        return false;
+    }
+    (0..poly.len()).all(|i| {
+        let a = poly[i];
+        let b = poly[(i + 1) % poly.len()];
+        geometry::rect_segment_dist(cx, cy, w, h, a, b) >= margin - 1e-6
+    })
+}
+
 /// Deterministically generate a test-fit into `doc` for `program`, seeded by `seed`.
 ///
 /// Walls are preserved. When `keep_confirmed` is true, components left `Confirmed`
@@ -204,6 +230,12 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
         Some(b) => b,
         None => return, // no boundary → nothing to place
     };
+
+    // The floor-plate polygon: the largest closed loop through the walls. For a
+    // rectangular room it equals the bbox, so every check below passes and the
+    // output is identical to the pure-bbox path. `None` (open walls) keeps the
+    // historical bbox-only behavior.
+    let plate = geometry::trace_floor_polygon(&wall_segments(doc), geometry::LOOP_SNAP_TOL);
 
     let corridor = program.target_corridor_m.max(0.0);
     let clear = program.desk_clearance_m.max(0.0);
@@ -267,7 +299,9 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
                 }
                 let cx = cx0 + mw / 2.0;
                 let cy = y0 + mh / 2.0 + (r as f64) * mr_pitch;
-                if footprint_overlaps(&obstacles[..frozen_len], cx, cy, mw, mh, clear) {
+                if !slot_fits_plate(plate.as_deref(), cx, cy, mw, mh, corridor)
+                    || footprint_overlaps(&obstacles[..frozen_len], cx, cy, mw, mh, clear)
+                {
                     continue;
                 }
                 push_component(doc, "MeetingRoom", cx, cy, mw, mh);
@@ -317,7 +351,20 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
         let mut prev_bottom = y0;
         let emit_core = |top: f64, bottom: f64, doc: &mut Document| {
             let h = bottom - top;
-            if h * col_mw >= 1.0 {
+            // Honest sliver check: measure the band's area *on the plate*
+            // (clipped to the floor polygon), so a band living entirely in an
+            // L-plate notch is skipped instead of reported as usable Core.
+            let on_plate = match &plate {
+                Some(poly) => geometry::rect_polygon_clip_area(
+                    poly,
+                    cx - col_mw / 2.0,
+                    top,
+                    cx + col_mw / 2.0,
+                    bottom,
+                ),
+                None => h * col_mw,
+            };
+            if on_plate >= 1.0 {
                 push_zone(
                     doc,
                     ZoneType::Core,
@@ -377,7 +424,9 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
                 let jy = rng.signed() * jitter;
                 let fx = (cx + jx).clamp(dz_x0 + program.desk_w / 2.0, dz_x1 - program.desk_w / 2.0);
                 let fy = (cy + jy).clamp(dz_y0 + program.desk_h / 2.0, dz_y1 - program.desk_h / 2.0);
-                if footprint_overlaps(&obstacles, fx, fy, program.desk_w, program.desk_h, clear * 0.5) {
+                if !slot_fits_plate(plate.as_deref(), fx, fy, program.desk_w, program.desk_h, corridor)
+                    || footprint_overlaps(&obstacles, fx, fy, program.desk_w, program.desk_h, clear * 0.5)
+                {
                     continue;
                 }
                 push_component(doc, "Desk", fx, fy, program.desk_w, program.desk_h);
@@ -436,7 +485,12 @@ pub fn score(doc: &Document, program: &Program) -> LayoutScore {
     };
 
     // --- density: reward desk-area / floor-area inside the 30–55 % band ---
-    let floor = doc.floor_area();
+    // Floor area is the true plate-polygon area when the walls close a loop
+    // (identical to the bbox for rectangular rooms); bbox only as a fallback.
+    // Otherwise an L-plate's density would be diluted by its void notch.
+    let floor = geometry::trace_floor_polygon(&wall_segments(doc), geometry::LOOP_SNAP_TOL)
+        .map(|poly| geometry::polygon_area(&poly))
+        .unwrap_or_else(|| doc.floor_area());
     let density = if floor <= 0.0 {
         0.0
     } else {
@@ -484,21 +538,14 @@ pub fn score(doc: &Document, program: &Program) -> LayoutScore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::geometry::Point;
     use crate::model::Wall;
 
-    /// Build a rectangular room `w`×`h` meters with its SW corner at origin.
-    fn room(w: f64, h: f64) -> Document {
+    /// Build a room from a closed corner loop (one wall per consecutive pair).
+    fn room_from_corners(corners: &[(f64, f64)]) -> Document {
         let mut doc = Document::new();
-        let corners = [
-            (0.0, 0.0),
-            (w, 0.0),
-            (w, h),
-            (0.0, h),
-        ];
-        for i in 0..4 {
+        for i in 0..corners.len() {
             let (ax, ay) = corners[i];
-            let (bx, by) = corners[(i + 1) % 4];
+            let (bx, by) = corners[(i + 1) % corners.len()];
             let id = doc.alloc_id();
             doc.walls.push(Wall {
                 id,
@@ -508,6 +555,24 @@ mod tests {
             });
         }
         doc
+    }
+
+    /// Build a rectangular room `w`×`h` meters with its SW corner at origin.
+    fn room(w: f64, h: f64) -> Document {
+        room_from_corners(&[(0.0, 0.0), (w, 0.0), (w, h), (0.0, h)])
+    }
+
+    /// L-shaped plate: 20×14 with an 8×6 notch removed at the top-right corner
+    /// (void where x > 12 and y > 8), drawn as 6 walls forming one closed loop.
+    fn l_room() -> Document {
+        room_from_corners(&[
+            (0.0, 0.0),
+            (20.0, 0.0),
+            (20.0, 8.0),
+            (12.0, 8.0),
+            (12.0, 14.0),
+            (0.0, 14.0),
+        ])
     }
 
     #[test]
@@ -696,6 +761,70 @@ mod tests {
             .expect("a workspace zone");
         let desks = doc.components.iter().filter(|c| c.category == "Desk").count();
         assert_eq!(ws.component_ids.len(), desks, "all desks in workspace");
+    }
+
+    #[test]
+    fn l_room_keeps_every_footprint_out_of_the_notch() {
+        let program = Program::default();
+        let mut doc = l_room();
+        generate(&mut doc, &program, 7, false);
+        let desks = doc.components.iter().filter(|c| c.category == "Desk").count();
+        assert!(desks > 0, "L-plate should still seat desks in its legs");
+        // No corner, edge midpoint, or center of any footprint may fall in the
+        // notch void (x > 12 ∧ y > 8) — that is outside the building.
+        for comp in &doc.components {
+            let xs = [comp.x - comp.w / 2.0, comp.x, comp.x + comp.w / 2.0];
+            let ys = [comp.y - comp.h / 2.0, comp.y, comp.y + comp.h / 2.0];
+            for &px in &xs {
+                for &py in &ys {
+                    assert!(
+                        !(px > 12.0 + 1e-9 && py > 8.0 + 1e-9),
+                        "{} has point ({}, {}) inside the notch void",
+                        comp.label,
+                        px,
+                        py
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn loop_tracer_finds_the_l_polygon_from_its_walls() {
+        let doc = l_room();
+        let segs: Vec<(Point, Point)> = doc.walls.iter().map(|w| (w.a, w.b)).collect();
+        let poly = geometry::trace_floor_polygon(&segs, geometry::LOOP_SNAP_TOL)
+            .expect("6 closed walls must trace a loop");
+        assert_eq!(poly.len(), 6, "the L has 6 corners");
+        // 20×14 − 8×6 notch = 232 m².
+        assert!((geometry::polygon_area(&poly) - 232.0).abs() < 1e-9);
+        assert!(geometry::point_in_polygon(5.0, 5.0, &poly));
+        assert!(!geometry::point_in_polygon(16.0, 11.0, &poly), "notch is outside");
+    }
+
+    #[test]
+    fn open_walls_fall_back_to_bbox_behavior() {
+        // Only 3 sides of a 20×15 rect: no closed loop. The tracer must return
+        // None, and generate() must match the closed 20×15 room placement-for-
+        // placement (both reduce to the same bbox work zone).
+        let mut open = room(20.0, 15.0);
+        open.walls.pop();
+        let segs: Vec<(Point, Point)> = open.walls.iter().map(|w| (w.a, w.b)).collect();
+        assert!(
+            geometry::trace_floor_polygon(&segs, geometry::LOOP_SNAP_TOL).is_none(),
+            "open walls must not trace a loop"
+        );
+
+        let program = Program::default();
+        generate(&mut open, &program, 7, false);
+        let mut closed = room(20.0, 15.0);
+        generate(&mut closed, &program, 7, false);
+        assert!(!open.components.is_empty());
+        assert_eq!(open.components.len(), closed.components.len());
+        for (a, b) in open.components.iter().zip(closed.components.iter()) {
+            assert_eq!(a.category, b.category);
+            assert!((a.x - b.x).abs() < 1e-12 && (a.y - b.y).abs() < 1e-12);
+        }
     }
 
     #[test]
