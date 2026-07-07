@@ -191,36 +191,42 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64) {
 
     let mut rng = Rng::new(seed);
 
-    // --- 1. Meeting-room band across the top of the work zone ---
-    let mut band_bottom = y0; // y below which desks may start
-    if program.meeting_rooms > 0 && program.meeting_h > 0.0 && program.meeting_w > 0.0 {
-        let mr_pitch = program.meeting_w + clear;
-        let cols = (((x1 - x0) + clear) / mr_pitch).floor() as i64;
-        if cols > 0 && program.meeting_h <= (y1 - y0) {
+    // --- 1. Meeting rooms: a column down the right edge of the work zone.
+    // A side column (vs a full-width top band) keeps the desk field contiguous —
+    // better for circulation and bench adjacency — and we only claim the column
+    // if at least one desk column still fits beside it, so a shallow room never
+    // ends up with meeting rooms and zero desks. Room size is clamped to fit. ---
+    let mut dz_x1 = x1;
+    if program.meeting_rooms > 0 && program.meeting_w > 0.0 && program.meeting_h > 0.0 {
+        let mw = program.meeting_w.min(x1 - x0);
+        let mh = program.meeting_h.min(y1 - y0);
+        let col_x0 = x1 - mw;
+        let mr_pitch = mh + clear;
+        let rows = (((y1 - y0) + clear) / mr_pitch).floor() as i64;
+        // Require room for a desk column to the left before claiming the strip.
+        if rows > 0 && (col_x0 - clear - x0) >= program.desk_w {
             let mut placed = 0u32;
-            for c in 0..cols {
+            for r in 0..rows {
                 if placed >= program.meeting_rooms {
                     break;
                 }
-                let cx = x0 + program.meeting_w / 2.0 + (c as f64) * mr_pitch;
-                let cy = y0 + program.meeting_h / 2.0;
-                push_component(doc, "MeetingRoom", cx, cy, program.meeting_w, program.meeting_h);
+                let cx = col_x0 + mw / 2.0;
+                let cy = y0 + mh / 2.0 + (r as f64) * mr_pitch;
+                push_component(doc, "MeetingRoom", cx, cy, mw, mh);
                 placed += 1;
             }
             if placed > 0 {
-                // consume the band plus one clearance aisle below it
-                band_bottom = y0 + program.meeting_h + clear;
+                dz_x1 = col_x0 - clear;
             }
         }
     }
 
-    // --- 2. Desk grid in the remaining work zone ---
+    // --- 2. Desk grid fills the remaining work zone (full height) ---
     if program.desks == 0 || program.desk_w <= 0.0 || program.desk_h <= 0.0 {
         return;
     }
     let dz_x0 = x0;
-    let dz_y0 = band_bottom;
-    let dz_x1 = x1;
+    let dz_y0 = y0;
     let dz_y1 = y1;
     if dz_x1 <= dz_x0 || dz_y1 <= dz_y0 {
         return;

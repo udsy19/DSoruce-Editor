@@ -245,11 +245,18 @@ export class Viewer3D {
     const size = box.getSize(new THREE.Vector3())
     const span = Math.max(size.x, size.z, 4)
 
+    // Fit the whole plan to the viewport using the bounding sphere, so it stays
+    // centered regardless of aspect ratio. Camera sits on a fixed 3/4 direction.
+    const radius = Math.max(box.getBoundingSphere(new THREE.Sphere()).radius, 3)
+    const fov = (this.camera.fov * Math.PI) / 180
+    const fitDist = (radius / Math.sin(fov / 2)) * 1.12
+    const dir = new THREE.Vector3(0.55, 0.62, 1).normalize()
     this.controls.target.copy(center)
-    this.camera.position.set(center.x + span * 0.9, span * 0.85 + 4, center.z + span * 1.1)
+    this.camera.position.copy(center).addScaledVector(dir, fitDist)
     this.camera.near = 0.1
-    this.camera.far = span * 8 + 200
+    this.camera.far = fitDist * 4 + 200
     this.camera.updateProjectionMatrix()
+    this.controls.update()
 
     // Point the sun at the plan and tighten its shadow frustum around it.
     this.sun.position.set(center.x + span, span * 1.6 + 8, center.z + span * 0.6)

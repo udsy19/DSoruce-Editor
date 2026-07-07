@@ -16,12 +16,12 @@ import { Scene3D } from './three/Scene3D'
 // Full program sent to the Rust engine. The panel exposes a few fields; the rest
 // are sensible defaults grounded in ADA/IBC clearances (see circulation.rs).
 const DEFAULT_PROGRAM: Program = {
-  desks: 24,
+  desks: 20,
   meeting_rooms: 2,
   desk_w: 1.6,
   desk_h: 0.8,
-  meeting_w: 4,
-  meeting_h: 4,
+  meeting_w: 3,
+  meeting_h: 3,
   cluster_cols: 4,
   target_corridor_m: 1.2,
   desk_clearance_m: 0.9,
@@ -87,10 +87,10 @@ export function App() {
         </div>
         <div className="topbar-right">
           <div className="mode-toggle" role="group" aria-label="View mode">
-            <button className={mode === '2d' ? 'seg on' : 'seg'} onClick={() => setMode('2d')}>
+            <button className={mode === '2d' ? 'seg on' : 'seg'} onClick={() => setMode('2d')} data-testid="mode-2d">
               2D
             </button>
-            <button className={mode === '3d' ? 'seg on' : 'seg'} onClick={() => setMode('3d')}>
+            <button className={mode === '3d' ? 'seg on' : 'seg'} onClick={() => setMode('3d')} data-testid="mode-3d">
               3D
             </button>
           </div>
@@ -174,7 +174,12 @@ function RailButton({
 }) {
   const active = tool === id
   return (
-    <button className={active ? 'rail-btn on' : 'rail-btn'} onClick={() => onClick(id)} aria-pressed={active}>
+    <button
+      className={active ? 'rail-btn on' : 'rail-btn'}
+      onClick={() => onClick(id)}
+      aria-pressed={active}
+      data-testid={id}
+    >
       <Icon name={icon} />
       {swatch && <span className="rail-swatch" style={{ background: swatch }} />}
       <span className="rail-tip">
@@ -254,7 +259,7 @@ function OverviewPanel({ ec, metrics }: { ec: EditorCanvas | null; metrics: Metr
         onChange={(v) => set({ target_corridor_m: v })}
       />
 
-      <button className="cta" onClick={generate} disabled={busy}>
+      <button className="cta" onClick={generate} disabled={busy} data-testid="generate">
         {busy ? 'Searching layouts…' : 'Generate test-fit'}
       </button>
       {note && <div className="inline-note">{note}</div>}
