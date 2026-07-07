@@ -107,6 +107,9 @@ export class DrawingCanvas {
   onHover: ((item: FurnitureItem | null) => void) | null = null
   /** Fired after any edit (move/rotate/delete/duplicate/undo) with the mutated drawing. */
   onChange: ((d: Drawing) => void) | null = null
+  /** Fired after every re-render (pan/zoom/resize/refresh/edit) so overlays
+   *  anchored in screen space (e.g. the selection card) can re-position. */
+  onViewChange: (() => void) | null = null
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas
@@ -133,6 +136,36 @@ export class DrawingCanvas {
   /** Force a re-render without touching pan/zoom — used after an external edit
    *  (e.g. the inspector binds a product to the selected item). */
   refresh(): void {
+    this.render()
+  }
+
+  /**
+   * Screen anchor for an item: the CSS-pixel position (relative to the canvas
+   * element) of its bbox TOP-CENTER — where a selection popover should point.
+   * Null when no drawing is loaded or the item is no longer part of it.
+   */
+  anchorFor(item: FurnitureItem): { x: number; y: number } | null {
+    const d = this.drawing
+    if (!d || !d.furniture.includes(item)) return null
+    const [minX, , maxX, maxY] = item.bbox
+    return this.toScreen((minX + maxX) / 2, maxY) // world Y-up: maxY is the top
+  }
+
+  /** Programmatically select an item (sidebar pick, tests) — keeps the
+   *  canvas's internal selection in sync with React so highlight, anchor and
+   *  clearSelection behave exactly as a canvas click would. */
+  select(item: FurnitureItem): void {
+    if (!this.drawing?.furniture.includes(item)) return
+    this.selected = item
+    this.onSelect?.(item)
+    this.render()
+  }
+
+  /** Clear the current selection (e.g. the selection card's close button).
+   *  Always notifies — React may hold a selection the canvas never saw. */
+  clearSelection(): void {
+    this.selected = null
+    this.onSelect?.(null)
     this.render()
   }
 
@@ -559,6 +592,7 @@ export class DrawingCanvas {
 
     this.drawTexts(d)
     this.drawHighlights()
+    this.onViewChange?.()
   }
 
   /** Furniture linework: unbound in gray, bound ("specified") in a muted accent —

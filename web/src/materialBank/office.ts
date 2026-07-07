@@ -14,6 +14,8 @@ export interface OfficeProduct {
   vendor: string
   price: number
   swatch: string // stand-in for a real thumbnail/3D asset
+  /** Real catalog thumbnail when the product came from the live bank. */
+  image?: string | null
 }
 
 /** Office furniture bank-categories the imported schedule maps onto. */

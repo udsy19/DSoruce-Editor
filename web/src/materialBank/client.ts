@@ -83,8 +83,9 @@ export function bankQueryFor(category: string): string {
   return CATEGORY_QUERY[category] ?? `office ${category.toLowerCase()}`
 }
 
-/** ₹-formatted price, or an em-dash for spec-only products. */
+/** ₹-formatted price, or an em-dash for spec-only products. Non-finite
+ *  values (some bank rows carry NaN prices) render as spec-only too. */
 export function formatINR(price: number | null): string {
-  if (price == null) return '—'
+  if (price == null || !Number.isFinite(price)) return '—'
   return `₹${Math.round(price).toLocaleString('en-IN')}`
 }
