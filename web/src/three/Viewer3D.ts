@@ -2,85 +2,120 @@ import * as THREE from 'three'
 // `three/addons/*` is the modern published alias for `three/examples/jsm/*`
 // (defined in three's package.json `exports`; @types/three maps it too).
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
-import type { DocState, DocComponent, DocWall } from '../editor/EditorCanvas'
+import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js'
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
+import type { DocState, DocComponent, DocWall, DocZone, ZoneType } from '../editor/EditorCanvas'
 import { catByCategory } from '../editor/catalog'
+import { buildFurniture3D } from './furniture3d'
 
 /**
  * Framework-agnostic Three.js viewer that renders a 2D office plan (DocState,
- * serialized from the Rust core) as an extruded, read-only 3D scene. Editing
- * stays in 2D; this is an orbit/walkthrough view.
+ * serialized from the Rust core) as a lit, read-only 3D scene, OR renders an
+ * arbitrary externally-built group (imported plans) via {@link setContent}.
+ *
+ * Two camera modes ({@link setMode}):
+ *  - `orbit` — OrbitControls, framed to the plan's bounding box.
+ *  - `walk`  — first-person PointerLockControls at eye height (1.6 m); click to
+ *    lock the pointer, WASD/arrows to move on the XZ plane, Shift to sprint,
+ *    Esc to release. Movement is bounded to the plan extent (no fly / wander).
+ *
+ * ── Rendering ─────────────────────────────────────────────────────────────
+ * ACES filmic tone-mapping + sRGB output, PCF soft shadows, and an image-based
+ * ambient from RoomEnvironment (via PMREMGenerator) give a clean interior look.
+ * A hemisphere fill + one shadow-casting DirectionalLight "sun" add contact
+ * shadows and directionality on top of the environment.
  *
  * ── Coordinate mapping ────────────────────────────────────────────────────
  * The 2D canvas uses meters with X→right and Y→DOWN (screen convention). We
  * map to a right-handed Three.js scene as:
  *     plan X → world X      plan Y → world Z      up → world +Y
  * A 2D rotation θ (canvas rotate, clockwise because Y is down) becomes a
- * rotation about world +Y of −θ. Derivation: a plan point (dx,dy) rotated by θ
- * is (dx·cosθ − dy·sinθ, dx·sinθ + dy·cosθ); mapping y→z and applying Three's
- * Ry(φ) [x'=x·cosφ+z·sinφ, z'=−x·sinφ+z·cosφ] matches only when φ = −θ. The
- * same handedness flip gives wall orientation φ = −atan2(b.y−a.y, b.x−a.x).
+ * rotation about world +Y of −θ. The same handedness flip gives wall
+ * orientation φ = −atan2(b.y−a.y, b.x−a.x).
  *
  * ── Height heuristics (meters) ────────────────────────────────────────────
- * Walls 2.6 tall (using DocWall.thickness for depth). Desk/Table 0.75, Chair
- * 0.9, MeetingRoom a translucent volume the full room height (2.6), FallCeiling
- * a thin slab (0.05) hung just below the ceiling. Unknown categories → 0.8.
+ * Walls 2.6 tall (using DocWall.thickness for depth). Real furniture is built
+ * by `buildFurniture3D`. MeetingRoom is a translucent full-height volume;
+ * FallCeiling a thin slab hung just below the ceiling.
  *
- * Sources (r0.160+ patterns):
- *  - Disposal / leak prevention: https://discourse.threejs.org/t/dispose-things-correctly-in-three-js/6534
- *  - PCFSoftShadowMap + directional shadow frustum: https://sbcode.net/threejs/directional-light-shadow/
- *  - OrbitControls: https://threejs.org/docs/#examples/en/controls/OrbitControls
+ * Sources (r0.185 patterns):
+ *  - RoomEnvironment / PMREM: https://threejs.org/examples/#webgl_materials_envmaps
+ *  - PointerLockControls: https://threejs.org/docs/#examples/en/controls/PointerLockControls
+ *  - Disposal: https://discourse.threejs.org/t/dispose-things-correctly-in-three-js/6534
  */
 
 const WALL_HEIGHT = 2.6
 const CEILING_HEIGHT = 2.6
-const BG = 0xf2f4f7
+const BG = 0xf3f1ec // neutral-warm off-white
+const EYE_HEIGHT = 1.6
+const WALK_SPEED = 3.0 // m/s
+const SPRINT_MULT = 2.0
+const WALK_MARGIN = 4 // how far past the plan bounds you may wander (m)
 
-/** Per-category extruded height (meters). */
-function componentHeight(category: string): number {
-  switch (category) {
-    case 'Desk':
-    case 'Table':
-      return 0.75
-    case 'Chair':
-      return 0.9
-    case 'MeetingRoom':
-      return CEILING_HEIGHT
-    case 'FallCeiling':
-      return 0.05
-    default:
-      return 0.8
-  }
+export type ViewerMode = 'orbit' | 'walk'
+
+/** Subtle per-zone floor tints (Laiout-style zoning cue). */
+const ZONE_TINT: Record<ZoneType, number> = {
+  Circulation: 0xe8a13c,
+  Workspace: 0x5b8def,
+  Meeting: 0x5fa8c4,
+  Collaboration: 0x46b3a6,
+  Core: 0x8a93a6,
+  ClosedOffice: 0x9b7ede,
+  Amenity: 0xd98da8,
 }
 
 export class Viewer3D {
+  /** Optional overlay callback for the current walkthrough hint (or null). */
+  onModeHint?: (text: string | null) => void
+
   private container: HTMLElement
   private renderer: THREE.WebGLRenderer
   private scene: THREE.Scene
   private camera: THREE.PerspectiveCamera
-  private controls: OrbitControls
+  private orbit: OrbitControls
+  private walk: PointerLockControls
   private sun: THREE.DirectionalLight
+  private clock = new THREE.Clock()
+  private mode: ViewerMode = 'orbit'
 
-  /** Everything rebuilt on setState() lives here so the rest of the scene
-   *  (lights, ground, grid) survives updates. */
+  /** Everything rebuilt on setState()/setContent() lives here so the rest of
+   *  the scene (lights, ground, grid, environment) survives updates. */
   private content = new THREE.Group()
+  private contentBounds = new THREE.Box3()
 
-  // Shared GPU resources — one unit box + one edge overlay for every mesh, so
-  // a rebuild only detaches meshes (cheap) and never churns geometry.
+  // Shared GPU resources — protected from per-rebuild disposal. Furniture built
+  // by buildFurniture3D owns fresh geometry/material each call; those ARE
+  // disposed when content is cleared (tracked via `shared` exclusion).
   private unitBox = new THREE.BoxGeometry(1, 1, 1)
-  private unitEdges = new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1))
-  private materials = new Map<string, THREE.Material>()
-  private highlightMat = new THREE.LineBasicMaterial({ color: 0xffffff })
-  private wallMat = new THREE.MeshStandardMaterial({
-    color: 0xd7dbe0,
-    roughness: 0.9,
-    metalness: 0.0,
+  private wallMat = new THREE.MeshStandardMaterial({ color: 0xd9dce1, roughness: 0.9, metalness: 0 })
+  private meetingMat = new THREE.MeshStandardMaterial({
+    color: 0x5fa8c4,
+    roughness: 0.6,
+    transparent: true,
+    opacity: 0.14,
+    depthWrite: false,
+    side: THREE.DoubleSide,
   })
+  private fallCeilingMat = new THREE.MeshStandardMaterial({
+    color: 0x8a93a6,
+    roughness: 0.95,
+    transparent: true,
+    opacity: 0.6,
+  })
+  private highlightMat = new THREE.LineBasicMaterial({ color: 0xe8a13c })
+  private shared: Set<THREE.BufferGeometry | THREE.Material>
 
   private ground: THREE.Mesh
   private grid: THREE.GridHelper
+  private pmrem: THREE.PMREMGenerator
+  private envRT: THREE.WebGLRenderTarget
   private framed = false
   private rafId = 0
   private disposed = false
+
+  // Walk-mode input state.
+  private keys = new Set<string>()
 
   constructor(container: HTMLElement) {
     this.container = container
@@ -90,31 +125,47 @@ export class Viewer3D {
     this.renderer.shadowMap.enabled = true
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping
+    this.renderer.toneMappingExposure = 1.0
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace
     container.appendChild(this.renderer.domElement)
 
     this.scene = new THREE.Scene()
     this.scene.background = new THREE.Color(BG)
-    this.scene.fog = new THREE.Fog(BG, 40, 120)
+    this.scene.fog = new THREE.Fog(BG, 45, 130)
     this.scene.add(this.content)
 
     this.camera = new THREE.PerspectiveCamera(55, 1, 0.1, 1000)
     this.camera.position.set(12, 12, 16)
 
-    this.controls = new OrbitControls(this.camera, this.renderer.domElement)
-    this.controls.enableDamping = true
-    this.controls.dampingFactor = 0.08
-    this.controls.maxPolarAngle = Math.PI * 0.495 // keep camera above the floor
-    this.controls.target.set(0, 0, 0)
+    // Image-based ambient: RoomEnvironment → PMREM → scene.environment.
+    this.pmrem = new THREE.PMREMGenerator(this.renderer)
+    const roomEnv = new RoomEnvironment()
+    this.envRT = this.pmrem.fromScene(roomEnv, 0.04)
+    this.scene.environment = this.envRT.texture
+    this.scene.environmentIntensity = 0.85
+    roomEnv.dispose()
 
-    // Lighting: hemisphere fill + a shadow-casting sun.
-    const hemi = new THREE.HemisphereLight(0xffffff, 0xe8eaee, 1.0)
+    // Orbit controls.
+    this.orbit = new OrbitControls(this.camera, this.renderer.domElement)
+    this.orbit.enableDamping = true
+    this.orbit.dampingFactor = 0.08
+    this.orbit.maxPolarAngle = Math.PI * 0.495 // keep camera above the floor
+    this.orbit.target.set(0, 0, 0)
+
+    // First-person controls (inactive until setMode('walk')).
+    this.walk = new PointerLockControls(this.camera, this.renderer.domElement)
+    this.walk.enabled = false
+
+    // Lighting: hemisphere fill + a shadow-casting sun (env supplies the rest).
+    const hemi = new THREE.HemisphereLight(0xfff6ea, 0xdfe3e8, 0.6)
     this.scene.add(hemi)
 
-    this.sun = new THREE.DirectionalLight(0xffffff, 2.2)
+    this.sun = new THREE.DirectionalLight(0xfff4e6, 2.4)
     this.sun.position.set(14, 22, 10)
     this.sun.castShadow = true
     this.sun.shadow.mapSize.set(2048, 2048)
     this.sun.shadow.bias = -0.0004
+    this.sun.shadow.normalBias = 0.02
     const cam = this.sun.shadow.camera
     cam.near = 1
     cam.far = 90
@@ -128,61 +179,128 @@ export class Viewer3D {
     // Ground + grid.
     this.ground = new THREE.Mesh(
       new THREE.PlaneGeometry(400, 400),
-      new THREE.MeshStandardMaterial({ color: 0xeef0f3, roughness: 1 }),
+      new THREE.MeshStandardMaterial({ color: 0xeae7e0, roughness: 0.65, metalness: 0.05 }),
     )
     this.ground.rotation.x = -Math.PI / 2
     this.ground.position.y = -0.001
     this.ground.receiveShadow = true
     this.scene.add(this.ground)
 
-    this.grid = new THREE.GridHelper(200, 200, 0xcfd4da, 0xe2e5e9)
+    this.grid = new THREE.GridHelper(200, 200, 0xc9cdd3, 0xdee1e6)
     ;(this.grid.material as THREE.Material).transparent = true
-    ;(this.grid.material as THREE.Material).opacity = 0.35
+    ;(this.grid.material as THREE.Material).opacity = 0.3
     this.scene.add(this.grid)
+
+    this.shared = new Set<THREE.BufferGeometry | THREE.Material>([
+      this.unitBox,
+      this.wallMat,
+      this.meetingMat,
+      this.fallCeilingMat,
+      this.highlightMat,
+    ])
+
+    // Walk-mode input.
+    window.addEventListener('keydown', this.onKeyDown)
+    window.addEventListener('keyup', this.onKeyUp)
+    this.renderer.domElement.addEventListener('click', this.onCanvasClick)
+    this.walk.addEventListener('lock', this.onWalkLock)
+    this.walk.addEventListener('unlock', this.onWalkUnlock)
 
     this.resize()
     this.animate()
   }
 
-  /** Cached opaque/translucent standard material per category. */
-  private materialFor(c: DocComponent): THREE.Material {
-    let mat = this.materials.get(c.category)
-    if (mat) return mat
-    const color = new THREE.Color(catByCategory(c.category)?.color ?? '#4f8cff')
-    if (c.category === 'MeetingRoom') {
-      mat = new THREE.MeshStandardMaterial({
-        color,
-        roughness: 0.6,
-        transparent: true,
-        opacity: 0.16,
-        depthWrite: false,
-        side: THREE.DoubleSide,
-      })
-    } else if (c.category === 'FallCeiling') {
-      mat = new THREE.MeshStandardMaterial({
-        color,
-        roughness: 0.95,
-        transparent: true,
-        opacity: 0.6,
-      })
+  // ── Public API ────────────────────────────────────────────────────────────
+
+  /** Switch between orbit and first-person walkthrough. */
+  setMode(mode: ViewerMode): void {
+    if (mode === this.mode) return
+    this.mode = mode
+    if (mode === 'walk') {
+      this.orbit.enabled = false
+      this.walk.enabled = true
+      this.spawnWalker()
+      this.emitHint('Click to look · WASD to move · Shift to sprint')
     } else {
-      mat = new THREE.MeshStandardMaterial({ color, roughness: 0.7, metalness: 0.05 })
+      if (this.walk.isLocked) this.walk.unlock()
+      this.walk.enabled = false
+      this.keys.clear()
+      this.orbit.enabled = true
+      this.orbit.update()
+      this.emitHint(null)
     }
-    this.materials.set(c.category, mat)
-    return mat
   }
 
-  /** Rebuild the extruded plan from a fresh DocState. */
+  /** Rebuild the extruded plan from a fresh DocState (generated plans). */
   setState(state: DocState): void {
     this.clearContent()
 
+    if (state.zones) for (const z of state.zones) this.buildZonePlate(z)
     for (const w of state.walls) this.content.add(this.buildWall(w))
     for (const c of state.components) {
       this.content.add(this.buildComponent(c, c.id === state.selection))
     }
 
-    if (!this.framed) this.frameBounds(state)
+    this.contentBounds = this.boundsFromState(state)
+    if (!this.framed && !this.contentBounds.isEmpty()) this.frameBox(this.contentBounds)
   }
+
+  /** Replace the dynamic content with an arbitrary externally-built group
+   *  (imported plans) and frame the camera to its bounding box. Takes over
+   *  ownership: the previous content's owned resources are disposed. */
+  setContent(root: THREE.Group): void {
+    this.clearContent()
+    this.content.add(root)
+    this.contentBounds = new THREE.Box3().setFromObject(root)
+    this.framed = false
+    if (!this.contentBounds.isEmpty()) this.frameBox(this.contentBounds)
+  }
+
+  resize(): void {
+    const w = this.container.clientWidth || 1
+    const h = this.container.clientHeight || 1
+    this.renderer.setSize(w, h, false)
+    this.camera.aspect = w / h
+    this.camera.updateProjectionMatrix()
+  }
+
+  /** Release all GPU resources, controls, and listeners; stop the render loop. */
+  dispose(): void {
+    if (this.disposed) return
+    this.disposed = true
+    cancelAnimationFrame(this.rafId)
+
+    window.removeEventListener('keydown', this.onKeyDown)
+    window.removeEventListener('keyup', this.onKeyUp)
+    this.renderer.domElement.removeEventListener('click', this.onCanvasClick)
+    this.walk.removeEventListener('lock', this.onWalkLock)
+    this.walk.removeEventListener('unlock', this.onWalkUnlock)
+
+    if (this.walk.isLocked) this.walk.unlock()
+    this.orbit.dispose()
+    this.walk.dispose()
+
+    this.clearContent()
+    this.unitBox.dispose()
+    this.wallMat.dispose()
+    this.meetingMat.dispose()
+    this.fallCeilingMat.dispose()
+    this.highlightMat.dispose()
+
+    this.ground.geometry.dispose()
+    ;(this.ground.material as THREE.Material).dispose()
+    this.grid.geometry.dispose()
+    ;(this.grid.material as THREE.Material).dispose()
+
+    this.scene.environment = null
+    this.envRT.dispose()
+    this.pmrem.dispose()
+
+    this.renderer.dispose()
+    this.renderer.domElement.remove()
+  }
+
+  // ── Content builders ────────────────────────────────────────────────────
 
   private buildWall(w: DocWall): THREE.Mesh {
     const dx = w.b.x - w.a.x
@@ -198,38 +316,84 @@ export class Viewer3D {
   }
 
   private buildComponent(c: DocComponent, selected: boolean): THREE.Object3D {
-    const height = componentHeight(c.category)
     const group = new THREE.Group()
     group.position.set(c.x, 0, c.y)
     group.rotation.y = -c.rotation // 2D clockwise θ → world −θ about +Y
 
-    const mesh = new THREE.Mesh(this.unitBox, this.materialFor(c))
-    // FallCeiling hangs near the ceiling; everything else sits on the floor.
-    const yCenter = c.category === 'FallCeiling' ? CEILING_HEIGHT - height / 2 : height / 2
-    mesh.scale.set(c.w, height, c.h)
-    mesh.position.y = yCenter
-    mesh.castShadow = c.category !== 'MeetingRoom'
-    mesh.receiveShadow = c.category !== 'MeetingRoom'
-    group.add(mesh)
+    let obj: THREE.Object3D
+    if (c.category === 'MeetingRoom') {
+      // Translucent full-height room volume.
+      const mesh = new THREE.Mesh(this.unitBox, this.meetingMat)
+      mesh.scale.set(c.w, CEILING_HEIGHT, c.h)
+      mesh.position.y = CEILING_HEIGHT / 2
+      obj = mesh
+    } else if (c.category === 'FallCeiling') {
+      // Thin slab hung just below the ceiling.
+      const mesh = new THREE.Mesh(this.unitBox, this.fallCeilingMat)
+      const t = 0.05
+      mesh.scale.set(c.w, t, c.h)
+      mesh.position.y = CEILING_HEIGHT - t / 2
+      obj = mesh
+    } else {
+      // Real parametric furniture (owns fresh geometry/material → disposed on clear).
+      const color = catByCategory(c.category)?.color
+      obj = buildFurniture3D(c.category, c.w, c.h, color ? { color } : {})
+    }
+    group.add(obj)
 
     if (selected) {
-      const outline = new THREE.LineSegments(this.unitEdges, this.highlightMat)
-      outline.scale.copy(mesh.scale)
-      outline.position.copy(mesh.position)
-      group.add(outline)
+      const helper = new THREE.LineSegments(
+        new THREE.EdgesGeometry(this.unitBox),
+        this.highlightMat,
+      )
+      const box = new THREE.Box3().setFromObject(obj)
+      const size = box.getSize(new THREE.Vector3())
+      const center = box.getCenter(new THREE.Vector3())
+      helper.scale.set(Math.max(size.x, 0.05), Math.max(size.y, 0.05), Math.max(size.z, 0.05))
+      helper.position.copy(center)
+      group.add(helper)
     }
     return group
   }
 
-  /** Fit the camera + shadow frustum to the plan's extent (once). */
-  private frameBounds(state: DocState): void {
+  /** Thin colored floor plate under a zone (Rect or RectRing footprint). */
+  private buildZonePlate(z: DocZone): void {
+    const tint = ZONE_TINT[z.zone_type] ?? 0x9aa2b1
+    const mat = new THREE.MeshStandardMaterial({
+      color: tint,
+      roughness: 0.85,
+      metalness: 0,
+      transparent: true,
+      opacity: 0.16,
+    })
+    const add = (x: number, y: number, w: number, h: number) => {
+      const geo = new THREE.PlaneGeometry(Math.max(w, 0.05), Math.max(h, 0.05))
+      const plate = new THREE.Mesh(geo, mat)
+      plate.rotation.x = -Math.PI / 2
+      plate.position.set(x + w / 2, 0.006, y + h / 2)
+      plate.receiveShadow = true
+      this.content.add(plate)
+    }
+    const s = z.shape
+    if (s.kind === 'Rect') {
+      add(s.x, s.y, s.w, s.h)
+    } else {
+      // RectRing: four border strips around the inner void.
+      const bx = (s.w - s.in_w) / 2
+      const bz = (s.h - s.in_h) / 2
+      add(s.x, s.y, s.w, bz) // top
+      add(s.x, s.y + s.h - bz, s.w, bz) // bottom
+      add(s.x, s.y + bz, bx, s.in_h) // left
+      add(s.x + s.w - bx, s.y + bz, bx, s.in_h) // right
+    }
+  }
+
+  // ── Framing ──────────────────────────────────────────────────────────────
+
+  private boundsFromState(state: DocState): THREE.Box3 {
     const box = new THREE.Box3()
     const p = new THREE.Vector3()
-    let any = false
-    const add = (x: number, z: number) => {
-      box.expandByPoint(p.set(x, 0, z))
-      any = true
-    }
+    const add = (x: number, z: number) => box.expandByPoint(p.set(x, 0, z))
     for (const w of state.walls) {
       add(w.a.x, w.a.y)
       add(w.b.x, w.b.y)
@@ -239,24 +403,26 @@ export class Viewer3D {
       add(c.x - r, c.y - r)
       add(c.x + r, c.y + r)
     }
-    if (!any) return // nothing to frame yet; keep default and retry next setState
+    if (!box.isEmpty()) box.expandByPoint(p.set(box.min.x, WALL_HEIGHT, box.min.z))
+    return box
+  }
 
+  /** Fit the camera + shadow frustum to an arbitrary bounding box (once). */
+  private frameBox(box: THREE.Box3): void {
     const center = box.getCenter(new THREE.Vector3())
     const size = box.getSize(new THREE.Vector3())
     const span = Math.max(size.x, size.z, 4)
 
-    // Fit the whole plan to the viewport using the bounding sphere, so it stays
-    // centered regardless of aspect ratio. Camera sits on a fixed 3/4 direction.
     const radius = Math.max(box.getBoundingSphere(new THREE.Sphere()).radius, 3)
     const fov = (this.camera.fov * Math.PI) / 180
     const fitDist = (radius / Math.sin(fov / 2)) * 1.12
     const dir = new THREE.Vector3(0.55, 0.62, 1).normalize()
-    this.controls.target.copy(center)
+    this.orbit.target.copy(center)
     this.camera.position.copy(center).addScaledVector(dir, fitDist)
     this.camera.near = 0.1
     this.camera.far = fitDist * 4 + 200
     this.camera.updateProjectionMatrix()
-    this.controls.update()
+    this.orbit.update()
 
     // Point the sun at the plan and tighten its shadow frustum around it.
     this.sun.position.set(center.x + span, span * 1.6 + 8, center.z + span * 0.6)
@@ -273,50 +439,108 @@ export class Viewer3D {
     this.framed = true
   }
 
-  /** Detach meshes built by setState. Shared geometry/materials are NOT
-   *  disposed here (they are reused); only released in dispose(). */
+  // ── Walk mode ────────────────────────────────────────────────────────────
+
+  /** Position the first-person camera inside the plan at eye height. */
+  private spawnWalker(): void {
+    const b = this.contentBounds
+    if (!b.isEmpty()) {
+      const center = b.getCenter(new THREE.Vector3())
+      const size = b.getSize(new THREE.Vector3())
+      this.camera.position.set(center.x, EYE_HEIGHT, center.z + size.z * 0.35)
+      this.camera.lookAt(center.x, EYE_HEIGHT, center.z)
+    } else {
+      this.camera.position.set(0, EYE_HEIGHT, 6)
+      this.camera.lookAt(0, EYE_HEIGHT, 0)
+    }
+  }
+
+  private updateWalk(dt: number): void {
+    // Move along the look direction on the XZ plane; Shift sprints.
+    const sprint = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight')
+    const dist = WALK_SPEED * (sprint ? SPRINT_MULT : 1) * dt
+    const fwd = (this.keys.has('KeyW') || this.keys.has('ArrowUp') ? 1 : 0) +
+      (this.keys.has('KeyS') || this.keys.has('ArrowDown') ? -1 : 0)
+    const strafe = (this.keys.has('KeyD') || this.keys.has('ArrowRight') ? 1 : 0) +
+      (this.keys.has('KeyA') || this.keys.has('ArrowLeft') ? -1 : 0)
+    if (fwd) this.walk.moveForward(fwd * dist)
+    if (strafe) this.walk.moveRight(strafe * dist)
+
+    // Clamp to eye height (no fly) and to the plan bounds (no infinite wander).
+    const p = this.camera.position
+    p.y = EYE_HEIGHT
+    const b = this.contentBounds
+    if (!b.isEmpty()) {
+      p.x = THREE.MathUtils.clamp(p.x, b.min.x - WALK_MARGIN, b.max.x + WALK_MARGIN)
+      p.z = THREE.MathUtils.clamp(p.z, b.min.z - WALK_MARGIN, b.max.z + WALK_MARGIN)
+    } else {
+      p.x = THREE.MathUtils.clamp(p.x, -100, 100)
+      p.z = THREE.MathUtils.clamp(p.z, -100, 100)
+    }
+  }
+
+  private onKeyDown = (e: KeyboardEvent): void => {
+    if (this.mode !== 'walk') return
+    this.keys.add(e.code)
+    if (
+      e.code.startsWith('Arrow') ||
+      ['KeyW', 'KeyA', 'KeyS', 'KeyD'].includes(e.code)
+    ) {
+      e.preventDefault()
+    }
+  }
+
+  private onKeyUp = (e: KeyboardEvent): void => {
+    this.keys.delete(e.code)
+  }
+
+  private onCanvasClick = (): void => {
+    if (this.mode === 'walk' && !this.walk.isLocked) this.walk.lock()
+  }
+
+  private onWalkLock = (): void => {
+    if (this.mode === 'walk') this.emitHint('WASD to move · Shift to sprint · Esc to release')
+  }
+
+  private onWalkUnlock = (): void => {
+    this.keys.clear()
+    if (this.mode === 'walk') this.emitHint('Click to look · WASD to move · Shift to sprint')
+  }
+
+  private emitHint(text: string | null): void {
+    this.onModeHint?.(text)
+  }
+
+  // ── Housekeeping ─────────────────────────────────────────────────────────
+
+  /** Detach and dispose meshes built by setState()/setContent(). Shared
+   *  geometry/materials are protected; furniture-owned resources are freed. */
   private clearContent(): void {
+    this.content.traverse((obj) => {
+      const m = obj as THREE.Mesh
+      const geo = m.geometry as THREE.BufferGeometry | undefined
+      if (geo && !this.shared.has(geo)) geo.dispose()
+      const mat = m.material as THREE.Material | THREE.Material[] | undefined
+      if (Array.isArray(mat)) {
+        for (const x of mat) if (!this.shared.has(x)) x.dispose()
+      } else if (mat && !this.shared.has(mat)) {
+        mat.dispose()
+      }
+    })
     for (let i = this.content.children.length - 1; i >= 0; i--) {
       this.content.remove(this.content.children[i])
     }
   }
 
-  resize(): void {
-    const w = this.container.clientWidth || 1
-    const h = this.container.clientHeight || 1
-    this.renderer.setSize(w, h, false)
-    this.camera.aspect = w / h
-    this.camera.updateProjectionMatrix()
-  }
-
   private animate = (): void => {
     if (this.disposed) return
     this.rafId = requestAnimationFrame(this.animate)
-    this.controls.update()
+    const dt = Math.min(this.clock.getDelta(), 0.1)
+    if (this.mode === 'walk') {
+      if (this.walk.enabled) this.updateWalk(dt)
+    } else {
+      this.orbit.update()
+    }
     this.renderer.render(this.scene, this.camera)
-  }
-
-  /** Release all GPU resources and stop the render loop. */
-  dispose(): void {
-    if (this.disposed) return
-    this.disposed = true
-    cancelAnimationFrame(this.rafId)
-    this.controls.dispose()
-
-    this.clearContent()
-    this.unitBox.dispose()
-    this.unitEdges.dispose()
-    this.highlightMat.dispose()
-    this.wallMat.dispose()
-    for (const m of this.materials.values()) m.dispose()
-    this.materials.clear()
-
-    this.ground.geometry.dispose()
-    ;(this.ground.material as THREE.Material).dispose()
-    this.grid.geometry.dispose()
-    ;(this.grid.material as THREE.Material).dispose()
-
-    this.renderer.dispose()
-    this.renderer.domElement.remove()
   }
 }
