@@ -5,18 +5,29 @@
 // polygon into the Rust `Editor` as walls so `generate`/`autoGenerate` and the
 // circulation evaluator run *inside the imported plan*.
 //
-// Two derivation strategies (see `PlateResult.method`):
+// The furniture IS the program — a floor plate that doesn't contain the
+// drawing's furniture is wrong by definition. Every candidate boundary is
+// scored by *furniture coverage* (fraction of furniture bbox centers inside),
+// and the candidate ladder (see `PlateResult.method`) runs until one reaches
+// `COVERAGE_ACCEPT` with a plausible area; otherwise the max-coverage
+// candidate wins:
 // - 'loop'  — snap wall-segment endpoints to a tolerance grid, build a planar
 //             graph, trace its faces, keep the largest-area closed loop.
-// - 'hull'  — messy CAD (door gaps etc.) rarely closes a loop; rasterize the
-//             walls onto a coarse occupancy grid, morphologically close the
-//             gaps, flood the outside, and trace the outer contour of the
-//             solid region (Moore neighbor tracing). Convex hull is the
-//             last-resort if contour tracing degenerates.
+// - 'hull'  — rasterize the shell (walls, glazing, doors — door thresholds
+//             close the gaps that leak the flood fill — casework, column-ish
+//             closed polylines, plus shell-category block inserts) onto a
+//             coarse occupancy grid, morphologically close remaining gaps,
+//             flood the outside, and trace the outer contour of the solid
+//             region (Moore neighbor tracing). Convex hull of shell endpoints
+//             ∪ furniture corners is the last resort.
+// - 'wrap'  — guaranteed-coverage fallback: rasterize shell ∪ every furniture
+//             bbox outline and contour that — the plate necessarily wraps the
+//             furniture field while hugging the real footprint far tighter
+//             than a convex hull (which would swallow concave notches).
 //
 // Pure TS, dependency-free. Coordinates in meters throughout.
 
-import type { Drawing } from './types'
+import type { Drawing, DrawEntity } from './types'
 import type { EditorCanvas } from '../editor/EditorCanvas'
 
 export type Pt = [number, number]
@@ -28,7 +39,11 @@ export interface PlateResult {
   /** The translation applied: editorPoint = sourcePoint - offset. */
   offset: { x: number; y: number }
   /** Diagnostic: how the boundary was derived. */
-  method: 'loop' | 'hull'
+  method: 'loop' | 'hull' | 'wrap'
+  /** Fraction (0–1) of furniture bbox centers inside the boundary; 1 when the drawing has no furniture. */
+  coverage: number
+  /** Enclosed area of `boundary`, m². */
+  areaM2: number
 }
 
 // ---- tunables ----------------------------------------------------------
@@ -42,55 +57,104 @@ const EDITOR_MARGIN = 1 // m — where the plate's min corner lands in the edito
 const DESPIKE_WEDGE_DEG = 25 // ° — wedge at a vertex below this is a spike candidate
 const DESPIKE_AREA_FRAC = 0.005 // fraction of |ring area| a single removal may change
 const SIMPLIFY_POST = 0.05 // m — light DP pass to collapse collinear runs left by despiking
+const COVERAGE_ACCEPT = 0.85 // accept the first candidate covering this fraction of furniture
+const COVERAGE_EDGE_TOL = 0.5 // m — a center this close to the boundary counts as inside
+// (perimeter windows/doors sit ON the traced wall line — ±1 grid cell)
+const COLUMN_MAX_SIDE = 2.5 // m — 'other' closed polylines up to this size rasterize as columns
 
 // ---- public API --------------------------------------------------------
 
-/** Derive the building's outer floor-plate polygon from a drawing's walls. */
+/** Derive the building's outer floor-plate polygon from a drawing's shell linework. */
 export function extractPlate(drawing: Drawing): PlateResult | null {
-  const segments = collectWallSegments(drawing)
-  if (segments.length === 0) return null
+  const wallSegs = collectWallSegments(drawing)
+  const shellSegs = collectShellSegments(drawing)
+  if (wallSegs.length === 0 && shellSegs.length === 0) return null
 
-  // Primary: largest closed loop in the snapped wall graph. A loop only counts
-  // as the plate if it covers a plausible share of the drawing extent —
-  // otherwise it's an interior room (common when the perimeter has gaps) and
-  // the grid-contour fallback reconstructs the real shell instead.
   const [bMinX, bMinY, bMaxX, bMaxY] = drawing.bounds
   const bboxArea = Math.max((bMaxX - bMinX) * (bMaxY - bMinY), 1)
   const plausible = Math.max(MIN_PLATE_AREA, bboxArea * 0.2)
-  const loops = traceLoops(segments, SNAP_TOL)
-  let best: Pt[] | null = null
-  let bestArea = 0
-  for (const ring of loops) {
-    const a = Math.abs(signedArea(ring))
-    if (a > bestArea) {
-      bestArea = a
-      best = ring
+  const centers = furnitureCenters(drawing)
+
+  // Score a finalized candidate ring; the ladder accepts the first one that
+  // clears the coverage + plausible-area bar, else the max-coverage candidate.
+  type Scored = { ring: Pt[]; method: PlateResult['method']; coverage: number; area: number }
+  let best: Scored | null = null
+  const accept = (ring: Pt[] | null, method: PlateResult['method']): Scored | null => {
+    if (!ring || ring.length < 3) return null
+    const area = Math.abs(signedArea(ring))
+    if (area < MIN_PLATE_AREA) return null
+    const coverage = ringCoverage(ring, centers)
+    const scored: Scored = { ring, method, coverage, area }
+    if (!best || coverage > best.coverage || (coverage === best.coverage && area > best.area)) {
+      best = scored
+    }
+    return coverage >= COVERAGE_ACCEPT && area >= plausible && area <= bboxArea * 1.05 ? scored : null
+  }
+
+  // (a) Largest closed loop in the snapped wall+glazing graph. Without a
+  // coverage gate this happily returns an interior room when the perimeter
+  // has gaps — the exact failure mode the ladder exists to catch.
+  const loops = traceLoops(wallSegs, SNAP_TOL)
+  let bigLoop: Pt[] | null = null
+  let bigArea = 0
+  for (const l of loops) {
+    const a = Math.abs(signedArea(l))
+    if (a > bigArea) {
+      bigArea = a
+      bigLoop = l
     }
   }
-  if (best && bestArea >= plausible) {
+  if (bigLoop && bigArea >= plausible) {
     // Simplify → despike → light simplify (despiking leaves collinear runs).
-    const ring = simplify(despike(simplify(orientCCW(best), SIMPLIFY_LOOP, true)), SIMPLIFY_POST, true)
-    if (ring.length >= 3) return finishPlate(ring, 'loop')
+    const ring = simplify(despike(simplify(orientCCW(bigLoop), SIMPLIFY_LOOP, true)), SIMPLIFY_POST, true)
+    const ok = accept(ring, 'loop')
+    if (ok) return finishPlate(ok)
   }
 
-  // Fallback: occupancy-grid outer contour (survives door gaps / open ends).
-  // Real perimeters can have entrance gaps well beyond one door width, so the
-  // closing radius escalates until the enclosed region reaches a plausible
-  // share of the drawing extent (each step doubles the bridgeable gap).
+  // (b) Occupancy-grid outer contour of the widened shell set (doors close the
+  // flood-fill leaks) with escalating gap-closing dilation.
   for (const dilate of [GRID_DILATE, GRID_DILATE * 2, GRID_DILATE * 4]) {
-    const contour = gridContour(segments, GRID_CELL, dilate)
-    if (contour && contour.length >= 3 && Math.abs(signedArea(contour)) >= plausible) {
-      // gridContour already ran DP; despike the needles the tracer squeezes
-      // through wall gaps, then a light simplify for leftover collinear runs.
-      const ring = simplify(despike(orientCCW(contour)), SIMPLIFY_POST, true)
-      if (ring.length >= 3) return finishPlate(ring, 'hull')
+    const ok = accept(contourRing(shellSegs, dilate), 'hull')
+    if (ok) return finishPlate(ok)
+  }
+
+  // (c) Guaranteed-coverage wrap: shell ∪ every furniture bbox outline. The
+  // solid region then contains the furniture field by construction.
+  if (centers.length > 0) {
+    const wrapSegs = shellSegs.concat(furnitureBoxSegments(drawing))
+    for (const dilate of [GRID_DILATE * 2, GRID_DILATE * 4]) {
+      const ok = accept(contourRing(wrapSegs, dilate), 'wrap')
+      if (ok) return finishPlate(ok)
     }
   }
 
-  // Last resort: convex hull of every wall endpoint.
-  const hull = convexHull(segments.flat())
-  if (hull.length >= 3) return finishPlate(hull, 'hull')
-  return null
+  // (d) Last resort: convex hull of shell endpoints ∪ furniture corners.
+  const hullPts: Pt[] = shellSegs.flat()
+  for (const f of drawing.furniture) {
+    const [x0, y0, x1, y1] = f.bbox
+    hullPts.push([x0, y0], [x1, y0], [x1, y1], [x0, y1])
+  }
+  accept(convexHull(hullPts), 'hull')
+
+  return best ? finishPlate(best) : null
+}
+
+/** Fraction (0–1) of the drawing's furniture bbox centers inside the plate boundary. */
+export function plateCoverage(plate: PlateResult, drawing: Drawing): number {
+  const centers = furnitureCenters(drawing).map(
+    ([x, y]): Pt => [x - plate.offset.x, y - plate.offset.y],
+  )
+  return ringCoverage(plate.boundary, centers)
+}
+
+/** Grid contour of `segments` → despiked, lightly re-simplified ring (or null). */
+function contourRing(segments: Segment[], dilate: number): Pt[] | null {
+  const contour = gridContour(segments, GRID_CELL, dilate)
+  if (!contour || contour.length < 3) return null
+  // gridContour already ran DP; despike the needles the tracer squeezes
+  // through wall gaps, then a light simplify for leftover collinear runs.
+  const ring = simplify(despike(orientCCW(contour)), SIMPLIFY_POST, true)
+  return ring.length >= 3 ? ring : null
 }
 
 /** Push a plate's boundary into the editor as walls (one per polygon edge). */
@@ -111,31 +175,145 @@ export function pushPlateToEditor(ec: EditorCanvas, plate: PlateResult, thicknes
  *  finds an interior room as the "largest loop" on such drawings. */
 const SHELL_CATEGORIES = new Set(['wall', 'glazing'])
 
-/** All shell-category segments: polyline pt pairs (+closing pair) and tessellated arcs. */
+/** Widened shell set for rasterization: door thresholds and casework runs
+ *  close the gaps that a wall-only raster leaks the flood fill through. */
+const WIDE_SHELL_CATEGORIES = new Set(['wall', 'glazing', 'door', 'casework'])
+
+/** One entity's segments: polyline pt pairs (+closing pair) and tessellated arcs. */
+function pushEntitySegments(e: DrawEntity, segs: Segment[]): void {
+  if (e.kind === 'polyline' && e.pts && e.pts.length >= 2) {
+    for (let i = 0; i + 1 < e.pts.length; i++) segs.push([e.pts[i], e.pts[i + 1]])
+    if (e.closed && e.pts.length >= 3) segs.push([e.pts[e.pts.length - 1], e.pts[0]])
+  } else if ((e.kind === 'arc' || e.kind === 'circle') && e.cx != null && e.cy != null && e.r != null) {
+    // Tessellate so curved walls participate in loop tracing / rasterizing.
+    const a0 = e.kind === 'circle' ? 0 : (e.start ?? 0)
+    let a1 = e.kind === 'circle' ? Math.PI * 2 : (e.end ?? Math.PI * 2)
+    while (a1 <= a0) a1 += Math.PI * 2
+    const sweep = a1 - a0
+    const n = Math.max(8, Math.ceil((sweep * e.r) / 0.2))
+    let prev: Pt = [e.cx + e.r * Math.cos(a0), e.cy + e.r * Math.sin(a0)]
+    for (let i = 1; i <= n; i++) {
+      const a = a0 + (sweep * i) / n
+      const p: Pt = [e.cx + e.r * Math.cos(a), e.cy + e.r * Math.sin(a)]
+      segs.push([prev, p])
+      prev = p
+    }
+  }
+}
+
+/** All wall/glazing segments — the clean linework the loop tracer runs on. */
 export function collectWallSegments(drawing: Drawing): Segment[] {
   const segs: Segment[] = []
   for (const e of drawing.entities) {
-    if (!SHELL_CATEGORIES.has(e.category)) continue
-    if (e.kind === 'polyline' && e.pts && e.pts.length >= 2) {
-      for (let i = 0; i + 1 < e.pts.length; i++) segs.push([e.pts[i], e.pts[i + 1]])
-      if (e.closed && e.pts.length >= 3) segs.push([e.pts[e.pts.length - 1], e.pts[0]])
-    } else if ((e.kind === 'arc' || e.kind === 'circle') && e.cx != null && e.cy != null && e.r != null) {
-      // Tessellate so curved walls participate in loop tracing / rasterizing.
-      const a0 = e.kind === 'circle' ? 0 : (e.start ?? 0)
-      let a1 = e.kind === 'circle' ? Math.PI * 2 : (e.end ?? Math.PI * 2)
-      while (a1 <= a0) a1 += Math.PI * 2
-      const sweep = a1 - a0
-      const n = Math.max(8, Math.ceil((sweep * e.r) / 0.2))
-      let prev: Pt = [e.cx + e.r * Math.cos(a0), e.cy + e.r * Math.sin(a0)]
-      for (let i = 1; i <= n; i++) {
-        const a = a0 + (sweep * i) / n
-        const p: Pt = [e.cx + e.r * Math.cos(a), e.cy + e.r * Math.sin(a)]
-        segs.push([prev, p])
-        prev = p
+    if (SHELL_CATEGORIES.has(e.category)) pushEntitySegments(e, segs)
+  }
+  return segs
+}
+
+/** The widened raster shell: wall/glazing/door/casework linework, column-ish
+ *  `other` closed polylines, plus the bbox outlines of shell-category block
+ *  inserts — on real plans most windows and doors are INSERTs living in
+ *  `drawing.furniture`, not loose entities, and without them the perimeter
+ *  raster is full of holes. */
+function collectShellSegments(drawing: Drawing): Segment[] {
+  const segs: Segment[] = []
+  for (const e of drawing.entities) {
+    if (WIDE_SHELL_CATEGORIES.has(e.category)) {
+      pushEntitySegments(e, segs)
+    } else if (e.category === 'other' && e.kind === 'polyline' && e.closed && e.pts && e.pts.length >= 3) {
+      let x0 = Infinity
+      let y0 = Infinity
+      let x1 = -Infinity
+      let y1 = -Infinity
+      for (const [x, y] of e.pts) {
+        x0 = Math.min(x0, x)
+        y0 = Math.min(y0, y)
+        x1 = Math.max(x1, x)
+        y1 = Math.max(y1, y)
       }
+      if (x1 - x0 <= COLUMN_MAX_SIDE && y1 - y0 <= COLUMN_MAX_SIDE) pushEntitySegments(e, segs)
+    }
+  }
+  for (const f of drawing.furniture) {
+    if (WIDE_SHELL_CATEGORIES.has(f.category) && f.category !== 'wall') {
+      pushBoxSegments(f.bbox, segs)
     }
   }
   return segs
+}
+
+/** The four edges of an axis-aligned bbox as segments. */
+function pushBoxSegments(bbox: [number, number, number, number], segs: Segment[]): void {
+  const [x0, y0, x1, y1] = bbox
+  segs.push(
+    [
+      [x0, y0],
+      [x1, y0],
+    ],
+    [
+      [x1, y0],
+      [x1, y1],
+    ],
+    [
+      [x1, y1],
+      [x0, y1],
+    ],
+    [
+      [x0, y1],
+      [x0, y0],
+    ],
+  )
+}
+
+/** Every furniture bbox outline — the wrap fallback rasterizes these so the
+ *  traced region contains the furniture field by construction. */
+function furnitureBoxSegments(drawing: Drawing): Segment[] {
+  const segs: Segment[] = []
+  for (const f of drawing.furniture) pushBoxSegments(f.bbox, segs)
+  return segs
+}
+
+// ---- furniture coverage --------------------------------------------------
+
+/** Bbox centers of every placed block instance (all categories — they are all program). */
+function furnitureCenters(drawing: Drawing): Pt[] {
+  return drawing.furniture.map((f): Pt => [(f.bbox[0] + f.bbox[2]) / 2, (f.bbox[1] + f.bbox[3]) / 2])
+}
+
+/** Fraction of `centers` inside (or within `COVERAGE_EDGE_TOL` of) `ring`.
+ *  Vacuously 1 with no furniture, so furniture-free drawings keep the plain
+ *  area-plausibility ladder. */
+function ringCoverage(ring: Pt[], centers: Pt[]): number {
+  if (centers.length === 0) return 1
+  let inside = 0
+  for (const [x, y] of centers) if (coveredByRing(x, y, ring)) inside++
+  return inside / centers.length
+}
+
+/** Ray-cast point-in-polygon, with centers within `COVERAGE_EDGE_TOL` of an
+ *  edge counting as covered — perimeter windows/doors sit ON the wall line the
+ *  boundary traces through, so exact containment would flap on them. */
+function coveredByRing(x: number, y: number, ring: Pt[]): boolean {
+  let inside = false
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i]
+    const [xj, yj] = ring[j]
+    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside
+  }
+  if (inside) return true
+  const tol2 = COVERAGE_EDGE_TOL * COVERAGE_EDGE_TOL
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [ax, ay] = ring[j]
+    const [bx, by] = ring[i]
+    const dx = bx - ax
+    const dy = by - ay
+    const len2 = dx * dx + dy * dy
+    const t = len2 < 1e-12 ? 0 : Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / len2))
+    const ex = x - (ax + t * dx)
+    const ey = y - (ay + t * dy)
+    if (ex * ex + ey * ey <= tol2) return true
+  }
+  return false
 }
 
 // ---- loop tracing (planar-graph face traversal) --------------------------
@@ -547,17 +725,24 @@ export function convexHull(points: Pt[]): Pt[] {
 // ---- finalization -----------------------------------------------------
 
 /** Translate the ring so its min corner sits at (EDITOR_MARGIN, EDITOR_MARGIN). */
-function finishPlate(ring: Pt[], method: PlateResult['method']): PlateResult {
+function finishPlate(c: {
+  ring: Pt[]
+  method: PlateResult['method']
+  coverage: number
+  area: number
+}): PlateResult {
   let minX = Infinity
   let minY = Infinity
-  for (const [x, y] of ring) {
+  for (const [x, y] of c.ring) {
     minX = Math.min(minX, x)
     minY = Math.min(minY, y)
   }
   const offset = { x: minX - EDITOR_MARGIN, y: minY - EDITOR_MARGIN }
   return {
-    boundary: ring.map(([x, y]) => [x - offset.x, y - offset.y]),
+    boundary: c.ring.map(([x, y]) => [x - offset.x, y - offset.y]),
     offset,
-    method,
+    method: c.method,
+    coverage: c.coverage,
+    areaM2: c.area,
   }
 }
