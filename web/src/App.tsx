@@ -964,7 +964,7 @@ function ReimaginePanel({ ec, c }: { ec: EditorCanvas; c: DocComponent }) {
           <button
             key={p.id}
             className={c.product_id === p.id ? 'product on' : 'product'}
-            onClick={() => ec.assignProduct(c.id, p.id, p.name)}
+            onClick={() => ec.assignProduct(c.id, p.id, p.name, p.price)}
             title={p.supplier}
           >
             {p.image ? (

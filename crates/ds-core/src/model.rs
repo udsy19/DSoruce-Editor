@@ -53,5 +53,9 @@ pub struct Component {
     pub label: String,
     /// bound product from the material bank (None until re-imagined)
     pub product_id: Option<String>,
+    /// observed price of the bound product, ₹ INR (None = unbound or the
+    /// supplier publishes no price). `default` keeps old snapshots readable.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub price_inr: Option<f64>,
     pub decision: DecisionState,
 }

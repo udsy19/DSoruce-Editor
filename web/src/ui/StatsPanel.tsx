@@ -84,6 +84,12 @@ export function StatsPanel({ ec }: { ec: EditorCanvas }) {
           <MetricRow label="Efficiency" value={(m.efficiency_pct ?? 0).toFixed(0)} unit="%" />
           <MetricRow label="Carbon Footprint" value={int(m.indicative_carbon ?? 0)} unit="kgCO₂e" />
           <MetricRow label="Total Cost" value={inr(m.indicative_cost ?? 0)} unit="" />
+          {(m.specified_cost ?? 0) > 0 && (
+            /* Σ observed bank prices of bound components — real capex, kept
+               separate from the fit-out heuristic (whose rates already carry
+               a generic furniture allowance). */
+            <MetricRow label="Specified Furniture" value={inr(m.specified_cost ?? 0)} unit="" />
+          )}
 
           <div className="subtabs">
             {(['Areas', 'Zones', 'CO2', 'Costs'] as const).map((s) => (

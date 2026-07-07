@@ -43,6 +43,8 @@ struct Metrics {
     indicative_cost: f64,
     /// Indicative embodied carbon (kgCO2e) — see `cost.rs`.
     indicative_carbon: f64,
+    /// Σ observed ₹ prices of bank-bound components (specified furniture capex).
+    specified_cost: f64,
 }
 
 /// Per-zone row for the Statistics panel + AI reasoning. Serialized as an array
@@ -104,6 +106,7 @@ impl Editor {
             rotation: 0.0,
             label,
             product_id: None,
+            price_inr: None,
             decision: DecisionState::Open,
         });
         self.doc.selection = Some(id);
@@ -174,10 +177,19 @@ impl Editor {
     }
 
     /// Bind a material-bank product to a component (the "re-imagine" action).
-    pub fn assign_product(&mut self, id: u32, product_id: String, product_name: String) {
+    /// `price_inr` is the observed bank price (undefined/None for spec-only
+    /// suppliers); it feeds the specified-furniture cost line in `metrics()`.
+    pub fn assign_product(
+        &mut self,
+        id: u32,
+        product_id: String,
+        product_name: String,
+        price_inr: Option<f64>,
+    ) {
         if let Some(c) = self.doc.component_mut(id) {
             c.product_id = Some(product_id);
             c.label = product_name;
+            c.price_inr = price_inr;
         }
     }
 
@@ -247,6 +259,7 @@ impl Editor {
             efficiency_pct,
             indicative_cost: cost::indicative_cost(&self.doc),
             indicative_carbon: cost::indicative_carbon(&self.doc),
+            specified_cost: cost::specified_cost(&self.doc),
         };
         serde_wasm_bindgen::to_value(&m).map_err(|e| JsValue::from_str(&e.to_string()))
     }

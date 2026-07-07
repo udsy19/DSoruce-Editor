@@ -139,6 +139,7 @@ fn push_component(doc: &mut Document, category: &str, x: f64, y: f64, w: f64, h:
         rotation: 0.0,
         label: format!("{} {}", category, id),
         product_id: None,
+            price_inr: None,
         decision: DecisionState::Open,
     });
 }

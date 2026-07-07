@@ -61,6 +61,14 @@ pub fn indicative_cost(doc: &Document) -> f64 {
         .sum()
 }
 
+/// Σ observed prices of bank-bound components (₹ INR). This is *specified
+/// furniture capex* — reported as its own metrics line, NOT folded into
+/// [`indicative_cost`], whose zone rates already include a generic loose-
+/// furniture allowance (adding both would double-count).
+pub fn specified_cost(doc: &Document) -> f64 {
+    doc.components.iter().filter_map(|c| c.price_inr).sum()
+}
+
 /// Total indicative embodied carbon of the document's zones (kgCO2e).
 /// Plate-clipped like [`indicative_cost`].
 pub fn indicative_carbon(doc: &Document) -> f64 {

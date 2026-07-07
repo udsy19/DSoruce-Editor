@@ -59,6 +59,8 @@ export interface Metrics {
   area_per_workstation?: number
   efficiency_pct?: number
   indicative_cost?: number
+  /** Σ observed ₹ prices of bank-bound components (specified furniture capex). */
+  specified_cost?: number
   indicative_carbon?: number
 }
 export interface ZoneStat {
@@ -302,8 +304,8 @@ export class EditorCanvas {
     this.cad.setTool(t.startsWith('cad:') ? t.slice(4) : null)
     this.render()
   }
-  assignProduct(id: number, productId: string, name: string) {
-    this.ed.assign_product(id, productId, name)
+  assignProduct(id: number, productId: string, name: string, priceInr?: number | null) {
+    this.ed.assign_product(id, productId, name, priceInr ?? undefined)
     this.commit()
   }
   setDecision(id: number, state: string) {

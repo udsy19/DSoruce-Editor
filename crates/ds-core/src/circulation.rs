@@ -655,6 +655,7 @@ mod tests {
             rotation: 0.0,
             label: "box".to_string(),
             product_id: None,
+            price_inr: None,
             decision: DecisionState::Open,
         });
     }

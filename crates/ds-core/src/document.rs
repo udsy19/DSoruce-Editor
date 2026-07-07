@@ -323,6 +323,7 @@ mod tests {
             rotation: 0.0,
             label: format!("Desk {id}"),
             product_id: None,
+            price_inr: None,
             decision: DecisionState::Open,
         }
     }
