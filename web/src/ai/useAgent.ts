@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { EditorCanvas } from '../editor/EditorCanvas'
+import { EditorCanvas, Program } from '../editor/EditorCanvas'
 import { AgentDriver, DriverContext, PreviewDiff, ToolCall } from './contract'
 import { applyLive, preview } from './engine'
 
@@ -51,7 +51,9 @@ export function useAgent(ec: EditorCanvas, driver: AgentDriver) {
   ])
   const [busy, setBusy] = useState(false)
   const idRef = useRef(1)
-  const undoRef = useRef<string[]>([])
+  // Undo captures the Rust document snapshot AND the JS-side program (which lives
+  // outside the document), so undo fully reverts a regenerate.
+  const undoRef = useRef<{ snap: string; program: Program }[]>([])
   const [canUndo, setCanUndo] = useState(false)
 
   const push = <T extends Omit<Msg, 'id'>>(m: T) => {
@@ -85,7 +87,7 @@ export function useAgent(ec: EditorCanvas, driver: AgentDriver) {
   }
 
   const approve = (id: number, calls: ToolCall[]) => {
-    undoRef.current.push(ec.snapshot())
+    undoRef.current.push({ snap: ec.snapshot(), program: { ...ec.program } })
     const err = applyLive(ec, calls)
     if (err) {
       undoRef.current.pop()
@@ -104,9 +106,10 @@ export function useAgent(ec: EditorCanvas, driver: AgentDriver) {
   }
 
   const undo = () => {
-    const snap = undoRef.current.pop()
-    if (!snap) return
-    ec.restore(snap)
+    const entry = undoRef.current.pop()
+    if (!entry) return
+    ec.restore(entry.snap)
+    ec.program = { ...entry.program }
     setCanUndo(undoRef.current.length > 0)
     push({ role: 'assistant', text: 'Reverted the last change.' })
   }
