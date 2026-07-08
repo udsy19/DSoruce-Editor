@@ -24,7 +24,7 @@ import { parseDrawing } from './import/dxf'
 import type { Drawing, FurnitureItem } from './import/types'
 import type { DrawingCanvas } from './import/DrawingCanvas'
 import type { OfficeProduct } from './materialBank/office'
-import { exportPNG } from './export/png'
+import { exportPNG, triggerDownload } from './export/png'
 import { exportPlanPDF, exportDrawingPDF } from './export/pdf'
 import { downloadIFC } from './export/ifc'
 import { downloadOBJ } from './export/obj'
@@ -217,7 +217,11 @@ export function App() {
     setHistory(await listHistory())
   }
   useEffect(() => {
-    if (panelTab === 'library') void refreshLibrary()
+    if (panelTab !== 'library') return
+    void refreshLibrary()
+    // Ask the browser to exempt our origin from storage eviction (design M5;
+    // idempotent, safe to re-request).
+    void navigator.storage?.persist?.()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [panelTab])
 
@@ -661,6 +665,12 @@ export function App() {
                   history={history}
                   onRestore={(e) => void restoreHistory(e)}
                   renderHistoryThumb={(e) => snapshotThumb(e.snapshot)}
+                  onExport={(p) =>
+                    triggerDownload(
+                      new Blob([JSON.stringify(p.file)], { type: 'application/json' }),
+                      `${p.name.replace(/[^\w.-]+/g, '-')}.dsource`,
+                    )
+                  }
                 />
               ) : (
                 <>

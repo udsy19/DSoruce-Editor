@@ -4,7 +4,7 @@
 // History thumbnails are hover-lazy: the App supplies `renderHistoryThumb`
 // (wasm scratch clone) and this panel only calls it on hover, caching per
 // entry for the session.
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { CSSProperties, FormEvent, KeyboardEvent } from 'react'
 import type { SavedPlan } from '../persist/plans'
 import type { HistoryEntry } from '../persist/history'
@@ -26,6 +26,8 @@ export interface LibraryPanelProps {
   /** Hover-lazy history thumb (design §4): return a dataURL via a wasm
    *  scratch clone, or null for "no thumb". Never called unless hovered. */
   renderHistoryThumb?: (e: HistoryEntry) => string | null
+  /** Download a saved plan as a portable `.dsource` file (design §6 M5). */
+  onExport?: (p: SavedPlan) => void
 }
 
 const MONO = "'IBM Plex Mono', ui-monospace, monospace"
@@ -56,6 +58,7 @@ export function LibraryPanel({
   history,
   onRestore,
   renderHistoryThumb,
+  onExport,
 }: LibraryPanelProps) {
   const [saveName, setSaveName] = useState(defaultPlanName)
   /** Check-selected plan ids, in check order (first checked = compare side A). */
@@ -65,6 +68,7 @@ export function LibraryPanel({
   /** Plan id being renamed inline + its draft text. */
   const [editing, setEditing] = useState<{ id: string; draft: string } | null>(null)
   const [historyOpen, setHistoryOpen] = useState(false)
+  const storageNote = useStorageNote()
   /** Hovered history entry + per-entry thumb cache (null = "renders nothing"). */
   const [hoveredAt, setHoveredAt] = useState<number | null>(null)
   const [thumbs, setThumbs] = useState<Record<number, string | null>>({})
@@ -223,15 +227,29 @@ export function LibraryPanel({
                 Delete?
               </button>
             ) : (
-              <button
-                type="button"
-                style={S.tinyBtn}
-                title={`Delete ${p.name}`}
-                aria-label={`Delete ${p.name}`}
-                onClick={() => setConfirming(p.id)}
-              >
-                <TrashIcon />
-              </button>
+              <>
+                {onExport && (
+                  <button
+                    type="button"
+                    style={S.tinyBtn}
+                    title={`Download ${p.name} as .dsource`}
+                    aria-label={`Download ${p.name} as .dsource`}
+                    data-testid="library-export"
+                    onClick={() => onExport(p)}
+                  >
+                    <DownloadIcon />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  style={S.tinyBtn}
+                  title={`Delete ${p.name}`}
+                  aria-label={`Delete ${p.name}`}
+                  onClick={() => setConfirming(p.id)}
+                >
+                  <TrashIcon />
+                </button>
+              </>
             )}
           </div>
         )
@@ -293,14 +311,39 @@ export function LibraryPanel({
           })}
         </>
       )}
+
+      {storageNote && <div style={S.storageFoot}>{storageNote}</div>}
     </div>
   )
+}
+
+/** `navigator.storage.estimate()` → "2.1 MB of 120 GB used" (design §2/M5). */
+function useStorageNote(): string | null {
+  const [note, setNote] = useState<string | null>(null)
+  useEffect(() => {
+    if (!navigator.storage?.estimate) return
+    void navigator.storage.estimate().then((est) => {
+      if (est.usage == null || est.quota == null) return
+      const fmt = (b: number) =>
+        b >= 1e9 ? `${(b / 1e9).toFixed(1)} GB` : `${Math.max(0.1, b / 1e6).toFixed(1)} MB`
+      setNote(`${fmt(est.usage)} of ${fmt(est.quota)} local storage used`)
+    })
+  }, [])
+  return note
 }
 
 function PencilIcon() {
   return (
     <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+    </svg>
+  )
+}
+
+function DownloadIcon() {
+  return (
+    <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />
     </svg>
   )
 }
@@ -553,6 +596,14 @@ const S: Record<string, CSSProperties> = {
     background: 'var(--surface, #ffffff)',
     color: 'var(--text-2, #3a4048)',
     cursor: 'pointer',
+  },
+  storageFoot: {
+    marginTop: 14,
+    paddingTop: 8,
+    borderTop: '1px solid var(--hairline, #e5e8ec)',
+    fontFamily: MONO,
+    fontSize: 10.5,
+    color: 'var(--muted, #6b7280)',
   },
   historyThumb: {
     display: 'block',
