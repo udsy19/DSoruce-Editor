@@ -25,7 +25,6 @@ import path from 'node:path'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { OPENAI_TOOLS, buildSystem } from '../web/src/ai/llmSchema'
-import { attachPresence } from './relay'
 
 const PORT = Number(process.env.PORT || 8790)
 const HOST = process.env.HOST || '127.0.0.1'
@@ -385,8 +384,6 @@ const server: Server = http.createServer((req, res) => {
     else res.end()
   })
 })
-
-attachPresence(server, { path: '/ws' })
 
 server.listen(PORT, HOST, () => {
   console.log(`dsource-api listening on http://${HOST}:${PORT} (static: ${STATIC_DIR}, plans: ${PLANS_DIR})`)

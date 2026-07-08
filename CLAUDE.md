@@ -71,11 +71,10 @@ cd web && pnpm dev               # frontend only (uses existing wasm bindings)
 ## Deployment (`deploy/`)
 
 One Node service (`dsource-api`) serves the built SPA + all `/api/*` routes (agent/claude/dwg/bank
-proxy/plans) + the `/ws` presence relay, behind Caddy at `app.46.202.179.28.sslip.io`.
-`./deploy/deploy.sh` builds, rsyncs, and starts everything (idempotent; needs SSH to the VPS).
-Local relay for dev: `cd deploy && npm i && node relay-dev.mjs` (vite proxies `/ws` → :8787).
-The prod API logic is a **port of the dev middlewares in `web/vite.config.ts`** — change one,
-change both (lockstep comments in `deploy/server.ts`).
+proxy/plans), behind Caddy at `app.46.202.179.28.sslip.io`. `./deploy/deploy.sh` builds, rsyncs,
+and starts everything (idempotent; needs SSH to the VPS). The prod API logic is a **port of the
+dev middlewares in `web/vite.config.ts`** — change one, change both (lockstep comments in
+`deploy/server.ts`).
 
 ## Status
 
@@ -83,6 +82,7 @@ Working: 2D editor + CAD drafting layer (draw/modify/trim/extend/fillet/hatch/la
 DWG/DXF import with plate extraction + keep-outs, autonomous test-fit on irregular plates,
 circulation scoring, 2D↔3D viewer incl. Enscape-like render tier, live material bank (₹),
 AI drivers (Local/Cerebras/Claude) + Claude soft-goal evaluator, exports (CSV/PNG/DXF/PDF/IFC/OBJ),
-.dsource save/open, plan library + compare + version history (IndexedDB), presence/live cursors
-(multiplayer milestone 1). Rust: 50 tests. Next: multiplayer milestones 2–3 (op-log edit lease →
-full co-editing, `docs/design/multiplayer.md`), cloud plan sync. See `research/08-open-questions.md`.
+.dsource save/open, plan library + compare + version history (IndexedDB). Rust: 50 tests.
+Parked: multiplayer (designed in `docs/design/multiplayer.md`; a presence milestone was built and
+reverted — recover from commits `3a923ea` + `706c7cf` when resumed). Next: cloud plan sync.
+See `research/08-open-questions.md`.
