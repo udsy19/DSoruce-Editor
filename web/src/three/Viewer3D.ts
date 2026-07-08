@@ -7,8 +7,11 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js'
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
 import { SAOPass } from 'three/addons/postprocessing/SAOPass.js'
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js'
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
 import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js'
+import { Sky } from 'three/addons/objects/Sky.js'
 import type { DocState, DocComponent, DocWall, DocZone, ZoneType } from '../editor/EditorCanvas'
 import { catByCategory } from '../editor/catalog'
 import { buildFurniture3D } from './furniture3d'
@@ -31,11 +34,26 @@ import { clipPolyToRect, platePolygonFromWalls, type Pt } from '../util/clip'
  *
  * ── Rendering ─────────────────────────────────────────────────────────────
  * ACES filmic tone-mapping + sRGB output, PCF soft shadows, and an image-based
- * ambient from RoomEnvironment (via PMREMGenerator). Quality 'high' renders
- * through an EffectComposer (RenderPass → SAO → OutputPass → SMAA); 'low'
- * bypasses it (direct render, MSAA from the context, smaller shadow map,
- * capped pixel ratio). A rolling FPS window auto-degrades high → low when the
- * composer can't hold 40 fps (never auto-upgrades).
+ * ambient from RoomEnvironment (via PMREMGenerator). Three quality tiers, all
+ * driven by ONE EffectComposer whose pass list is
+ *   [RenderPass, SAOPass, GTAOPass, UnrealBloomPass, OutputPass, SMAAPass]
+ * and where each tier just toggles pass `.enabled`:
+ *  - 'low'    — bypass the composer entirely (direct render, context MSAA,
+ *               1024 shadow map, DPR ≤ 1.5).
+ *  - 'high'   — RenderPass → OutputPass → SMAA (SAO/GTAO/bloom all disabled;
+ *               2048 shadow map, DPR ≤ 2). Today's look, untouched.
+ *  - 'render' — the Enscape tier: a physical Sky dome + PMREM sky-environment,
+ *               RenderPass → GTAO → UnrealBloom → OutputPass → SMAA
+ *               (GTAO+bloom in linear HDR before OutputPass tone-maps; SMAA
+ *               last on display-referred colors), 4096 shadow map, exposure
+ *               0.75. The directional sun + the Sky's sun uniform + the sky
+ *               environment all derive from {@link Viewer3D.setSun}.
+ * A rolling FPS window auto-degrades one tier at a time below 40 fps
+ * (render → high → low); it never auto-upgrades.
+ *
+ * Software-GL guard: 'render' silently drops GTAO+bloom (keeping sky/sun/
+ * shadows) on SwiftShader/llvmpipe/ANGLE-software stacks, where depth-based
+ * post corrupts large depth ranges — the same reason SAO ships disabled.
  *
  * ── Coordinate mapping ────────────────────────────────────────────────────
  * The 2D canvas uses meters with X→right and Y→DOWN (screen convention). We
@@ -90,13 +108,37 @@ const SCROLL_SMOOTH = 6 // consume rate of banked scroll distance (1/s)
 const WALK_HINT = 'Drag to look · Scroll or WASD to move · Double-click for mouse-look'
 const WALK_LOCKED_HINT = 'WASD to move · Shift to sprint · Esc to release'
 
+// ── 'render' tier (Enscape-like) tuning ─────────────────────────────────────
+// Sun angles are spherical: elevation above the horizon, azimuth clockwise from
+// world +Z. Default is a warm mid-morning key light.
+const SUN_DEFAULT_ELEV = 42 // degrees above horizon
+const SUN_DEFAULT_AZ = 135 // degrees clockwise from +Z
+const SUN_ELEV_MIN = 5
+const SUN_ELEV_MAX = 90
+// Debounce for regenerating the sky PMREM environment while a slider drags.
+// (PMREM from a lone sky mesh is cheap, but per-tick regen is still wasteful.)
+const SKY_ENV_DEBOUNCE_MS = 150
+// Tone-mapping exposure: the physical sky is bright, so 'render' sits lower than
+// the crisp-interior lift used by 'high'/'low'.
+const EXPOSURE_DEFAULT = 1.05
+const EXPOSURE_RENDER = 0.75
+// Image-based ambient intensity per source (RoomEnvironment vs. sky PMREM).
+const ENV_INTENSITY_ROOM = 0.85
+const ENV_INTENSITY_SKY = 1.0
+// Base fixture emissive color; boosted past the bloom threshold in 'render' so
+// the ceiling panels (and only them) pick up a subtle glint.
+const FIXTURE_COLOR = 0xfff6e6
+const FIXTURE_RENDER_BOOST = 1.9 // pushes the (unlit) fixture color above 1.0 linear
+
 const easeOutCubic = (t: number): number => 1 - Math.pow(1 - t, 3)
 const easeInOutCubic = (t: number): number =>
   t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
 
 export type ViewerMode = 'orbit' | 'walk'
 export type ViewPreset = 'persp' | 'top'
-export type Quality = 'high' | 'low'
+/** Render quality tiers. 'render' is the physically-plausible "Enscape" look
+ *  (physical sky + sun, GTAO, subtle bloom, 4096 shadows); see the class doc. */
+export type Quality = 'high' | 'low' | 'render'
 
 /** Metadata stamped on pickable scene objects via `userData.pick`.
  *  - `component` — a generated-plan component (setState path); `id` is DocComponent.id.
@@ -200,13 +242,21 @@ export class Viewer3D {
   private clock = new THREE.Clock()
   private mode: ViewerMode = 'orbit'
 
-  // Postprocessed pipeline (quality 'high'); bypassed entirely in 'low'.
+  // Postprocessed pipeline ('high' and 'render'); bypassed entirely in 'low'.
+  // One composer, pass list [render, sao, gtao, bloom, output, smaa]; the tier
+  // selects a chain by toggling each pass's `.enabled` (see applyPipeline()).
   private composer: EffectComposer
   private renderPass: RenderPass
   private saoPass: SAOPass
+  private gtaoPass: GTAOPass
+  private bloomPass: UnrealBloomPass
   private outputPass: OutputPass
   private smaaPass: SMAAPass
   private quality: Quality = 'high'
+  /** True on software/limited GL stacks (SwiftShader/llvmpipe/ANGLE-software),
+   *  where depth-based post (SAO/GTAO) corrupts large depth ranges. 'render'
+   *  then keeps sky/sun/shadows but drops GTAO+bloom. */
+  private softwareGL = false
   // Rolling FPS window for auto-degrade (never auto-upgrades).
   private fpsTime = 0
   private fpsFrames = 0
@@ -285,7 +335,7 @@ export class Viewer3D {
    *  exactly when the ceiling is. Rebuilt whenever content bounds change. */
   private fixtures: THREE.InstancedMesh | null = null
   private fixtureGeo = new THREE.PlaneGeometry(0.6, 1.2)
-  private fixtureMat = new THREE.MeshBasicMaterial({ color: 0xfff6e6 })
+  private fixtureMat = new THREE.MeshBasicMaterial({ color: FIXTURE_COLOR })
   /** Vertical sky gradient (canvas texture) used as scene.background. */
   private skyTex: THREE.CanvasTexture
   /** Soft radial darkening under the plan so the building sits on the ground
@@ -293,7 +343,25 @@ export class Viewer3D {
   private vignette: THREE.Mesh
   private vignetteTex: THREE.CanvasTexture
   private pmrem: THREE.PMREMGenerator
+  /** RoomEnvironment PMREM (the 'high'/'low' ambient). */
   private envRT: THREE.WebGLRenderTarget
+  /** Physical atmospheric sky dome (Sky.js). Visible only in 'render'; in
+   *  'high'/'low' it's hidden and scene.background is the gradient canvas. */
+  private sky: Sky
+  /** Throwaway scene used to PMREM the sky in isolation (the sky mesh is briefly
+   *  reparented into it so walls/furniture don't leak into the environment). */
+  private skyScene: THREE.Scene
+  /** PMREM of the sky (the 'render' ambient), regenerated on sun changes. */
+  private skyEnvRT: THREE.WebGLRenderTarget | null = null
+  /** Debounce handle for {@link regenerateSkyEnv}. */
+  private skyEnvTimer: ReturnType<typeof setTimeout> | null = null
+  // Sun position as spherical angles (source of truth for sun light + sky).
+  private sunElevationDeg = SUN_DEFAULT_ELEV
+  private sunAzimuthDeg = SUN_DEFAULT_AZ
+  /** Once the user drives {@link setSun}, the directional light follows the
+   *  angles in every tier; until then 'high'/'low' keep the content-relative
+   *  3/4 key light (today's look). */
+  private sunUserSet = false
   private framed = false
   private rafId = 0
   private disposed = false
@@ -335,6 +403,9 @@ export class Viewer3D {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
     container.appendChild(this.renderer.domElement)
 
+    // Detect a software rasterizer once — 'render' post degrades on these.
+    this.softwareGL = this.detectSoftwareGL()
+
     this.scene = new THREE.Scene()
     this.skyTex = this.makeSkyTexture()
     this.scene.background = this.skyTex
@@ -344,13 +415,28 @@ export class Viewer3D {
     this.camera = new THREE.PerspectiveCamera(55, 1, 0.1, 1000)
     this.camera.position.set(12, 12, 16)
 
-    // Image-based ambient: RoomEnvironment → PMREM → scene.environment.
+    // Image-based ambient: RoomEnvironment → PMREM → scene.environment (the
+    // 'high'/'low' tiers). 'render' swaps in a sky PMREM instead (see setQuality).
     this.pmrem = new THREE.PMREMGenerator(this.renderer)
     const roomEnv = new RoomEnvironment()
     this.envRT = this.pmrem.fromScene(roomEnv, 0.04)
     this.scene.environment = this.envRT.texture
-    this.scene.environmentIntensity = 0.85
+    this.scene.environmentIntensity = ENV_INTENSITY_ROOM
     roomEnv.dispose()
+
+    // Physical atmospheric sky (Sky.js). Its vertex shader pins depth to the far
+    // plane (gl_Position.z = w), so any large scale draws behind everything as
+    // long as the camera stays inside the dome. Hidden until the 'render' tier.
+    this.sky = new Sky()
+    this.sky.scale.setScalar(10000)
+    const skyU = this.sky.material.uniforms
+    skyU.turbidity.value = 3.5
+    skyU.rayleigh.value = 1.2
+    skyU.mieCoefficient.value = 0.004
+    skyU.mieDirectionalG.value = 0.85
+    this.sky.visible = false
+    this.scene.add(this.sky)
+    this.skyScene = new THREE.Scene() // holds the sky alone during PMREM
 
     // Orbit controls, tuned for native mouse feel. `zoomToCursor` makes the
     // wheel dive toward whatever is under the pointer instead of the center.
@@ -466,10 +552,38 @@ export class Viewer3D {
     // 2048 shadow maps + full DPR. Flip on once validated on target GPUs:
     // `viewer.saoPass.enabled = true`.
     this.saoPass.enabled = false
+
+    // GTAO — the 'render' tier's interior AO (superior to SAO for 10–40 m rooms).
+    // Default output composites AO onto the read buffer (the RenderPass result),
+    // so it must sit AFTER RenderPass and stay in linear HDR (before OutputPass).
+    // Tuned for interiors: a ~0.35 m contact radius, moderate blend.
+    this.gtaoPass = new GTAOPass(this.scene, this.camera, 1, 1)
+    this.gtaoPass.output = GTAOPass.OUTPUT.Default
+    this.gtaoPass.blendIntensity = 0.9
+    this.gtaoPass.updateGtaoMaterial({
+      radius: 0.35, // meters — contact shadows in corners/under furniture
+      distanceExponent: 1.0,
+      thickness: 1.0,
+      distanceFallOff: 1.0,
+      scale: 1.0,
+      samples: 16,
+      screenSpaceRadius: false,
+    })
+    this.gtaoPass.enabled = false // only the 'render' tier turns this on
+
+    // Subtle bloom — glints on emissive fixtures/screens ONLY, never a haze.
+    // High threshold + low strength keeps it off diffuse surfaces.
+    this.bloomPass = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.18, 0.4, 1.0)
+    this.bloomPass.enabled = false // only the 'render' tier turns this on
+
     this.outputPass = new OutputPass()
     this.smaaPass = new SMAAPass()
+    // Fixed pass list; tiers select a chain by toggling `.enabled`. Disabled
+    // passes are skipped and never claim renderToScreen (see applyPipeline()).
     this.composer.addPass(this.renderPass)
     this.composer.addPass(this.saoPass)
+    this.composer.addPass(this.gtaoPass)
+    this.composer.addPass(this.bloomPass)
     this.composer.addPass(this.outputPass)
     this.composer.addPass(this.smaaPass)
 
@@ -589,21 +703,86 @@ export class Viewer3D {
     this.startOrbitTween(toPos, pose.target, 0.7)
   }
 
-  /** 'high' = postprocessed pipeline (SAO + SMAA, 2048 shadows, DPR ≤ 2);
-   *  'low' = direct render (context MSAA, 1024 shadows, DPR ≤ 1.5). */
+  /** Set the render tier.
+   *  - 'low'    — direct render (context MSAA, 1024 shadows, DPR ≤ 1.5).
+   *  - 'high'   — composer RenderPass → Output → SMAA (2048 shadows, DPR ≤ 2).
+   *  - 'render' — physical sky + sun, GTAO + subtle bloom, 4096 shadows,
+   *               exposure 0.75 (degrades to the safe chain on software GL). */
   setQuality(q: Quality): void {
     if (q === this.quality) return
     this.quality = q
-    const shadow = q === 'high' ? 2048 : 1024
+    const isRender = q === 'render'
+
+    // Shadows: resolution per tier; tighter bias/normalBias in 'render'.
+    const shadow = q === 'render' ? 4096 : q === 'high' ? 2048 : 1024
     this.sun.shadow.mapSize.set(shadow, shadow)
+    this.sun.shadow.bias = isRender ? -0.0002 : -0.0004
+    this.sun.shadow.normalBias = isRender ? 0.03 : 0.02
     this.sun.shadow.map?.dispose() // force reallocation at the new size
     this.sun.shadow.map = null
-    this.resize() // re-applies the quality-dependent pixel ratio
+
+    // Tone-mapping exposure: the physical sky is bright, so 'render' sits lower.
+    this.renderer.toneMappingExposure = isRender ? EXPOSURE_RENDER : EXPOSURE_DEFAULT
+
+    if (isRender) {
+      if (this.softwareGL) {
+        // Software GL (SwiftShader/llvmpipe): the Preetham sky shader emits
+        // NaN, which poisons the PMREM environment — every env-sampling PBR
+        // material then renders black, and SMAA/Output smear the NaN across
+        // the whole frame. Keep the gradient background + RoomEnvironment;
+        // the sun still follows the angles and shadows go 4096.
+        this.sky.visible = false
+        this.scene.background = this.skyTex
+        this.scene.environment = this.envRT.texture
+        this.scene.environmentIntensity = ENV_INTENSITY_ROOM
+        console.info(
+          '[Viewer3D] render tier on software GL: physical sky, GTAO + bloom disabled (sun angles + shadows kept).',
+        )
+      } else {
+        // Physical sky replaces the gradient background; sky PMREM replaces
+        // the RoomEnvironment ambient; fixtures glow past the bloom threshold.
+        this.sky.visible = true
+        this.scene.background = null
+        this.applySunToSky()
+        this.regenerateSkyEnv() // sync: environment ready before the next frame
+        this.scene.environmentIntensity = ENV_INTENSITY_SKY
+      }
+      this.fixtureMat.color.setHex(FIXTURE_COLOR).multiplyScalar(FIXTURE_RENDER_BOOST)
+    } else {
+      // Restore today's look for 'high'/'low'.
+      this.sky.visible = false
+      this.scene.background = this.skyTex
+      this.scene.environment = this.envRT.texture
+      this.scene.environmentIntensity = ENV_INTENSITY_ROOM
+      this.fixtureMat.color.setHex(FIXTURE_COLOR)
+    }
+
+    this.positionSun() // angle-driven in 'render'; else the content-relative key light
+    this.applyPipeline() // toggle GTAO/bloom for the tier + software-GL guard
+    this.resize() // re-applies the quality-dependent pixel ratio + pass sizes
     this.onQualityChange?.(q)
   }
 
   getQuality(): Quality {
     return this.quality
+  }
+
+  /** Reposition the sun by spherical angles: `elevationDeg` above the horizon
+   *  (clamped 5–90) and `azimuthDeg` clockwise from world +Z (wrapped 0–360).
+   *  Drives the directional light, the Sky's sun uniform, and — in the 'render'
+   *  tier — a debounced regeneration of the sky PMREM environment. Calling this
+   *  makes the directional light follow the angles in every tier thereafter. */
+  setSun(elevationDeg: number, azimuthDeg: number): void {
+    this.sunElevationDeg = THREE.MathUtils.clamp(elevationDeg, SUN_ELEV_MIN, SUN_ELEV_MAX)
+    this.sunAzimuthDeg = ((azimuthDeg % 360) + 360) % 360
+    this.sunUserSet = true
+    this.applySunToSky()
+    this.positionSun()
+    if (this.quality === 'render') this.scheduleSkyEnv()
+  }
+
+  getSun(): { elevationDeg: number; azimuthDeg: number } {
+    return { elevationDeg: this.sunElevationDeg, azimuthDeg: this.sunAzimuthDeg }
   }
 
   /** Rebuild the extruded plan from a fresh DocState (generated plans). */
@@ -623,7 +802,7 @@ export class Viewer3D {
 
     this.contentBounds = this.boundsFromState(state)
     this.contentOffset = { x: 0, z: 0 } // generated plans render in source coords
-    if (!this.framed && !this.contentBounds.isEmpty()) this.frameBox(this.contentBounds)
+    if (!this.framed && !this.contentBounds.isEmpty()) this.frameBox()
     this.syncGroundDressing()
     this.syncCeiling()
   }
@@ -654,7 +833,7 @@ export class Viewer3D {
     this.content.add(root)
     this.contentBounds = bounds
     this.framed = false
-    if (!this.contentBounds.isEmpty()) this.frameBox(this.contentBounds)
+    if (!this.contentBounds.isEmpty()) this.frameBox()
     this.syncGroundDressing()
     this.syncCeiling()
   }
@@ -695,11 +874,11 @@ export class Viewer3D {
   resize(): void {
     const w = this.container.clientWidth || 1
     const h = this.container.clientHeight || 1
-    const pr = Math.min(window.devicePixelRatio || 1, this.quality === 'high' ? 2 : 1.5)
+    const pr = Math.min(window.devicePixelRatio || 1, this.quality === 'low' ? 1.5 : 2)
     this.renderer.setPixelRatio(pr)
     this.renderer.setSize(w, h, false)
     this.composer.setPixelRatio(pr)
-    this.composer.setSize(w, h) // propagates to every pass (SAO buffers, SMAA RTs)
+    this.composer.setSize(w, h) // propagates to every pass (SAO/GTAO buffers, bloom + SMAA RTs)
     this.camera.aspect = w / h
     this.camera.updateProjectionMatrix()
 
@@ -715,7 +894,7 @@ export class Viewer3D {
       !this.isTransitioning() &&
       !this.contentBounds.isEmpty()
     ) {
-      this.frameBox(this.contentBounds)
+      this.frameBox()
     }
   }
 
@@ -773,14 +952,22 @@ export class Viewer3D {
     ;(this.vignette.material as THREE.Material).dispose()
     this.vignetteTex.dispose()
 
+    if (this.skyEnvTimer !== null) clearTimeout(this.skyEnvTimer)
+    this.scene.remove(this.sky)
+    this.sky.geometry.dispose()
+    this.sky.material.dispose()
+
     this.renderPass.dispose()
     this.saoPass.dispose()
+    this.gtaoPass.dispose()
+    this.bloomPass.dispose()
     this.outputPass.dispose()
     this.smaaPass.dispose()
     this.composer.dispose()
 
     this.scene.environment = null
     this.envRT.dispose()
+    this.skyEnvRT?.dispose()
     this.pmrem.dispose()
 
     this.renderer.dispose()
@@ -955,13 +1142,11 @@ export class Viewer3D {
     this.camera.updateProjectionMatrix()
   }
 
-  /** Fit the camera + shadow frustum to an arbitrary bounding box (once,
+  /** Fit the camera + shadow frustum to the current content bounds (once,
    *  instantly — animated re-framing goes through {@link frameAll}). */
-  private frameBox(box: THREE.Box3): void {
+  private frameBox(): void {
     const pose = this.frameAllPose()
     const center = pose.target
-    const size = box.getSize(new THREE.Vector3())
-    const span = Math.max(size.x, size.z, 4)
 
     this.orbit.target.copy(center)
     this.camera.position.copy(pose.pos)
@@ -970,20 +1155,108 @@ export class Viewer3D {
     this.orbit.update()
 
     // Point the sun at the plan and tighten its shadow frustum around it.
-    this.sun.position.set(center.x + span, span * 1.6 + 8, center.z + span * 0.6)
+    this.positionSun()
+
+    this.framed = true
+    // Fresh framing restarts the auto-reframe-on-resize window (see resize()).
+    this.userMoved = false
+  }
+
+  // ── Render tier: sun / sky / pipeline ─────────────────────────────────────
+
+  /** Read the unmasked GL renderer string and match known software rasterizers.
+   *  On those, depth-based post (SAO/GTAO) corrupts large depth ranges, so the
+   *  'render' tier drops GTAO + bloom. */
+  private detectSoftwareGL(): boolean {
+    try {
+      const gl = this.renderer.getContext()
+      const dbg = gl.getExtension('WEBGL_debug_renderer_info')
+      const r = dbg ? String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)) : ''
+      return /swiftshader|llvmpipe|software|angle \(software/i.test(r)
+    } catch {
+      return false
+    }
+  }
+
+  /** Enable exactly the passes the current tier needs. The composer runs only
+   *  for 'high'/'render' (animate() bypasses it for 'low'); disabled passes are
+   *  skipped and never claim `renderToScreen`. GTAO + bloom are the 'render'
+   *  differentiators and are additionally gated by the software-GL guard. */
+  private applyPipeline(): void {
+    const post = this.quality === 'render' && !this.softwareGL
+    this.saoPass.enabled = false // superseded by GTAO; kept for manual validation
+    this.gtaoPass.enabled = post
+    this.bloomPass.enabled = post
+  }
+
+  /** Unit vector pointing from the scene toward the sun, from the stored
+   *  spherical angles (elevation above horizon, azimuth clockwise from +Z). */
+  private sunDirection(): THREE.Vector3 {
+    const el = THREE.MathUtils.degToRad(this.sunElevationDeg)
+    const az = THREE.MathUtils.degToRad(this.sunAzimuthDeg)
+    const cosEl = Math.cos(el)
+    return new THREE.Vector3(Math.sin(az) * cosEl, Math.sin(el), Math.cos(az) * cosEl).normalize()
+  }
+
+  /** Place the directional light + tighten its shadow frustum to the content.
+   *  In 'render' (or once {@link setSun} has been called) the light follows the
+   *  sun angles; otherwise 'high'/'low' keep the content-relative 3/4 key light
+   *  (today's look). Pure placement — no allocation beyond a couple of temps. */
+  private positionSun(): void {
+    const b = this.contentBounds
+    const center = b.isEmpty() ? new THREE.Vector3() : b.getCenter(new THREE.Vector3())
+    const size = b.isEmpty() ? new THREE.Vector3(20, 0, 20) : b.getSize(new THREE.Vector3())
+    const span = Math.max(size.x, size.z, 4)
+
+    if (this.quality === 'render' || this.sunUserSet) {
+      const dir = this.sunDirection()
+      this.sun.position.copy(center).addScaledVector(dir, span * 2 + 14)
+    } else {
+      this.sun.position.set(center.x + span, span * 1.6 + 8, center.z + span * 0.6)
+    }
     this.sun.target.position.copy(center)
+    this.sun.target.updateMatrixWorld()
+
     const half = span * 0.75 + 6
     const sc = this.sun.shadow.camera
     sc.left = -half
     sc.right = half
     sc.top = half
     sc.bottom = -half
+    sc.near = 1
     sc.far = span * 4 + 60
     sc.updateProjectionMatrix()
+  }
 
-    this.framed = true
-    // Fresh framing restarts the auto-reframe-on-resize window (see resize()).
-    this.userMoved = false
+  /** Push the current sun direction into the Sky shader's sun uniform. */
+  private applySunToSky(): void {
+    if (this.softwareGL) return
+    this.sky.material.uniforms.sunPosition.value.copy(this.sunDirection())
+  }
+
+  /** Debounced sky-PMREM regeneration for slider-driven {@link setSun} drags. */
+  private scheduleSkyEnv(): void {
+    if (this.softwareGL) return // sky shader NaNs on software GL — see setQuality
+    if (this.skyEnvTimer !== null) clearTimeout(this.skyEnvTimer)
+    this.skyEnvTimer = setTimeout(() => {
+      this.skyEnvTimer = null
+      this.regenerateSkyEnv()
+    }, SKY_ENV_DEBOUNCE_MS)
+  }
+
+  /** Regenerate the sky's image-based ambient (PMREM). The sky is briefly
+   *  reparented into an isolated scene so the main scene's walls/furniture never
+   *  bleed into the captured environment; the previous target is disposed. Only
+   *  installs the result while the 'render' tier is active. */
+  private regenerateSkyEnv(): void {
+    const prev = this.skyEnvRT
+    this.scene.remove(this.sky)
+    this.skyScene.add(this.sky)
+    this.skyEnvRT = this.pmrem.fromScene(this.skyScene)
+    this.skyScene.remove(this.sky)
+    this.scene.add(this.sky)
+    prev?.dispose()
+    if (this.quality === 'render') this.scene.environment = this.skyEnvRT.texture
   }
 
   /** Size + position the interior ceiling (and its light fixtures) to the plan
@@ -1612,12 +1885,14 @@ export class Viewer3D {
       this.pickOutlineMat.opacity = 0.775 + 0.225 * Math.sin(this.clock.elapsedTime * 4)
     }
 
-    if (this.quality === 'high') this.composer.render()
-    else this.renderer.render(this.scene, this.camera)
+    // 'low' bypasses the composer; 'high'/'render' run their pass chains.
+    if (this.quality === 'low') this.renderer.render(this.scene, this.camera)
+    else this.composer.render()
 
-    // Rolling ~2 s FPS window → auto-degrade high → low below 40 fps. The
-    // first window is discarded (shader compiles / first-frame jank), as is
-    // any window containing a huge delta (backgrounded tab).
+    // Rolling ~2 s FPS window → auto-degrade ONE tier below 40 fps
+    // (render → high → low). The first window is discarded (shader compiles /
+    // first-frame jank), as is any window containing a huge delta (backgrounded
+    // tab). Never auto-upgrades.
     if (raw > 0.5) {
       this.fpsTime = 0
       this.fpsFrames = 0
@@ -1627,7 +1902,10 @@ export class Viewer3D {
       if (this.fpsTime >= 2) {
         const fps = this.fpsFrames / this.fpsTime
         this.fpsWindows++
-        if (this.fpsWindows > 1 && this.quality === 'high' && fps < 40) this.setQuality('low')
+        if (this.fpsWindows > 1 && fps < 40) {
+          if (this.quality === 'render') this.setQuality('high')
+          else if (this.quality === 'high') this.setQuality('low')
+        }
         this.fpsTime = 0
         this.fpsFrames = 0
       }
