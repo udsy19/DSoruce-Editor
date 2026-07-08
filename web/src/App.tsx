@@ -6,6 +6,7 @@ import { searchBankLive, bankQueryFor, formatINR, type BankProduct } from './mat
 import { Icon } from './ui/icons'
 import { StatsPanel } from './ui/StatsPanel'
 import { AgentPanel } from './ai/AgentPanel'
+import { suggestProgram, suggestProgramSummary } from './ai/suggestProgram'
 import { Scene3D } from './three/Scene3D'
 import { DrawingView } from './import/DrawingView'
 import { DrawingScene3D } from './three/DrawingScene3D'
@@ -240,16 +241,14 @@ export function App() {
     // Plate-quality feedback. `coverage`/`areaM2` are additive optional fields
     // on PlateResult — guard so this works whether or not they're present.
     const { coverage, areaM2 } = plate as PlateResult & { coverage?: number; areaM2?: number }
-    // Scale the default program to the traced plate so "Generate test-fit"
-    // fills the building instead of dropping 20 desks into 800 m². NBC
-    // business occupancy is ~10 m²/person; ~12 m²/desk leaves meeting/
-    // circulation share. Only nudge when the user hasn't customized desks.
+    // Scale the default program to the traced plate: count the actual
+    // furniture in the drawing (bench desks, meeting clusters) and fall back
+    // to NBC-informed area heuristics. Only nudge when the user hasn't
+    // customized desks.
+    let suggested: string | null = null
     if (areaM2 && areaM2 > 100 && ec.program.desks === DEFAULT_PROGRAM.desks) {
-      ec.program = {
-        ...ec.program,
-        desks: Math.min(200, Math.max(10, Math.round(areaM2 / 12))),
-        meeting_rooms: Math.min(8, Math.max(1, Math.round(areaM2 / 200))),
-      }
+      ec.program = suggestProgram(drawing, areaM2, ec.program)
+      suggested = suggestProgramSummary(ec.program)
     }
     if (coverage !== undefined || areaM2 !== undefined) {
       const traced = [
@@ -264,7 +263,7 @@ export function App() {
           msg: `${traced} — the boundary may be wrong — check the outline in 2D and adjust walls before generating.`,
         })
       } else {
-        setPlateNotice({ variant: 'ok', msg: `${traced}.` })
+        setPlateNotice({ variant: 'ok', msg: suggested ? `${traced} — ${suggested}.` : `${traced}.` })
       }
     } else {
       setPlateNotice(null)

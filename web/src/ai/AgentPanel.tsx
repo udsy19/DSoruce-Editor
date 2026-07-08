@@ -4,24 +4,34 @@ import { useAgent, Msg } from './useAgent'
 import { PreviewDiff, ToolCall } from './contract'
 import { LocalDriver } from './intentParser'
 import { LlmDriver } from './llmDriver'
+import { ClaudeDriver } from './claudeDriver'
 import { Icon } from '../ui/icons'
+
+type DriverKind = 'local' | 'llm' | 'claude'
 
 export function AgentPanel({ ec, onClose }: { ec: EditorCanvas; onClose: () => void }) {
   const localDriver = useMemo(() => new LocalDriver(), [])
   const llmDriver = useMemo(() => new LlmDriver(), [])
+  const claudeDriver = useMemo(() => new ClaudeDriver(), [])
   const [llm, setLlm] = useState<{ available: boolean; model: string }>({ available: false, model: '' })
-  const [useLlm, setUseLlm] = useState(false)
+  const [claudeAvailable, setClaudeAvailable] = useState(false)
+  const [kind, setKind] = useState<DriverKind>('local')
 
   useEffect(() => {
     let alive = true
+    // Default to the always-available Local driver; the user opts into a
+    // model via the header toggle once its health check passes.
     fetch('/api/agent')
       .then((r) => r.json())
       .then((d: { configured?: boolean; model?: string }) => {
         if (!alive) return
         setLlm({ available: !!d.configured, model: d.model || 'AI' })
-        // Default to the always-available Local driver; the user opts into the
-        // model via the header toggle.
         if (d.configured) llmDriver.name = d.model || 'AI'
+      })
+      .catch(() => {})
+    ClaudeDriver.available()
+      .then((ok) => {
+        if (alive) setClaudeAvailable(ok)
       })
       .catch(() => {})
     return () => {
@@ -29,7 +39,12 @@ export function AgentPanel({ ec, onClose }: { ec: EditorCanvas; onClose: () => v
     }
   }, [llmDriver])
 
-  const driver = useLlm && llm.available ? llmDriver : localDriver
+  const driver =
+    kind === 'llm' && llm.available
+      ? llmDriver
+      : kind === 'claude' && claudeAvailable
+        ? claudeDriver
+        : localDriver
   const { messages, busy, canUndo, send, approve, reject, undo } = useAgent(ec, driver)
   const [input, setInput] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -51,13 +66,28 @@ export function AgentPanel({ ec, onClose }: { ec: EditorCanvas; onClose: () => v
           <Icon name="sparkles" size={15} /> Assistant
         </span>
         <div className="agent-head-actions">
-          {llm.available && (
+          {(llm.available || claudeAvailable) && (
             <div className="agent-driver" role="group" aria-label="Model">
-              <button className={!useLlm ? 'on' : ''} onClick={() => setUseLlm(false)} data-testid="driver-local">
+              <button className={kind === 'local' ? 'on' : ''} onClick={() => setKind('local')} data-testid="driver-local">
                 Local
               </button>
-              <button className={useLlm ? 'on' : ''} onClick={() => setUseLlm(true)} data-testid="driver-llm">
-                {llm.model}
+              <button
+                className={kind === 'llm' ? 'on' : ''}
+                onClick={() => setKind('llm')}
+                disabled={!llm.available}
+                title={llm.available ? undefined : 'No LLM endpoint configured (set LLM_API_KEY / LLM_BASE_URL)'}
+                data-testid="driver-llm"
+              >
+                {llm.model || 'AI'}
+              </button>
+              <button
+                className={kind === 'claude' ? 'on' : ''}
+                onClick={() => setKind('claude')}
+                disabled={!claudeAvailable}
+                title={claudeAvailable ? undefined : 'No ANTHROPIC_API_KEY configured'}
+                data-testid="driver-claude"
+              >
+                Claude
               </button>
             </div>
           )}

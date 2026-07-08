@@ -76,7 +76,8 @@ function agentProxy(): Plugin {
   }
 }
 
-// Dev-only Claude proxy for the soft-goal candidate evaluator. Holds the
+// Dev-only Claude proxy for the soft-goal candidate evaluator AND the
+// ClaudeDriver assistant (which adds Anthropic-format `tools`). Holds the
 // Anthropic key server-side and relays a single Messages API call. Configure
 // via env (shell or gitignored web/.env.local):
 //   ANTHROPIC_API_KEY   (required for POST; GET reports configured=false without it)
@@ -106,6 +107,15 @@ function claudeProxy(): Plugin {
         }
         try {
           const body = await readJson(req)
+          // Optional Anthropic-format tools (the ClaudeDriver sends them; the
+          // evaluator doesn't) — passed through to the API body verbatim.
+          const payload: Record<string, unknown> = {
+            model,
+            system: body.system,
+            messages: body.messages,
+            max_tokens: typeof body.max_tokens === 'number' ? body.max_tokens : 1024,
+          }
+          if (Array.isArray(body.tools)) payload.tools = body.tools
           const upstream = await fetch('https://api.anthropic.com/v1/messages', {
             method: 'POST',
             headers: {
@@ -113,12 +123,7 @@ function claudeProxy(): Plugin {
               'x-api-key': apiKey,
               'anthropic-version': '2023-06-01',
             },
-            body: JSON.stringify({
-              model,
-              system: body.system,
-              messages: body.messages,
-              max_tokens: typeof body.max_tokens === 'number' ? body.max_tokens : 1024,
-            }),
+            body: JSON.stringify(payload),
           })
           const data = await upstream.json()
           if (!upstream.ok) {
