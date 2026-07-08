@@ -20,7 +20,13 @@ import { downloadIFC } from './export/ifc'
 import { downloadDXF, downloadDrawingDXF } from './export/dxf'
 import { CandidateGallery } from './ui/CandidateGallery'
 import { CategoryPlan } from './ui/CategoryPlan'
-import { extractPlate, pushPlateToEditor, type PlateResult } from './import/testfit'
+import {
+  extractPlate,
+  pushPlateToEditor,
+  extractKeepouts,
+  pushKeepoutsToEditor,
+  type PlateResult,
+} from './import/testfit'
 import { saveProject, openProject, applyProject } from './persist/file'
 import { evaluateCandidates, type SoftVerdict } from './ai/evaluator'
 
@@ -224,6 +230,10 @@ export function App() {
     }
     ec.clearAll()
     pushPlateToEditor(ec, plate)
+    // Interior cores (stairs/shafts/service rooms = enclosed furniture-free
+    // rooms) become keep-outs so the generator never furnishes them.
+    // Guarded no-op until the wasm add_keepout binding is present.
+    pushKeepoutsToEditor(ec, extractKeepouts(drawing, plate))
     ec.sync()
     // Plate-quality feedback. `coverage`/`areaM2` are additive optional fields
     // on PlateResult — guard so this works whether or not they're present.

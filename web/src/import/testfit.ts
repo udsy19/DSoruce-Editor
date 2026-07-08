@@ -71,6 +71,15 @@ const COLUMN_MAX_SIDE = 2.5 // m — 'other' closed polylines up to this size ra
 const PINCH_PASSAGE_M = 0.8 // m — a plate neck narrower than a door leaf is a trace defect
 const PINCH_AREA_M2 = 20 // m² — both sides of the neck must be at least this big to count
 const PINCH_CELL = 0.1 // m — raster resolution of the pinch check (must resolve sub-door necks)
+const KEEPOUT_MIN_M2 = 2 // m² — an enclosed furniture-free room smaller than this is a wall cavity
+const KEEPOUT_MAX_M2 = 80 // m² — bigger than this it's a floor region, not a core room
+const KEEPOUT_EDGE_BAND = 1 // cells — free cells this close to the plate edge belong to the main floor
+// (1, not 2: slivers between the traced boundary and the real wall always own a
+// distance-≤1 cell, while a room backed by a single-cell-thick perimeter wall —
+// the real drawing's stair core meets the facade exactly like that — stays ≥2)
+const KEEPOUT_MERGE_GAP = 0.3 // m — candidate bboxes at most this far apart fuse into one core block
+const KEEPOUT_MAX_COUNT = 12 // sanity cap on emitted rects
+const KEEPOUT_AREA_FRAC = 0.4 // total keep-out area may claim at most this fraction of the plate
 
 // ---- public API --------------------------------------------------------
 
@@ -192,6 +201,214 @@ export function pushPlateToEditor(ec: EditorCanvas, plate: PlateResult, thicknes
     const [bx, by] = b[(i + 1) % b.length]
     ec.ed.add_wall(ax, ay, bx, by, thickness)
   }
+  ec.refresh()
+}
+
+// ---- building-core keep-outs ----------------------------------------------
+
+/** An area the generator must not place program in — a stair core, elevator
+ *  shaft, riser, or WC. Center-based x/y in EDITOR coordinates (same offset
+ *  translation as the plate boundary), matching `Editor.add_keepout`. */
+export interface KeepOutRect {
+  x: number
+  y: number
+  w: number
+  h: number
+  label: string
+}
+
+/**
+ * Detect building-core keep-outs inside an extracted plate.
+ *
+ * Principle: in a FURNITURE plan, an enclosed interior room containing zero
+ * furniture is service space — stair cores, elevator shafts, risers, WCs.
+ * Rasterize the wall-category linework inside the plate polygon (walls only:
+ * shaft X-marks are 'other'/annotation and must not fabricate rooms), flood
+ * the free space into 4-connected components, and keep the components that
+ * (a) never come within `KEEPOUT_EDGE_BAND` cells of the plate edge (fully
+ * enclosed — anything touching that band drains into the main floor),
+ * (b) span a room-plausible 2–80 m², and (c) contain no furniture bbox
+ * center. Candidate bboxes closer than `KEEPOUT_MERGE_GAP` fuse, so a
+ * stair+shaft cluster emerges as one core block instead of five slivers.
+ */
+export function extractKeepouts(drawing: Drawing, plate: PlateResult): KeepOutRect[] {
+  // The plate boundary back in source (drawing) coordinates.
+  const ring: Pt[] = plate.boundary.map(([x, y]) => [x + plate.offset.x, y + plate.offset.y])
+  if (ring.length < 3) return []
+  let minX = Infinity
+  let minY = Infinity
+  let maxX = -Infinity
+  let maxY = -Infinity
+  for (const [x, y] of ring) {
+    minX = Math.min(minX, x)
+    minY = Math.min(minY, y)
+    maxX = Math.max(maxX, x)
+    maxY = Math.max(maxY, y)
+  }
+  const cell = GRID_CELL
+  const ox = minX - 2 * cell
+  const oy = minY - 2 * cell
+  const W = Math.ceil((maxX - minX) / cell) + 4
+  const H = Math.ceil((maxY - minY) / cell) + 4
+  if (W * H > 4_000_000) return []
+
+  const inside = fillRing(ring, ox, oy, cell, W, H)
+
+  // Wall-category linework only (no casework, no glazing: glass fronts mean
+  // occupiable rooms, and those are cleared by the furniture test anyway).
+  const wallSegs: Segment[] = []
+  for (const e of drawing.entities) {
+    if (e.category === 'wall') pushEntitySegments(e, wallSegs)
+  }
+  const wall = new Uint8Array(W * H)
+  stampSegments(wallSegs, wall, ox, oy, cell, W, H)
+
+  // Free space inside the plate → 4-connected rooms.
+  const free = new Uint8Array(W * H)
+  for (let i = 0; i < W * H; i++) free[i] = inside[i] && !wall[i] ? 1 : 0
+  const { comp, counts } = labelComponents(free, W, H)
+  const n = counts.length
+  if (n === 0) return []
+
+  // (a) Components reaching the plate-edge band connect to the main floor.
+  const touchesBand = new Uint8Array(n)
+  const band = KEEPOUT_EDGE_BAND
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const id = comp[y * W + x]
+      if (id < 0 || touchesBand[id]) continue
+      edge: for (let dy = -band; dy <= band; dy++) {
+        for (let dx = -band; dx <= band; dx++) {
+          const nx = x + dx
+          const ny = y + dy
+          if (nx < 0 || nx >= W || ny < 0 || ny >= H || !inside[ny * W + nx]) {
+            touchesBand[id] = 1
+            break edge
+          }
+        }
+      }
+    }
+  }
+
+  // (c) Components holding a furniture bbox center are occupied rooms. A
+  // center landing ON a wall cell taints the neighboring rooms instead —
+  // half-overlap is ambiguity, and ambiguity must not become a keep-out.
+  const centers = furnitureCenters(drawing)
+  const furnished = new Uint8Array(n)
+  for (const [fx, fy] of centers) {
+    const gx = Math.floor((fx - ox) / cell)
+    const gy = Math.floor((fy - oy) / cell)
+    if (gx < 0 || gx >= W || gy < 0 || gy >= H) continue
+    const id = comp[gy * W + gx]
+    if (id >= 0) {
+      furnished[id] = 1
+    } else if (wall[gy * W + gx]) {
+      for (const j of [gy * W + gx - 1, gy * W + gx + 1, (gy - 1) * W + gx, (gy + 1) * W + gx]) {
+        if (j >= 0 && j < W * H && comp[j] >= 0) furnished[comp[j]] = 1
+      }
+    }
+  }
+
+  // Tight bboxes (source coords) of the surviving candidates.
+  const box = new Float64Array(n * 4)
+  box.fill(Infinity)
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const id = comp[y * W + x]
+      if (id < 0) continue
+      box[id * 4] = Math.min(box[id * 4], ox + x * cell)
+      box[id * 4 + 1] = Math.min(box[id * 4 + 1], oy + y * cell)
+      box[id * 4 + 2] = Math.min(box[id * 4 + 2], -(ox + (x + 1) * cell))
+      box[id * 4 + 3] = Math.min(box[id * 4 + 3], -(oy + (y + 1) * cell))
+    }
+  }
+  let boxes: [number, number, number, number][] = []
+  for (let id = 0; id < n; id++) {
+    const area = counts[id] * cell * cell
+    if (touchesBand[id] || furnished[id] || area < KEEPOUT_MIN_M2 || area > KEEPOUT_MAX_M2) continue
+    boxes.push([box[id * 4], box[id * 4 + 1], -box[id * 4 + 2], -box[id * 4 + 3]])
+  }
+
+  // (d) Merge near-touching bboxes: one stair+shaft cluster, one core block.
+  let fused = true
+  while (fused) {
+    fused = false
+    outer: for (let i = 0; i < boxes.length; i++) {
+      for (let j = i + 1; j < boxes.length; j++) {
+        const a = boxes[i]
+        const b = boxes[j]
+        const gapX = Math.max(a[0] - b[2], b[0] - a[2], 0)
+        const gapY = Math.max(a[1] - b[3], b[1] - a[3], 0)
+        if (gapX <= KEEPOUT_MERGE_GAP && gapY <= KEEPOUT_MERGE_GAP) {
+          boxes[i] = [
+            Math.min(a[0], b[0]),
+            Math.min(a[1], b[1]),
+            Math.max(a[2], b[2]),
+            Math.max(a[3], b[3]),
+          ]
+          boxes.splice(j, 1)
+          fused = true
+          break outer
+        }
+      }
+    }
+  }
+
+  // (e) An L-shaped cluster's bbox can overreach into furnished floor (its
+  // notch). Trim each rect just past any furniture center it contains —
+  // cheapest edge first — so a keep-out never claims occupied floor; rects
+  // trimmed below the minimum room size drop out.
+  const EPS = 0.01
+  boxes = boxes.filter((b) => {
+    for (let guard = 0; guard < 64; guard++) {
+      const hit = centers.find(
+        ([cx, cy]) => cx > b[0] + EPS && cx < b[2] - EPS && cy > b[1] + EPS && cy < b[3] - EPS,
+      )
+      if (!hit) break
+      const [cx, cy] = hit
+      const w = b[2] - b[0]
+      const h = b[3] - b[1]
+      const costs = [(cx - b[0]) * h, (b[2] - cx) * h, (cy - b[1]) * w, (b[3] - cy) * w]
+      const k = costs.indexOf(Math.min(...costs))
+      if (k === 0) b[0] = cx + EPS
+      else if (k === 1) b[2] = cx - EPS
+      else if (k === 2) b[1] = cy + EPS
+      else b[3] = cy - EPS
+      if (b[2] - b[0] <= 0 || b[3] - b[1] <= 0) break
+    }
+    return (b[2] - b[0]) * (b[3] - b[1]) >= KEEPOUT_MIN_M2
+  })
+
+  // (f) Sanity caps: largest first, total area ≤ 40% of plate, ≤ 12 rects.
+  boxes.sort((a, b) => (b[2] - b[0]) * (b[3] - b[1]) - (a[2] - a[0]) * (a[3] - a[1]))
+  const out: KeepOutRect[] = []
+  let claimed = 0
+  const budget = plate.areaM2 * KEEPOUT_AREA_FRAC
+  for (const [x0, y0, x1, y1] of boxes) {
+    if (out.length >= KEEPOUT_MAX_COUNT) break
+    const area = (x1 - x0) * (y1 - y0)
+    if (claimed + area > budget) continue
+    claimed += area
+    out.push({
+      x: (x0 + x1) / 2 - plate.offset.x,
+      y: (y0 + y1) / 2 - plate.offset.y,
+      w: x1 - x0,
+      h: y1 - y0,
+      label: `Core ${out.length + 1}`,
+    })
+  }
+  return out
+}
+
+/** Push detected keep-outs into the editor. Calls through a guarded cast:
+ *  `Editor.add_keepout` ships from the Rust side and may be absent in stale
+ *  wasm bindings — then this is a no-op. */
+export function pushKeepoutsToEditor(ec: EditorCanvas, keepouts: KeepOutRect[]): void {
+  const ed = ec.ed as unknown as {
+    add_keepout?: (x: number, y: number, w: number, h: number, label: string) => number
+  }
+  if (!ed.add_keepout || keepouts.length === 0) return
+  for (const k of keepouts) ed.add_keepout(k.x, k.y, k.w, k.h, k.label)
   ec.refresh()
 }
 
@@ -377,23 +594,8 @@ function ringPinched(ring: Pt[]): boolean {
   const cell = Math.max(PINCH_CELL, Math.sqrt((w * h) / 250_000))
   const W = Math.ceil(w / cell) + 4
   const H = Math.ceil(h / cell) + 4
-  // Scanline fill of the ring interior (crossing pairs per row).
-  const inside = new Uint8Array(W * H)
-  for (let gy = 0; gy < H; gy++) {
-    const y = minY + (gy - 1.5) * cell
-    const xs: number[] = []
-    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-      const [xi, yi] = ring[i]
-      const [xj, yj] = ring[j]
-      if (yi > y !== yj > y) xs.push(xi + ((xj - xi) * (y - yi)) / (yj - yi))
-    }
-    xs.sort((a, b) => a - b)
-    for (let p = 0; p + 1 < xs.length; p += 2) {
-      const gx0 = Math.max(0, Math.ceil((xs[p] - minX) / cell + 1.5))
-      const gx1 = Math.min(W - 1, Math.floor((xs[p + 1] - minX) / cell + 1.5))
-      for (let gx = gx0; gx <= gx1; gx++) inside[gy * W + gx] = 1
-    }
-  }
+  // Scanline fill of the ring interior.
+  const inside = fillRing(ring, minX - 2 * cell, minY - 2 * cell, cell, W, H)
   // Clearance to the exterior: Chebyshev BFS (8-neighbor), matching the
   // Chebyshev box kernel gridContour closes with.
   const dist = new Int32Array(W * H).fill(-1)
@@ -580,16 +782,7 @@ export function gridContour(segments: Segment[], cell = GRID_CELL, dilate = GRID
 
   const idx = (x: number, y: number) => y * W + x
   const wall = new Uint8Array(W * H)
-  for (const [a, b] of segments) {
-    const len = Math.hypot(b[0] - a[0], b[1] - a[1])
-    const steps = Math.max(1, Math.ceil(len / (cell * 0.5)))
-    for (let s = 0; s <= steps; s++) {
-      const t = s / steps
-      const gx = Math.floor((a[0] + (b[0] - a[0]) * t - ox) / cell)
-      const gy = Math.floor((a[1] + (b[1] - a[1]) * t - oy) / cell)
-      if (gx >= 0 && gx < W && gy >= 0 && gy < H) wall[idx(gx, gy)] = 1
-    }
-  }
+  stampSegments(segments, wall, ox, oy, cell, W, H)
 
   // Close: dilate walls by `dilate` cells (Chebyshev box).
   const dil = new Uint8Array(W * H)
@@ -656,32 +849,12 @@ export function gridContour(segments: Segment[], cell = GRID_CELL, dilate = GRID
   for (let i = 0; i < W * H; i++) er[i] = outside[i] ? 0 : 1
 
   // Largest 4-connected solid component.
-  const comp = new Int32Array(W * H).fill(-1)
+  const { comp, counts } = labelComponents(er, W, H)
   let bestComp = -1
   let bestCount = 0
-  let nComp = 0
-  for (let i0 = 0; i0 < W * H; i0++) {
-    if (!er[i0] || comp[i0] !== -1) continue
-    const id = nComp++
-    let count = 0
-    const st = [i0]
-    comp[i0] = id
-    while (st.length > 0) {
-      const i = st.pop()!
-      count++
-      const x = i % W
-      const y = (i - x) / W
-      const nb = [i - 1, i + 1, i - W, i + W]
-      const ok = [x > 0, x < W - 1, y > 0, y < H - 1]
-      for (let k = 0; k < 4; k++) {
-        if (ok[k] && er[nb[k]] && comp[nb[k]] === -1) {
-          comp[nb[k]] = id
-          st.push(nb[k])
-        }
-      }
-    }
-    if (count > bestCount) {
-      bestCount = count
+  for (let id = 0; id < counts.length; id++) {
+    if (counts[id] > bestCount) {
+      bestCount = counts[id]
       bestComp = id
     }
   }
@@ -744,6 +917,83 @@ export function gridContour(segments: Segment[], cell = GRID_CELL, dilate = GRID
   const poly: Pt[] = contourCells.map(([gx, gy]) => [ox + (gx + 0.5) * cell, oy + (gy + 0.5) * cell])
   const simplified = simplify(poly, SIMPLIFY_CONTOUR, true)
   return simplified.length >= 3 ? simplified : null
+}
+
+// ---- raster utilities -------------------------------------------------------
+
+/** Stamp `segments` onto a W×H occupancy `mask` (origin ox/oy, `cell` meters):
+ *  sample each segment every half-cell and mark the containing cell. */
+function stampSegments(
+  segments: Segment[],
+  mask: Uint8Array,
+  ox: number,
+  oy: number,
+  cell: number,
+  W: number,
+  H: number,
+): void {
+  for (const [a, b] of segments) {
+    const len = Math.hypot(b[0] - a[0], b[1] - a[1])
+    const steps = Math.max(1, Math.ceil(len / (cell * 0.5)))
+    for (let s = 0; s <= steps; s++) {
+      const t = s / steps
+      const gx = Math.floor((a[0] + (b[0] - a[0]) * t - ox) / cell)
+      const gy = Math.floor((a[1] + (b[1] - a[1]) * t - oy) / cell)
+      if (gx >= 0 && gx < W && gy >= 0 && gy < H) mask[gy * W + gx] = 1
+    }
+  }
+}
+
+/** Scanline-fill a ring's interior onto a W×H grid (origin ox/oy, `cell`
+ *  meters): a cell is marked when its CENTER lies inside the polygon. */
+function fillRing(ring: Pt[], ox: number, oy: number, cell: number, W: number, H: number): Uint8Array {
+  const inside = new Uint8Array(W * H)
+  for (let gy = 0; gy < H; gy++) {
+    const y = oy + (gy + 0.5) * cell
+    const xs: number[] = []
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const [xi, yi] = ring[i]
+      const [xj, yj] = ring[j]
+      if (yi > y !== yj > y) xs.push(xi + ((xj - xi) * (y - yi)) / (yj - yi))
+    }
+    xs.sort((a, b) => a - b)
+    for (let p = 0; p + 1 < xs.length; p += 2) {
+      const gx0 = Math.max(0, Math.ceil((xs[p] - ox) / cell - 0.5))
+      const gx1 = Math.min(W - 1, Math.floor((xs[p + 1] - ox) / cell - 0.5))
+      for (let gx = gx0; gx <= gx1; gx++) inside[gy * W + gx] = 1
+    }
+  }
+  return inside
+}
+
+/** 4-connected component labeling of the truthy cells of `pass`.
+ *  `comp[i]` is the component id (or -1); `counts[id]` its cell count. */
+function labelComponents(pass: Uint8Array, W: number, H: number): { comp: Int32Array; counts: number[] } {
+  const comp = new Int32Array(W * H).fill(-1)
+  const counts: number[] = []
+  for (let i0 = 0; i0 < W * H; i0++) {
+    if (!pass[i0] || comp[i0] !== -1) continue
+    const id = counts.length
+    let count = 0
+    const st = [i0]
+    comp[i0] = id
+    while (st.length > 0) {
+      const i = st.pop()!
+      count++
+      const x = i % W
+      const y = (i - x) / W
+      const nb = [i - 1, i + 1, i - W, i + W]
+      const ok = [x > 0, x < W - 1, y > 0, y < H - 1]
+      for (let k = 0; k < 4; k++) {
+        if (ok[k] && pass[nb[k]] && comp[nb[k]] === -1) {
+          comp[nb[k]] = id
+          st.push(nb[k])
+        }
+      }
+    }
+    counts.push(count)
+  }
+  return { comp, counts }
 }
 
 // ---- polygon utilities ----------------------------------------------------
