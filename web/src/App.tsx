@@ -17,6 +17,7 @@ import type { OfficeProduct } from './materialBank/office'
 import { exportPNG } from './export/png'
 import { exportPlanPDF } from './export/pdf'
 import { downloadIFC } from './export/ifc'
+import { downloadOBJ } from './export/obj'
 import { downloadDXF, downloadDrawingDXF } from './export/dxf'
 import { CandidateGallery } from './ui/CandidateGallery'
 import { CategoryPlan } from './ui/CategoryPlan'
@@ -643,6 +644,12 @@ function ExportMenu({
     setOpen(false)
   }
 
+  const exportObj = () => {
+    if (!ec) return
+    downloadOBJ(ec.getState(), 'dsource-plan') // emits .obj + .mtl
+    setOpen(false)
+  }
+
   const source = importMode ? 'imported plan' : 'generated plan'
 
   return (
@@ -677,8 +684,11 @@ function ExportMenu({
           <div className="export-item" role="menuitem" onClick={exportIfc} data-testid="export-ifc">
             IFC model <span className="hint">BIM</span>
           </div>
+          <div className="export-item" role="menuitem" onClick={exportObj} data-testid="export-obj">
+            OBJ model <span className="hint">3D mesh</span>
+          </div>
           <div className="export-item disabled" aria-disabled="true">
-            OBJ · RVT <span className="hint">soon</span>
+            RVT <span className="hint">via IFC</span>
           </div>
           <div className="export-item disabled" aria-disabled="true">
             Share… <span className="hint">soon</span>
