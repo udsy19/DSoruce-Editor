@@ -10,7 +10,7 @@ import type { EditorCanvas, Metrics, CirculationScore } from '../editor/EditorCa
 import type { Drawing } from '../import/types'
 import type { BindingInfo, DSourceFile, DSourceUi } from './file'
 import { applyProject, buildProjectFile } from './file'
-import { dbDel, dbGetAll, dbPut } from './db'
+import { dbDel, dbGet, dbGetAll, dbPut } from './db'
 
 /** Headline numbers shown on library cards + compare rows, no wasm needed. */
 export interface PlanMetricsSummary {
@@ -21,6 +21,12 @@ export interface PlanMetricsSummary {
   /** null when the plan has no walls — circulation is degenerate at 0 walls. */
   circulationScore: number | null
   minCorridorM: number | null
+}
+
+/** A floor's place within a project (docs/design/multi-floor.md). */
+export interface PlanFloor {
+  label: string // "L2", "Mezzanine", …
+  index: number // sort ordinal within the project
 }
 
 /** One record in the "plans" object store (keyPath "id"). */
@@ -34,6 +40,21 @@ export interface SavedPlan {
   metrics: PlanMetricsSummary
   /** The entire v1 on-disk `.dsource` format, verbatim. */
   file: DSourceFile
+  // --- Multi-floor project grouping (docs/design/multi-floor.md) ---
+  // ADDITIVE + OPTIONAL: pre-project records have none of these and must keep
+  // working everywhere. A project exists iff a plan references it.
+  projectId?: string
+  /** Denormalized onto every floor record so each stays self-describing. */
+  projectName?: string
+  floor?: PlanFloor
+}
+
+/** One project derived from the library — floors are plain `SavedPlan`s. */
+export interface ProjectGroup {
+  /** '' for the pseudo-group of ungrouped plans. */
+  projectId: string
+  projectName: string
+  floors: SavedPlan[]
 }
 
 /**
@@ -50,6 +71,8 @@ export function buildSavedPlan(
     snapshot?: string
     thumb?: string
     bindings?: Map<string, BindingInfo> | null
+    /** Save straight into a project as one of its floors. */
+    project?: { projectId: string; projectName: string; floor: PlanFloor }
   } = {},
 ): SavedPlan {
   const file = buildProjectFile({ ec, drawing: opts.drawing, bindings: opts.bindings, ui: opts.ui })
@@ -87,6 +110,13 @@ export function buildSavedPlan(
       minCorridorM: circ ? circ.min_corridor_width : null,
     },
     file,
+    ...(opts.project
+      ? {
+          projectId: opts.project.projectId,
+          projectName: opts.project.projectName,
+          floor: opts.project.floor,
+        }
+      : {}),
   }
 }
 
@@ -107,4 +137,98 @@ export function deletePlan(id: string): Promise<void> {
 /** Make a saved plan live — same code path as opening its `.dsource` file. */
 export function loadPlan(ec: EditorCanvas, p: SavedPlan): void {
   applyProject(ec, p.file)
+}
+
+// ---------------------------------------------------------------------------
+// Multi-floor projects (docs/design/multi-floor.md) — grouping is DERIVED
+// from plan records, never stored. Old records (no project fields) keep
+// working everywhere: they fold into a trailing pseudo-group.
+// ---------------------------------------------------------------------------
+
+/**
+ * Pure fold of plan records into project groups. Groups are ordered by their
+ * most recently updated floor (i.e. first appearance in a `listPlans()`-sorted
+ * input); floors within a group sort by `floor.index` (missing index → last,
+ * input order preserved). Ungrouped plans form a trailing pseudo-group with
+ * `projectId: ''`. Exported for the presentational panel + Node tests.
+ */
+export function groupPlans(plans: SavedPlan[]): ProjectGroup[] {
+  const groups = new Map<string, ProjectGroup>()
+  for (const p of plans) {
+    const id = p.projectId ?? ''
+    let g = groups.get(id)
+    if (!g) {
+      g = { projectId: id, projectName: id ? (p.projectName ?? '') : '', floors: [] }
+      groups.set(id, g)
+    }
+    g.floors.push(p)
+  }
+  const out = [...groups.values()]
+  for (const g of out) {
+    if (!g.projectId) continue // ungrouped: keep updatedAt order
+    g.floors.sort(
+      (a, b) => (a.floor?.index ?? Number.MAX_SAFE_INTEGER) - (b.floor?.index ?? Number.MAX_SAFE_INTEGER),
+    )
+  }
+  // Pseudo-group of ungrouped plans always trails the real projects.
+  return out.sort((a, b) => Number(a.projectId === '') - Number(b.projectId === ''))
+}
+
+/** All projects in the library, derived from `listPlans()`. */
+export async function listProjects(): Promise<ProjectGroup[]> {
+  return groupPlans(await listPlans())
+}
+
+/**
+ * Resolve a user-typed project name to an existing project (case-insensitive,
+ * returning its canonical id + name) or mint a fresh `projectId` for it.
+ * Host-side companion to the panel's `onAssign(planId, projectName, floorLabel)`.
+ */
+export async function resolveProject(
+  name: string,
+): Promise<{ projectId: string; projectName: string }> {
+  const wanted = name.trim()
+  const needle = wanted.toLowerCase()
+  for (const p of await listPlans()) {
+    if (p.projectId && p.projectName && p.projectName.toLowerCase() === needle) {
+      return { projectId: p.projectId, projectName: p.projectName }
+    }
+  }
+  return { projectId: crypto.randomUUID(), projectName: wanted }
+}
+
+/**
+ * Attach a saved plan to a project as one of its floors (`putPlan` wrapper;
+ * bumps `updatedAt`). When `floor.index` is omitted: keeps the plan's existing
+ * index if it is already in this project (re-label), otherwise appends after
+ * the project's current highest index.
+ */
+export async function assignToProject(
+  planId: string,
+  projectId: string,
+  projectName: string,
+  floor: { label: string; index?: number },
+): Promise<SavedPlan> {
+  const p = await dbGet<SavedPlan>('plans', planId)
+  if (!p) throw new Error(`No saved plan with id ${planId}`)
+  let index = floor.index
+  if (index == null) {
+    if (p.projectId === projectId && p.floor) {
+      index = p.floor.index
+    } else {
+      const siblings = (await listPlans()).filter(
+        (s) => s.projectId === projectId && s.id !== planId,
+      )
+      index = siblings.reduce((max, s) => Math.max(max, s.floor?.index ?? -1), -1) + 1
+    }
+  }
+  const next: SavedPlan = {
+    ...p,
+    projectId,
+    projectName,
+    floor: { label: floor.label, index },
+    updatedAt: new Date().toISOString(),
+  }
+  await putPlan(next)
+  return next
 }
