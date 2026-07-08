@@ -1323,6 +1323,9 @@ function GenerateCard({
           <ScoreBar label="Adjacency" v={result.best.adjacency} />
           <ScoreBar label="Circulation" v={result.best.circulation} />
           <ScoreBar label="Density" v={result.best.density} />
+          <ScoreBar label="Program fit" v={result.best.program_fit} />
+          <ScoreBar label="Daylight" v={result.best.daylight} />
+          <ScoreBar label="Entry" v={result.best.entry_adjacency} />
           <CandidateGallery
             candidates={result.candidates}
             activeSeed={activeSeed}

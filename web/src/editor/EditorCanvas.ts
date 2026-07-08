@@ -115,14 +115,23 @@ export interface Program {
   w_density: number
   /** Weight of `program_fit` (delivered vs derived room program). */
   w_program: number
+  /** Weight of `daylight` (% desks near the facade — M5). */
+  w_daylight: number
+  /** Weight of `entry_adjacency` (reception near entry, pantry far — M5). */
+  w_entry: number
 }
 export interface LayoutScore {
   capacity: number
   adjacency: number
   circulation: number
+  /** m²/person NIA density, peaking in the professional 8–12 band (M5). */
   density: number
   /** Delivered vs derived room program, 0..100 (M3/M4). */
   program_fit: number
+  /** % of workstations within reach of the facade (M5). */
+  daylight: number
+  /** Entry narrative: reception near the entry, pantry far (M5). */
+  entry_adjacency: number
   total: number
   placed_desks: number
 }
@@ -175,6 +184,8 @@ export const DEFAULT_PROGRAM: Program = {
   w_circulation: 0.25,
   w_density: 0.2,
   w_program: 0.1,
+  w_daylight: 0.05,
+  w_entry: 0.05,
 }
 
 const GRID_M = 1 // 1-meter minor grid

@@ -79,6 +79,15 @@ pub struct Program {
     /// default (M5 recalibrates all weights); serde default keeps old JSON valid.
     #[serde(default = "default_w_program")]
     pub w_program: f64,
+    /// Weight of `daylight` (% desks within reach of the facade — qbiq's
+    /// published daylight sub-score, spec §5). Small; serde default keeps old
+    /// JSON valid.
+    #[serde(default = "default_w_daylight")]
+    pub w_daylight: f64,
+    /// Weight of `entry_adjacency` (reception near the entry, pantry far —
+    /// the plan's "enter → reception → spine" narrative, spec §3/§5).
+    #[serde(default = "default_w_entry")]
+    pub w_entry: f64,
 }
 
 impl Default for Program {
@@ -101,6 +110,8 @@ impl Default for Program {
             w_circulation: 0.25,
             w_density: 0.20,
             w_program: 0.10,
+            w_daylight: 0.05,
+            w_entry: 0.05,
         }
     }
 }
@@ -118,6 +129,13 @@ pub struct LayoutScore {
     /// when every requested room (meetings + support spaces) got placed; a
     /// shortfall on a wall-dense plate shows here instead of being silent.
     pub program_fit: f64,
+    /// % of workstations within `DAYLIGHT_REACH_M` of the facade (plate
+    /// boundary) — qbiq's daylight sub-score (spec §5). 100 when every desk sits
+    /// near a window, low when desks are buried in the deep plan.
+    pub daylight: f64,
+    /// Entry narrative, 0..100: reception nearer the entry than the pantry
+    /// (spec §3). 100 (neutral) when the plate carries no entry to judge against.
+    pub entry_adjacency: f64,
     pub total: f64,
     /// desks actually placed (diagnostic for the loop's "which sub-score is weak")
     pub placed_desks: u32,
@@ -137,6 +155,16 @@ fn default_support_spaces() -> bool {
 /// serde field-default for `Program::w_program`.
 fn default_w_program() -> f64 {
     0.10
+}
+
+/// serde field-default for `Program::w_daylight`.
+fn default_w_daylight() -> f64 {
+    0.05
+}
+
+/// serde field-default for `Program::w_entry`.
+fn default_w_entry() -> f64 {
+    0.05
 }
 
 /// Back-to-back spine gap (m) between the two rows of a bench pair. Set to 0.0
@@ -317,13 +345,40 @@ impl SpaceProgram {
     }
 }
 
-/// The design headcount for a program: explicit, or inferred from the desk
-/// target at the default 0.85 open share.
-fn program_headcount(program: &Program) -> u32 {
-    program
-        .headcount
-        .unwrap_or_else(|| ((program.desks as f64) / 0.85).ceil() as u32)
-        .max(1)
+/// Target NIA density (m² per person): BCO 2023 / NBC 2016 design occupancy for
+/// general workspace is 10 m²/person; the professional band is 8–12 (spec §1).
+/// A plate with no explicit headcount is filled to THIS density so a bare plate
+/// lands in the band instead of echoing whatever sparse count the source drawing
+/// happened to carry (the field bug: 24 fixed desks on any plate → ~20 m²/person
+/// on the real 843 m² building).
+const TARGET_M2_PER_PERSON: f64 = 10.0;
+/// Open-plan share of the headcount seated at open workstations (spec §1.1):
+/// desks ≈ 0.85·N, the rest in meeting/collab seats.
+const OPEN_SHARE: f64 = 0.85;
+
+/// The design headcount for a program: explicit `program.headcount`, else the
+/// plate filled to the professional density (`plate_area / TARGET_M2_PER_PERSON`)
+/// so BOTH the derived room program (`SpaceProgram`) and the desk fill scale to
+/// the plate. Plate 0 / unknown (open walls) falls back to the legacy inference
+/// from the desk target at the open share, so nothing regresses off-plate.
+fn program_headcount(program: &Program, plate_area: f64) -> u32 {
+    match program.headcount {
+        Some(n) => n.max(1),
+        None if plate_area > 0.0 => ((plate_area / TARGET_M2_PER_PERSON).floor() as u32).max(1),
+        None => (((program.desks as f64) / OPEN_SHARE).ceil() as u32).max(1),
+    }
+}
+
+/// The desk target that fills the plate to professional density: the greater of
+/// the user's explicit `program.desks` (honored as an over-ask, e.g. capacity
+/// tests) and the open-plan share of the design headcount. When headcount is
+/// unset this is what scales the open field to the plate — the coherent partner
+/// of `program_headcount` so the room program and the desk count derive from the
+/// SAME headcount (no more 13-office / 27-desk mismatch, spec §1 / M5).
+fn desk_target(program: &Program, plate_area: f64) -> u32 {
+    let n = program_headcount(program, plate_area);
+    let pro = ((n as f64) * OPEN_SHARE).ceil() as u32;
+    program.desks.max(pro)
 }
 
 /// World-axis-aligned extents of a `w`×`h` footprint rotated by `rotation` —
@@ -476,6 +531,13 @@ const BAND_STEP: f64 = 0.15;
 /// Candidate step (m) of the interior clear-pocket scan for rooms that found
 /// no band slot on a wall-dense plate.
 const POCKET_STEP: f64 = 0.6;
+
+// ---- M5: professional scoring (spec §5) ----
+
+/// A workstation this far (m) or nearer to the facade (plate boundary) counts as
+/// daylit — matches the report's DAYLIGHT_RADIUS_M so the Rust sub-score and the
+/// exported KPI agree on which desks see a window.
+const DAYLIGHT_REACH_M: f64 = 5.0;
 
 /// Which side of a generated room faces the corridor its door opens onto —
 /// the side that gets the glass front and the door opening. Landscape wings
@@ -1047,7 +1109,6 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
     let mr_counter = doc.components.iter().filter(|c| c.category == "MeetingRoom").count() as u32;
     let frozen_desks = doc.components.iter().filter(|c| c.category == "Desk").count() as u32;
     let remaining_meetings = program.meeting_rooms.saturating_sub(mr_counter);
-    let remaining_desks = program.desks.saturating_sub(frozen_desks);
 
     // Regions: only a materially non-rectangular plate is decomposed; a
     // rectangular plate (or open walls) is ONE region. A region must survive
@@ -1058,6 +1119,11 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
         .as_deref()
         .map(geometry::polygon_area)
         .unwrap_or(bbox_area);
+    // Desk target scales to the plate at professional density (spec §1): fill
+    // the open field to `desk_target` desks, the open-plan share of the design
+    // headcount, so a bare plate lands in the 8–12 m²/person band instead of
+    // echoing a fixed 24-desk count on any plate size (the field bug).
+    let remaining_desks = desk_target(program, plate_area).saturating_sub(frozen_desks);
     let min_dim = REGION_MIN_DIM.max(2.0 * corridor + program.desk_w.min(program.desk_h));
     let mut regions = match &plate {
         Some(poly) if geometry::polygon_area(poly) < 0.98 * bbox_area => {
@@ -1136,7 +1202,7 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
     // A band may only claim depth that still leaves one desk row in front.
     let min_field_d = program.desk_w.min(program.desk_h) + clear;
     let (mut region_jobs, band_depths, mut overflow) =
-        allocate_rooms(jobs, &regions, &insets, entry_idx, min_field_d, seed);
+        allocate_rooms(jobs, &regions, &insets, entry_idx, min_field_d);
 
     // --- Region plans: band + spine + connector + link geometry -----------
     let plans: Vec<RegionPlan> = (0..regions.len())
@@ -1286,7 +1352,7 @@ fn support_jobs(program: &Program, plate_area: f64) -> Vec<RoomJob> {
     if !program.support_spaces {
         return Vec::new();
     }
-    let sp = SpaceProgram::derive(program_headcount(program) as usize, plate_area);
+    let sp = SpaceProgram::derive(program_headcount(program, plate_area) as usize, plate_area);
     let mut jobs = Vec::new();
     for req in &sp.reqs {
         use RoomFurniture::*;
@@ -1351,15 +1417,14 @@ fn entry_region_idx(regions: &[geometry::Rect], entry: Option<Point>) -> usize {
 /// placement order along each band), the per-region band depth (max depth of
 /// its jobs — one COMMON depth per band keeps the corridor face a single
 /// unbroken line, spec §4.3), and the jobs no region could take (they go to
-/// the pocket pass). Deterministic: the seed only rotates the round-robin
-/// start, the same discrete choice the old meeting allocation used.
+/// the pocket pass). Deterministic and seed-independent: rooms concentrate in
+/// the smallest wings so the largest wing stays a dense open desk field.
 fn allocate_rooms(
     jobs: Vec<RoomJob>,
     regions: &[geometry::Rect],
     insets: &[Insets],
     entry_idx: usize,
     min_field_d: f64,
-    seed: u64,
 ) -> (Vec<Vec<RoomJob>>, Vec<f64>, Vec<RoomJob>) {
     let n = regions.len();
     let mut lists: Vec<Vec<RoomJob>> = (0..n).map(|_| Vec::new()).collect();
@@ -1403,21 +1468,36 @@ fn allocate_rooms(
         })
         .unwrap_or(0);
 
-    let mut rr = (seed as usize) % n;
+    // Region preference for generic rooms: fill the SMALLEST wings first so the
+    // LARGEST wing stays a contiguous OPEN DESK FIELD. The old round-robin
+    // scattered one room into every wing; on a wall-dense import each scattered
+    // room grabbed a wall-free pocket — the exact area the desk packer needs —
+    // so the open field fragmented and under-filled catastrophically (the field
+    // bug: with the room program present the 843/882 m² plate seated ~3–9 desks,
+    // yet the same plate open seats ~80). Concentrating rooms in the small wings
+    // leaves the desk field intact and dense (spec §1: rooms cluster, desks line
+    // the facade). Deterministic — the smallest-first order is a pure function of
+    // the region geometry; seed variety now comes wholly from band side / cluster
+    // rhythm / lattice phase / desk fill, which is ample (gallery diversity test).
+    let mut order: Vec<usize> = (0..n).collect();
+    order.sort_by(|&a, &b| {
+        regions[a]
+            .area()
+            .partial_cmp(&regions[b].area())
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then(a.cmp(&b))
+    });
     for job in jobs {
-        let want = match job.kind {
-            SpaceKind::Reception => entry_idx,
-            SpaceKind::Pantry => far_idx,
-            _ => {
-                rr = (rr + 1) % n;
-                rr
-            }
+        // Reception hugs the entry wing, pantry the far wing; every other room
+        // takes the smallest wing that still fits, falling down the order.
+        let first = match job.kind {
+            SpaceKind::Reception => Some(entry_idx),
+            SpaceKind::Pantry => Some(far_idx),
+            _ => None,
         };
-        // A clamped room (down to 70% of the asked size) still counts as
-        // fitting. Resolve the target region first so `job` moves exactly once.
+        // A clamped room (down to 70% of the asked size) still counts as fitting.
         let mut target = None;
-        for k in 0..n {
-            let i = (want + k) % n;
+        for &i in first.iter().chain(order.iter()) {
             if 0.7 * job.d <= cap_d[i] && 0.7 * job.w + ROOM_GAP <= len_left[i] {
                 target = Some(i);
                 break;
@@ -2168,6 +2248,22 @@ fn pack_desks(
     desks_here
 }
 
+/// Professional density sub-score from NIA m² per person (spec §5). Peaks (100)
+/// across the BCO/NBC professional band **8–12 m²/person** (10 is the design
+/// occupancy) and tapers to 0 on BOTH sides: too CRAMMED (fewer m²/person, 0 at
+/// ≤4.5) and too SPARSE (more m²/person, 0 at ≥20). This REPLACES the old
+/// desk-area/floor 30–55% band, which peaked at ~2.3 m²/desk — literally
+/// steering the optimizer toward unprofessional cramming (spec gap #7).
+fn density_score(m2_per_person: f64) -> f64 {
+    if m2_per_person < 8.0 {
+        ((m2_per_person - 4.5) / (8.0 - 4.5) * 100.0).clamp(0.0, 100.0)
+    } else if m2_per_person <= 12.0 {
+        100.0
+    } else {
+        ((20.0 - m2_per_person) / (20.0 - 12.0) * 100.0).clamp(0.0, 100.0)
+    }
+}
+
 /// Score a layout against the program. Sub-scores are 0..100; `total` is the
 /// weight-normalised blend (design §3). This is the deterministic evaluator that
 /// drives the generate→evaluate→optimize loop.
@@ -2212,26 +2308,30 @@ pub fn score(doc: &Document, program: &Program) -> LayoutScore {
         (100.0 * ideal_pitch / avg_nn.max(1e-6)).min(100.0)
     };
 
-    // --- density: reward desk-area / floor-area inside the 30–55 % band ---
+    // --- density: peak at the professional 8–12 m²/person band (spec §5) ---
     // Floor area is the true plate-polygon area when the walls close a loop
     // (identical to the bbox for rectangular rooms); bbox only as a fallback.
-    // Otherwise an L-plate's density would be diluted by its void notch.
-    let floor = geometry::trace_floor_polygon(&wall_segments(doc), geometry::LOOP_SNAP_TOL)
-        .map(|poly| geometry::polygon_area(&poly))
+    // Otherwise an L-plate's density would be diluted by its void notch. The
+    // plate polygon is also reused by the daylight sub-score below.
+    let plate_poly = geometry::trace_floor_polygon(&wall_segments(doc), geometry::LOOP_SNAP_TOL);
+    let floor = plate_poly
+        .as_deref()
+        .map(geometry::polygon_area)
         .unwrap_or_else(|| doc.floor_area());
-    let density = if floor <= 0.0 {
+    // Total SEATS = workstations + meeting/collab capacity (the report's KPI),
+    // so density measures people-per-area the way a consultant reads it, not
+    // desk footprint coverage (which rewarded cramming).
+    let meeting_seats: f64 = doc
+        .zones
+        .iter()
+        .filter(|z| matches!(z.zone_type, ZoneType::Meeting | ZoneType::Collaboration))
+        .map(|z| z.capacity() as f64)
+        .sum();
+    let seats = placed_desks as f64 + meeting_seats;
+    let density = if floor <= 0.0 || seats <= 0.0 {
         0.0
     } else {
-        let desk_area: f64 = desks.iter().map(|c| c.w * c.h).sum();
-        let ratio = desk_area / floor;
-        // piecewise: full marks in [0.30, 0.55], linear taper to 0 at [0, 0.80].
-        if ratio < 0.30 {
-            (ratio / 0.30 * 100.0).clamp(0.0, 100.0)
-        } else if ratio <= 0.55 {
-            100.0
-        } else {
-            (((0.80 - ratio) / 0.25) * 100.0).clamp(0.0, 100.0)
-        }
+        density_score(floor / seats)
     };
 
     // --- circulation: the teammate-owned "walking place" evaluator ---
@@ -2269,18 +2369,69 @@ pub fn score(doc: &Document, program: &Program) -> LayoutScore {
         (100.0 * placed_rooms as f64 / derived_rooms as f64).min(100.0)
     };
 
+    // --- daylight: % of workstations within reach of the facade (spec §5) ---
+    // qbiq's published daylight metric: real plans put desks at the windows.
+    // A desk is daylit when its center is within DAYLIGHT_REACH_M of any plate
+    // boundary edge. No plate loop (open walls) → neutral 100 (nothing to fault).
+    let daylight = if desks.is_empty() {
+        100.0
+    } else if let Some(poly) = plate_poly.as_deref() {
+        let near = desks
+            .iter()
+            .filter(|c| {
+                (0..poly.len()).any(|i| {
+                    let a = poly[i];
+                    let b = poly[(i + 1) % poly.len()];
+                    geometry::point_segment_dist(Point::new(c.x, c.y), a, b) <= DAYLIGHT_REACH_M
+                })
+            })
+            .count();
+        100.0 * near as f64 / desks.len() as f64
+    } else {
+        100.0
+    };
+
+    // --- entry_adjacency: reception near the entry, pantry far (spec §3) ---
+    // The plan's "enter → reception → spine → pantry" narrative. Neutral 100
+    // when the plate carries no entry to judge against.
+    let entry_adjacency = match doc.entries.first() {
+        None => 100.0,
+        Some(e) => {
+            let dist_to = |label: &str| {
+                doc.zones.iter().find(|z| z.label == label).map(|z| {
+                    let (x0, y0, x1, y1) = z.shape.bbox();
+                    (((x0 + x1) / 2.0 - e.x).powi(2) + ((y0 + y1) / 2.0 - e.y).powi(2)).sqrt()
+                })
+            };
+            match (dist_to("Reception"), dist_to("Pantry")) {
+                // 100 when reception hugs the door and the pantry is the far
+                // social anchor; 50 when they are equidistant; →0 if inverted.
+                (Some(dr), Some(dp)) if dr + dp > 1e-6 => {
+                    (100.0 * dp / (dr + dp)).clamp(0.0, 100.0)
+                }
+                (Some(_), Some(_)) => 100.0,
+                (Some(_), None) | (None, Some(_)) => 60.0,
+                (None, None) => 50.0,
+            }
+        }
+    };
+
     // --- weighted total ---
     let wsum = (program.w_capacity
         + program.w_adjacency
         + program.w_circulation
         + program.w_density
-        + program.w_program)
+        + program.w_program
+        + program.w_daylight
+        + program.w_entry)
         .max(1e-6);
     let total = (program.w_capacity * capacity
         + program.w_adjacency * adjacency
         + program.w_circulation * circulation
         + program.w_density * density
-        + program.w_program * program_fit)
+        + program.w_program * program_fit
+        + program.w_daylight * daylight
+        + program.w_entry * entry_adjacency)
         / wsum;
 
     LayoutScore {
@@ -2289,6 +2440,8 @@ pub fn score(doc: &Document, program: &Program) -> LayoutScore {
         circulation,
         density,
         program_fit,
+        daylight,
+        entry_adjacency,
         total,
         placed_desks,
     }
@@ -2591,7 +2744,12 @@ mod tests {
         generate(&mut doc, &program, 3, false);
         let desks = doc.components.iter().filter(|c| c.category == "Desk").count();
         let mrs = meeting_room_count(&doc);
-        assert_eq!(desks, 12, "large room should seat all requested desks");
+        // M5 professional density: with `headcount` unset the desk target scales
+        // to fill the 600 m² plate to ~10 m²/person (~51 desks), so `desks=12` is
+        // a floor, not a ceiling — the surviving invariant is "no shortfall on the
+        // request" (the old `== 12` echoed the pre-M5 fixed-count behavior that
+        // left big plates sparse; see the density fix rationale in `desk_target`).
+        assert!(desks >= 12, "large room must seat at least the requested desks (got {desks})");
         assert_eq!(mrs, 1);
     }
 
@@ -2632,11 +2790,17 @@ mod tests {
         let mut doc = room(30.0, 20.0);
         generate(&mut doc, &program, 5, false);
         let s = score(&doc, &program);
-        for v in [s.capacity, s.adjacency, s.circulation, s.density, s.total] {
+        for v in [
+            s.capacity, s.adjacency, s.circulation, s.density, s.program_fit,
+            s.daylight, s.entry_adjacency, s.total,
+        ] {
             assert!((0.0..=100.0).contains(&v), "score {} out of range", v);
         }
-        // 30x20 seats the default 24 desks → capacity 100.
-        assert_eq!(s.placed_desks, 24);
+        // M5 professional density: the default program on a 600 m² plate now
+        // fills to ~10 m²/person (well past the legacy fixed 24), so placed_desks
+        // reflects the PLATE, not a constant. The surviving invariant is "the
+        // plate seats at least the requested 24" → capacity saturates at 100.
+        assert!(s.placed_desks >= 24, "600 m² plate must seat >= the requested 24 (got {})", s.placed_desks);
         assert!((s.capacity - 100.0).abs() < 1e-9);
     }
 
@@ -2833,9 +2997,14 @@ mod tests {
             }
         }
 
-        // Total desks never exceed the requested target.
+        // Total desks never exceed the EFFECTIVE target. Since M5 the target is
+        // the professional plate-fill (`desk_target`), not the raw `program.desks`
+        // (24) — regenerate still must not over-place past what the plate is asked
+        // to hold. Frozen desks count toward it, so the top-up only fills the gap.
+        let area = geometry::polygon_area(&poly_of(&doc));
+        let target = desk_target(&program, area);
         let desks = doc.components.iter().filter(|c| c.category == "Desk").count();
-        assert!(desks <= program.desks as usize, "over-placed past target");
+        assert!(desks <= target as usize, "over-placed past the effective target {target} (got {desks})");
     }
 
     // ---- Irregular-plate rigor (region pipeline + the user's real building) --
@@ -3810,5 +3979,114 @@ mod tests {
         let support_on = d_on.zones.iter().filter(|z| matches!(z.zone_type,
             ZoneType::ClosedOffice | ZoneType::Amenity | ZoneType::Collaboration)).count();
         assert!(support_on >= 5, "support_spaces=true must place the professional palette (got {support_on})");
+    }
+
+    // ---- M5: professional density + recentered scoring --------------------
+
+    /// Total seats (workstations + meeting/collab capacity) and the true plate
+    /// area — the m²/person the report and the density sub-score both read.
+    fn seats_and_area(doc: &Document) -> (f64, f64) {
+        let desks = doc.components.iter().filter(|c| c.category == "Desk").count() as f64;
+        let mseats: f64 = doc
+            .zones
+            .iter()
+            .filter(|z| matches!(z.zone_type, ZoneType::Meeting | ZoneType::Collaboration))
+            .map(|z| z.capacity() as f64)
+            .sum();
+        (desks + mseats, geometry::polygon_area(&poly_of(doc)))
+    }
+
+    /// M5 / field-bug regression: a BARE plate (rectangular sizes + the real
+    /// 843 m² DWG fixture) with the DEFAULT auto program (headcount unset) fills
+    /// to the professional density — m²/person incl. meeting seats lands in the
+    /// 8–13 band (BCO/NBC 8–12 + irregular-plate slack). Guards the field bug
+    /// where a fixed 24-desk target left the real building at ~20 m²/person
+    /// (2.5× too sparse), and the absurd ~29 m²/person on a large empty plate.
+    #[test]
+    fn bare_plate_fills_to_professional_density() {
+        for (w, h) in [(20.0, 15.0), (30.0, 22.0), (40.0, 30.0)] {
+            let mut doc = room(w, h);
+            generate(&mut doc, &Program::default(), 1, false);
+            let (seats, area) = seats_and_area(&doc);
+            assert!(seats > 0.0, "rect {w}x{h}: no seats placed");
+            let m2pp = area / seats;
+            assert!(
+                (8.0..=13.0).contains(&m2pp),
+                "rect {w}x{h}: {m2pp:.1} m²/person out of the professional 8–13 band (seats {seats:.0}, area {area:.0})"
+            );
+        }
+        // The user's real 843 m² building — the field case.
+        let mut doc = real_plate_doc();
+        generate(&mut doc, &Program::default(), 1, false);
+        let (seats, area) = seats_and_area(&doc);
+        let m2pp = area / seats;
+        assert!(
+            (8.0..=13.0).contains(&m2pp),
+            "REAL_PLATE: {m2pp:.1} m²/person out of the professional 8–13 band (seats {seats:.0}, area {area:.0})"
+        );
+        // The recentered density sub-score rewards the in-band fill.
+        let s = score(&doc, &Program::default());
+        assert!(s.density >= 80.0, "REAL_PLATE density sub-score {:.0} should reward the in-band fill", s.density);
+    }
+
+    /// The recentered density sub-score peaks in the professional band and falls
+    /// off BOTH sides — a pure-function guard on the M5 curve (spec §5): the old
+    /// band peaked at ~2.3 m²/desk cramming; this one peaks at 10 m²/person.
+    #[test]
+    fn density_score_peaks_in_band_and_falls_off_both_sides() {
+        assert!((density_score(10.0) - 100.0).abs() < 1e-9, "10 m²/person is the peak");
+        assert!((density_score(9.0) - 100.0).abs() < 1e-9 && (density_score(11.0) - 100.0).abs() < 1e-9);
+        // Crammed side (too few m²/person) and sparse side (too many) both drop.
+        assert!(density_score(5.0) < 60.0, "5 m²/person (crammed) must score low");
+        assert!(density_score(3.0) < 20.0, "3 m²/person (very crammed) near zero");
+        assert!(density_score(18.0) < 40.0, "18 m²/person (sparse) must score low");
+        assert!(density_score(24.0) <= 0.0, "24 m²/person (very sparse) is zero");
+        // Strictly monotone away from the band on each side.
+        assert!(density_score(6.0) > density_score(5.0));
+        assert!(density_score(14.0) > density_score(16.0));
+    }
+
+    /// A professional-density layout OUTSCORES both a sparse and a crammed one
+    /// (deliverable): same objective weights, the density sub-score separates
+    /// them, and it carries through to the blended total.
+    #[test]
+    fn professional_density_outscores_sparse_and_crammed() {
+        // Professional: headcount unset → the plate fills to ~10 m²/person.
+        let prof_prog = Program::default();
+        let mut prof = room(40.0, 30.0);
+        generate(&mut prof, &prof_prog, 1, false);
+        let sp = score(&prof, &prof_prog);
+
+        // Sparse: a small explicit headcount leaves the same plate under-filled.
+        let mut sparse_prog = Program::default();
+        sparse_prog.headcount = Some(40);
+        let mut sparse = room(40.0, 30.0);
+        generate(&mut sparse, &sparse_prog, 1, false);
+        let ss = score(&sparse, &sparse_prog);
+
+        // Crammed: no support rooms, desks jammed at a sub-code aisle onto a
+        // modest plate — a deliberately unprofessional over-dense grid.
+        let mut cram_prog = Program::default();
+        cram_prog.support_spaces = false;
+        cram_prog.meeting_rooms = 0;
+        cram_prog.desks = 240;
+        cram_prog.desk_clearance_m = 0.55;
+        let mut crammed = room(30.0, 20.0);
+        generate(&mut crammed, &cram_prog, 1, false);
+        let cs = score(&crammed, &cram_prog);
+
+        let (prof_seats, prof_area) = seats_and_area(&prof);
+        let (spar_seats, spar_area) = seats_and_area(&sparse);
+        let (cram_seats, cram_area) = seats_and_area(&crammed);
+        assert!(
+            sp.density > ss.density + 5.0 && sp.density > cs.density + 5.0,
+            "professional density {:.0} ({:.1} m²/pp) must beat sparse {:.0} ({:.1}) and crammed {:.0} ({:.1})",
+            sp.density, prof_area / prof_seats,
+            ss.density, spar_area / spar_seats,
+            cs.density, cram_area / cram_seats,
+        );
+        // And it carries the blended total (density is a weighted term).
+        assert!(sp.total > ss.total, "professional total {:.0} must beat sparse {:.0}", sp.total, ss.total);
+        assert!(sp.total > cs.total, "professional total {:.0} must beat crammed {:.0}", sp.total, cs.total);
     }
 }
