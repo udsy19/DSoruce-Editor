@@ -10,6 +10,10 @@ export interface DocWall {
   a: { x: number; y: number }
   b: { x: number; y: number }
   thickness: number
+  /** Emitted by the test-fit generator (room partitions); re-emitted per run. */
+  generated?: boolean
+  /** Glazed partition (glass front) — triple-line in 2D, translucent in 3D. */
+  glazing?: boolean
 }
 export interface DocComponent {
   id: number
@@ -654,7 +658,10 @@ export class EditorCanvas {
     this.updatePlate(st.walls)
     this.drawZones(st.zones)
 
-    for (const wall of st.walls) this.drawSegment(wall.a, wall.b, wall.thickness, C.wall)
+    for (const wall of st.walls) {
+      if (wall.glazing) this.drawGlazing(wall.a, wall.b)
+      else this.drawSegment(wall.a, wall.b, wall.thickness, C.wall)
+    }
     if (this.tool === 'wall' && this.wallStart) {
       this.drawSegment(this.wallStart, this.snap(this.mouseWorld), 0.1, C.preview)
     }
@@ -780,6 +787,35 @@ export class EditorCanvas {
     ctx.strokeStyle = color
     ctx.lineWidth = Math.max(2, thick * this.scale)
     ctx.lineCap = 'round'
+    ctx.beginPath()
+    ctx.moveTo(pa.x, pa.y)
+    ctx.lineTo(pb.x, pb.y)
+    ctx.stroke()
+  }
+
+  /** Glazed wall: the drafting triple-line convention (two frame lines with a
+   *  lighter center glazing line), visually distinct from solid poché walls. */
+  private drawGlazing(a: { x: number; y: number }, b: { x: number; y: number }) {
+    const ctx = this.ctx
+    const pa = this.toScreen(a.x, a.y)
+    const pb = this.toScreen(b.x, b.y)
+    const dx = pb.x - pa.x
+    const dy = pb.y - pa.y
+    const len = Math.hypot(dx, dy) || 1
+    // Frame offset: half the drawn glazing depth, ≥1.5 px so it never collapses.
+    const o = Math.max(1.5, 0.05 * this.scale)
+    const nx = (-dy / len) * o
+    const ny = (dx / len) * o
+    ctx.lineCap = 'round'
+    ctx.strokeStyle = C.wall
+    ctx.lineWidth = 1
+    ctx.beginPath()
+    ctx.moveTo(pa.x + nx, pa.y + ny)
+    ctx.lineTo(pb.x + nx, pb.y + ny)
+    ctx.moveTo(pa.x - nx, pa.y - ny)
+    ctx.lineTo(pb.x - nx, pb.y - ny)
+    ctx.stroke()
+    ctx.strokeStyle = '#8fb6c9' // glass: light cool center line
     ctx.beginPath()
     ctx.moveTo(pa.x, pa.y)
     ctx.lineTo(pb.x, pb.y)

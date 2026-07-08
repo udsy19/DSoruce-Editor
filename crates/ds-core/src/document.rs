@@ -97,17 +97,17 @@ impl Document {
         self.zone_index_at(x, y).map(|i| self.zones[i].id)
     }
 
-    /// Axis-aligned bounding box of all wall endpoints, `(min_x, min_y, max_x,
-    /// max_y)`. `None` when there are no walls.
+    /// Axis-aligned bounding box of all **architectural** (non-generated) wall
+    /// endpoints, `(min_x, min_y, max_x, max_y)`. Generator-emitted partitions
+    /// are excluded — they are output, not the building envelope (they always
+    /// lie inside it anyway; the filter guards degenerate docs). `None` when
+    /// there are no such walls.
     pub(crate) fn wall_bbox(&self) -> Option<(f64, f64, f64, f64)> {
-        if self.walls.is_empty() {
-            return None;
-        }
         let mut min_x = f64::INFINITY;
         let mut min_y = f64::INFINITY;
         let mut max_x = f64::NEG_INFINITY;
         let mut max_y = f64::NEG_INFINITY;
-        for w in &self.walls {
+        for w in self.walls.iter().filter(|w| !w.generated) {
             for p in [w.a, w.b] {
                 min_x = min_x.min(p.x);
                 min_y = min_y.min(p.y);
@@ -115,14 +115,25 @@ impl Document {
                 max_y = max_y.max(p.y);
             }
         }
+        if !min_x.is_finite() {
+            return None;
+        }
         Some((min_x, min_y, max_x, max_y))
     }
 
     /// The floor-plate polygon traced from the walls (largest closed loop), or
     /// `None` when the walls don't close. Metrics clip zone areas against this
     /// so a non-rectangular plate reports true areas, not its bounding box.
+    /// Generated partitions are excluded from the trace: the plate is the
+    /// building envelope, and re-tracing our own room shells would corrupt
+    /// regeneration (see docs/design/testfit-pro-quality.md §2).
     pub(crate) fn plate_polygon(&self) -> Option<Vec<crate::geometry::Point>> {
-        let segs: Vec<_> = self.walls.iter().map(|w| (w.a, w.b)).collect();
+        let segs: Vec<_> = self
+            .walls
+            .iter()
+            .filter(|w| !w.generated)
+            .map(|w| (w.a, w.b))
+            .collect();
         crate::geometry::trace_floor_polygon(&segs, crate::geometry::LOOP_SNAP_TOL)
     }
 
@@ -423,6 +434,8 @@ mod tests {
             a: Point::new(0.0, 0.0),
             b: Point::new(10.0, 0.0),
             thickness: 0.2,
+            generated: false,
+            glazing: false,
         });
         let cid = doc.alloc_id();
         let mut c = desk(cid, 3.0, 3.0);
@@ -508,6 +521,8 @@ mod tests {
             a: Point::new(ax, ay),
             b: Point::new(bx, by),
             thickness: 0.2,
+            generated: false,
+            glazing: false,
         }
     }
 

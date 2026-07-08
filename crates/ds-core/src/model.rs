@@ -35,6 +35,17 @@ pub struct Wall {
     pub b: Point,
     /// meters
     pub thickness: f64,
+    /// Emitted by the test-fit generator (room partitions/glass fronts).
+    /// `generate()` clears and re-emits these every run; user-drawn and
+    /// imported walls stay `false` and are never touched. `serde(default)`
+    /// keeps pre-M1 snapshots loading unchanged.
+    #[serde(default)]
+    pub generated: bool,
+    /// Glazed partition (a meeting room's corridor-facing glass front).
+    /// Renders as the triple-line window convention in 2D and translucent
+    /// glass in 3D. Independent of `generated` so imported glazing can use it.
+    #[serde(default)]
+    pub glazing: bool,
 }
 
 /// A permanent interior **keep-out**: the building core (stairs, lifts, shafts,
@@ -74,4 +85,36 @@ pub struct Component {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub price_inr: Option<f64>,
     pub decision: DecisionState,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Pre-M1 snapshots carry walls WITHOUT the `generated`/`glazing` flags —
+    /// they must deserialize (flags default false), and a full round-trip must
+    /// preserve explicitly set flags. This is the additive-schema guarantee.
+    #[test]
+    fn wall_flags_default_false_and_round_trip() {
+        // Byte-for-byte what pre-M1 builds serialized: no flag fields at all.
+        let old = r#"{"id":7,"a":{"x":0.0,"y":0.0},"b":{"x":4.0,"y":0.0},"thickness":0.1}"#;
+        let w: Wall = serde_json::from_str(old).expect("old wall JSON must parse");
+        assert!(!w.generated, "missing `generated` defaults to false");
+        assert!(!w.glazing, "missing `glazing` defaults to false");
+
+        // Round-trip with the flags set: nothing is lost.
+        let glass = Wall {
+            id: 8,
+            a: Point::new(0.0, 0.0),
+            b: Point::new(3.0, 0.0),
+            thickness: 0.05,
+            generated: true,
+            glazing: true,
+        };
+        let json = serde_json::to_string(&glass).unwrap();
+        let back: Wall = serde_json::from_str(&json).unwrap();
+        assert!(back.generated && back.glazing, "flags survive the round-trip");
+        assert_eq!(back.id, 8);
+        assert!((back.thickness - 0.05).abs() < 1e-12);
+    }
 }

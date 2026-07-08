@@ -56,10 +56,11 @@ export function drawFurnitureSymbol(ctx: CanvasRenderingContext2D, o: FurnitureO
       drawChair(ctx, w, h, line, o.detail, lw)
       break
     case 'Table':
-      drawTable(ctx, w, h, line, o.detail, lw)
-      break
+    // A user-placed catalog meeting pod draws as its conference table at full
+    // footprint. Generated rooms stopped using this category in M1 — they are
+    // real walls + Door + Table now (docs/design/testfit-pro-quality.md §2).
     case 'MeetingRoom':
-      drawMeetingRoom(ctx, w, h, line, o.detail, lw)
+      drawTable(ctx, w, h, line, o.detail, lw)
       break
     case 'FallCeiling':
       drawFallCeiling(ctx, w, h, line, o.detail, lw, o.selected)
@@ -221,21 +222,6 @@ function drawTable(
       }
     }
   }
-}
-
-// Meeting room marker: a centered conference table + chairs, smaller than the
-// footprint (the zone fill already colors the room). Reuses the table symbol.
-function drawMeetingRoom(
-  ctx: CanvasRenderingContext2D,
-  w: number,
-  h: number,
-  line: string,
-  detail: string,
-  lw: number,
-): void {
-  const iw = w * 0.5
-  const ih = h * 0.5
-  drawTable(ctx, iw, ih, line, detail, lw)
 }
 
 // Door plan symbol: opening jambs + leaf shown open 90° + quarter swing arc.

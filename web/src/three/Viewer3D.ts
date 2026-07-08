@@ -281,6 +281,19 @@ export class Viewer3D {
   // disposed when content is cleared (tracked via `shared` exclusion).
   private unitBox = new THREE.BoxGeometry(1, 1, 1)
   private wallMat = new THREE.MeshStandardMaterial({ color: 0xd9dce1, roughness: 0.9, metalness: 0 })
+  // Glazed partitions (glass fronts of generated rooms). Cheap transparency,
+  // not physical transmission: a test-fit can carry one glass front per room,
+  // and each transmissive material would multiply full-scene render passes
+  // (same trade-off as buildFromDrawing's imported-shell glazing).
+  private glassWallMat = new THREE.MeshStandardMaterial({
+    color: 0xbfd9e6,
+    roughness: 0.08,
+    metalness: 0,
+    transparent: true,
+    opacity: 0.25,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+  })
   private meetingMat = new THREE.MeshStandardMaterial({
     color: 0x5fa8c4,
     roughness: 0.6,
@@ -518,6 +531,7 @@ export class Viewer3D {
     this.shared = new Set<THREE.BufferGeometry | THREE.Material>([
       this.unitBox,
       this.wallMat,
+      this.glassWallMat,
       this.meetingMat,
       this.fallCeilingMat,
       this.highlightMat,
@@ -792,7 +806,8 @@ export class Viewer3D {
     if (state.zones) {
       // Trace the floor-plate polygon ONCE per rebuild; zone plates are clipped
       // to it so tinted floors never stick out past an L-shaped building edge.
-      const plate = platePolygonFromWalls(state.walls)
+      // Generated room partitions are excluded — the plate is the envelope.
+      const plate = platePolygonFromWalls(state.walls.filter((w) => !w.generated))
       for (const z of state.zones) this.buildZonePlate(z, plate)
     }
     for (const w of state.walls) this.content.add(this.buildWall(w))
@@ -944,6 +959,7 @@ export class Viewer3D {
     this.clearContent()
     this.unitBox.dispose()
     this.wallMat.dispose()
+    this.glassWallMat.dispose()
     this.meetingMat.dispose()
     this.fallCeilingMat.dispose()
     this.highlightMat.dispose()
@@ -1001,15 +1017,16 @@ export class Viewer3D {
     const dx = w.b.x - w.a.x
     const dz = w.b.y - w.a.y // plan Y → world Z
     const len = Math.hypot(dx, dz) || 0.01
-    const mesh = new THREE.Mesh(this.unitBox, this.wallMat)
+    const glass = !!w.glazing
+    const mesh = new THREE.Mesh(this.unitBox, glass ? this.glassWallMat : this.wallMat)
     mesh.scale.set(len, WALL_HEIGHT, Math.max(w.thickness, 0.05))
     mesh.position.set((w.a.x + w.b.x) / 2, WALL_HEIGHT / 2, (w.a.y + w.b.y) / 2)
     mesh.rotation.y = -Math.atan2(dz, dx) // see coordinate-mapping note above
-    mesh.castShadow = true
-    mesh.receiveShadow = true
+    mesh.castShadow = !glass // glass fronts stay light-transparent
+    mesh.receiveShadow = !glass
     // Shell = building fabric: reported by onPick but not selectable UI-wise.
     // Stamping it keeps a click on a wall from selecting the zone behind it.
-    mesh.userData.pick = { kind: 'shell', category: 'wall' } satisfies PickInfo
+    mesh.userData.pick = { kind: 'shell', category: glass ? 'glazing' : 'wall' } satisfies PickInfo
     return mesh
   }
 

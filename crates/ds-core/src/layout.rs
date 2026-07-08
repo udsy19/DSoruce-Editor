@@ -25,7 +25,7 @@
 use crate::circulation::{self, CirculationConfig};
 use crate::document::Document;
 use crate::geometry::{self, Point};
-use crate::model::{Component, DecisionState};
+use crate::model::{Component, DecisionState, Wall};
 use crate::zone::{Zone, ZoneShape, ZoneType};
 use serde::{Deserialize, Serialize};
 
@@ -236,6 +236,203 @@ fn push_zone(doc: &mut Document, zone_type: ZoneType, shape: ZoneShape, label: &
     });
 }
 
+// ---- Enclosed-room emission (M1 of docs/design/testfit-pro-quality.md) ----
+
+/// Generated-partition thickness (m): 100 mm double-boarded drywall — the
+/// standard office fit-out partition.
+const PARTITION_T: f64 = 0.1;
+/// Glazed-front thickness (m): framed office glazing renders thinner than
+/// drywall (spec §2 "Glass fronts").
+const GLAZING_T: f64 = 0.05;
+/// Door leaf width (m): standard office single leaf 900×2100.
+const DOOR_W: f64 = 0.9;
+/// Door slab depth (m): the component footprint across the wall.
+const DOOR_D: f64 = 0.15;
+/// Hinge-side jamb offset (m) from the perpendicular wall, so the leaf opens
+/// flat against it (spec §2 door convention).
+const DOOR_JAMB: f64 = 0.15;
+/// Clear ring (m) kept between a room's table and its walls' inner faces.
+/// ≥ the 0.9 m accessible route so the circulation evaluator's in-room
+/// chokepoints never undercut the corridor target (0.95 leaves raster
+/// headroom over the evaluator's 0.15 m cells).
+const TABLE_CLEAR: f64 = 0.95;
+
+/// Which side of a generated room faces the corridor its door opens onto —
+/// the side that gets the glass front and the door opening. Landscape wings
+/// stack rooms against the work rect's RIGHT edge (perimeter/seam corridor to
+/// their right); portrait wings band rooms along its BOTTOM edge.
+#[derive(Clone, Copy)]
+enum CorridorSide {
+    Right,
+    Bottom,
+    /// Mirrors of Right/Bottom for M2's `band_far` seed choice, which moves
+    /// the meeting band to the opposite region end — the glass front + door
+    /// must still face the corridor/desk-field side.
+    Left,
+    Top,
+}
+
+/// What `emit_room` builds around a placed room rect. M1 only emits meeting
+/// rooms; M3's cabins/focus/IT rooms reuse this with different types/flags.
+struct RoomSpec {
+    zone_type: ZoneType,
+    label: String,
+    /// Corridor-facing wall is glazed (solid for IT/storage in M3).
+    glass_front: bool,
+    /// Door leaf width (m); 1.0 for NBC-exit rooms in M5.
+    door_w: f64,
+}
+
+/// Append one generated wall segment (partition or glass front).
+fn push_gen_wall(doc: &mut Document, ax: f64, ay: f64, bx: f64, by: f64, thickness: f64, glazing: bool) {
+    if ((bx - ax).abs() + (by - ay).abs()) < 1e-6 {
+        return; // zero-length stub (door gap touched the corner)
+    }
+    let id = doc.alloc_id();
+    doc.walls.push(Wall {
+        id,
+        a: Point::new(ax, ay),
+        b: Point::new(bx, by),
+        thickness,
+        generated: true,
+        glazing,
+    });
+}
+
+/// Emit one ENCLOSED room on the rect centered `(cx, cy)`, size `w`×`h`:
+/// 0.1 m generated partitions on three sides, a glazed corridor-facing front
+/// broken by a `door_w` opening (two collinear segments), a `Door` component
+/// in the gap (rotated so the leaf swings INTO the room, hinge on the jamb
+/// nearest the corner), a typed zone, and a full-size table with a ≥0.9 m
+/// chair/egress ring.
+///
+/// Self-blocking is impossible by construction: wall centerlines are inset
+/// half a thickness so the partitions' OUTER faces sit exactly on the room
+/// rect — the same rect the caller pushes into `obstacles` with a full
+/// clearance pad, which every later placement (rooms, desks, top-up passes)
+/// already avoids. The packer's wall-obstacle list (`interior_walls`) is
+/// snapshotted BEFORE any emission and generated walls are cleared at the top
+/// of `generate()`, so a room's own shell can never reject its own interior
+/// furniture, and later placements respect earlier rooms via the rect
+/// obstacle (a strict superset of the walls + their clearance).
+fn emit_room(doc: &mut Document, cx: f64, cy: f64, w: f64, h: f64, side: CorridorSide, spec: &RoomSpec) {
+    let t2 = PARTITION_T / 2.0;
+    // Wall centerline rectangle (inset so outer faces land on the room rect).
+    let x0 = cx - w / 2.0 + t2;
+    let x1 = cx + w / 2.0 - t2;
+    let y0 = cy - h / 2.0 + t2;
+    let y1 = cy + h / 2.0 - t2;
+
+    // The corridor-facing run carries the door gap: hinge-side jamb DOOR_JAMB
+    // from the far corner; fall back to a centered gap in short runs, and to a
+    // solid front when even that can't fit (degenerate, sub-1.2 m rooms).
+    let front_t = if spec.glass_front { GLAZING_T } else { PARTITION_T };
+    let gap = |lo: f64, hi: f64| -> Option<(f64, f64)> {
+        let run = hi - lo;
+        if run < spec.door_w + 0.1 {
+            return None;
+        }
+        let g_hi = if run >= spec.door_w + 2.0 * DOOR_JAMB {
+            hi - DOOR_JAMB
+        } else {
+            (lo + hi) / 2.0 + spec.door_w / 2.0
+        };
+        Some((g_hi - spec.door_w, g_hi))
+    };
+    match side {
+        CorridorSide::Right => {
+            // Solid partitions: left, top, bottom.
+            push_gen_wall(doc, x0, y0, x0, y1, PARTITION_T, false);
+            push_gen_wall(doc, x0, y1, x1, y1, PARTITION_T, false);
+            push_gen_wall(doc, x0, y0, x1, y0, PARTITION_T, false);
+            // Corridor-facing front at x1 (vertical run), gap near the TOP corner.
+            match gap(y0, y1) {
+                Some((g_lo, g_hi)) => {
+                    push_gen_wall(doc, x1, y0, x1, g_lo, front_t, spec.glass_front);
+                    push_gen_wall(doc, x1, g_hi, x1, y1, front_t, spec.glass_front);
+                    // rotation −π/2 puts the hinge on the g_hi jamb (nearest the
+                    // corner) and swings the leaf into the room (−x).
+                    push_component(
+                        doc, "Door", x1, (g_lo + g_hi) / 2.0, spec.door_w, DOOR_D,
+                        -std::f64::consts::FRAC_PI_2,
+                    );
+                }
+                None => push_gen_wall(doc, x1, y0, x1, y1, front_t, spec.glass_front),
+            }
+        }
+        CorridorSide::Bottom => {
+            // Solid partitions: left, right, top.
+            push_gen_wall(doc, x0, y0, x0, y1, PARTITION_T, false);
+            push_gen_wall(doc, x1, y0, x1, y1, PARTITION_T, false);
+            push_gen_wall(doc, x0, y1, x1, y1, PARTITION_T, false);
+            // Corridor-facing front at y0 (horizontal run), gap near the RIGHT corner.
+            match gap(x0, x1) {
+                Some((g_lo, g_hi)) => {
+                    push_gen_wall(doc, x0, y0, g_lo, y0, front_t, spec.glass_front);
+                    push_gen_wall(doc, g_hi, y0, x1, y0, front_t, spec.glass_front);
+                    // rotation π: hinge on the g_hi jamb, leaf swings into the room (+y).
+                    push_component(
+                        doc, "Door", (g_lo + g_hi) / 2.0, y0, spec.door_w, DOOR_D,
+                        std::f64::consts::PI,
+                    );
+                }
+                None => push_gen_wall(doc, x0, y0, x1, y0, front_t, spec.glass_front),
+            }
+        }
+        CorridorSide::Left => {
+            // Mirror of Right: solid right, top, bottom; front at x0.
+            push_gen_wall(doc, x1, y0, x1, y1, PARTITION_T, false);
+            push_gen_wall(doc, x0, y1, x1, y1, PARTITION_T, false);
+            push_gen_wall(doc, x0, y0, x1, y0, PARTITION_T, false);
+            match gap(y0, y1) {
+                Some((g_lo, g_hi)) => {
+                    push_gen_wall(doc, x0, y0, x0, g_lo, front_t, spec.glass_front);
+                    push_gen_wall(doc, x0, g_hi, x0, y1, front_t, spec.glass_front);
+                    // rotation +π/2: hinge on the g_hi jamb, leaf swings into the room (+x).
+                    push_component(
+                        doc, "Door", x0, (g_lo + g_hi) / 2.0, spec.door_w, DOOR_D,
+                        std::f64::consts::FRAC_PI_2,
+                    );
+                }
+                None => push_gen_wall(doc, x0, y0, x0, y1, front_t, spec.glass_front),
+            }
+        }
+        CorridorSide::Top => {
+            // Mirror of Bottom: solid left, right, bottom; front at y1.
+            push_gen_wall(doc, x0, y0, x0, y1, PARTITION_T, false);
+            push_gen_wall(doc, x1, y0, x1, y1, PARTITION_T, false);
+            push_gen_wall(doc, x0, y0, x1, y0, PARTITION_T, false);
+            match gap(x0, x1) {
+                Some((g_lo, g_hi)) => {
+                    push_gen_wall(doc, x0, y1, g_lo, y1, front_t, spec.glass_front);
+                    push_gen_wall(doc, g_hi, y1, x1, y1, front_t, spec.glass_front);
+                    // rotation 0: hinge on the g_hi jamb, leaf swings into the room (−y).
+                    push_component(
+                        doc, "Door", (g_lo + g_hi) / 2.0, y1, spec.door_w, DOOR_D, 0.0,
+                    );
+                }
+                None => push_gen_wall(doc, x0, y1, x1, y1, front_t, spec.glass_front),
+            }
+        }
+    }
+
+    // The room's zone (pastel fill + stats bucket) spans the FULL room rect.
+    push_zone(
+        doc,
+        spec.zone_type,
+        ZoneShape::Rect { x: cx, y: cy, w, h },
+        &spec.label,
+    );
+
+    // Full-size conference table (chairs live in its 2D glyph / 3D build),
+    // centered with the TABLE_CLEAR ring to the walls' inner faces.
+    let tw = (w - 2.0 * PARTITION_T - 2.0 * TABLE_CLEAR).max(0.8).min(w - 2.0 * PARTITION_T - 0.2);
+    let th = (h - 2.0 * PARTITION_T - 2.0 * TABLE_CLEAR).max(0.8).min(h - 2.0 * PARTITION_T - 0.2);
+    if tw > 0.3 && th > 0.3 {
+        push_component(doc, "Table", cx, cy, tw, th, 0.0);
+    }
+}
+
 /// Axis-aligned overlap test between a candidate footprint (center cx,cy, size
 /// w×h) and any obstacle rect, expanded by `pad` on every side.
 fn footprint_overlaps(
@@ -251,9 +448,15 @@ fn footprint_overlaps(
     })
 }
 
-/// The walls' centerline segments, ready for `geometry::trace_floor_polygon`.
+/// The **architectural** walls' centerline segments, ready for
+/// `geometry::trace_floor_polygon`. Generator-emitted partitions are excluded:
+/// the plate is the building envelope, never our own room shells.
 fn wall_segments(doc: &Document) -> Vec<(Point, Point)> {
-    doc.walls.iter().map(|w| (w.a, w.b)).collect()
+    doc.walls
+        .iter()
+        .filter(|w| !w.generated)
+        .map(|w| (w.a, w.b))
+        .collect()
 }
 
 /// True when a candidate footprint (center `cx,cy`, size `w`×`h`) is a valid
@@ -425,6 +628,13 @@ fn region_insets(regions: &[geometry::Rect], idx: usize, corridor: f64) -> Inset
 /// open walls with no plate) takes the historical single-work-rect path, which
 /// is placement-identical to before — the decomposition is never invoked for it.
 pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed: bool) {
+    // Generated walls (room partitions/glass fronts) are OUTPUT of a previous
+    // run: clear them FIRST — and only them, never user-drawn/imported walls —
+    // so the plate trace, wall bbox and interior-wall snapshot below see the
+    // building envelope, not our own shells. Regeneration is thereby
+    // idempotent (verified by `regenerate_replaces_generated_walls…`).
+    doc.walls.retain(|w| !w.generated);
+
     // Snap the program's generator dimensions to the module ONCE, so every
     // pitch and anchor derived from them lands on module lines (§4.1). The
     // UI defaults are already module-aligned; this guards imported programs.
@@ -508,8 +718,12 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
     let corridor = program.target_corridor_m.max(0.0);
     let clear = program.desk_clearance_m.max(0.0);
 
-    // Frozen items already count toward the program targets, so we only place the
-    // remainder. These global counters also number Meeting-Room zone labels.
+    // Frozen items already count toward the program targets, so we only place
+    // the remainder. These global counters also number Meeting-Room zone labels.
+    // ("MeetingRoom" components are now only legacy frozen pods from pre-M1
+    // documents or user-placed catalog pods — generated rooms are walls + zone
+    // + Door + Table — but they still count toward the meeting target so old
+    // frozen plans don't over-place.)
     let mut mr_counter = doc.components.iter().filter(|c| c.category == "MeetingRoom").count() as u32;
     let frozen_desks = doc.components.iter().filter(|c| c.category == "Desk").count() as u32;
     let remaining_meetings = program.meeting_rooms.saturating_sub(mr_counter);
@@ -832,12 +1046,15 @@ fn pack_region(
         let mw = snap_module_floor(program.meeting_w.min(x1 - x0));
         let mh = snap_module_floor(program.meeting_h.min(y1 - y0));
         let mut placed_here = 0u32;
-        // Place one room at `(cx, cy)`, recording the obstacle + Meeting zone.
+        // Place one ENCLOSED room at `(cx, cy)`: partitions + glass front +
+        // door + zone + table (see `emit_room`), recording the room rect as an
+        // obstacle so everything placed later keeps a full clearance from it.
         let place = |doc: &mut Document,
                          obstacles: &mut Vec<(f64, f64, f64, f64)>,
                          mr_counter: &mut u32,
                          cx: f64,
-                         cy: f64|
+                         cy: f64,
+                         side: CorridorSide|
          -> bool {
             if !slot_fits_plate(plate, cx, cy, mw, mh, corridor)
                 || !slot_clears_walls(iwalls, cx, cy, mw, mh)
@@ -845,13 +1062,15 @@ fn pack_region(
             {
                 return false;
             }
-            push_component(doc, "MeetingRoom", cx, cy, mw, mh, 0.0);
             *mr_counter += 1;
-            push_zone(
-                doc,
-                ZoneType::Meeting,
-                ZoneShape::Rect { x: cx, y: cy, w: mw, h: mh },
-                &format!("Meeting Room {}", *mr_counter),
+            emit_room(
+                doc, cx, cy, mw, mh, side,
+                &RoomSpec {
+                    zone_type: ZoneType::Meeting,
+                    label: format!("Meeting Room {}", *mr_counter),
+                    glass_front: true,
+                    door_w: DOOR_W,
+                },
             );
             obstacles.push((cx, cy, mw, mh));
             true
@@ -871,7 +1090,15 @@ fn pack_region(
                         break;
                     }
                     let cx = snap_module(x0 + mw / 2.0 + (c as f64) * mr_pitch);
-                    if place(doc, obstacles, mr_counter, cx, cy) {
+                    // The glass front + door face the perimeter ring corridor,
+                    // which runs along the region edge the band hugs: y0 for
+                    // the near end (Bottom face), y1 under band_far (Top face).
+                    let side = if choices.band_far {
+                        CorridorSide::Top
+                    } else {
+                        CorridorSide::Bottom
+                    };
+                    if place(doc, obstacles, mr_counter, cx, cy, side) {
                         placed_here += 1;
                         claimed = true;
                     }
@@ -895,7 +1122,14 @@ fn pack_region(
                         break;
                     }
                     let cy = snap_module(y0 + mh / 2.0 + (r as f64) * mr_pitch);
-                    if place(doc, obstacles, mr_counter, cx, cy) {
+                    // Front faces the ring corridor on the band's edge: x1 for
+                    // the near end (Right face), x0 under band_far (Left face).
+                    let side = if choices.band_far {
+                        CorridorSide::Left
+                    } else {
+                        CorridorSide::Right
+                    };
+                    if place(doc, obstacles, mr_counter, cx, cy, side) {
                         meeting_intervals.push((cy - mh / 2.0, cy + mh / 2.0));
                         placed_here += 1;
                         claimed = true;
@@ -1261,6 +1495,8 @@ mod tests {
                 a: Point::new(ax, ay),
                 b: Point::new(bx, by),
                 thickness: 0.1,
+                generated: false,
+                glazing: false,
             });
         }
         doc
@@ -1284,6 +1520,122 @@ mod tests {
         ])
     }
 
+    /// Meeting rooms delivered by the generator — since M1 a room is a shell
+    /// (generated walls + Door + Table) around a `Meeting` zone, so the zone
+    /// is the room's identity.
+    fn meeting_room_count(doc: &Document) -> usize {
+        doc.zones.iter().filter(|z| z.zone_type == ZoneType::Meeting).count()
+    }
+
+    /// Rects of all generated meeting rooms.
+    fn meeting_rects(doc: &Document) -> Vec<(f64, f64, f64, f64)> {
+        doc.zones
+            .iter()
+            .filter(|z| z.zone_type == ZoneType::Meeting)
+            .map(|z| match z.shape {
+                ZoneShape::Rect { x, y, w, h } => (x, y, w, h),
+                _ => panic!("meeting zone must be a Rect"),
+            })
+            .collect()
+    }
+
+    /// Assert the room rect (center `x,y`, size `w`×`h`) is a real enclosure:
+    /// generated walls cover its full inset perimeter minus exactly one 0.9 m
+    /// door gap, the gapped side is the glazed front, exactly one Door sits on
+    /// that side's centerline inside the gap, and a full-size Table is centered
+    /// in the room.
+    fn assert_room_enclosed(doc: &Document, x: f64, y: f64, w: f64, h: f64, ctx: &str) {
+        let t2 = 0.05; // PARTITION_T / 2 — the wall-centerline inset
+        let (x0, x1) = (x - w / 2.0 + t2, x + w / 2.0 - t2);
+        let (y0, y1) = (y - h / 2.0 + t2, y + h / 2.0 - t2);
+        let eps = 1e-6;
+
+        // Bucket generated walls onto the four centerline sides: L, R, B, T.
+        let mut sides: [Vec<&Wall>; 4] = [vec![], vec![], vec![], vec![]];
+        for wl in doc.walls.iter().filter(|w| w.generated) {
+            let on = |v: f64, t: f64| (v - t).abs() < eps;
+            let in_y = wl.a.y >= y0 - eps && wl.a.y <= y1 + eps && wl.b.y >= y0 - eps && wl.b.y <= y1 + eps;
+            let in_x = wl.a.x >= x0 - eps && wl.a.x <= x1 + eps && wl.b.x >= x0 - eps && wl.b.x <= x1 + eps;
+            if on(wl.a.x, x0) && on(wl.b.x, x0) && in_y {
+                sides[0].push(wl);
+            } else if on(wl.a.x, x1) && on(wl.b.x, x1) && in_y {
+                sides[1].push(wl);
+            } else if on(wl.a.y, y0) && on(wl.b.y, y0) && in_x {
+                sides[2].push(wl);
+            } else if on(wl.a.y, y1) && on(wl.b.y, y1) && in_x {
+                sides[3].push(wl);
+            }
+        }
+        let seg_len = |wl: &Wall| (wl.b.x - wl.a.x).abs() + (wl.b.y - wl.a.y).abs();
+        let side_len = [y1 - y0, y1 - y0, x1 - x0, x1 - x0];
+
+        // Exactly ONE side carries the 0.9 m door gap, and it is the glass front.
+        let mut front: Option<usize> = None;
+        for (i, s) in sides.iter().enumerate() {
+            assert!(!s.is_empty(), "{ctx}: room at ({x:.1},{y:.1}) side {i} has no walls");
+            let cov: f64 = s.iter().map(|w| seg_len(w)).sum();
+            if (cov - side_len[i]).abs() < 1e-6 {
+                assert!(s.iter().all(|w| !w.glazing), "{ctx}: solid side {i} must not be glazed");
+            } else {
+                assert!(
+                    (cov - (side_len[i] - 0.9)).abs() < 1e-6,
+                    "{ctx}: side {i} covers {cov:.3} of {:.3} — not a single 0.9 door gap",
+                    side_len[i]
+                );
+                assert!(s.iter().all(|w| w.glazing), "{ctx}: the door side must be the glass front");
+                assert!(front.is_none(), "{ctx}: two sides have gaps");
+                front = Some(i);
+            }
+        }
+        let front = front.unwrap_or_else(|| panic!("{ctx}: no door gap in room at ({x:.1},{y:.1})"));
+
+        // Exactly one Door inside the room rect, on the front's centerline,
+        // leaf 0.9, and no glass segment overlaps the leaf interval (the door
+        // really sits IN the gap).
+        let doors: Vec<_> = doc
+            .components
+            .iter()
+            .filter(|c| {
+                c.category == "Door"
+                    && (c.x - x).abs() <= w / 2.0 + eps
+                    && (c.y - y).abs() <= h / 2.0 + eps
+            })
+            .collect();
+        assert_eq!(doors.len(), 1, "{ctx}: room at ({x:.1},{y:.1}) needs exactly one door");
+        let d = doors[0];
+        assert!((d.w - 0.9).abs() < 1e-9, "{ctx}: door leaf {} != 0.9", d.w);
+        match front {
+            0 => assert!((d.x - x0).abs() < eps, "{ctx}: door off the left front"),
+            1 => assert!((d.x - x1).abs() < eps, "{ctx}: door off the right front"),
+            2 => assert!((d.y - y0).abs() < eps, "{ctx}: door off the bottom front"),
+            _ => assert!((d.y - y1).abs() < eps, "{ctx}: door off the top front"),
+        }
+        let (d_lo, d_hi) = if front <= 1 {
+            (d.y - d.w / 2.0, d.y + d.w / 2.0)
+        } else {
+            (d.x - d.w / 2.0, d.x + d.w / 2.0)
+        };
+        for wl in &sides[front] {
+            let (a, b) = if front <= 1 {
+                (wl.a.y.min(wl.b.y), wl.a.y.max(wl.b.y))
+            } else {
+                (wl.a.x.min(wl.b.x), wl.a.x.max(wl.b.x))
+            };
+            assert!(
+                b <= d_lo + eps || a >= d_hi - eps,
+                "{ctx}: glass front overlaps the door leaf"
+            );
+        }
+
+        // Full-size conference table centered in the room.
+        let tables = doc
+            .components
+            .iter()
+            .filter(|c| c.category == "Table" && (c.x - x).abs() < eps && (c.y - y).abs() < eps)
+            .count();
+        assert_eq!(tables, 1, "{ctx}: room at ({x:.1},{y:.1}) needs its table");
+    }
+
     #[test]
     fn generate_is_deterministic_for_same_seed() {
         let program = Program::default();
@@ -1297,6 +1649,90 @@ mod tests {
             assert!((ca.x - cb.x).abs() < 1e-12, "x differs across identical seeds");
             assert!((ca.y - cb.y).abs() < 1e-12, "y differs across identical seeds");
         }
+        // The emitted room shells are deterministic too — wall for wall.
+        assert_eq!(a.walls.len(), b.walls.len());
+        for (wa, wb) in a.walls.iter().zip(b.walls.iter()) {
+            assert_eq!(
+                (wa.a.x.to_bits(), wa.a.y.to_bits(), wa.b.x.to_bits(), wa.b.y.to_bits()),
+                (wb.a.x.to_bits(), wb.a.y.to_bits(), wb.b.x.to_bits(), wb.b.y.to_bits()),
+                "wall geometry differs across identical seeds"
+            );
+            assert_eq!((wa.generated, wa.glazing), (wb.generated, wb.glazing));
+        }
+    }
+
+    // ---- M1: enclosed rooms (partitions + glass front + door) --------------
+
+    #[test]
+    fn generated_rooms_are_enclosed_with_glass_front_and_door() {
+        let program = Program::default(); // 2 meeting rooms, 4×4
+        let mut doc = room(30.0, 20.0);
+        generate(&mut doc, &program, 3, false);
+        let rooms = meeting_rects(&doc);
+        assert_eq!(rooms.len(), 2);
+        for &(x, y, w, h) in &rooms {
+            assert_room_enclosed(&doc, x, y, w, h, "rect plate");
+        }
+        // Every generated wall belongs to a room perimeter — none float free —
+        // and the user's 4 boundary walls are untouched.
+        assert_eq!(doc.walls.iter().filter(|w| !w.generated).count(), 4);
+        // Rooms stay REACHABLE: with partitions in and doors whitelisted the
+        // walkable floor is still (nearly) one connected region.
+        let circ = circulation::evaluate(&doc, &CirculationConfig::default());
+        assert!(
+            circ.largest_connected_free_region > 0.98,
+            "rooms must connect through their doors (got {})",
+            circ.largest_connected_free_region
+        );
+    }
+
+    #[test]
+    fn portrait_wing_rooms_are_enclosed_too() {
+        // The L-plate's upper-left wing is portrait → rooms band along its
+        // bottom edge (CorridorSide::Bottom path).
+        let mut program = Program::default();
+        program.desks = 30;
+        program.meeting_rooms = 2;
+        program.meeting_w = 3.0;
+        program.meeting_h = 3.0;
+        let mut doc = l_room();
+        generate(&mut doc, &program, 3, false);
+        let rooms = meeting_rects(&doc);
+        assert!(rooms.len() >= 2, "expected both rooms placed");
+        for &(x, y, w, h) in &rooms {
+            assert_room_enclosed(&doc, x, y, w, h, "l plate");
+        }
+    }
+
+    #[test]
+    fn regenerate_replaces_generated_walls_and_keeps_user_walls() {
+        let program = Program::default();
+        let mut doc = room(30.0, 20.0);
+        let user_ids: Vec<u32> = doc.walls.iter().map(|w| w.id).collect();
+
+        generate(&mut doc, &program, 1, false);
+        let gen1 = doc.walls.iter().filter(|w| w.generated).count();
+        assert!(gen1 > 0, "rooms must emit partitions");
+        let total1 = doc.walls.len();
+
+        // Same seed again: prior generated walls are cleared, never stacked.
+        generate(&mut doc, &program, 1, false);
+        assert_eq!(doc.walls.len(), total1, "regenerate must not accumulate walls");
+
+        // Different seed + keep_confirmed=true also fully replaces the shells
+        // while user walls survive untouched.
+        generate(&mut doc, &program, 9, true);
+        for id in &user_ids {
+            assert!(
+                doc.walls.iter().any(|w| w.id == *id && !w.generated),
+                "user wall {id} was dropped by regenerate"
+            );
+        }
+        assert_eq!(
+            doc.walls.iter().filter(|w| !w.generated).count(),
+            user_ids.len(),
+            "no extra non-generated walls appear"
+        );
     }
 
     // (seed-to-seed variety is asserted structurally by
@@ -1309,6 +1745,12 @@ mod tests {
         generate(&mut doc, &program, 7, false);
         let c = program.target_corridor_m;
         for comp in &doc.components {
+            // Doors live IN a room's wall and legitimately bridge into the
+            // corridor their leaf opens from — the containment rule governs
+            // furniture, not openings.
+            if comp.category == "Door" {
+                continue;
+            }
             let left = comp.x - comp.w / 2.0;
             let right = comp.x + comp.w / 2.0;
             let bottom = comp.y - comp.h / 2.0;
@@ -1328,7 +1770,7 @@ mod tests {
         let mut doc = room(30.0, 20.0);
         generate(&mut doc, &program, 3, false);
         let desks = doc.components.iter().filter(|c| c.category == "Desk").count();
-        let mrs = doc.components.iter().filter(|c| c.category == "MeetingRoom").count();
+        let mrs = meeting_room_count(&doc);
         assert_eq!(desks, 12, "large room should seat all requested desks");
         assert_eq!(mrs, 1);
     }
@@ -1339,7 +1781,7 @@ mod tests {
         program.meeting_rooms = 2;
         let mut doc = room(30.0, 20.0);
         generate(&mut doc, &program, 1, false);
-        let mrs = doc.components.iter().filter(|c| c.category == "MeetingRoom").count();
+        let mrs = meeting_room_count(&doc);
         // The right-side column must stack both requested rooms (regression:
         // exact-pitch self-collision used to drop the 2nd).
         assert_eq!(mrs, 2, "column should stack both requested meeting rooms");
@@ -1694,7 +2136,7 @@ mod tests {
 
             let poly = poly_of(&doc);
             let desks: Vec<_> = doc.components.iter().filter(|c| c.category == "Desk").collect();
-            let meetings = doc.components.iter().filter(|c| c.category == "MeetingRoom").count();
+            let meetings = meeting_room_count(&doc);
             // Seam-shared corridors + capacity-aware cluster aisles fill the
             // whole program (60/60) on this plate; 52 leaves headroom (was 45).
             assert!(desks.len() >= 52, "seed {seed}: placed {} of 60 desks", desks.len());
@@ -1703,6 +2145,11 @@ mod tests {
                 assert!(footprint_in_plate(c, &poly), "seed {seed}: {} escapes", c.label);
             }
             assert_no_overlaps(&doc, "real plate");
+            // M1 rigor extension: every room on the real plate is a true
+            // enclosure — partitions + one 0.9 m door gap + glazed front.
+            for &(x, y, w, h) in &meeting_rects(&doc) {
+                assert_room_enclosed(&doc, x, y, w, h, &format!("real plate seed {seed}"));
+            }
 
             // Circulation stays walkable. The narrowest passage is plate-inherent
             // (this real building has a ~0.30 m structural neck present even with
@@ -1831,7 +2278,7 @@ mod tests {
 
             let poly = poly_of(&doc);
             let desks: Vec<_> = doc.components.iter().filter(|c| c.category == "Desk").collect();
-            let meetings = doc.components.iter().filter(|c| c.category == "MeetingRoom").count();
+            let meetings = meeting_room_count(&doc);
             // Rigor still holds with two keep-outs removing ~12 m² of core.
             assert!(desks.len() >= 52, "seed {seed}: only {} desks with keep-outs", desks.len());
             assert!(meetings >= 3, "seed {seed}: only {meetings} meeting rooms");
@@ -2009,7 +2456,7 @@ mod tests {
     fn add_partition(doc: &mut Document, ax: f64, ay: f64, bx: f64, by: f64) -> (Point, Point) {
         let id = doc.alloc_id();
         let (a, b) = (Point::new(ax, ay), Point::new(bx, by));
-        doc.walls.push(Wall { id, a, b, thickness: 0.1 });
+        doc.walls.push(Wall { id, a, b, thickness: 0.1, generated: false, glazing: false });
         (a, b)
     }
 
@@ -2274,5 +2721,52 @@ mod tests {
             "seeds 1..8 produced only {} structurally distinct layouts",
             signatures.len()
         );
+    }
+
+    /// M1×M2 seam: the glazed front must sit on the room face nearer the plate
+    /// edge along its axis — under `band_far` the band flips ends and the
+    /// front must flip with it (CorridorSide::Left/Top mirrors), never facing
+    /// the desk field with the ring corridor behind the room.
+    #[test]
+    fn glass_front_faces_the_band_edge_across_seed_choices() {
+        for seed in 1..=8u64 {
+            let mut doc = room(20.0, 12.0);
+            let program = Program::default();
+            generate(&mut doc, &program, seed, false);
+            let (bx0, by0, bx1, by1) = doc.wall_bbox().unwrap();
+            for (x, y, w, h) in meeting_rects(&doc) {
+                let t2 = 0.05;
+                let (rx0, rx1) = (x - w / 2.0 + t2, x + w / 2.0 - t2);
+                let (ry0, ry1) = (y - h / 2.0 + t2, y + h / 2.0 - t2);
+                let eps = 1e-6;
+                // Which side carries glazing? (L, R, B, T)
+                let mut glazed = [false; 4];
+                for wl in doc.walls.iter().filter(|w| w.generated && w.glazing) {
+                    let on = |v: f64, t: f64| (v - t).abs() < eps;
+                    let in_y = wl.a.y >= ry0 - eps && wl.b.y <= ry1 + eps && wl.a.y <= ry1 + eps && wl.b.y >= ry0 - eps;
+                    let in_x = wl.a.x >= rx0 - eps && wl.b.x <= rx1 + eps && wl.a.x <= rx1 + eps && wl.b.x >= rx0 - eps;
+                    if on(wl.a.x, rx0) && on(wl.b.x, rx0) && in_y { glazed[0] = true; }
+                    if on(wl.a.x, rx1) && on(wl.b.x, rx1) && in_y { glazed[1] = true; }
+                    if on(wl.a.y, ry0) && on(wl.b.y, ry0) && in_x { glazed[2] = true; }
+                    if on(wl.a.y, ry1) && on(wl.b.y, ry1) && in_x { glazed[3] = true; }
+                }
+                let front = glazed.iter().position(|&g| g)
+                    .unwrap_or_else(|| panic!("seed {seed}: room at ({x:.1},{y:.1}) has no glazed side"));
+                // Outward clearance to the plate edge per face: L, R, B, T.
+                let d = [
+                    (x - w / 2.0) - bx0,
+                    bx1 - (x + w / 2.0),
+                    (y - h / 2.0) - by0,
+                    by1 - (y + h / 2.0),
+                ];
+                let opposite = front ^ 1;
+                assert!(
+                    d[front] <= d[opposite] + 1e-9,
+                    "seed {seed}: room at ({x:.1},{y:.1}) fronts side {front} (clearance {:.2}) \
+                     but the opposite face is nearer the plate edge ({:.2})",
+                    d[front], d[opposite]
+                );
+            }
+        }
     }
 }

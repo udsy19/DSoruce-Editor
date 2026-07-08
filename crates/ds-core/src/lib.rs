@@ -87,6 +87,8 @@ impl Editor {
             a: Point::new(ax, ay),
             b: Point::new(bx, by),
             thickness,
+            generated: false,
+            glazing: false,
         });
         id
     }

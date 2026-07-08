@@ -9,7 +9,9 @@
 //!
 //! We rasterise the wall bounding box into a uniform **occupancy grid** (cell
 //! size ~0.10–0.25 m). Cells covered by a wall (respecting its thickness) or a
-//! component footprint are marked *blocked*; the rest are *free*. On the free
+//! component footprint are marked *blocked* — except `Door` components, which
+//! are wall **openings** and stamp their footprint *free* (whitelist; without
+//! it every enclosed room reads sealed). The rest are *free*. On the free
 //! cells we run a two-pass **chamfer distance transform** (an integer/float
 //! approximation of the Euclidean distance transform) so every free cell knows
 //! its distance to the nearest obstacle. That distance is exactly the local
@@ -448,30 +450,46 @@ fn rasterize_walls(grid: &mut Grid, doc: &Document) {
     }
 }
 
-/// Mark cells inside each component's (rotation-aware) footprint as blocked.
+/// Mark cells inside each component's (rotation-aware) footprint as blocked —
+/// EXCEPT doors, which are openings: a `Door` component sits in a wall gap and
+/// must read as *passable*, or every enclosed room would appear sealed and
+/// connectivity would collapse (spec §2 "Circulation evaluator change").
+/// Doors are stamped FREE *after* everything blocked, inflated by half a cell,
+/// so the jambs' raster bleed (walls rasterize at ≥ one cell thick) can never
+/// pinch the 0.9 m opening below its true width.
 fn rasterize_components(grid: &mut Grid, doc: &Document) {
-    for comp in &doc.components {
-        let hw = comp.w * 0.5;
-        let hh = comp.h * 0.5;
-        // Bounding radius of the (possibly rotated) rectangle.
-        let r = (hw * hw + hh * hh).sqrt();
-        let lo_x = grid.col_of(comp.x - r);
-        let hi_x = grid.col_of(comp.x + r);
-        let lo_y = grid.row_of(comp.y - r);
-        let hi_y = grid.row_of(comp.y + r);
-        let (s, cta) = comp.rotation.sin_cos();
-        for y in lo_y..=hi_y {
-            for x in lo_x..=hi_x {
-                let p = grid.cell_center(x, y);
-                let dx = p.x - comp.x;
-                let dy = p.y - comp.y;
-                // Rotate point into the component's local (un-rotated) frame.
-                let lx = dx * cta + dy * s;
-                let ly = -dx * s + dy * cta;
-                if lx.abs() <= hw && ly.abs() <= hh {
-                    let i = grid.idx(x, y);
-                    grid.blocked[i] = true;
-                }
+    for comp in doc.components.iter().filter(|c| c.category != "Door") {
+        stamp_footprint(grid, comp, 0.0, true);
+    }
+    let half_cell = grid.cell * 0.5;
+    for comp in doc.components.iter().filter(|c| c.category == "Door") {
+        stamp_footprint(grid, comp, half_cell, false);
+    }
+}
+
+/// Stamp a component's (rotation-aware) rectangular footprint, inflated by
+/// `pad` m on every side, into the occupancy grid as `blocked`.
+fn stamp_footprint(grid: &mut Grid, comp: &crate::model::Component, pad: f64, blocked: bool) {
+    let hw = comp.w * 0.5 + pad;
+    let hh = comp.h * 0.5 + pad;
+    // Bounding radius of the (possibly rotated) rectangle.
+    let r = (hw * hw + hh * hh).sqrt();
+    let lo_x = grid.col_of(comp.x - r);
+    let hi_x = grid.col_of(comp.x + r);
+    let lo_y = grid.row_of(comp.y - r);
+    let hi_y = grid.row_of(comp.y + r);
+    let (s, cta) = comp.rotation.sin_cos();
+    for y in lo_y..=hi_y {
+        for x in lo_x..=hi_x {
+            let p = grid.cell_center(x, y);
+            let dx = p.x - comp.x;
+            let dy = p.y - comp.y;
+            // Rotate point into the component's local (un-rotated) frame.
+            let lx = dx * cta + dy * s;
+            let ly = -dx * s + dy * cta;
+            if lx.abs() <= hw && ly.abs() <= hh {
+                let i = grid.idx(x, y);
+                grid.blocked[i] = blocked;
             }
         }
     }
@@ -745,7 +763,7 @@ mod tests {
         ];
         for (a, b) in corners {
             let id = doc.alloc_id();
-            doc.walls.push(Wall { id, a, b, thickness: t });
+            doc.walls.push(Wall { id, a, b, thickness: t, generated: false, glazing: false });
         }
         doc
     }
@@ -811,5 +829,78 @@ mod tests {
             "expected some corridor below target"
         );
         assert!(s.score < 95.0);
+    }
+
+    /// An enclosed room whose wall run leaves a 0.9 m gap holding a `Door`
+    /// component must stay REACHABLE: the door footprint is whitelisted (never
+    /// rasterised blocked), so the floor remains one connected region and the
+    /// opening reads as a ~0.9 m passage, not a pinch. The sealed control
+    /// (same walls, no gap, no door) fragments the free space.
+    #[test]
+    fn door_opening_keeps_enclosed_room_reachable() {
+        let inner = |doc: &mut Document, with_door: bool| {
+            // Inner 3×3 room at (2,2)–(5,5); door gap y ∈ [3.0, 3.9] on x = 5.
+            let mut seg = |ax: f64, ay: f64, bx: f64, by: f64| {
+                let id = doc.alloc_id();
+                doc.walls.push(Wall {
+                    id,
+                    a: Point::new(ax, ay),
+                    b: Point::new(bx, by),
+                    thickness: 0.1,
+                    generated: true,
+                    glazing: false,
+                });
+            };
+            seg(2.0, 2.0, 2.0, 5.0); // left
+            seg(2.0, 5.0, 5.0, 5.0); // top
+            seg(2.0, 2.0, 5.0, 2.0); // bottom
+            if with_door {
+                seg(5.0, 2.0, 5.0, 3.0);
+                seg(5.0, 3.9, 5.0, 5.0);
+                let id = doc.alloc_id();
+                doc.components.push(Component {
+                    id,
+                    category: "Door".to_string(),
+                    x: 5.0,
+                    y: 3.45,
+                    w: 0.9,
+                    h: 0.15,
+                    rotation: -std::f64::consts::FRAC_PI_2,
+                    label: "Door".to_string(),
+                    product_id: None,
+                    price_inr: None,
+                    decision: DecisionState::Open,
+                });
+            } else {
+                seg(5.0, 2.0, 5.0, 5.0);
+            }
+        };
+
+        let mut sealed = room(10.0, 8.0);
+        inner(&mut sealed, false);
+        let s_sealed = evaluate(&sealed, &CirculationConfig::default());
+        assert!(
+            s_sealed.largest_connected_free_region < 0.95,
+            "sealed room should fragment the floor (got {})",
+            s_sealed.largest_connected_free_region
+        );
+
+        let mut doored = room(10.0, 8.0);
+        inner(&mut doored, true);
+        let s = evaluate(&doored, &CirculationConfig::default());
+        // Reachable: the room interior joins the main region through the door.
+        assert!(
+            s.largest_connected_free_region > 0.99,
+            "door must reconnect the room (got {})",
+            s.largest_connected_free_region
+        );
+        // The 0.9 m opening reads as a corridor near its true width — the jamb
+        // raster bleed must not pinch it (half-cell inflation in the whitelist).
+        assert!(
+            s.min_corridor_width >= 0.85,
+            "door opening measured {:.2} m, expected ≈0.9",
+            s.min_corridor_width
+        );
+        assert!(s.score > 80.0, "score {} unexpectedly low", s.score);
     }
 }
