@@ -175,9 +175,6 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           rewrite: (p: string) => p.replace(/^\/api\/bank/, '/api'),
         },
-        // Presence relay (multiplayer milestone 1). Local dev runs
-        // deploy/relay-dev.mjs on :8787; pages open a WS to /ws?room=<id>.
-        '/ws': { target: 'ws://localhost:8787', ws: true },
       },
     },
   }

@@ -219,13 +219,6 @@ export class EditorCanvas {
   private lastScreen = { x: 0, y: 0 }
 
   onChange: (() => void) | null = null
-  /** Remote presence cursors (peer id → cursor, world meters). The host (App)
-   *  replaces/mutates this map from PresenceClient peers and calls refresh();
-   *  drawn on top of the CAD layer, under the rulers. */
-  remoteCursors: Map<string, { name: string; color: string; x: number; y: number }> = new Map()
-  /** Fired with world coords on every pointer move — presence wiring point.
-   *  Throttling is the subscriber's job (PresenceClient sends ≤30 Hz). */
-  onCursor?: (x: number, y: number) => void
   /** Last program used to generate — shared source for the generate card + AI. */
   program: Program = { ...DEFAULT_PROGRAM }
   /** CAD drafting layer (line/rect/arc/dimension/door/… + snapping). */
@@ -526,7 +519,6 @@ export class EditorCanvas {
     this.mouseWorld = this.toWorld(s.x, s.y)
     this.hasCursor = true
     this.updateCoordReadout()
-    this.onCursor?.(this.mouseWorld.x, this.mouseWorld.y)
     if (this.panning) {
       this.offset.x += s.x - this.lastScreen.x
       this.offset.y += s.y - this.lastScreen.y
@@ -673,51 +665,7 @@ export class EditorCanvas {
       colors: { wall: C.wall, ink: C.label, accent: C.accent, dim: '#2d5bd6', faint: C.rulerText },
     })
 
-    this.drawRemoteCursors(w, h)
     this.drawRulers(w, h)
-  }
-
-  /** Live teammate cursors (presence layer): pointer triangle + name pill in
-   *  the peer's color, at the peer's world position. Off-viewport cursors skip. */
-  private drawRemoteCursors(w: number, h: number) {
-    if (this.remoteCursors.size === 0) return
-    const ctx = this.ctx
-    const PAD = 12 // triangle tip may sit just past the edge and still peek in
-    for (const cur of this.remoteCursors.values()) {
-      const p = this.toScreen(cur.x, cur.y)
-      if (p.x < RULER - PAD || p.y < RULER - PAD || p.x > w + PAD || p.y > h + PAD) continue
-
-      // Pointer triangle (tip at the world position, leaning down-right).
-      ctx.save()
-      ctx.translate(p.x, p.y)
-      ctx.beginPath()
-      ctx.moveTo(0, 0)
-      ctx.lineTo(4.2, 12.6)
-      ctx.lineTo(9.8, 8.4)
-      ctx.closePath()
-      ctx.fillStyle = cur.color
-      ctx.fill()
-      ctx.strokeStyle = 'rgba(255,255,255,0.9)'
-      ctx.lineWidth = 1.25
-      ctx.stroke()
-
-      // Name tag pill, offset below-right of the pointer.
-      const name = cur.name || '·'
-      ctx.font = '600 10px "Space Grotesk", system-ui, sans-serif'
-      const tw = ctx.measureText(name).width
-      const px = 11
-      const py = 15
-      const ph = 16
-      const pw = tw + 12
-      roundRect(ctx, px, py, pw, ph, ph / 2)
-      ctx.fillStyle = cur.color
-      ctx.fill()
-      ctx.fillStyle = '#ffffff'
-      ctx.textAlign = 'left'
-      ctx.textBaseline = 'middle'
-      ctx.fillText(name, px + 6, py + ph / 2 + 0.5)
-      ctx.restore()
-    }
   }
 
   /** Floor-plate polygon for zone clipping, cached on a cheap wall fingerprint
