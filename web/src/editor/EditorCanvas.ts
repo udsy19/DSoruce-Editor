@@ -291,6 +291,9 @@ export class EditorCanvas {
     this.attach()
     this.resize()
     this.render()
+    // Dev-only test seam: expose the live instance so E2E / debugging can drive
+    // the core directly. Guarded by Vite's DEV flag — never present in a build.
+    if (import.meta.env.DEV) (window as unknown as { __ec?: EditorCanvas }).__ec = this
   }
 
   static async create(canvas: HTMLCanvasElement): Promise<EditorCanvas> {
