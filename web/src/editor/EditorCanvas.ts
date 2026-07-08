@@ -261,7 +261,11 @@ export class EditorCanvas {
 
   static async create(canvas: HTMLCanvasElement): Promise<EditorCanvas> {
     await init()
-    return new EditorCanvas(canvas, new Editor())
+    const ec = new EditorCanvas(canvas, new Editor())
+    // Dev-only seam: expose the live instance for console tooling + browser
+    // E2E (there is no other path to the editor from outside React).
+    if (import.meta.env.DEV) (window as unknown as { __ec?: EditorCanvas }).__ec = ec
+    return ec
   }
 
   // ---- coordinate transforms ----

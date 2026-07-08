@@ -228,6 +228,70 @@ fn slot_fits_plate(plate: Option<&[Point]>, cx: f64, cy: f64, w: f64, h: f64, ma
     })
 }
 
+/// Clearance (m) kept between a packed footprint and each **face** of an
+/// interior wall — the wall acts as a thin obstacle of `thickness + 2×this`.
+const WALL_CLEARANCE: f64 = 0.05;
+/// A wall whose whole centerline lies within this distance (m) of the plate
+/// boundary IS the boundary, not an interior partition.
+const INTERIOR_WALL_TOL: f64 = 0.05;
+
+/// Interior partition walls as `(a, b, min_clearance)` obstacle segments.
+///
+/// A wall is **interior** when any of its five centerline samples (ends,
+/// quarters, midpoint) sits farther than `INTERIOR_WALL_TOL` from every
+/// boundary segment — the plate polygon's edges when the walls close a loop,
+/// else the wall-bbox perimeter (the open-walls fallback, so bbox-edge walls
+/// stay non-blocking and the historical behavior is byte-identical).
+/// `min_clearance` is half the wall's thickness plus `WALL_CLEARANCE`: a
+/// candidate rect must keep at least that distance from the centerline, so no
+/// footprint straddles or presses against a partition.
+fn interior_walls(
+    doc: &Document,
+    plate: Option<&[Point]>,
+    bbox: (f64, f64, f64, f64),
+) -> Vec<(Point, Point, f64)> {
+    let boundary: Vec<(Point, Point)> = match plate {
+        Some(poly) => (0..poly.len())
+            .map(|i| (poly[i], poly[(i + 1) % poly.len()]))
+            .collect(),
+        None => {
+            let (x0, y0, x1, y1) = bbox;
+            vec![
+                (Point::new(x0, y0), Point::new(x1, y0)),
+                (Point::new(x1, y0), Point::new(x1, y1)),
+                (Point::new(x1, y1), Point::new(x0, y1)),
+                (Point::new(x0, y1), Point::new(x0, y0)),
+            ]
+        }
+    };
+    doc.walls
+        .iter()
+        .filter_map(|w| {
+            let on_boundary = (0..=4).all(|k| {
+                let t = k as f64 / 4.0;
+                let p = Point::new(w.a.x + (w.b.x - w.a.x) * t, w.a.y + (w.b.y - w.a.y) * t);
+                boundary
+                    .iter()
+                    .any(|&(a, b)| geometry::point_segment_dist(p, a, b) <= INTERIOR_WALL_TOL)
+            });
+            if on_boundary {
+                None
+            } else {
+                Some((w.a, w.b, w.thickness / 2.0 + WALL_CLEARANCE))
+            }
+        })
+        .collect()
+}
+
+/// True when the candidate footprint keeps every interior wall at least its
+/// required clearance away. Exact for any wall angle (`rect_segment_dist`), so
+/// no footprint can straddle a partition — the packer's wall-blocking test.
+fn slot_clears_walls(walls: &[(Point, Point, f64)], cx: f64, cy: f64, w: f64, h: f64) -> bool {
+    walls
+        .iter()
+        .all(|&(a, b, m)| geometry::rect_segment_dist(cx, cy, w, h, a, b) >= m - 1e-9)
+}
+
 /// Raster cell size (m) for plate decomposition — 0.5 m keeps the grid at a few
 /// thousand cells (trivial cost) while resolving real wing geometry.
 const REGION_CELL: f64 = 0.5;
@@ -371,6 +435,13 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
     // historical bbox-only behavior.
     let plate = geometry::trace_floor_polygon(&wall_segments(doc), geometry::LOOP_SNAP_TOL);
 
+    // Interior partitions (imported linework, committed CAD sketches) are hard
+    // obstacles: nothing may straddle them. Boundary walls are excluded — the
+    // plate/corridor inset already handles them. Per-candidate rejection (not
+    // decomposition holes) is the v1: exact for diagonal walls, and it applies
+    // on the rectangular single-region path too, which never decomposes.
+    let iwalls = interior_walls(doc, plate.as_deref(), (min_x, min_y, max_x, max_y));
+
     let corridor = program.target_corridor_m.max(0.0);
     let clear = program.desk_clearance_m.max(0.0);
 
@@ -426,7 +497,7 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
             doc, program, outer, remaining_meetings, remaining_desks,
             /*column_major=*/ false, /*region_no=*/ None, /*tile_zones=*/ true,
             /*emit_zones=*/ true,
-            plate.as_deref(), &mut obstacles, frozen_len, &mut mr_counter, lat,
+            plate.as_deref(), &iwalls, &mut obstacles, frozen_len, &mut mr_counter, lat,
             Insets::uniform(corridor), corridor, clear,
         );
     } else {
@@ -441,7 +512,7 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
                 doc, program, region, m_target, d_target,
                 column_major, /*region_no=*/ Some((i + 1) as u32), /*tile_zones=*/ false,
                 /*emit_zones=*/ true,
-                plate.as_deref(), &mut obstacles, frozen_len, &mut mr_counter, lat,
+                plate.as_deref(), &iwalls, &mut obstacles, frozen_len, &mut mr_counter, lat,
                 insets[i], corridor, clear,
             );
         }
@@ -469,7 +540,7 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
                     doc, program, region, 0, shortfall,
                     column_major, /*region_no=*/ Some((i + 1) as u32), /*tile_zones=*/ false,
                     /*emit_zones=*/ false,
-                    plate.as_deref(), &mut obstacles, all_frozen, &mut mr_counter, lat,
+                    plate.as_deref(), &iwalls, &mut obstacles, all_frozen, &mut mr_counter, lat,
                     insets[i], corridor, clear,
                 );
                 shortfall = shortfall.saturating_sub(got);
@@ -635,6 +706,9 @@ fn pack_region(
     // already emitted by the first pass — only place components.
     emit_zones: bool,
     plate: Option<&[Point]>,
+    // Interior partition walls (see `interior_walls`); every candidate footprint
+    // must clear them, so nothing straddles a wall.
+    iwalls: &[(Point, Point, f64)],
     obstacles: &mut Vec<(f64, f64, f64, f64)>,
     frozen_len: usize,
     mr_counter: &mut u32,
@@ -700,6 +774,7 @@ fn pack_region(
                          cy: f64|
          -> bool {
             if !slot_fits_plate(plate, cx, cy, mw, mh, corridor)
+                || !slot_clears_walls(iwalls, cx, cy, mw, mh)
                 || footprint_overlaps(&obstacles[..frozen_len], cx, cy, mw, mh, clear)
             {
                 return false;
@@ -966,6 +1041,7 @@ fn pack_region(
                     let fx = cx.clamp(dz_x0 + hw, dz_x1 - hw);
                     let fy = cy.clamp(dz_y0 + hh, dz_y1 - hh);
                     let ok = slot_fits_plate(plate, fx, fy, program.desk_w, program.desk_h, corridor)
+                        && slot_clears_walls(iwalls, fx, fy, program.desk_w, program.desk_h)
                         && !footprint_overlaps(
                             &obstacles[..grid_start],
                             fx, fy, program.desk_w, program.desk_h, clear - 1e-6,
@@ -1833,4 +1909,129 @@ mod tests {
         assert!(!p2.bench_pairs, "explicit false must be honored");
     }
 
+    // ---- Interior walls block packing --------------------------------------
+
+    /// Add an interior partition wall (0.1 m thick) to `doc`; returns (a, b).
+    fn add_partition(doc: &mut Document, ax: f64, ay: f64, bx: f64, by: f64) -> (Point, Point) {
+        let id = doc.alloc_id();
+        let (a, b) = (Point::new(ax, ay), Point::new(bx, by));
+        doc.walls.push(Wall { id, a, b, thickness: 0.1 });
+        (a, b)
+    }
+
+    /// A footprint straddles/presses the wall when it comes closer to the
+    /// centerline than half the wall thickness (same exact distance the packer
+    /// uses, minus its extra clearance so the assertion is the harder bound).
+    fn straddles(c: &crate::model::Component, a: Point, b: Point) -> bool {
+        geometry::rect_segment_dist(c.x, c.y, c.w, c.h, a, b) < 0.05 - 1e-9
+    }
+
+    #[test]
+    fn interior_wall_blocks_straddling_and_both_sides_fill() {
+        let mut program = Program::default();
+        program.desks = 60; // capacity-bound so the grid presses against the wall
+        program.meeting_rooms = 1;
+        let mut doc = room(20.0, 15.0);
+        // Full-height partition at x = 10 — divides the room wall-to-wall.
+        let (a, b) = add_partition(&mut doc, 10.0, 0.0, 10.0, 15.0);
+        generate(&mut doc, &program, 7, false);
+
+        for c in &doc.components {
+            assert!(!straddles(c, a, b), "{} straddles the partition", c.label);
+        }
+        // Packing still fills BOTH sides of the dividing wall.
+        let desks: Vec<_> = doc.components.iter().filter(|c| c.category == "Desk").collect();
+        let left = desks.iter().filter(|c| c.x < 10.0).count();
+        let right = desks.iter().filter(|c| c.x > 10.0).count();
+        assert!(left >= 5, "left of the partition has only {left} desks");
+        assert!(right >= 5, "right of the partition has only {right} desks");
+
+        // Determinism holds with interior walls present.
+        let mut again = room(20.0, 15.0);
+        add_partition(&mut again, 10.0, 0.0, 10.0, 15.0);
+        generate(&mut again, &program, 7, false);
+        assert_eq!(doc.components.len(), again.components.len());
+        for (x, y) in doc.components.iter().zip(again.components.iter()) {
+            assert!((x.x - y.x).abs() < 1e-12 && (x.y - y.y).abs() < 1e-12);
+        }
+    }
+
+    #[test]
+    fn boundary_walls_are_not_packing_obstacles() {
+        // The interior-wall filter must classify all loop walls as boundary:
+        // placement with the filter live is byte-identical to the historical
+        // layout (which existing tests pin), including on the L-plate.
+        let program = Program::default();
+        let mut doc = l_room();
+        let poly = poly_of(&doc);
+        let iw = interior_walls(&doc, Some(&poly), (0.0, 0.0, 20.0, 14.0));
+        assert!(iw.is_empty(), "{} loop walls misclassified as interior", iw.len());
+        generate(&mut doc, &program, 3, false);
+        assert!(!doc.components.is_empty());
+    }
+
+    #[test]
+    fn real_plate_with_interior_wall_keeps_rigor() {
+        let mut program = Program::default();
+        program.desks = 60;
+        program.meeting_rooms = 4;
+        program.meeting_w = 3.0;
+        program.meeting_h = 3.0;
+        for seed in 1..=3u64 {
+            let mut doc = real_plate_doc();
+            let poly0 = poly_of(&doc);
+            // Synthetic partition across the lower wing (both endpoints inside).
+            assert!(geometry::point_in_polygon(13.0, 36.0, &poly0));
+            assert!(geometry::point_in_polygon(22.0, 36.0, &poly0));
+            let (a, b) = add_partition(&mut doc, 13.0, 36.0, 22.0, 36.0);
+            generate(&mut doc, &program, seed, false);
+
+            // Zero components straddle the wall.
+            for c in &doc.components {
+                assert!(!straddles(c, a, b), "seed {seed}: {} straddles the wall", c.label);
+            }
+            // The plate still traces (a floating stub must not break the loop)
+            // and the program still lands (one 9 m partition costs a few slots).
+            let poly = poly_of(&doc);
+            assert!((geometry::polygon_area(&poly) - geometry::polygon_area(&poly0)).abs() < 1e-6);
+            let desks = doc.components.iter().filter(|c| c.category == "Desk").count();
+            assert!(desks >= 48, "seed {seed}: only {desks} desks with the partition");
+            assert_no_overlaps(&doc, "real plate + interior wall");
+        }
+    }
+
+    #[test]
+    fn keep_confirmed_unaffected_by_interior_walls() {
+        let program = Program::default();
+        let mut doc = room(30.0, 20.0);
+        let (a, b) = add_partition(&mut doc, 15.0, 0.0, 15.0, 20.0);
+        generate(&mut doc, &program, 3, false);
+
+        // Freeze two desks, regenerate around them with the wall still present.
+        let frozen: Vec<(u32, f64, f64)> = doc
+            .components
+            .iter_mut()
+            .filter(|c| c.category == "Desk")
+            .take(2)
+            .map(|c| {
+                c.decision = DecisionState::Confirmed;
+                (c.id, c.x, c.y)
+            })
+            .collect();
+        assert_eq!(frozen.len(), 2);
+        generate(&mut doc, &program, 9, true);
+
+        for (id, x, y) in &frozen {
+            let kept = doc
+                .components
+                .iter()
+                .find(|c| c.id == *id)
+                .expect("frozen desk dropped on regenerate");
+            assert!((kept.x - x).abs() < 1e-9 && (kept.y - y).abs() < 1e-9, "frozen desk moved");
+            assert_eq!(kept.decision, DecisionState::Confirmed);
+        }
+        for c in &doc.components {
+            assert!(!straddles(c, a, b), "{} straddles the partition after freeze", c.label);
+        }
+    }
 }

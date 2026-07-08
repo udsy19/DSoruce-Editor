@@ -204,6 +204,165 @@ export function pushPlateToEditor(ec: EditorCanvas, plate: PlateResult, thicknes
   ec.refresh()
 }
 
+// ---- interior partition walls ----------------------------------------------
+
+/** An interior partition wall segment in EDITOR coordinates (same offset
+ *  translation as the plate boundary), ready for `Editor.add_wall`. */
+export interface InteriorWall {
+  ax: number
+  ay: number
+  bx: number
+  by: number
+  thickness: number
+}
+
+const IWALL_THICKNESS = 0.1 // m — emitted thickness for single-line partitions
+const IWALL_MIN_LEN = 0.5 // m — merged runs shorter than this are jambs/noise
+const IWALL_MAX_COUNT = 400 // sanity cap; longest-first keeps coverage
+const IWALL_BOUNDARY_TOL = 0.4 // m — a segment this close to the plate ring IS the ring
+// (the ring is DP-simplified/despiked up to ~0.3 m off the raw wall lines)
+const IWALL_INSIDE_TOL = 0.05 // m — endpoints may touch the boundary (partition abuts facade)
+const IWALL_ANGLE_TOL = 0.5 // ° — direction bucket for collinear merging
+const IWALL_LINE_TOL = 0.05 // m — perpendicular offset bucket for collinear merging
+const IWALL_MERGE_GAP = 0.05 // m — collinear runs within this end gap fuse
+
+/** Distance from point (x,y) to the closest edge of `ring`. */
+function distToRing(x: number, y: number, ring: Pt[]): number {
+  let best = Infinity
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [ax, ay] = ring[j]
+    const [bx, by] = ring[i]
+    const dx = bx - ax
+    const dy = by - ay
+    const len2 = dx * dx + dy * dy
+    const t = len2 < 1e-12 ? 0 : Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / len2))
+    const ex = x - (ax + t * dx)
+    const ey = y - (ay + t * dy)
+    best = Math.min(best, ex * ex + ey * ey)
+  }
+  return Math.sqrt(best)
+}
+
+/**
+ * Extract the drawing's **interior partition walls**: wall-category linework
+ * that lies inside the extracted plate but is not the plate boundary itself.
+ * Returns segments in EDITOR coordinates (plate offset applied) so they feed
+ * straight into `pushInteriorWallsToEditor` → `Editor.add_wall`, where the
+ * generator treats them as packing obstacles and the circulation evaluator
+ * rasterizes them.
+ *
+ * Pipeline: collect `wall` segments → drop ring-coincident ones (every sample
+ * within `IWALL_BOUNDARY_TOL` of the plate ring) → keep only segments whose
+ * ends/midpoint are inside the ring (or touching it within `IWALL_INSIDE_TOL`)
+ * → merge collinear/overlapping runs → drop runs < `IWALL_MIN_LEN` → cap at
+ * `IWALL_MAX_COUNT`, longest first (coverage-preserving priority).
+ */
+export function extractInteriorWalls(drawing: Drawing, plate: PlateResult): InteriorWall[] {
+  const ring = plate.boundary
+  if (ring.length < 3) return []
+
+  // Wall-category segments only (glazing is facade; casework/doors aren't
+  // partitions), translated into editor coordinates.
+  const raw: Segment[] = []
+  for (const e of drawing.entities) {
+    if (e.category === 'wall') pushEntitySegments(e, raw)
+  }
+  const segs: Segment[] = raw.map(([a, b]) => [
+    [a[0] - plate.offset.x, a[1] - plate.offset.y],
+    [b[0] - plate.offset.x, b[1] - plate.offset.y],
+  ])
+
+  // Classify each segment by its end/quarter/mid samples.
+  const interior: Segment[] = []
+  for (const [a, b] of segs) {
+    if (Math.hypot(b[0] - a[0], b[1] - a[1]) < 1e-6) continue
+    const samples: Pt[] = [0, 0.25, 0.5, 0.75, 1].map((t) => [
+      a[0] + (b[0] - a[0]) * t,
+      a[1] + (b[1] - a[1]) * t,
+    ])
+    // The plate boundary itself: every sample hugs the ring.
+    if (samples.every(([x, y]) => distToRing(x, y, ring) <= IWALL_BOUNDARY_TOL)) continue
+    // Inside the plate: every sample inside or touching the ring.
+    const inside = samples.every(
+      ([x, y]) => pointInRing(x, y, ring) || distToRing(x, y, ring) <= IWALL_INSIDE_TOL,
+    )
+    if (!inside) continue
+    interior.push([a, b])
+  }
+
+  // Merge collinear, overlapping/abutting runs. Group by direction bucket +
+  // signed line offset bucket, then merge 1D projection intervals per group.
+  type Run = { t0: number; t1: number }
+  const groups = new Map<string, { dir: Pt; origin: Pt; runs: Run[] }>()
+  for (const [a, b] of interior) {
+    let dx = b[0] - a[0]
+    let dy = b[1] - a[1]
+    const len = Math.hypot(dx, dy)
+    dx /= len
+    dy /= len
+    // Canonical direction (upper half-plane) so opposite drawings coincide.
+    if (dy < 0 || (dy === 0 && dx < 0)) {
+      dx = -dx
+      dy = -dy
+    }
+    const angle = (Math.atan2(dy, dx) * 180) / Math.PI // [0, 180)
+    const aKey = Math.round(angle / IWALL_ANGLE_TOL)
+    // Perpendicular offset of the line from the origin.
+    const c = a[0] * -dy + a[1] * dx
+    const cKey = Math.round(c / IWALL_LINE_TOL)
+    const key = `${aKey}:${cKey}`
+    let g = groups.get(key)
+    if (!g) {
+      g = { dir: [dx, dy], origin: [-dy * c, dx * c], runs: [] }
+      groups.set(key, g)
+    }
+    const t = (p: Pt) => p[0] * g!.dir[0] + p[1] * g!.dir[1]
+    const ta = t(a)
+    const tb = t(b)
+    g.runs.push({ t0: Math.min(ta, tb), t1: Math.max(ta, tb) })
+  }
+
+  const merged: InteriorWall[] = []
+  for (const g of groups.values()) {
+    g.runs.sort((p, q) => p.t0 - q.t0)
+    let cur: Run | null = null
+    const flush = (r: Run | null) => {
+      if (!r || r.t1 - r.t0 < IWALL_MIN_LEN) return
+      merged.push({
+        ax: g.origin[0] + g.dir[0] * r.t0,
+        ay: g.origin[1] + g.dir[1] * r.t0,
+        bx: g.origin[0] + g.dir[0] * r.t1,
+        by: g.origin[1] + g.dir[1] * r.t1,
+        thickness: IWALL_THICKNESS,
+      })
+    }
+    for (const r of g.runs) {
+      if (cur && r.t0 <= cur.t1 + IWALL_MERGE_GAP) {
+        cur.t1 = Math.max(cur.t1, r.t1)
+      } else {
+        flush(cur)
+        cur = { ...r }
+      }
+    }
+    flush(cur)
+  }
+
+  // Coverage-preserving cap: longest first.
+  merged.sort(
+    (p, q) => Math.hypot(q.bx - q.ax, q.by - q.ay) - Math.hypot(p.bx - p.ax, p.by - p.ay),
+  )
+  return merged.slice(0, IWALL_MAX_COUNT)
+}
+
+/** Push interior partition walls into the editor (one `add_wall` per segment,
+ *  mirroring `pushPlateToEditor`). The generator then packs around them and
+ *  the circulation evaluator rasterizes them. */
+export function pushInteriorWallsToEditor(ec: EditorCanvas, walls: InteriorWall[]): void {
+  if (walls.length === 0) return
+  for (const w of walls) ec.ed.add_wall(w.ax, w.ay, w.bx, w.by, w.thickness)
+  ec.refresh()
+}
+
 // ---- building-core keep-outs ----------------------------------------------
 
 /** An area the generator must not place program in — a stair core, elevator
