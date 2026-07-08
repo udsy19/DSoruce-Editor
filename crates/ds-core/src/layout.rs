@@ -407,9 +407,13 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
     // math absorbs it, so no desk is ever pushed into the corridor.
     let mut jrng = Rng::new(seed);
     let jitter = clear * 0.25;
+    // Odd seeds shift the whole lattice by half a pitch — a second structurally
+    // distinct family of layouts for the gallery (even/odd seeds differ by
+    // more than cosmetic jitter).
+    let half_phase = if seed % 2 == 1 { 0.5 } else { 0.0 };
     let lat = Lattice {
-        ox: min_x,
-        oy: min_y,
+        ox: min_x + half_phase * (program.desk_w + clear),
+        oy: min_y + half_phase * (program.desk_h + clear),
         jx: jrng.next_f64() * jitter,
         jy: jrng.next_f64() * jitter,
     };
@@ -427,7 +431,7 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
         );
     } else {
         // --- Irregular plate: decompose → allocate → per-region packing -----
-        let plans = allocate_regions(program, &regions, corridor, clear, remaining_meetings, remaining_desks);
+        let plans = allocate_regions(program, &regions, corridor, clear, remaining_meetings, remaining_desks, seed);
         let mut placed_desks = 0u32;
         for (i, &(region, m_target, d_target)) in plans.iter().enumerate() {
             // Desk rows run along the region's long axis: a portrait region packs
@@ -501,6 +505,7 @@ fn allocate_regions(
     clear: f64,
     meetings: u32,
     desks: u32,
+    seed: u64,
 ) -> Vec<(geometry::Rect, u32, u32)> {
     let n = regions.len();
     let pitch_x = program.desk_w + clear;
@@ -526,6 +531,11 @@ fn allocate_regions(
 
     // Meetings: round-robin over fitting regions (area-desc), respecting each
     // region's vertical stack capacity, until the target or all capacity is used.
+    // The seed ROTATES the round-robin start so different seeds put meetings in
+    // different wings — the structural variety the candidate gallery needs
+    // (with the global lattice, jitter alone made every seed near-identical
+    // and the near-duplicate filter collapsed the gallery to one option).
+    let start = if n > 0 { (seed as usize) % n } else { 0 };
     let mut m_alloc = vec![0u32; n];
     let mut remaining_m = meetings;
     loop {
@@ -533,7 +543,8 @@ fn allocate_regions(
             break;
         }
         let mut progressed = false;
-        for i in 0..n {
+        for k in 0..n {
+            let i = (start + k) % n;
             if remaining_m == 0 {
                 break;
             }
