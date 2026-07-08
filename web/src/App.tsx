@@ -39,7 +39,15 @@ import {
   type PlateResult,
 } from './import/testfit'
 import { saveProject, openProject, applyProject, type BindingInfo, type DSourceFile } from './persist/file'
-import { buildSavedPlan, listPlans, putPlan, deletePlan, type SavedPlan } from './persist/plans'
+import {
+  buildSavedPlan,
+  listPlans,
+  putPlan,
+  deletePlan,
+  resolveProject,
+  assignToProject,
+  type SavedPlan,
+} from './persist/plans'
 import { noteChange, listHistory, restoreEntry, type HistoryEntry } from './persist/history'
 import { comparePlans, snapshotThumb, type PlanComparison } from './plans/compare'
 import { renderThumb } from './editor/EditorCanvas'
@@ -94,6 +102,9 @@ export function App() {
   /** Right-inspector tab: the working plan vs the saved-plan library. */
   const [panelTab, setPanelTab] = useState<'plan' | 'library'>('plan')
   const [plans, setPlans] = useState<SavedPlan[]>([])
+  /** Which SavedPlan the live session came from — drives the floor switcher.
+   *  Cleared when the doc stops being that record (file open / fresh doc). */
+  const [currentPlanId, setCurrentPlanId] = useState<string | null>(null)
   const [history, setHistory] = useState<HistoryEntry[]>([])
   /** Open compare modal + the two library records behind its panes. */
   const [compare, setCompare] = useState<{ cmp: PlanComparison; a: SavedPlan; b: SavedPlan } | null>(
@@ -206,6 +217,7 @@ export function App() {
     if (!ec) return
     try {
       applyOpenedFile(ec, await openProject(file))
+      setCurrentPlanId(null) // a picked file is not a library record
     } catch (e) {
       setImportErr(e instanceof Error ? e.message : String(e))
     }
@@ -229,7 +241,17 @@ export function App() {
     const ec = ecRef.current
     if (!ec) return
     const thumb = renderThumb(ec.getState(), 200, 140)
-    await putPlan(buildSavedPlan(ec, name, { drawing, bindings, ui: { mode, planView }, thumb }))
+    const saved = buildSavedPlan(ec, name, { drawing, bindings, ui: { mode, planView }, thumb })
+    await putPlan(saved)
+    setCurrentPlanId(saved.id) // the live doc IS this record now
+    await refreshLibrary()
+  }
+
+  /** LibraryPanel.onAssign — resolve the typed project name (case-insensitive
+   *  reuse or mint, in persist/plans) and attach the plan as a floor. */
+  const assignPlanToProject = async (planId: string, projectName: string, floorLabel: string) => {
+    const proj = await resolveProject(projectName)
+    await assignToProject(planId, proj.projectId, proj.projectName, { label: floorLabel })
     await refreshLibrary()
   }
 
@@ -254,6 +276,7 @@ export function App() {
     if (!ec) return
     // SavedPlan.file IS a v1 DSourceFile — same restore path as the file picker.
     applyOpenedFile(ec, p.file)
+    setCurrentPlanId(p.id) // remember which record is open → floor switcher
     setPanelTab('plan')
   }
 
@@ -671,6 +694,8 @@ export function App() {
                       `${p.name.replace(/[^\w.-]+/g, '-')}.dsource`,
                     )
                   }
+                  onAssign={(id, name, floor) => void assignPlanToProject(id, name, floor)}
+                  current={currentPlanId ? { planId: currentPlanId } : undefined}
                 />
               ) : (
                 <>
