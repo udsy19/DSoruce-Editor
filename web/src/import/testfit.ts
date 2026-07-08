@@ -16,10 +16,15 @@
 // - 'hull'  — rasterize the shell (walls, glazing, doors — door thresholds
 //             close the gaps that leak the flood fill — casework, column-ish
 //             closed polylines, plus shell-category block inserts) onto a
-//             coarse occupancy grid, morphologically close remaining gaps,
-//             flood the outside, and trace the outer contour of the solid
-//             region (Moore neighbor tracing). Convex hull of shell endpoints
-//             ∪ furniture corners is the last resort.
+//             coarse occupancy grid, morphologically close remaining gaps
+//             (dilate+erode of the linework itself, so passages wider than
+//             the closing radius keep their true width), flood the outside,
+//             and trace the outer contour of the solid region (Moore neighbor
+//             tracing). Raster candidates whose boundary necks below door
+//             width between two large areas (the signature of a leaked flood
+//             threading a wall cavity) are passed over while the dilation
+//             ladder escalates. Convex hull of shell endpoints ∪ furniture
+//             corners is the last resort.
 // - 'wrap'  — guaranteed-coverage fallback: rasterize shell ∪ every furniture
 //             bbox outline and contour that — the plate necessarily wraps the
 //             furniture field while hugging the real footprint far tighter
@@ -63,6 +68,9 @@ const COVERAGE_ACCEPT = 0.85 // accept the first candidate covering this fractio
 const COVERAGE_EDGE_TOL = 0.5 // m — a center this close to the boundary counts as inside
 // (perimeter windows/doors sit ON the traced wall line — ±1 grid cell)
 const COLUMN_MAX_SIDE = 2.5 // m — 'other' closed polylines up to this size rasterize as columns
+const PINCH_PASSAGE_M = 0.8 // m — a plate neck narrower than a door leaf is a trace defect
+const PINCH_AREA_M2 = 20 // m² — both sides of the neck must be at least this big to count
+const PINCH_CELL = 0.1 // m — raster resolution of the pinch check (must resolve sub-door necks)
 
 // ---- public API --------------------------------------------------------
 
@@ -78,19 +86,36 @@ export function extractPlate(drawing: Drawing): PlateResult | null {
   const centers = furnitureCenters(drawing)
 
   // Score a finalized candidate ring; the ladder accepts the first one that
-  // clears the coverage + plausible-area bar, else the max-coverage candidate.
-  type Scored = { ring: Pt[]; method: PlateResult['method']; coverage: number; area: number }
+  // clears the coverage + plausible-area bar AND carries no trace pinch, else
+  // falls back to the max-coverage candidate (unpinched preferred on ties).
+  type Scored = {
+    ring: Pt[]
+    method: PlateResult['method']
+    coverage: number
+    area: number
+    pinched: boolean
+  }
   let best: Scored | null = null
   const accept = (ring: Pt[] | null, method: PlateResult['method']): Scored | null => {
     if (!ring || ring.length < 3) return null
     const area = Math.abs(signedArea(ring))
     if (area < MIN_PLATE_AREA) return null
     const coverage = ringCoverage(ring, centers)
-    const scored: Scored = { ring, method, coverage, area }
-    if (!best || coverage > best.coverage || (coverage === best.coverage && area > best.area)) {
+    // Loop candidates are exact linework faces; only rasterized candidates
+    // can carry a mis-trace pinch.
+    const pinched = method === 'loop' ? false : ringPinched(ring)
+    const scored: Scored = { ring, method, coverage, area, pinched }
+    if (
+      !best ||
+      coverage > best.coverage ||
+      (coverage === best.coverage && best.pinched && !pinched) ||
+      (coverage === best.coverage && pinched === best.pinched && area > best.area)
+    ) {
       best = scored
     }
-    return coverage >= COVERAGE_ACCEPT && area >= plausible && area <= bboxArea * 1.05 ? scored : null
+    return coverage >= COVERAGE_ACCEPT && area >= plausible && area <= bboxArea * 1.05 && !pinched
+      ? scored
+      : null
   }
 
   // (a) Largest closed loop in the snapped wall+glazing graph. Without a
@@ -292,17 +317,22 @@ function ringCoverage(ring: Pt[], centers: Pt[]): number {
   return inside / centers.length
 }
 
-/** Ray-cast point-in-polygon, with centers within `COVERAGE_EDGE_TOL` of an
- *  edge counting as covered — perimeter windows/doors sit ON the wall line the
- *  boundary traces through, so exact containment would flap on them. */
-function coveredByRing(x: number, y: number, ring: Pt[]): boolean {
+/** Plain ray-cast point-in-polygon (ring: first vertex not repeated). */
+function pointInRing(x: number, y: number, ring: Pt[]): boolean {
   let inside = false
   for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
     const [xi, yi] = ring[i]
     const [xj, yj] = ring[j]
     if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside
   }
-  if (inside) return true
+  return inside
+}
+
+/** Ray-cast point-in-polygon, with centers within `COVERAGE_EDGE_TOL` of an
+ *  edge counting as covered — perimeter windows/doors sit ON the wall line the
+ *  boundary traces through, so exact containment would flap on them. */
+function coveredByRing(x: number, y: number, ring: Pt[]): boolean {
+  if (pointInRing(x, y, ring)) return true
   const tol2 = COVERAGE_EDGE_TOL * COVERAGE_EDGE_TOL
   for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
     const [ax, ay] = ring[j]
@@ -314,6 +344,114 @@ function coveredByRing(x: number, y: number, ring: Pt[]): boolean {
     const ex = x - (ax + t * dx)
     const ey = y - (ay + t * dy)
     if (ex * ex + ey * ey <= tol2) return true
+  }
+  return false
+}
+
+// ---- pinch detection ------------------------------------------------------
+
+/**
+ * Trace-artifact detector: true when the ring's interior contains two or more
+ * regions of at least `PINCH_AREA_M2` that connect only through passages
+ * narrower than `PINCH_PASSAGE_M`. Real plates join their areas through
+ * door-width-or-better openings; a sub-door neck between two big areas is the
+ * signature of a mis-trace (the outside flood leaked around a room and the
+ * boundary threads a wall cavity), so the candidate ladder keeps escalating
+ * its closing radius instead of accepting the pinched ring.
+ */
+function ringPinched(ring: Pt[]): boolean {
+  let minX = Infinity
+  let minY = Infinity
+  let maxX = -Infinity
+  let maxY = -Infinity
+  for (const [x, y] of ring) {
+    minX = Math.min(minX, x)
+    minY = Math.min(minY, y)
+    maxX = Math.max(maxX, x)
+    maxY = Math.max(maxY, y)
+  }
+  const w = maxX - minX
+  const h = maxY - minY
+  if (!(w > 0 && h > 0)) return false
+  // Adaptive cell keeps the raster small on pathological extents.
+  const cell = Math.max(PINCH_CELL, Math.sqrt((w * h) / 250_000))
+  const W = Math.ceil(w / cell) + 4
+  const H = Math.ceil(h / cell) + 4
+  // Scanline fill of the ring interior (crossing pairs per row).
+  const inside = new Uint8Array(W * H)
+  for (let gy = 0; gy < H; gy++) {
+    const y = minY + (gy - 1.5) * cell
+    const xs: number[] = []
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const [xi, yi] = ring[i]
+      const [xj, yj] = ring[j]
+      if (yi > y !== yj > y) xs.push(xi + ((xj - xi) * (y - yi)) / (yj - yi))
+    }
+    xs.sort((a, b) => a - b)
+    for (let p = 0; p + 1 < xs.length; p += 2) {
+      const gx0 = Math.max(0, Math.ceil((xs[p] - minX) / cell + 1.5))
+      const gx1 = Math.min(W - 1, Math.floor((xs[p + 1] - minX) / cell + 1.5))
+      for (let gx = gx0; gx <= gx1; gx++) inside[gy * W + gx] = 1
+    }
+  }
+  // Clearance to the exterior: Chebyshev BFS (8-neighbor), matching the
+  // Chebyshev box kernel gridContour closes with.
+  const dist = new Int32Array(W * H).fill(-1)
+  let frontier: number[] = []
+  for (let i = 0; i < W * H; i++) {
+    if (!inside[i]) {
+      dist[i] = 0
+      frontier.push(i)
+    }
+  }
+  let d = 0
+  while (frontier.length > 0) {
+    d++
+    const next: number[] = []
+    for (const i of frontier) {
+      const x = i % W
+      const y = (i - x) / W
+      for (let dy = -1; dy <= 1; dy++)
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = x + dx
+          const ny = y + dy
+          if (nx < 0 || nx >= W || ny < 0 || ny >= H) continue
+          const j = ny * W + nx
+          if (dist[j] === -1) {
+            dist[j] = d
+            next.push(j)
+          }
+        }
+    }
+    frontier = next
+  }
+  // Regions of clearance ≥ PINCH_PASSAGE_M/2 fall apart at every narrower
+  // neck; two big survivors ⇒ the plate's areas only meet through a pinch.
+  const t = Math.max(1, Math.round(PINCH_PASSAGE_M / 2 / cell))
+  const minCells = Math.ceil(PINCH_AREA_M2 / (cell * cell))
+  const seen = new Uint8Array(W * H)
+  let bigRegions = 0
+  for (let i0 = 0; i0 < W * H; i0++) {
+    if (dist[i0] < t || seen[i0]) continue
+    let count = 0
+    const st = [i0]
+    seen[i0] = 1
+    while (st.length > 0) {
+      const i = st.pop()!
+      count++
+      const x = i % W
+      const y = (i - x) / W
+      const nb = [i - 1, i + 1, i - W, i + W]
+      const ok = [x > 0, x < W - 1, y > 0, y < H - 1]
+      for (let k = 0; k < 4; k++) {
+        if (ok[k] && dist[nb[k]] >= t && !seen[nb[k]]) {
+          seen[nb[k]] = 1
+          st.push(nb[k])
+        }
+      }
+    }
+    if (count >= minCells) bigRegions++
+    if (bigRegions >= 2) return true
   }
   return false
 }
@@ -405,10 +543,21 @@ export function traceLoops(segments: Segment[], tol = SNAP_TOL): Pt[][] {
 // ---- occupancy-grid fallback ---------------------------------------------
 
 /**
- * Rasterize wall segments onto a `cell`-meter grid, close gaps by dilating
- * `dilate` cells, flood-fill the outside, erode back, keep the largest solid
- * component and Moore-trace its outer contour. Returns a simplified polygon
- * or null when the region degenerates.
+ * Rasterize wall segments onto a `cell`-meter grid, morphologically close the
+ * linework (dilate `dilate` cells, then erode the dilated mask by the same
+ * Chebyshev box), flood-fill the outside across the closed mask, keep the
+ * largest enclosed component and Moore-trace its outer contour. Returns a
+ * simplified polygon or null when the region degenerates.
+ *
+ * Closing the mask itself — rather than eroding against the outside flood, as
+ * this used to — is what preserves passage widths. Dilation is exactly
+ * {Chebyshev distance to linework ≤ dilate}, so eroding it keeps no cell
+ * farther than `dilate` cells from a real wall: the reconstruction rule
+ * "closing-added cell deeper than `dilate` into free space ⇒ free again"
+ * holds by construction. Gaps and cavities narrower than 2·dilate·cell close;
+ * anything wider stays open at full width. The old erode-the-fill approach
+ * kept fused-flood residue where dilation had bridged a doorway, thinning a
+ * real ≥1 m opening to a sliver in the traced polygon.
  */
 export function gridContour(segments: Segment[], cell = GRID_CELL, dilate = GRID_DILATE): Pt[] | null {
   let minX = Infinity
@@ -455,12 +604,29 @@ export function gridContour(segments: Segment[], cell = GRID_CELL, dilate = GRID
         }
     }
 
-  // Flood the outside across non-wall cells from the grid border.
+  // Erode the dilated mask by the same box: the morphological closing of the
+  // linework. Every surviving cell has its whole box inside the dilation, so
+  // no closed cell lies deeper than `dilate` cells (Chebyshev) into original
+  // free space — a passage wider than 2·dilate·cell can never fuse shut.
+  const closed = new Uint8Array(W * H)
+  for (let y = 0; y < H; y++)
+    outer: for (let x = 0; x < W; x++) {
+      if (!dil[idx(x, y)]) continue
+      for (let dy = -dilate; dy <= dilate; dy++)
+        for (let dx = -dilate; dx <= dilate; dx++) {
+          const nx = x + dx
+          const ny = y + dy
+          if (nx < 0 || nx >= W || ny < 0 || ny >= H || !dil[idx(nx, ny)]) continue outer
+        }
+      closed[idx(x, y)] = 1
+    }
+
+  // Flood the outside across non-closed cells from the grid border.
   const outside = new Uint8Array(W * H)
   const stack: number[] = []
   const pushOut = (x: number, y: number) => {
     const i = idx(x, y)
-    if (!outside[i] && !dil[i]) {
+    if (!outside[i] && !closed[i]) {
       outside[i] = 1
       stack.push(i)
     }
@@ -483,18 +649,11 @@ export function gridContour(segments: Segment[], cell = GRID_CELL, dilate = GRID
     if (y < H - 1) pushOut(x, y + 1)
   }
 
-  // Solid = everything not reachable from outside; erode to undo the dilation.
+  // Solid = everything the outside flood cannot reach: real walls, sub-2k
+  // bridges, and the interiors they enclose. The closing already sits at true
+  // wall scale, so there is no dilation left to undo.
   const er = new Uint8Array(W * H)
-  for (let y = 0; y < H; y++)
-    outer: for (let x = 0; x < W; x++) {
-      for (let dy = -dilate; dy <= dilate; dy++)
-        for (let dx = -dilate; dx <= dilate; dx++) {
-          const nx = x + dx
-          const ny = y + dy
-          if (nx < 0 || nx >= W || ny < 0 || ny >= H || outside[idx(nx, ny)]) continue outer
-        }
-      er[idx(x, y)] = 1
-    }
+  for (let i = 0; i < W * H; i++) er[i] = outside[i] ? 0 : 1
 
   // Largest 4-connected solid component.
   const comp = new Int32Array(W * H).fill(-1)
