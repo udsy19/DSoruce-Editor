@@ -28,6 +28,18 @@ const HOVER = 'rgba(232,161,60,0.55)'
 // reads distinctly from both unbound gray linework and the amber selection.
 const SPECIFIED = '#2d5bd6'
 
+/** A placeable footprint the palette hands to {@link DrawingCanvas.beginPlace}. */
+export interface PlaceSpec {
+  /** Human-readable product/item name — becomes the FurnitureItem name. */
+  name: string
+  /** Semantic category. Coerced to a known {@link Category}; else 'furniture'. */
+  category: string
+  /** Footprint width (X extent) in meters. */
+  w: number
+  /** Footprint depth (Y extent) in meters. */
+  h: number
+}
+
 const MIN_SCALE = 2
 const MAX_SCALE = 4000
 const FIT_PADDING = 40 // px padding around bounds in fitToView
@@ -37,6 +49,8 @@ const ROTATE_STEP = Math.PI / 12 // 15° per keypress
 const DUP_OFFSET = 0.3 // meters — nudge for a duplicated item
 const HANDLE_PX = 3 // half-size of selection corner handles, screen px
 const UNDO_CAP = 50 // max snapshots kept
+const PLACE_SNAP = 0.05 // meters — placement-ghost grid snap
+const PLACE_FILL = 'rgba(232,161,60,0.10)' // ghost footprint wash
 
 /** Per-category screen lineweight (CSS px), independent of zoom. */
 const LINE_WEIGHT: Record<Category, number> = {
@@ -96,6 +110,12 @@ export class DrawingCanvas {
   private downScreen = { x: 0, y: 0 }
   private lastWorld = { x: 0, y: 0 }
 
+  // placement mode: the spec being stamped, the snapped ghost position (world
+  // meters; null until the cursor enters the canvas) and the ghost rotation.
+  private placing: PlaceSpec | null = null
+  private placeCursor: { x: number; y: number } | null = null
+  private placeRotation = 0
+
   // undo: snapshots of drawing.furniture taken before each mutation.
   private undoStack: FurnitureItem[][] = []
 
@@ -129,6 +149,8 @@ export class DrawingCanvas {
     this.selected = null
     this.hovered = null
     this.undoStack = []
+    this.placing = null
+    this.placeCursor = null
     this.buildBuckets(d)
     this.fitToView() // also renders
   }
@@ -156,6 +178,7 @@ export class DrawingCanvas {
    *  clearSelection behave exactly as a canvas click would. */
   select(item: FurnitureItem): void {
     if (!this.drawing?.furniture.includes(item)) return
+    this.cancelPlace() // a sidebar pick disarms a pending placement
     this.selected = item
     this.onSelect?.(item)
     this.render()
@@ -167,6 +190,40 @@ export class DrawingCanvas {
     this.selected = null
     this.onSelect?.(null)
     this.render()
+  }
+
+  /**
+   * Enter placement mode for `spec`: a ghost footprint follows the cursor
+   * (snapped to 0.05 m), R rotates it (Shift+R reverses — same convention as a
+   * selected item), a click stamps a new {@link FurnitureItem} (one undo entry,
+   * onChange, immediately selected). The mode STAYS armed for the same spec so
+   * repeated clicks stamp multiples; Escape (or {@link cancelPlace}) exits.
+   */
+  beginPlace(spec: PlaceSpec): void {
+    if (!this.drawing || !(spec.w > 0) || !(spec.h > 0)) return
+    this.placing = spec
+    this.placeCursor = null
+    this.placeRotation = 0
+    this.hovered = null
+    if (this.selected) {
+      this.selected = null
+      this.onSelect?.(null)
+    }
+    this.canvas.style.cursor = 'crosshair'
+    this.render()
+  }
+
+  /** Exit placement mode without placing (Escape does the same). */
+  cancelPlace(): void {
+    if (!this.placing) return
+    this.placing = null
+    this.placeCursor = null
+    this.canvas.style.cursor = 'default'
+    this.render()
+  }
+
+  isPlacing(): boolean {
+    return this.placing !== null
   }
 
   /** Restore the last pre-edit snapshot of the furniture. No-op if nothing to undo. */
@@ -284,6 +341,12 @@ export class DrawingCanvas {
     this.movingActive = false
     this.lastScreen = s
     this.downScreen = s
+    // Placement mode: never arm a move — a drag pans, a plain click stamps
+    // (handled in onUp so panning still works while placing).
+    if (this.placing) {
+      this.moveCandidate = null
+      return
+    }
     // Hitting a furniture item selects it and arms a MOVE (started once we drag
     // past the threshold). Empty space stays a pan.
     const hit = this.pickFurniture(s.x, s.y)
@@ -327,6 +390,15 @@ export class DrawingCanvas {
       this.lastScreen = s
       return
     }
+    // Placement mode: the ghost tracks the (snapped) cursor; no hover picking.
+    if (this.placing) {
+      const within = s.x >= 0 && s.y >= 0 && s.x <= this.cssSize().w && s.y <= this.cssSize().h
+      const w = this.toWorld(s.x, s.y)
+      this.placeCursor = within ? { x: snap(w.x), y: snap(w.y) } : null
+      this.canvas.style.cursor = 'crosshair'
+      this.render()
+      return
+    }
     // Hover hit-test only when not dragging.
     const within = s.x >= 0 && s.y >= 0 && s.x <= this.cssSize().w && s.y <= this.cssSize().h
     const hit = within ? this.pickFurniture(s.x, s.y) : null
@@ -351,6 +423,13 @@ export class DrawingCanvas {
       return
     }
     if (wasPan) return // was a pan, not a click
+    // Placement mode: a plain click stamps the armed spec at the snapped point.
+    if (this.placing) {
+      const s = this.screenFromEvent(e)
+      const w = this.toWorld(s.x, s.y)
+      this.placeAt(snap(w.x), snap(w.y))
+      return
+    }
     // Plain click: (de)select the item under the cursor.
     const s = this.screenFromEvent(e)
     const hit = this.pickFurniture(s.x, s.y)
@@ -362,6 +441,10 @@ export class DrawingCanvas {
   }
 
   private onLeave = () => {
+    if (this.placing && this.placeCursor) {
+      this.placeCursor = null
+      this.render()
+    }
     if (this.hovered) {
       this.hovered = null
       this.onHover?.(null)
@@ -376,6 +459,21 @@ export class DrawingCanvas {
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
     const mod = e.metaKey || e.ctrlKey
     const key = e.key.toLowerCase()
+    // Placement mode: Escape exits, R spins the ghost (Shift+R reverses —
+    // the same convention as rotating a selected item). ⌘Z etc. fall through.
+    if (this.placing && !mod) {
+      if (key === 'escape') {
+        e.preventDefault()
+        this.cancelPlace()
+        return
+      }
+      if (key === 'r') {
+        e.preventDefault()
+        this.placeRotation += e.shiftKey ? -ROTATE_STEP : ROTATE_STEP
+        this.render()
+        return
+      }
+    }
     if (mod && key === 'z') {
       e.preventDefault()
       this.undo()
@@ -424,11 +522,80 @@ export class DrawingCanvas {
     if (!d || !this.selected) return
     this.pushUndo()
     const clone = structuredClone(this.selected)
-    clone.id = d.furniture.reduce((m, f) => Math.max(m, f.id), 0) + 1
+    clone.id = this.nextItemId()
     this.translateItem(clone, DUP_OFFSET, -DUP_OFFSET)
     d.furniture.push(clone)
     this.selected = clone
     this.onSelect?.(clone)
+    this.render()
+    this.emitChange()
+  }
+
+  /** Next free numeric item id (ids are unique; names may repeat for dupes). */
+  private nextItemId(): number {
+    return (this.drawing?.furniture ?? []).reduce((m, f) => Math.max(m, f.id), 0) + 1
+  }
+
+  /** `base`, or `base 2`, `base 3`, … — first name not already in the schedule.
+   *  Sidebar pick + category rows key items by NAME, so a placed item gets its
+   *  own name rather than silently aggregating into an imported row. */
+  private uniqueItemName(base: string): string {
+    const names = new Set((this.drawing?.furniture ?? []).map((f) => f.name))
+    if (!names.has(base)) return base
+    let n = 2
+    while (names.has(`${base} ${n}`)) n++
+    return `${base} ${n}`
+  }
+
+  /** Stamp the armed {@link PlaceSpec} centered at world (cx, cy) — one undo
+   *  entry, select the new item, keep placement mode armed for the next click. */
+  private placeAt(cx: number, cy: number) {
+    const d = this.drawing
+    const spec = this.placing
+    if (!d || !spec) return
+    this.pushUndo()
+    const category = (spec.category in CATEGORY_COLOR ? spec.category : 'furniture') as Category
+    const hw = spec.w / 2
+    const hh = spec.h / 2
+    // Synthesized footprint linework (no CAD block exists): the closed outline
+    // plus an inset front-edge tick so rotation reads at a glance.
+    const outline: DrawEntity = {
+      kind: 'polyline',
+      layer: 'DS-PLACED',
+      category,
+      closed: true,
+      pts: [
+        [cx - hw, cy - hh],
+        [cx + hw, cy - hh],
+        [cx + hw, cy + hh],
+        [cx - hw, cy + hh],
+      ],
+    }
+    const tickY = cy - hh + Math.min(0.08, spec.h * 0.18)
+    const tick: DrawEntity = {
+      kind: 'polyline',
+      layer: 'DS-PLACED',
+      category,
+      pts: [
+        [cx - hw * 0.6, tickY],
+        [cx + hw * 0.6, tickY],
+      ],
+    }
+    const item: FurnitureItem = {
+      id: this.nextItemId(),
+      name: this.uniqueItemName(spec.name),
+      raw: spec.name,
+      category,
+      bbox: [cx - hw, cy - hh, cx + hw, cy + hh],
+      origin: [cx, cy],
+      rotation: 0,
+      entities: [outline, tick],
+    }
+    if (this.placeRotation !== 0) this.rotateItem(item, this.placeRotation)
+    d.furniture.push(item)
+    this.selected = item
+    this.onSelect?.(item)
+    this.canvas.style.cursor = 'crosshair' // stay armed for the next stamp
     this.render()
     this.emitChange()
   }
@@ -592,7 +759,53 @@ export class DrawingCanvas {
 
     this.drawTexts(d)
     this.drawHighlights()
+    this.drawPlaceGhost()
     this.onViewChange?.()
+  }
+
+  /** Placement ghost: dashed amber footprint (rotated), soft wash, center
+   *  cross, and a mono dims label — follows the snapped cursor. */
+  private drawPlaceGhost() {
+    const spec = this.placing
+    const c = this.placeCursor
+    if (!spec || !c) return
+    const ctx = this.ctx
+    const hw = spec.w / 2
+    const hh = spec.h / 2
+    const cos = Math.cos(this.placeRotation)
+    const sin = Math.sin(this.placeRotation)
+    const corner = (dx: number, dy: number) =>
+      this.toScreen(c.x + dx * cos - dy * sin, c.y + dx * sin + dy * cos)
+    const pts = [corner(-hw, -hh), corner(hw, -hh), corner(hw, hh), corner(-hw, hh)]
+    ctx.beginPath()
+    ctx.moveTo(pts[0].x, pts[0].y)
+    for (let i = 1; i < 4; i++) ctx.lineTo(pts[i].x, pts[i].y)
+    ctx.closePath()
+    ctx.fillStyle = PLACE_FILL
+    ctx.fill()
+    ctx.strokeStyle = ACCENT
+    ctx.lineWidth = 1.4
+    ctx.setLineDash([5, 4])
+    ctx.stroke()
+    ctx.setLineDash([])
+    // center cross
+    const p = this.toScreen(c.x, c.y)
+    ctx.beginPath()
+    ctx.moveTo(p.x - 5, p.y)
+    ctx.lineTo(p.x + 5, p.y)
+    ctx.moveTo(p.x, p.y - 5)
+    ctx.lineTo(p.x, p.y + 5)
+    ctx.lineWidth = 1
+    ctx.stroke()
+    // dims label under the footprint
+    const bottom = Math.max(...pts.map((q) => q.y))
+    ctx.fillStyle = ACCENT
+    ctx.font = '11px "IBM Plex Mono", ui-monospace, monospace'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'top'
+    ctx.fillText(`${spec.w.toFixed(2)} × ${spec.h.toFixed(2)} m`, p.x, bottom + 6)
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'alphabetic'
   }
 
   /** Furniture linework: unbound in gray, bound ("specified") in a muted accent —
@@ -732,4 +945,9 @@ export class DrawingCanvas {
 
 function clamp(v: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, v))
+}
+
+/** Snap a world coordinate to the placement grid (0.05 m). */
+function snap(v: number): number {
+  return Math.round(v / PLACE_SNAP) * PLACE_SNAP
 }

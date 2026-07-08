@@ -31,6 +31,24 @@ export type BankCategory =
   | 'planter'
   | 'partition'
 
+/**
+ * Default placement footprint [w, h] in meters per bank-category — what the
+ * imported-plan place palette stamps for a product from that bucket. Desk and
+ * task-chair match the generative palette's defaults (`editor/catalog.ts`).
+ */
+export const BANK_FOOTPRINT: Record<BankCategory, [number, number]> = {
+  'task-chair': [0.5, 0.5],
+  desk: [1.4, 0.7],
+  'workstation-bench': [2.8, 1.4],
+  'meeting-table': [2.4, 1.2],
+  'side-table': [0.6, 0.6],
+  lounge: [0.85, 0.8],
+  stool: [0.4, 0.4],
+  storage: [0.9, 0.45],
+  planter: [0.5, 0.5],
+  partition: [1.2, 0.1],
+}
+
 const BANK: Record<BankCategory, OfficeProduct[]> = {
   'task-chair': [
     { id: 'tc-silq', name: 'SILQ Task Chair', vendor: 'Steelcase', price: 1090, swatch: '#2b2b30' },
