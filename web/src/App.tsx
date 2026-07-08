@@ -42,32 +42,10 @@ import { saveProject, openProject, applyProject, type BindingInfo, type DSourceF
 import { buildSavedPlan, listPlans, putPlan, deletePlan, type SavedPlan } from './persist/plans'
 import { noteChange, listHistory, restoreEntry, type HistoryEntry } from './persist/history'
 import { comparePlans, snapshotThumb, type PlanComparison } from './plans/compare'
-import { PresenceClient, type Peer } from './net/presence'
-import { PresenceStrip } from './ui/PresenceStrip'
 import { renderThumb } from './editor/EditorCanvas'
 import { LibraryPanel } from './ui/LibraryPanel'
 import { CompareView } from './ui/CompareView'
 import { evaluateCandidates, type SoftVerdict } from './ai/evaluator'
-
-// ----- Presence identity (multiplayer milestone 1) -----
-const PEER_COLORS = ['#2d5bd6', '#2fa36b', '#cb8150', '#7e63c0', '#3f9c95', '#c2504f', '#b99527']
-
-/** Stable per-browser identity for presence: name persisted, color by hash. */
-function presenceSelf(): { u: string; name: string; color: string } {
-  let name = localStorage.getItem('ds-user-name')
-  if (!name) {
-    name = `Guest ${Math.floor(1000 + Math.random() * 9000)}`
-    localStorage.setItem('ds-user-name', name)
-  }
-  let u = sessionStorage.getItem('ds-user-id') // per-tab so two tabs = two peers
-  if (!u) {
-    u = crypto.randomUUID().slice(0, 8)
-    sessionStorage.setItem('ds-user-id', u)
-  }
-  let h = 0
-  for (const c of u) h = (h * 31 + c.charCodeAt(0)) >>> 0
-  return { u, name, color: PEER_COLORS[h % PEER_COLORS.length] }
-}
 
 // CAD drafting tools (map to EditorCanvas 'cad:<id>' tools).
 const CAD_RAIL: { id: string; icon: string; label: string; hint?: string }[] = [
@@ -121,14 +99,6 @@ export function App() {
   const [compare, setCompare] = useState<{ cmp: PlanComparison; a: SavedPlan; b: SavedPlan } | null>(
     null,
   )
-  /** Presence session: room id from ?room= (join) or minted by Share. */
-  const [room, setRoom] = useState<string | null>(
-    () => new URLSearchParams(window.location.search).get('room'),
-  )
-  const [peers, setPeers] = useState<Peer[]>([])
-  const [shareCopied, setShareCopied] = useState(false)
-  const presenceRef = useRef<PresenceClient | null>(null)
-  const selfRef = useRef(presenceSelf())
   const fileRef = useRef<HTMLInputElement>(null)
   const drawCanvasRef = useRef<DrawingCanvas | null>(null)
   const [, setDrawVer] = useState(0)
@@ -203,52 +173,6 @@ export function App() {
   useEffect(() => {
     if (mode === '2d' && ready) ecRef.current?.refresh()
   }, [mode, ready])
-
-  // Presence session (multiplayer milestone 1): live cursors + avatar strip.
-  // Connect whenever a room id exists; the client reconnects on its own.
-  useEffect(() => {
-    const ec = ecRef.current
-    if (!room || !ready || !ec) return
-    const client = new PresenceClient({ url: '/ws', room, self: selfRef.current })
-    presenceRef.current = client
-    client.onPeersChange = (map) => {
-      setPeers([...map.values()])
-      ec.remoteCursors.clear()
-      for (const p of map.values()) {
-        if (p.x !== undefined && p.y !== undefined) {
-          ec.remoteCursors.set(p.u, { name: p.name, color: p.color, x: p.x, y: p.y })
-        }
-      }
-      ec.refresh()
-    }
-    ec.onCursor = (x, y) => client.sendCursor(x, y)
-    return () => {
-      ec.onCursor = undefined
-      ec.remoteCursors.clear()
-      presenceRef.current = null
-      setPeers([])
-      client.close()
-    }
-  }, [room, ready])
-
-  /** Mint a room on first share, put it in the URL, copy the join link. */
-  const shareSession = async () => {
-    let id = room
-    if (!id) {
-      id = crypto.randomUUID().slice(0, 8)
-      const url = new URL(window.location.href)
-      url.searchParams.set('room', id)
-      window.history.replaceState(null, '', url)
-      setRoom(id)
-    }
-    try {
-      await navigator.clipboard.writeText(window.location.href)
-      setShareCopied(true)
-      window.setTimeout(() => setShareCopied(false), 2000)
-    } catch {
-      /* clipboard unavailable (permissions) — the URL bar still has the link */
-    }
-  }
 
   // Save the whole session (document snapshot incl. CAD layer, program,
   // import session, view hints) to a local .dsource file. Routed through a
@@ -491,20 +415,6 @@ export function App() {
               Test-fit this plan
             </button>
           )}
-          {room && peers.length > 0 && (
-            <PresenceStrip
-              peers={peers.map((p) => ({ u: p.u, name: p.name, color: p.color }))}
-              self={{ name: selfRef.current.name, color: selfRef.current.color }}
-            />
-          )}
-          <button
-            className={room ? 'export-btn live' : 'export-btn'}
-            onClick={() => void shareSession()}
-            data-testid="share-session"
-            title={room ? 'Copy the live-session link' : 'Start a live session and copy the join link'}
-          >
-            {shareCopied ? 'Link copied' : room ? 'Live' : 'Share'}
-          </button>
           <button className="export-btn" onClick={onSave} data-testid="save-project" title="Save project (⌘S)">
             Save
           </button>

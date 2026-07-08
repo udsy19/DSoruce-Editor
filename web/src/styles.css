@@ -209,15 +209,6 @@ button {
   background: var(--surface-2);
   border-color: var(--faint);
 }
-/* Live-session state: green pulse dot before the label. */
-.export-btn.live::before {
-  content: '';
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #2fa36b;
-  box-shadow: 0 0 0 3px rgba(47, 163, 107, 0.18);
-}
 .export-menu {
   position: absolute;
   right: 0;
