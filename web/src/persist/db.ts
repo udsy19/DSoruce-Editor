@@ -1,7 +1,13 @@
 // Hand-rolled promisified IndexedDB wrapper — design: docs/design/plan-library.md §2.
-// DB "dsource" v1, two object stores: "plans" (keyPath "id") and "history"
-// (keyPath "at"). No dependencies; ~70 lines beats pulling in idb-keyval for
-// two stores (see the design's storage rationale).
+// DB "dsource" v2, three object stores: "plans" (keyPath "id"), "history"
+// (keyPath "at"), and "projects" (keyPath "id", first-class project records —
+// docs/design/workflow.md §2). No dependencies; ~70 lines beats pulling in
+// idb-keyval for three stores (see the design's storage rationale).
+//
+// The v1→v2 upgrade is ADDITIVE + forward-only: `onupgradeneeded` creates only
+// the missing stores, so existing `plans`/`history` records are untouched (an
+// older build hitting a v2 DB gets a VersionError — accepted for a local app,
+// workflow.md §7.5).
 //
 // Testability: when `indexedDB` is absent (Node unit tests), the four exported
 // functions fall back to in-memory Maps that mirror the object stores —
@@ -9,15 +15,17 @@
 // logic runs unmodified in Node. This was chosen over dependency injection
 // as the least invasive option: callers stay plain function calls.
 
-type StoreName = 'plans' | 'history'
+type StoreName = 'plans' | 'history' | 'projects'
 
 const DB_NAME = 'dsource'
-const DB_VERSION = 1
-const KEY_PATHS: Record<StoreName, string> = { plans: 'id', history: 'at' }
+const DB_VERSION = 2
+const KEY_PATHS: Record<StoreName, string> = { plans: 'id', history: 'at', projects: 'id' }
 
 /** In-memory fallback stores, active only where IndexedDB does not exist. */
 const memory: Record<StoreName, Map<IDBValidKey, unknown>> | null =
-  typeof indexedDB === 'undefined' ? { plans: new Map(), history: new Map() } : null
+  typeof indexedDB === 'undefined'
+    ? { plans: new Map(), history: new Map(), projects: new Map() }
+    : null
 
 let dbPromise: Promise<IDBDatabase> | null = null
 

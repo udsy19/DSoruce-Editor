@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useRef, useState } from 'react'
+import { forwardRef, useEffect, useImperativeHandle, useReducer, useRef, useState } from 'react'
 import {
   EditorCanvas,
   DocComponent,
@@ -88,7 +88,22 @@ const CAD_RAIL: { id: string; icon: string; label: string; hint?: string }[] = [
   { id: 'fillet', icon: 'fillet', label: 'Fillet ( [ / ] radius )' },
 ]
 
-export function App() {
+/**
+ * Imperative seam by which the AppShell/wizard steers the editor without
+ * owning its state (docs/design/workflow.md §1). Every method is a LIFT of an
+ * existing closure — no new editor logic. Later slices call these; S0 only
+ * needs the shell to mount EditorView and keep it alive.
+ */
+export interface EditorController {
+  importFile(f: File): Promise<void>
+  testFit(): void
+  runGenerate(p: Program, o?: { maxIter?: number; target?: number; keepConfirmed?: boolean }): GenResult | null
+  setMode(m: '2d' | '3d' | 'import'): void
+  ec(): EditorCanvas | null
+  drawingCanvas(): DrawingCanvas | null
+}
+
+export const EditorView = forwardRef<EditorController>(function EditorView(_props, ref) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const coordRef = useRef<HTMLSpanElement>(null)
   const scaleRef = useRef<HTMLSpanElement>(null)
@@ -405,6 +420,28 @@ export function App() {
     }
     setMode('2d')
   }
+
+  // Controller seam (workflow.md §1) — thin lifts of the closures above, so
+  // the shell/wizard can drive the editor while its internals stay untouched.
+  useImperativeHandle(
+    ref,
+    (): EditorController => ({
+      importFile: onImportFile,
+      testFit: testFitPlan,
+      runGenerate: (program, o) =>
+        ecRef.current
+          ? ecRef.current.autoGenerate(program, {
+              maxIter: o?.maxIter ?? 18,
+              target: o?.target ?? 82,
+              keepConfirmed: o?.keepConfirmed ?? false,
+            })
+          : null,
+      setMode,
+      ec: () => ecRef.current,
+      drawingCanvas: () => drawCanvasRef.current,
+    }),
+    [],
+  )
 
   return (
     <div className="app">
@@ -809,7 +846,7 @@ export function App() {
       )}
     </div>
   )
-}
+})
 
 /** Layers card — shown while a CAD drafting tool is active. The store is the
  *  source of truth; interactions repaint the canvas via store.onChange and

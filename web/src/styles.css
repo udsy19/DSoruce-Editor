@@ -1864,3 +1864,277 @@ kbd {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
+
+/* ============================================================================
+   Guided workflow shell — landing/library + create-project (workflow.md §1).
+   Full-screen views rendered by AppShell outside the editor's `.app` grid.
+   ========================================================================== */
+.studio {
+  min-height: 100%;
+  background: var(--app-bg);
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  padding: 0 clamp(20px, 6vw, 96px);
+}
+.studio-top {
+  height: var(--topbar);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 18px;
+}
+.studio-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.studio-wordmark {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  font-size: 14px;
+}
+.studio-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--hairline-strong);
+  background: var(--surface);
+  border-radius: var(--r-sm);
+  color: var(--text-2);
+  transform: rotate(90deg);
+}
+.studio-back:hover {
+  border-color: var(--hairline-focus);
+}
+.studio-start {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 16px;
+  border: none;
+  border-radius: var(--r-pill);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+  font-size: 13px;
+  box-shadow: var(--shadow-sm);
+}
+.studio-start:hover {
+  background: var(--accent-hover);
+}
+.studio-hero {
+  padding: clamp(36px, 8vw, 88px) 0 32px;
+  max-width: 760px;
+}
+.studio-headline {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(30px, 5vw, 52px);
+  line-height: 1.04;
+  letter-spacing: -0.01em;
+  margin: 0 0 18px;
+}
+.studio-sub {
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.55;
+  max-width: 560px;
+  margin: 0;
+}
+.studio-library {
+  border-top: 1px solid var(--hairline);
+  padding: 28px 0 64px;
+}
+.studio-library-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.studio-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+}
+.project-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  text-align: left;
+  padding: 18px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  transition: border-color 0.12s, box-shadow 0.12s, transform 0.12s;
+}
+.project-card:hover {
+  border-color: var(--hairline-focus);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+.project-card-logo {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--r-sm);
+  background: var(--accent-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.project-card-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.project-card-initial {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 20px;
+  color: var(--accent);
+}
+.project-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+}
+.project-card-name {
+  font-weight: 600;
+  font-size: 15px;
+}
+.project-card-prop {
+  color: var(--text-2);
+  font-size: 13px;
+}
+.project-card-addr {
+  color: var(--faint);
+  font-size: 12px;
+}
+.project-card-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--hairline);
+  font-size: 12px;
+  color: var(--muted);
+}
+.project-card-floor {
+  font-weight: 600;
+  color: var(--text-2);
+}
+.project-card-foot .muted {
+  margin-left: auto;
+}
+.project-card-del {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--r-xs);
+  color: var(--faint);
+}
+.project-card-del:hover {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.studio-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 56px 0;
+  text-align: center;
+}
+.studio-empty-lead {
+  color: var(--muted);
+  margin: 0;
+}
+
+/* --- create-project form --- */
+.create-wrap {
+  max-width: 520px;
+  width: 100%;
+  margin: 0 auto;
+  padding: clamp(28px, 6vw, 64px) 0 64px;
+}
+.create-head {
+  margin-bottom: 28px;
+}
+.create-title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 28px;
+  letter-spacing: -0.01em;
+  margin: 8px 0 10px;
+}
+.create-form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.create-field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.create-field .field-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--eyebrow);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.create-field .field-input {
+  width: 100%;
+  padding: 11px 13px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  font-size: 14px;
+  color: var(--text);
+}
+.create-field .field-input:focus {
+  outline: 2px solid var(--accent-ring);
+  outline-offset: 0;
+  border-color: var(--hairline-focus);
+}
+.create-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 96px;
+  border: 1px dashed var(--hairline-strong);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  cursor: pointer;
+  overflow: hidden;
+}
+.create-logo:hover {
+  border-color: var(--hairline-focus);
+}
+.create-logo-drop {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.create-logo-preview {
+  max-width: 90%;
+  max-height: 82px;
+  object-fit: contain;
+}
+.create-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 8px;
+}

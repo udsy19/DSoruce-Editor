@@ -9,7 +9,7 @@ import '@fontsource/schibsted-grotesk/500.css'
 import '@fontsource/schibsted-grotesk/700.css'
 
 import { createRoot } from 'react-dom/client'
-import { App } from './App'
+import { AppShell } from './shell/AppShell'
 import './styles.css'
 
-createRoot(document.getElementById('root')!).render(<App />)
+createRoot(document.getElementById('root')!).render(<AppShell />)
