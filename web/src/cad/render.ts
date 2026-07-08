@@ -4,7 +4,9 @@
 
 import {
   CAD_COLOR,
+  DEFAULT_LAYER,
   type CadEntity,
+  type HatchEnt,
   type RenderCtx,
   type SnapResult,
   type Vec2,
@@ -23,6 +25,7 @@ const WEIGHT: Record<string, number> = {
   door: 1.4,
   window: 1.4,
   column: 1.4,
+  hatch: 0.75,
 }
 
 const ARC_SEGMENTS = 64
@@ -147,6 +150,7 @@ export function renderEntities(
   g.lineJoin = 'round'
   g.lineCap = 'round'
   for (const e of entities) {
+    if (rc.hiddenLayers?.has(e.layer ?? DEFAULT_LAYER)) continue
     const selected = rc.selected.has(e.id)
     const color = selected ? rc.colors.accent : e.color || CAD_COLOR[e.kind] || rc.colors.ink
     const weight = (e.weight ?? WEIGHT[e.kind] ?? 1.4) + (selected ? 0.8 : 0)
@@ -204,7 +208,79 @@ function drawEntity(
     case 'column':
       drawColumn(g, e, rc, color)
       break
+    case 'hatch':
+      drawHatch(g, e, rc, color)
+      break
   }
+}
+
+/**
+ * Hatch: clip to the boundary polygon, then stroke 45° pattern lines across
+ * the screen bbox at `spacing` meters apart ('cross' adds the -45° family;
+ * 'solid' is a translucent fill instead). The thin boundary outline is always
+ * stroked. NOTE: hatch is intentionally NOT a snap source (see cad/snap.ts —
+ * its collectEntity switch simply has no 'hatch' case).
+ */
+function drawHatch(
+  g: CanvasRenderingContext2D,
+  e: HatchEnt,
+  rc: RenderCtx,
+  color: string,
+): void {
+  if (e.pts.length < 3) return
+  const screenPts = e.pts.map((p) => rc.toScreen(p))
+  const boundary = (): void => {
+    g.beginPath()
+    g.moveTo(screenPts[0].x, screenPts[0].y)
+    for (let i = 1; i < screenPts.length; i++) g.lineTo(screenPts[i].x, screenPts[i].y)
+    g.closePath()
+  }
+
+  if (e.pattern === 'solid') {
+    boundary()
+    const prev = g.fillStyle
+    g.fillStyle = withAlpha(color, 0.18)
+    g.fill()
+    g.fillStyle = prev
+  } else {
+    g.save()
+    boundary()
+    g.clip()
+    // screen bbox of the boundary
+    let minX = Infinity
+    let minY = Infinity
+    let maxX = -Infinity
+    let maxY = -Infinity
+    for (const p of screenPts) {
+      if (p.x < minX) minX = p.x
+      if (p.y < minY) minY = p.y
+      if (p.x > maxX) maxX = p.x
+      if (p.y > maxY) maxY = p.y
+    }
+    // A line at 45° (slope ±1) is y = ±x + c; perpendicular spacing s means
+    // consecutive c values differ by s·√2.
+    const stepC = Math.max(e.spacing, 0.01) * rc.pxPerM * Math.SQRT2
+    const family = (slope: 1 | -1): void => {
+      const cA = minY - slope * minX
+      const cB = minY - slope * maxX
+      const cC = maxY - slope * minX
+      const cD = maxY - slope * maxX
+      const c0 = Math.min(cA, cB, cC, cD)
+      const c1 = Math.max(cA, cB, cC, cD)
+      g.beginPath()
+      for (let c = c0 + stepC / 2; c < c1; c += stepC) {
+        g.moveTo(minX, slope * minX + c)
+        g.lineTo(maxX, slope * maxX + c)
+      }
+      g.stroke()
+    }
+    family(1)
+    if (e.pattern === 'cross') family(-1)
+    g.restore() // drops the clip; stroke state was saved with it, so it survives
+  }
+
+  boundary()
+  g.stroke()
 }
 
 /** world corners of a center/size/rotation rect */
@@ -627,6 +703,8 @@ export function entityGrips(e: CadEntity): Vec2[] {
     }
     case 'column':
       return [e.at]
+    case 'hatch':
+      return e.pts.slice()
   }
 }
 
@@ -691,5 +769,7 @@ export function entityBBox(e: CadEntity): [number, number, number, number] {
     }
     case 'column':
       return bboxOf(rectCorners(e.at.x, e.at.y, e.w, e.h, e.rotation))
+    case 'hatch':
+      return bboxOf(e.pts)
   }
 }

@@ -1,4 +1,4 @@
-// CAD geometry DRAW tools — line, polyline, rect, circle, arc, ellipse.
+// CAD geometry DRAW tools — line, polyline, rect, circle, arc, ellipse, hatch.
 //
 // Each factory in GEOM_TOOLS returns a FRESH CadTool implementing the contract in
 // model.ts. The host (EditorCanvas) is responsible for snapping: the `world` point
@@ -25,6 +25,7 @@ import type {
   CircleEnt,
   ArcEnt,
   EllipseEnt,
+  HatchEnt,
 } from './model'
 
 // ---- shared helpers -------------------------------------------------------
@@ -111,7 +112,8 @@ function lineTool(): CadTool {
       if (!start) {
         start = world
       } else {
-        const ent: Omit<LineEnt, 'id'> = { kind: 'line', a: start, b: world, layer: ctx.layer }
+        // No layer stamp here: store.add tags new entities with its activeLayer.
+        const ent: Omit<LineEnt, 'id'> = { kind: 'line', a: start, b: world }
         ctx.store.add(ent)
         start = world // continue: next segment starts at this end
       }
@@ -146,31 +148,35 @@ function lineTool(): CadTool {
   }
 }
 
-// ---- POLYLINE (multi-vertex; Enter/dbl-click commits, click-first closes) --
+// ---- multi-vertex click chain (shared by POLYLINE and HATCH) ---------------
+// Click adds a vertex; Enter/double-click commits; 'c'/'C' or clicking back on
+// the first vertex closes; Escape cancels.
 
-function polylineTool(): CadTool {
+interface ChainSpec {
+  id: string
+  /** vertices required before a commit takes effect */
+  minPts: number
+  /** ghost also draws the closing edge back to the first vertex */
+  closedPreview: boolean
+  /** build + add the entity; `closed` is true for close gestures ('c' / first-vertex click) */
+  commit(pts: Vec2[], closed: boolean, ctx: ToolCtx): void
+}
+
+function chainTool(spec: ChainSpec): CadTool {
   let pts: Vec2[] = []
   let cur: Vec2 | null = null
 
   function commit(ctx: ToolCtx, closed: boolean) {
-    if (pts.length >= 2) {
-      const ent: Omit<PolylineEnt, 'id'> = {
-        kind: 'polyline',
-        pts: pts.slice(),
-        closed,
-        layer: ctx.layer,
-      }
-      ctx.store.add(ent)
-    }
+    if (pts.length >= spec.minPts) spec.commit(pts.slice(), closed, ctx)
     pts = []
     cur = null
   }
 
   return {
-    id: 'polyline',
+    id: spec.id,
     onDown(world, _snap, ctx, ev) {
       cur = world
-      // Double-click commits the open polyline (first click already added the vertex).
+      // Double-click commits the chain (first click already added the vertex).
       if (ev && ev.detail >= 2) {
         commit(ctx, false)
         ctx.requestRender()
@@ -208,7 +214,8 @@ function polylineTool(): CadTool {
       if (pts.length === 0) return
       beginGhost(g)
       g.beginPath()
-      const chain = cur ? [...pts, cur] : pts
+      const chain = cur ? [...pts, cur] : pts.slice()
+      if (spec.closedPreview && chain.length > 2) chain.push(chain[0])
       ghostPath(g, ctx, chain)
       g.stroke()
       g.restore()
@@ -223,6 +230,34 @@ function polylineTool(): CadTool {
       cur = null
     },
   }
+}
+
+// ---- POLYLINE (multi-vertex; Enter/dbl-click commits open, close gestures close) --
+
+function polylineTool(): CadTool {
+  return chainTool({
+    id: 'polyline',
+    minPts: 2,
+    closedPreview: false,
+    commit(pts, closed, ctx) {
+      const ent: Omit<PolylineEnt, 'id'> = { kind: 'polyline', pts, closed }
+      ctx.store.add(ent)
+    },
+  })
+}
+
+// ---- HATCH (multi-vertex boundary; always commits closed, needs ≥3 pts) ----
+
+function hatchTool(): CadTool {
+  return chainTool({
+    id: 'hatch',
+    minPts: 3,
+    closedPreview: true,
+    commit(pts, _closed, ctx) {
+      const ent: Omit<HatchEnt, 'id'> = { kind: 'hatch', pts, pattern: 'diag', spacing: 0.25 }
+      ctx.store.add(ent)
+    },
+  })
 }
 
 // ---- RECT (two opposite corners) ------------------------------------------
@@ -245,7 +280,6 @@ function rectTool(): CadTool {
           w: Math.abs(world.x - c1.x),
           h: Math.abs(world.y - c1.y),
           rotation: 0,
-          layer: ctx.layer,
         }
         ctx.store.add(ent)
         this.cancel()
@@ -296,7 +330,7 @@ function circleTool(): CadTool {
       if (!c) {
         c = world
       } else {
-        const ent: Omit<CircleEnt, 'id'> = { kind: 'circle', c, r: dist(c, world), layer: ctx.layer }
+        const ent: Omit<CircleEnt, 'id'> = { kind: 'circle', c, r: dist(c, world) }
         ctx.store.add(ent)
         this.cancel()
       }
@@ -358,7 +392,6 @@ function arcTool(): CadTool {
             r: sol.r,
             start: sol.start,
             end: sol.end,
-            layer: ctx.layer,
           }
           ctx.store.add(ent)
         }
@@ -434,7 +467,7 @@ function ellipseTool(): CadTool {
         rx = Math.abs(world.x - c.x)
       } else {
         const ry = Math.abs(world.y - c.y)
-        const ent: Omit<EllipseEnt, 'id'> = { kind: 'ellipse', c, rx, ry, rotation: 0, layer: ctx.layer }
+        const ent: Omit<EllipseEnt, 'id'> = { kind: 'ellipse', c, rx, ry, rotation: 0 }
         ctx.store.add(ent)
         this.cancel()
       }
@@ -483,4 +516,5 @@ export const GEOM_TOOLS: Record<string, () => CadTool> = {
   circle: circleTool,
   arc: arcTool,
   ellipse: ellipseTool,
+  hatch: hatchTool,
 }

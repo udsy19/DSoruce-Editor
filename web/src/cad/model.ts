@@ -108,6 +108,14 @@ export interface ColumnEnt extends Base {
   shape: 'rect' | 'round'
   rotation: number
 }
+export interface HatchEnt extends Base {
+  kind: 'hatch'
+  /** closed boundary polygon (implicitly closed; ≥3 points) */
+  pts: Vec2[]
+  pattern: 'diag' | 'cross' | 'solid'
+  /** pattern line spacing, meters (default 0.25) */
+  spacing: number
+}
 
 export type CadEntity =
   | LineEnt
@@ -121,13 +129,30 @@ export type CadEntity =
   | DoorEnt
   | WindowEnt
   | ColumnEnt
+  | HatchEnt
 
 export type CadKind = CadEntity['kind']
+
+/** The implicit layer for entities that don't carry a `layer` field. */
+export const DEFAULT_LAYER = '0'
 
 /** Entity store with an undo stack. Implemented in cad/store.ts. */
 export interface CadStore {
   readonly entities: CadEntity[]
-  /** add (id assigned); pushes undo unless `batch` */
+  /**
+   * Layer new entities are stamped with when they don't carry one.
+   * Default "0". Mutate via setActiveLayer.
+   */
+  readonly activeLayer: string
+  setActiveLayer(name: string): void
+  /** distinct layer names: entities ∪ {"0", activeLayer} ("0" first, then sorted) */
+  layers(): string[]
+  /** session-only view state — never serialized into cad_json */
+  readonly hiddenLayers: Set<string>
+  /** flip a layer's visibility */
+  toggleLayer(name: string): void
+  isVisible(name: string): boolean
+  /** add (id assigned, `layer` stamped with activeLayer when absent); pushes undo unless `batch` */
   add(e: Omit<CadEntity, 'id'>, batch?: boolean): CadEntity
   update(id: number, patch: Partial<CadEntity>): void
   remove(ids: number | number[]): void
@@ -227,6 +252,8 @@ export interface RenderCtx {
   selected: Set<number>
   /** light-theme colors from EditorCanvas */
   colors: { wall: string; ink: string; accent: string; dim: string; faint: string }
+  /** layers to skip while rendering (wire to CadStore.hiddenLayers); absent = all visible */
+  hiddenLayers?: Set<string>
 }
 
 /** Category/kind → default CAD color (Rayon/Revit-like light linework). */
@@ -242,4 +269,5 @@ export const CAD_COLOR: Record<string, string> = {
   door: '#8a5a34',
   window: '#4a82c4',
   column: '#3a4048',
+  hatch: '#5a636e',
 }

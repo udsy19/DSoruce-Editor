@@ -1,7 +1,7 @@
 // CadStore implementation — an entity list with an id counter and an undo stack.
 // See cad/model.ts for the authoritative CadStore contract.
 
-import type { CadEntity, CadStore } from './model'
+import { DEFAULT_LAYER, type CadEntity, type CadStore } from './model'
 
 /** Max undo snapshots retained; oldest are dropped past this. */
 const UNDO_CAP = 100
@@ -10,14 +10,47 @@ export function createStore(): CadStore {
   const entities: CadEntity[] = []
   const undoStack: CadEntity[][] = []
   let nextId = 1
+  let activeLayer = DEFAULT_LAYER
+  // View-only state: lives outside the entity list on purpose, so it is never
+  // serialized into cad_json and never touched by undo.
+  const hiddenLayers = new Set<string>()
 
   const store: CadStore = {
     entities,
+    hiddenLayers,
     onChange: null,
+
+    get activeLayer(): string {
+      return activeLayer
+    },
+
+    setActiveLayer(name): void {
+      if (name === activeLayer) return
+      activeLayer = name
+      fire()
+    },
+
+    layers(): string[] {
+      const names = new Set<string>([DEFAULT_LAYER, activeLayer])
+      for (const e of entities) names.add(e.layer ?? DEFAULT_LAYER)
+      return [...names].sort((a, b) =>
+        a === DEFAULT_LAYER ? -1 : b === DEFAULT_LAYER ? 1 : a.localeCompare(b),
+      )
+    },
+
+    toggleLayer(name): void {
+      if (!hiddenLayers.delete(name)) hiddenLayers.add(name)
+      fire()
+    },
+
+    isVisible(name): boolean {
+      return !hiddenLayers.has(name)
+    },
 
     add(e, batch = false): CadEntity {
       if (!batch) pushSnapshot()
       const created = { ...e, id: nextId++ } as CadEntity
+      if (created.layer === undefined) created.layer = activeLayer
       entities.push(created)
       fire()
       return created
