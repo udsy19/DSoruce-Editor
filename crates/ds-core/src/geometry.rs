@@ -328,7 +328,19 @@ fn cell_inside(poly: &[Point], cx: f64, cy: f64, half: f64) -> bool {
 /// (classic histogram-stack algorithm, O(cols·rows)). Returns
 /// `(area_in_cells, c0, r0, c1, r1)` with **inclusive** cell indices, or an
 /// area of 0 when the raster is empty.
-fn max_true_rectangle(inside: &[bool], cols: usize, rows: usize) -> (usize, usize, usize, usize, usize) {
+/// Largest all-true rectangle with BOTH dimensions ≥ the given minimums (in
+/// cells). Constraining the search itself matters: the unconstrained maximum
+/// can be a long thin strip, and rejecting it after the fact would abandon
+/// perfectly valid fatter rectangles elsewhere in the raster (a real bug:
+/// a 3 m corridor strip's area beat the 6.5×8 m left wing, terminating the
+/// decomposition before the wing was found).
+fn max_true_rectangle(
+    inside: &[bool],
+    cols: usize,
+    rows: usize,
+    min_c: usize,
+    min_r: usize,
+) -> (usize, usize, usize, usize, usize) {
     let mut heights = vec![0usize; cols];
     let mut best = (0usize, 0usize, 0usize, 0usize, 0usize);
     for r in 0..rows {
@@ -346,10 +358,19 @@ fn max_true_rectangle(inside: &[bool], cols: usize, rows: usize) -> (usize, usiz
                     break;
                 }
                 stack.pop();
-                let area = ph * (c - s);
-                if area > best.0 {
-                    // cols [s, c-1], height ph, bottom row r → top row r+1-ph.
-                    best = (area, s, r + 1 - ph, c - 1, r);
+                // For a popped run of height ph spanning cols [s, c-1]: any
+                // sub-height ≥ min_r over the full span is also a candidate —
+                // taking the span at exactly min_r rows can beat a thin
+                // full-height strip. Evaluate both the full height and the
+                // clamped-to-minimum height (the extremes dominate: width is
+                // fixed, so area is linear in the chosen height).
+                let width = c - s;
+                if width >= min_c && ph >= min_r {
+                    let area = ph * width;
+                    if area > best.0 {
+                        // cols [s, c-1], height ph, bottom row r → top row r+1-ph.
+                        best = (area, s, r + 1 - ph, c - 1, r);
+                    }
                 }
                 start = s;
             }
@@ -395,9 +416,12 @@ pub fn decompose_plate(poly: &[Point], cell: f64, min_dim: f64, min_area: f64) -
         }
     }
 
+    // Constrain the search to rectangles that can actually host a work zone;
+    // the loop ends only when no qualifying rectangle remains anywhere.
+    let min_cells = ((min_dim / cell).ceil() as usize).max(1);
     let mut out = Vec::new();
     loop {
-        let (area_cells, c0, r0, c1, r1) = max_true_rectangle(&inside, cols, rows);
+        let (area_cells, c0, r0, c1, r1) = max_true_rectangle(&inside, cols, rows, min_cells, min_cells);
         if area_cells == 0 {
             break;
         }
@@ -407,8 +431,8 @@ pub fn decompose_plate(poly: &[Point], cell: f64, min_dim: f64, min_area: f64) -
             x1: minx + (c1 + 1) as f64 * cell,
             y1: miny + (r1 + 1) as f64 * cell,
         };
-        if rect.width() < min_dim || rect.height() < min_dim || rect.area() < min_area {
-            break;
+        if rect.area() < min_area {
+            break; // qualifying rects only shrink from here
         }
         for r in r0..=r1 {
             for c in c0..=c1 {

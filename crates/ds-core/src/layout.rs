@@ -271,10 +271,14 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
     let remaining_desks = program.desks.saturating_sub(frozen_desks);
 
     // Path selection: only a materially non-rectangular plate is decomposed.
+    // A region must survive its own corridor inset with room for at least one
+    // desk — 3 m slivers pass a fixed minimum but pack nothing, stealing desk
+    // allocation from real wings.
     let bbox_area = (max_x - min_x) * (max_y - min_y);
+    let min_dim = REGION_MIN_DIM.max(2.0 * corridor + program.desk_w.min(program.desk_h));
     let regions = match &plate {
         Some(poly) if geometry::polygon_area(poly) < 0.98 * bbox_area => {
-            geometry::decompose_plate(poly, REGION_CELL, REGION_MIN_DIM, REGION_MIN_AREA)
+            geometry::decompose_plate(poly, REGION_CELL, min_dim, REGION_MIN_AREA)
         }
         _ => Vec::new(),
     };
@@ -287,23 +291,59 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
         pack_region(
             doc, program, outer, remaining_meetings, remaining_desks,
             /*column_major=*/ false, /*region_no=*/ None, /*tile_zones=*/ true,
+            /*emit_zones=*/ true,
             plate.as_deref(), &mut obstacles, frozen_len, &mut mr_counter, &mut rng,
             corridor, clear,
         );
     } else {
         // --- Irregular plate: decompose → allocate → per-region packing -----
         let plans = allocate_regions(program, &regions, corridor, clear, remaining_meetings, remaining_desks);
+        let mut placed_desks = 0u32;
         for (i, &(region, m_target, d_target)) in plans.iter().enumerate() {
             let mut rng = region_rng(seed, i as u64);
             // Desk rows run along the region's long axis: a portrait region packs
             // column-major so its wing fills with natural vertical rows.
             let column_major = region.height() > region.width();
-            pack_region(
+            placed_desks += pack_region(
                 doc, program, region, m_target, d_target,
                 column_major, /*region_no=*/ Some((i + 1) as u32), /*tile_zones=*/ false,
+                /*emit_zones=*/ true,
                 plate.as_deref(), &mut obstacles, frozen_len, &mut mr_counter, &mut rng,
                 corridor, clear,
             );
+        }
+        // --- Top-up pass: reclaim the allocation lost to meetings/geometry ---
+        // A region's meeting room can eat its whole desk budget (or a diagonal
+        // edge rejects its slots); those desks were previously dropped silently.
+        // Retry the shortfall in every region, largest first — every desk placed
+        // so far sits in `obstacles`, and grid slots that coincide with occupied
+        // pitches are rejected by the overlap check, so only genuinely free
+        // slots fill. Zones are already emitted; this pass only places.
+        let mut shortfall = remaining_desks.saturating_sub(placed_desks);
+        if shortfall > 0 {
+            // Smallest wings first: the proportional allocation already loaded
+            // the big regions, so the shortfall spreads the field outward.
+            for (i, &(region, _m, _d)) in plans.iter().enumerate().rev() {
+                if shortfall == 0 {
+                    break;
+                }
+                // SAME rng stream as the first pass → same grid offset, so
+                // top-up slots either coincide with occupied pitches (rejected)
+                // or fill genuinely free ones in perfect row alignment. A fresh
+                // offset would interleave desks between existing rows and
+                // pinch the aisles the grid-level jitter fix just guaranteed.
+                let mut rng = region_rng(seed, i as u64);
+                let column_major = region.height() > region.width();
+                let all_frozen = obstacles.len(); // everything placed so far blocks
+                let got = pack_region(
+                    doc, program, region, 0, shortfall,
+                    column_major, /*region_no=*/ Some((i + 1) as u32), /*tile_zones=*/ false,
+                    /*emit_zones=*/ false,
+                    plate.as_deref(), &mut obstacles, all_frozen, &mut mr_counter, &mut rng,
+                    corridor, clear,
+                );
+                shortfall = shortfall.saturating_sub(got);
+            }
         }
     }
 
@@ -432,6 +472,9 @@ fn pack_region(
     column_major: bool,
     region_no: Option<u32>,
     tile_zones: bool,
+    // `false` on the top-up pass: this region's ring/Workspace zones were
+    // already emitted by the first pass — only place components.
+    emit_zones: bool,
     plate: Option<&[Point]>,
     obstacles: &mut Vec<(f64, f64, f64, f64)>,
     frozen_len: usize,
@@ -453,19 +496,21 @@ fn pack_region(
     // --- Zone tiling, part 1: perimeter Circulation ring ------------------
     // A rectangular ring: the region bbox minus the work-zone hole. Adjacent
     // regions' rings overlap along shared edges → the internal corridor network.
-    push_zone(
-        doc,
-        ZoneType::Circulation,
-        ZoneShape::RectRing {
-            x: (outer.x0 + outer.x1) / 2.0,
-            y: (outer.y0 + outer.y1) / 2.0,
-            w: outer.width(),
-            h: outer.height(),
-            in_w: x1 - x0,
-            in_h: y1 - y0,
-        },
-        "Circulation",
-    );
+    if emit_zones {
+        push_zone(
+            doc,
+            ZoneType::Circulation,
+            ZoneShape::RectRing {
+                x: (outer.x0 + outer.x1) / 2.0,
+                y: (outer.y0 + outer.y1) / 2.0,
+                w: outer.width(),
+                h: outer.height(),
+                in_w: x1 - x0,
+                in_h: y1 - y0,
+            },
+            "Circulation",
+        );
+    }
 
     // --- 1. Meeting rooms: a column down the right edge of the work zone ----
     // A side column keeps the desk field contiguous. In `tile_zones` mode we only
@@ -529,17 +574,19 @@ fn pack_region(
     // per-region path lays a single full-width Workspace (meetings sit on top of
     // it as their own zones — desks pack around their footprints).
     let ws_x1 = if tile_zones && claimed { col_x0 } else { x1 };
-    push_zone(
-        doc,
-        ZoneType::Workspace,
-        ZoneShape::Rect {
-            x: (x0 + ws_x1) / 2.0,
-            y: (y0 + y1) / 2.0,
-            w: ws_x1 - x0,
-            h: y1 - y0,
-        },
-        &ws_label,
-    );
+    if emit_zones {
+        push_zone(
+            doc,
+            ZoneType::Workspace,
+            ZoneShape::Rect {
+                x: (x0 + ws_x1) / 2.0,
+                y: (y0 + y1) / 2.0,
+                w: ws_x1 - x0,
+                h: y1 - y0,
+            },
+            &ws_label,
+        );
+    }
     // Fill the meeting column's leftover bands with `Core` zones so the column
     // tiles exactly (tile mode only). Slivers under ~1 m² of plate are skipped.
     if tile_zones && claimed {
@@ -593,13 +640,37 @@ fn pack_region(
             break 'desks;
         }
         let cluster_cols = program.cluster_cols.max(1);
+        // GRID-level jitter: one offset for the whole desk field. Per-desk
+        // jitter let adjacent desks drift toward each other, eroding the
+        // guaranteed aisle from `clear` down to ~0.5·clear (user-visible as
+        // "min corridor 0.30–0.60 m" warnings). A shared offset keeps seeds
+        // producing distinct layouts while every aisle stays exactly `clear`.
         let jitter = clear * 0.25;
+        let jx = rng.signed() * jitter;
+        let jy = rng.signed() * jitter;
 
         // Row-major (rows outer) for landscape/rect regions — identical to the
         // historical order; column-major (cols outer) for portrait regions so
         // desk rows run down the long axis. The cluster aisle follows the inner
         // axis in each case.
+        //
+        // Two grid PHASES: the base grid, then (only if the target is unmet) a
+        // half-pitch-shifted grid that catches slots the base phase lost to a
+        // meeting room's clearance shadow — the failure mode of tight wings,
+        // where every base row lands 0.3–0.5 m too close to the room. Desks
+        // from an earlier phase fall before `grid_start`, so the full-clearance
+        // regime keeps phase-2 desks a true aisle away from phase-1 rows.
         let (outer_n, inner_n) = if column_major { (cols, rows) } else { (rows, cols) };
+        'phases: for phase in 0..2u32 {
+        if desks_here >= desk_target {
+            break 'phases;
+        }
+        let (px, py) = if phase == 0 {
+            (0.0, 0.0)
+        } else {
+            (pitch_x * 0.5, pitch_y * 0.5)
+        };
+        let grid_start = obstacles.len();
         'grid: for o in 0..outer_n {
             for i in 0..inner_n {
                 if desks_here >= desk_target {
@@ -608,33 +679,52 @@ fn pack_region(
                 let (c, r) = if column_major { (o, i) } else { (i, o) };
                 let (cx, cy, past_edge) = if column_major {
                     let aisle = ((r as u32) / cluster_cols) as f64 * clear;
-                    let cy = dz_y0 + program.desk_h / 2.0 + (r as f64) * pitch_y + aisle;
-                    (dz_x0 + program.desk_w / 2.0 + (c as f64) * pitch_x, cy, cy + program.desk_h / 2.0 > dz_y1)
+                    let cy = dz_y0 + py + program.desk_h / 2.0 + (r as f64) * pitch_y + aisle;
+                    (dz_x0 + px + program.desk_w / 2.0 + (c as f64) * pitch_x, cy, cy + program.desk_h / 2.0 > dz_y1)
                 } else {
                     let aisle = ((c as u32) / cluster_cols) as f64 * clear;
-                    let cx = dz_x0 + program.desk_w / 2.0 + (c as f64) * pitch_x + aisle;
-                    (cx, dz_y0 + program.desk_h / 2.0 + (r as f64) * pitch_y, cx + program.desk_w / 2.0 > dz_x1)
+                    let cx = dz_x0 + px + program.desk_w / 2.0 + (c as f64) * pitch_x + aisle;
+                    (cx, dz_y0 + py + program.desk_h / 2.0 + (r as f64) * pitch_y, cx + program.desk_w / 2.0 > dz_x1)
                 };
                 // stop if the aisle pushed this desk past the field edge
                 if past_edge {
                     continue;
                 }
-                // Bounded jitter, then clamp so the footprint can never leave the
-                // work zone (and thus never the perimeter corridor).
-                let jx = rng.signed() * jitter;
-                let jy = rng.signed() * jitter;
+                // Apply the shared grid offset, clamped so the footprint can
+                // never leave the work zone (and thus never the corridor).
                 let fx = (cx + jx).clamp(dz_x0 + program.desk_w / 2.0, dz_x1 - program.desk_w / 2.0);
                 let fy = (cy + jy).clamp(dz_y0 + program.desk_h / 2.0, dz_y1 - program.desk_h / 2.0);
-                if !slot_fits_plate(plate, fx, fy, program.desk_w, program.desk_h, corridor)
-                    || footprint_overlaps(obstacles, fx, fy, program.desk_w, program.desk_h, clear * 0.5)
-                {
-                    continue;
-                }
+                // Two clearance regimes: same-grid desks are pitched exactly
+                // `clear` apart by construction (half-pad only guards fp noise),
+                // but meetings/frozen/earlier-pass footprints need the FULL
+                // clearance or people can't pass between a desk and a room.
+                let ok = |px: f64, py: f64| {
+                    slot_fits_plate(plate, px, py, program.desk_w, program.desk_h, corridor)
+                        && !footprint_overlaps(
+                            &obstacles[..grid_start],
+                            px, py, program.desk_w, program.desk_h, clear - 1e-6,
+                        )
+                        && !footprint_overlaps(
+                            &obstacles[grid_start..],
+                            px, py, program.desk_w, program.desk_h, clear * 0.5,
+                        )
+                };
+                // Knife-edge wings: a slot exactly at the plate margin dies to
+                // ANY jitter. Fall back to the pure grid position before
+                // giving the slot up — tight wings fill, roomy fields jitter.
+                let (fx, fy) = if ok(fx, fy) {
+                    (fx, fy)
+                } else {
+                    let gx = cx.clamp(dz_x0 + program.desk_w / 2.0, dz_x1 - program.desk_w / 2.0);
+                    let gy = cy.clamp(dz_y0 + program.desk_h / 2.0, dz_y1 - program.desk_h / 2.0);
+                    if ok(gx, gy) { (gx, gy) } else { continue; }
+                };
                 push_component(doc, "Desk", fx, fy, program.desk_w, program.desk_h);
                 obstacles.push((fx, fy, program.desk_w, program.desk_h));
                 desks_here += 1;
             }
         }
+        } // 'phases
     }
 
     desks_here
@@ -1075,4 +1165,163 @@ mod tests {
         let desks = doc.components.iter().filter(|c| c.category == "Desk").count();
         assert!(desks <= program.desks as usize, "over-placed past target");
     }
+
+    // ---- Irregular-plate rigor (region pipeline + the user's real building) --
+
+    const REAL_PLATE: [(f64, f64); 43] = [
+        (7.75, 1.0), (15.25, 1.5), (15.25, 2.25), (14.25, 2.5),
+        (14.5, 4.0), (18.5, 4.0), (18.75, 1.0), (24.75, 1.75),
+        (26.0, 2.0), (26.25, 2.5), (27.5, 2.5), (27.75, 3.0),
+        (31.75, 3.75), (33.25, 4.75), (34.5, 4.75), (34.75, 5.5),
+        (37.0, 6.0), (37.25, 6.75), (38.5, 6.75), (38.5, 16.75),
+        (24.0, 17.0), (24.0, 21.0), (27.25, 21.25), (27.25, 39.0),
+        (28.75, 39.25), (30.5, 38.5), (30.75, 39.75), (18.5, 42.75),
+        (12.75, 43.25), (10.75, 42.75), (10.75, 12.25), (11.5, 12.0),
+        (11.5, 10.5), (10.25, 10.0), (11.5, 9.75), (11.5, 1.75),
+        (7.5, 1.75), (7.5, 10.0), (1.0, 10.25), (1.0, 1.5),
+        (1.5, 2.0), (4.0, 2.0), (4.25, 1.25),
+    ];
+
+    fn real_plate_doc() -> Document {
+        room_from_corners(&REAL_PLATE)
+    }
+
+    fn poly_of(doc: &Document) -> Vec<Point> {
+        let segs: Vec<(Point, Point)> = doc.walls.iter().map(|w| (w.a, w.b)).collect();
+        geometry::trace_floor_polygon(&segs, geometry::LOOP_SNAP_TOL).expect("plate loop")
+    }
+
+    /// All 9 sample points (corners, edge midpoints, center) inside the plate.
+    fn footprint_in_plate(c: &crate::model::Component, poly: &[Point]) -> bool {
+        let xs = [c.x - c.w / 2.0, c.x, c.x + c.w / 2.0];
+        let ys = [c.y - c.h / 2.0, c.y, c.y + c.h / 2.0];
+        xs.iter().all(|&px| ys.iter().all(|&py| geometry::point_in_polygon(px, py, poly)))
+    }
+
+    fn footprints_overlap(a: &crate::model::Component, b: &crate::model::Component) -> bool {
+        (a.x - b.x).abs() < (a.w + b.w) / 2.0 - 1e-6
+            && (a.y - b.y).abs() < (a.h + b.h) / 2.0 - 1e-6
+    }
+
+    fn assert_no_overlaps(doc: &Document, ctx: &str) {
+        for i in 0..doc.components.len() {
+            for j in (i + 1)..doc.components.len() {
+                assert!(
+                    !footprints_overlap(&doc.components[i], &doc.components[j]),
+                    "{ctx}: {} overlaps {}",
+                    doc.components[i].label,
+                    doc.components[j].label
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn l_plate_fills_both_wings() {
+        let mut program = Program::default();
+        program.desks = 30;
+        program.meeting_rooms = 2;
+        program.meeting_w = 3.0; // the app's DEFAULT_PROGRAM footprint
+        program.meeting_h = 3.0;
+        let mut doc = l_room();
+        generate(&mut doc, &program, 3, false);
+        let poly = poly_of(&doc);
+        let desks: Vec<_> = doc.components.iter().filter(|c| c.category == "Desk").collect();
+        assert!(desks.len() >= 21, "placed only {} of 30 desks", desks.len());
+        // The L = a 20x8 bottom band + a 12x6 upper-left wing. BOTH must fill.
+        let in_band = desks.iter().filter(|c| c.y < 8.0).count();
+        let in_wing = desks.iter().filter(|c| c.y > 8.0 && c.x < 12.0).count();
+        assert!(in_band >= 5, "bottom band has only {in_band} desks");
+        assert!(in_wing >= 5, "upper-left wing has only {in_wing} desks");
+        for c in &doc.components {
+            assert!(footprint_in_plate(c, &poly), "{} escapes the plate", c.label);
+        }
+        assert_no_overlaps(&doc, "l_plate");
+    }
+
+    #[test]
+    fn l_plate_circulation_quality() {
+        // Aisle semantics: desk rows are pitched at desk_clearance_m by design,
+        // so the narrowest measured passage is an access AISLE (>= clearance);
+        // egress corridors (>= target) come from the per-region rings. The
+        // grid-level jitter fix guarantees aisles never erode below clearance.
+        let mut program = Program::default();
+        program.desks = 30;
+        program.meeting_rooms = 2;
+        program.meeting_w = 3.0;
+        program.meeting_h = 3.0;
+        let mut doc = l_room();
+        generate(&mut doc, &program, 3, false);
+        let score = circulation::evaluate(&doc, &CirculationConfig::default());
+        assert!(
+            score.min_corridor_width >= 0.95 * program.desk_clearance_m,
+            "narrowest aisle {:.2} m eroded below the {:.2} m clearance",
+            score.min_corridor_width,
+            program.desk_clearance_m
+        );
+        assert!(score.score >= 55.0, "circulation score {:.1} < 55", score.score);
+    }
+
+    #[test]
+    fn real_building_plate_spreads_the_program() {
+        // The exact plate the user's DWG traces to: 843 m2, multiple wings,
+        // diagonal glazing edges - the case the old bbox packer failed on.
+        let mut program = Program::default();
+        program.desks = 60;
+        program.meeting_rooms = 4;
+        program.meeting_w = 3.0;
+        program.meeting_h = 3.0;
+        for seed in 1..=3u64 {
+            let mut doc = real_plate_doc();
+            let t0 = std::time::Instant::now();
+            generate(&mut doc, &program, seed, false);
+            let ms = t0.elapsed().as_millis();
+            assert!(ms < 150, "seed {seed}: generate took {ms} ms (debug budget 150)");
+
+            let poly = poly_of(&doc);
+            let desks: Vec<_> = doc.components.iter().filter(|c| c.category == "Desk").collect();
+            let meetings = doc.components.iter().filter(|c| c.category == "MeetingRoom").count();
+            assert!(desks.len() >= 45, "seed {seed}: placed {} of 60 desks", desks.len());
+            assert!(meetings >= 3, "seed {seed}: only {meetings} of 4 meeting rooms");
+            for c in &doc.components {
+                assert!(footprint_in_plate(c, &poly), "seed {seed}: {} escapes", c.label);
+            }
+            assert_no_overlaps(&doc, "real plate");
+
+            // Spread: the desk field must span the building, not clump in one
+            // wing - its bbox covers >=60% of the plate bbox on BOTH axes.
+            let (px0, py0, px1, py1) = poly.iter().fold(
+                (f64::MAX, f64::MAX, f64::MIN, f64::MIN),
+                |(a, b, c2, d), p| (a.min(p.x), b.min(p.y), c2.max(p.x), d.max(p.y)),
+            );
+            let (dx0, dy0, dx1, dy1) = desks.iter().fold(
+                (f64::MAX, f64::MAX, f64::MIN, f64::MIN),
+                |(a, b, c2, d), k| (a.min(k.x), b.min(k.y), c2.max(k.x), d.max(k.y)),
+            );
+            assert!(
+                (dx1 - dx0) >= 0.6 * (px1 - px0),
+                "seed {seed}: desk spread x {:.1} of {:.1}",
+                dx1 - dx0,
+                px1 - px0
+            );
+            assert!(
+                (dy1 - dy0) >= 0.6 * (py1 - py0),
+                "seed {seed}: desk spread y {:.1} of {:.1}",
+                dy1 - dy0,
+                py1 - py0
+            );
+
+            // Deterministic: same seed twice -> identical layout.
+            let mut again = real_plate_doc();
+            generate(&mut again, &program, seed, false);
+            assert_eq!(doc.components.len(), again.components.len());
+            for (a, b) in doc.components.iter().zip(again.components.iter()) {
+                assert_eq!(
+                    (a.category.as_str(), a.x.to_bits(), a.y.to_bits()),
+                    (b.category.as_str(), b.x.to_bits(), b.y.to_bits())
+                );
+            }
+        }
+    }
+
 }
