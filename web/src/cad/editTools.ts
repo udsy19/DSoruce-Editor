@@ -44,6 +44,11 @@ import type {
   WindowEnt,
   ColumnEnt,
 } from './model'
+// Grip POSITIONS come from render.ts (what the user sees + clicks); reuse them so
+// grip hit-testing matches the drawn handles exactly.
+import { entityGrips } from './render'
+// Intersection primitives for trim/extend/fillet (segment/circle math).
+import { segSegIntersect, segCircleIntersect } from './snap'
 
 // ---------------------------------------------------------------------------
 // Shared selection state (crosses tool boundaries; the contract stays untouched).
@@ -52,6 +57,7 @@ export const selection = { ids: new Set<number>() }
 
 const ACCENT = '#E8A13C'
 const SELECT_TOL_PX = 6
+const GRIP_TOL_PX = 6
 const BOX_THRESH_PX = 4
 const GHOST_DASH = [5, 4]
 
@@ -119,6 +125,28 @@ function lineLineIntersect(p1: Vec2, d1: Vec2, p2: Vec2, d2: Vec2): Vec2 | null 
 }
 
 const cloneEnt = <T extends CadEntity>(e: T): T => JSON.parse(JSON.stringify(e))
+
+const clamp = (x: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, x))
+/** normalize an angle into [0, 2π). */
+const norm2pi = (a: number): number => ((a % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)
+/** unit vector (0,0 if degenerate). */
+function unit(a: Vec2): Vec2 {
+  const l = len(a)
+  return l < 1e-12 ? v(0, 0) : v(a.x / l, a.y / l)
+}
+/** intersection points of two circles; 0..2 points (empty if disjoint/nested/coincident). */
+function circleCircleIntersect(c0: Vec2, r0: number, c1: Vec2, r1: number): Vec2[] {
+  const d = dist(c0, c1)
+  if (d < 1e-9 || d > r0 + r1 + 1e-9 || d < Math.abs(r0 - r1) - 1e-9) return []
+  const a = (r0 * r0 - r1 * r1 + d * d) / (2 * d)
+  const h2 = r0 * r0 - a * a
+  const h = h2 <= 0 ? 0 : Math.sqrt(h2)
+  const mid = v(c0.x + (a * (c1.x - c0.x)) / d, c0.y + (a * (c1.y - c0.y)) / d)
+  const ox = (h * (c1.y - c0.y)) / d
+  const oy = (h * (c1.x - c0.x)) / d
+  if (h < 1e-9) return [mid]
+  return [v(mid.x + ox, mid.y - oy), v(mid.x - ox, mid.y + oy)]
+}
 
 /** is world angle inside the CCW arc [start,end]? */
 function angleInArc(ang: number, start: number, end: number): boolean {
@@ -424,51 +452,18 @@ function offsetPolyline(e: PolylineEnt, distM: number, side: Vec2): PolylineEnt 
 }
 
 // ---------------------------------------------------------------------------
-// entityGrips / applyGrip — control-point handles.
+// applyGrip — move one control point. Grip POSITIONS (and their per-kind order)
+// come from render.ts `entityGrips` — that is what the user sees and clicks, so
+// this must interpret `gripIndex` in EXACTLY that order:
 //   line       [a, b]
 //   polyline   [...vertices]
-//   rect       [c0,c1,c2,c3] corners (resize; opposite corner pinned)
-//   circle     [E, N, W, S] radius handles
-//   arc        [startPt, endPt] endpoint drag (angle + radius follow cursor)
-//   ellipse    [rxHandle, ryHandle] axis handles
-//   dimension  [a, b] measured points
-//   text/door/window/column  [at] anchor
+//   rect       [c0, c1, c2, c3, center]  corners reshape (opposite corner pinned); center moves
+//   circle     [center, radius]          center moves; radius handle sets r
+//   arc        [center, startPt, endPt]  center moves; endpoints re-aim angle + radius
+//   ellipse    [center, rxHandle, ryHandle]
+//   dimension  [a, b, offsetHandle]
+//   text/door/window/column  [at]        position only (window's width grips are not draggable)
 // ---------------------------------------------------------------------------
-export function entityGrips(e: CadEntity): Vec2[] {
-  switch (e.kind) {
-    case 'line':
-      return [e.a, e.b]
-    case 'polyline':
-      return e.pts.map((p) => v(p.x, p.y))
-    case 'rect':
-      return rectCorners(e)
-    case 'circle':
-      return [
-        v(e.c.x + e.r, e.c.y),
-        v(e.c.x, e.c.y + e.r),
-        v(e.c.x - e.r, e.c.y),
-        v(e.c.x, e.c.y - e.r),
-      ]
-    case 'arc':
-      return [
-        v(e.c.x + e.r * Math.cos(e.start), e.c.y + e.r * Math.sin(e.start)),
-        v(e.c.x + e.r * Math.cos(e.end), e.c.y + e.r * Math.sin(e.end)),
-      ]
-    case 'ellipse': {
-      const u = v(Math.cos(e.rotation), Math.sin(e.rotation))
-      const w = v(-Math.sin(e.rotation), Math.cos(e.rotation))
-      return [add(e.c, mul(u, e.rx)), add(e.c, mul(w, e.ry))]
-    }
-    case 'dimension':
-      return [e.a, e.b]
-    case 'text':
-    case 'door':
-    case 'window':
-    case 'column':
-      return [e.at]
-  }
-}
-
 function rectCorners(e: RectEnt): Vec2[] {
   const c = v(e.x, e.y)
   const hw = e.w / 2
@@ -479,16 +474,18 @@ function rectCorners(e: RectEnt): Vec2[] {
 }
 
 export function applyGrip(e: CadEntity, gripIndex: number, world: Vec2): CadEntity {
+  const w0 = v(world.x, world.y)
   switch (e.kind) {
     case 'line':
-      return gripIndex === 0 ? { ...e, a: v(world.x, world.y) } : { ...e, b: v(world.x, world.y) }
+      return gripIndex === 0 ? { ...e, a: w0 } : { ...e, b: w0 }
     case 'polyline': {
       const pts = e.pts.map((p) => v(p.x, p.y))
-      if (gripIndex >= 0 && gripIndex < pts.length) pts[gripIndex] = v(world.x, world.y)
+      if (gripIndex >= 0 && gripIndex < pts.length) pts[gripIndex] = w0
       return { ...e, pts }
     }
     case 'rect': {
-      // pin the opposite corner; new box spans it → cursor in the rect's rotated frame
+      // grip 4 = center → move; grips 0..3 = corners → reshape (opposite corner pinned)
+      if (gripIndex === 4) return { ...e, x: world.x, y: world.y }
       const corners = rectCorners(e)
       const opp = corners[(gripIndex + 2) % 4]
       const c = mul(add(opp, world), 0.5) // center = midpoint of the two opposite corners
@@ -498,28 +495,44 @@ export function applyGrip(e: CadEntity, gripIndex: number, world: Vec2): CadEnti
       return { ...e, x: c.x, y: c.y, w: Math.abs(dot(d, u)), h: Math.abs(dot(d, w)) }
     }
     case 'circle':
-      return { ...e, r: Math.max(1e-4, dist(world, e.c)) }
+      // grip 0 = center (move); grip 1 = radius handle
+      return gripIndex === 0 ? { ...e, c: w0 } : { ...e, r: Math.max(1e-4, dist(world, e.c)) }
     case 'arc': {
+      // grip 0 = center (move whole arc); grips 1/2 = start/end endpoints (angle + radius follow)
+      if (gripIndex === 0) return { ...e, c: w0 }
       const r = Math.max(1e-4, dist(world, e.c))
       const ang = lineAngle(e.c, world)
-      return gripIndex === 0 ? { ...e, r, start: ang } : { ...e, r, end: ang }
+      return gripIndex === 1 ? { ...e, r, start: ang } : { ...e, r, end: ang }
     }
     case 'ellipse': {
+      // grip 0 = center (move); grip 1 = rx handle; grip 2 = ry handle
+      if (gripIndex === 0) return { ...e, c: w0 }
       const u = v(Math.cos(e.rotation), Math.sin(e.rotation))
       const w = v(-Math.sin(e.rotation), Math.cos(e.rotation))
       const d = sub(world, e.c)
-      return gripIndex === 0
+      return gripIndex === 1
         ? { ...e, rx: Math.max(1e-4, Math.abs(dot(d, u))) }
         : { ...e, ry: Math.max(1e-4, Math.abs(dot(d, w))) }
     }
-    case 'dimension':
-      return gripIndex === 0 ? { ...e, a: v(world.x, world.y) } : { ...e, b: v(world.x, world.y) }
+    case 'dimension': {
+      // grips 0/1 = measured points a/b; grip 2 = offset handle
+      if (gripIndex === 0) return { ...e, a: w0 }
+      if (gripIndex === 1) return { ...e, b: w0 }
+      const n = leftNormal(e.a, e.b)
+      const m = mul(add(e.a, e.b), 0.5)
+      return { ...e, offset: dot(sub(world, m), n) }
+    }
     case 'text':
     case 'door':
     case 'window':
     case 'column':
-      return { ...e, at: v(world.x, world.y) }
+      return { ...e, at: w0 }
   }
+}
+
+/** window shows width-end grips (render), but only its position grip (0) is draggable. */
+function gripDraggable(e: CadEntity, gripIndex: number): boolean {
+  return !(e.kind === 'window' && gripIndex !== 0)
 }
 
 // ---------------------------------------------------------------------------
@@ -743,17 +756,50 @@ function makeSelect(): CadTool {
   let cur: Vec2 | null = null
   let boxing = false
   let shift = false
+  // Active grip drag: reshaping one control point of an already-selected entity.
+  // `orig` is the pre-drag entity (a stable anchor for each applyGrip); `store`
+  // lets cancel()/undo restore it (controller routes Escape → cancel()).
+  let gripDrag: { id: number; index: number; orig: CadEntity; store: CadStore } | null = null
 
   const reset = () => {
     down = null
     downScreen = null
     cur = null
     boxing = false
+    gripDrag = null
+  }
+
+  /** If the cursor is on a grip of a selected entity, return which one. */
+  const pickGrip = (ctx: ToolCtx, world: Vec2): { id: number; index: number; orig: CadEntity } | null => {
+    if (selection.ids.size === 0) return null
+    const sPtr = ctx.toScreen(world)
+    for (const id of selection.ids) {
+      const e = ctx.store.get(id)
+      if (!e) continue
+      const grips = entityGrips(e)
+      for (let i = 0; i < grips.length; i++) {
+        if (!gripDraggable(e, i)) continue
+        const sp = ctx.toScreen(grips[i])
+        if (Math.hypot(sp.x - sPtr.x, sp.y - sPtr.y) <= GRIP_TOL_PX) {
+          return { id, index: i, orig: cloneEnt(e) }
+        }
+      }
+    }
+    return null
   }
 
   return {
     id: 'select',
     onDown(world, _snap, ctx, ev) {
+      // Grip drag takes precedence over a new marquee — but only on a selected entity.
+      const hit = pickGrip(ctx, world)
+      if (hit) {
+        reset()
+        gripDrag = { ...hit, store: ctx.store }
+        ctx.store.snapshot() // one undo step for the whole drag
+        ctx.requestRender()
+        return
+      }
       down = v(world.x, world.y)
       cur = v(world.x, world.y)
       downScreen = ctx.toScreen(world)
@@ -761,6 +807,12 @@ function makeSelect(): CadTool {
       shift = ev.shiftKey
     },
     onMove(world, _snap, ctx) {
+      if (gripDrag) {
+        // world is already snapped by the controller; apply from the pre-drag anchor.
+        ctx.store.update(gripDrag.id, applyGrip(gripDrag.orig, gripDrag.index, world))
+        ctx.requestRender()
+        return
+      }
       if (!down || !downScreen) return
       cur = v(world.x, world.y)
       const s = ctx.toScreen(world)
@@ -768,6 +820,11 @@ function makeSelect(): CadTool {
       ctx.requestRender()
     },
     onUp(world, _snap, ctx) {
+      if (gripDrag) {
+        gripDrag = null
+        ctx.requestRender()
+        return
+      }
       if (!down) return
       if (boxing && cur) {
         const box: Bounds = {
@@ -828,10 +885,13 @@ function makeSelect(): CadTool {
       g.restore()
     },
     hint() {
+      if (gripDrag) return 'grip: drag to reshape'
       if (boxing && down && cur) return cur.x < down.x ? 'crossing select' : 'window select'
       return selection.ids.size ? `${selection.ids.size} selected` : 'select'
     },
     cancel() {
+      // Escape mid grip-drag → roll back the one snapshot taken at drag start.
+      if (gripDrag) gripDrag.store.undo()
       reset()
     },
   }
@@ -1075,6 +1135,387 @@ function makeScale(): CadTool {
 }
 
 // ===========================================================================
+// trim / extend / fillet — geometry helpers
+//
+// Cutting/boundary edges are ALL lines, polyline segments, circles and arcs
+// (AutoCAD's default "select-all" behavior; no pre-selection in v1). We reuse
+// snap.ts's segSegIntersect / segCircleIntersect and add a local circle-circle
+// case so arcs can cut/bound each other.
+// ===========================================================================
+type Seg = { a: Vec2; b: Vec2 }
+type Circ = { c: Vec2; r: number; arc?: { s: number; e: number } }
+
+/** Collect every cutting/boundary edge (excluding the entity being edited). */
+function cuttingGeom(entities: CadEntity[], excludeId: number): { segs: Seg[]; circles: Circ[] } {
+  const segs: Seg[] = []
+  const circles: Circ[] = []
+  for (const e of entities) {
+    if (e.id === excludeId) continue
+    switch (e.kind) {
+      case 'line':
+        segs.push({ a: e.a, b: e.b })
+        break
+      case 'polyline': {
+        const n = e.pts.length
+        for (let i = 0; i + 1 < n; i++) segs.push({ a: e.pts[i], b: e.pts[i + 1] })
+        if (e.closed && n > 2) segs.push({ a: e.pts[n - 1], b: e.pts[0] })
+        break
+      }
+      case 'circle':
+        circles.push({ c: e.c, r: e.r })
+        break
+      case 'arc':
+        circles.push({ c: e.c, r: e.r, arc: { s: e.start, e: e.end } })
+        break
+    }
+  }
+  return { segs, circles }
+}
+
+/** Intersection points of the finite segment a→b with all cutting geometry. */
+function segCuts(a: Vec2, b: Vec2, cut: { segs: Seg[]; circles: Circ[] }): Vec2[] {
+  const out: Vec2[] = []
+  for (const s of cut.segs) {
+    const p = segSegIntersect(a, b, s.a, s.b)
+    if (p) out.push(p)
+  }
+  for (const c of cut.circles) {
+    for (const p of segCircleIntersect(a, b, c.c, c.r)) {
+      if (!c.arc || angleInArc(lineAngle(c.c, p), c.arc.s, c.arc.e)) out.push(p)
+    }
+  }
+  return out
+}
+
+/** Topmost entity under `world` whose kind passes `pred`. */
+function topmostHit(
+  entities: CadEntity[],
+  world: Vec2,
+  tolM: number,
+  pred: (k: CadEntity['kind']) => boolean,
+): CadEntity | null {
+  for (let i = entities.length - 1; i >= 0; i--) {
+    const e = entities[i]
+    if (pred(e.kind) && entityHitTest(e, world, tolM)) return e
+  }
+  return null
+}
+
+/**
+ * Trim a straight segment a→b: cut it back to the intersection nearest the pick,
+ * removing the side the pick is on. Returns which endpoint moves + where.
+ */
+function trimSegEnd(
+  a: Vec2,
+  b: Vec2,
+  click: Vec2,
+  cut: { segs: Seg[]; circles: Circ[] },
+): { end: 'a' | 'b'; pt: Vec2 } | null {
+  const dir = sub(b, a)
+  const L2 = dot(dir, dir)
+  if (L2 < 1e-12) return null
+  const param = (p: Vec2) => dot(sub(p, a), dir) / L2
+  const ts = segCuts(a, b, cut)
+    .map(param)
+    .filter((t) => t > 1e-6 && t < 1 - 1e-6)
+  if (!ts.length) return null
+  const tc = clamp(param(click), 0, 1)
+  let tstar = ts[0]
+  for (const t of ts) if (Math.abs(t - tc) < Math.abs(tstar - tc)) tstar = t
+  const pt = add(a, mul(dir, tstar))
+  // pick on the b-side of the cut → remove b-side (keep a..cut); else remove a-side.
+  return tc >= tstar ? { end: 'b', pt } : { end: 'a', pt }
+}
+
+function computeTrim(
+  e: CadEntity,
+  click: Vec2,
+  cut: { segs: Seg[]; circles: Circ[] },
+): Partial<CadEntity> | null {
+  switch (e.kind) {
+    case 'line': {
+      const r = trimSegEnd(e.a, e.b, click, cut)
+      if (!r) return null
+      return r.end === 'a' ? { a: r.pt } : { b: r.pt }
+    }
+    case 'polyline':
+      return trimPolyline(e, click, cut)
+    case 'arc':
+      return trimArc(e, click, cut)
+    default:
+      return null
+  }
+}
+
+/**
+ * Polyline trim, v1: only an END segment of an OPEN polyline can be cut back
+ * (moving its free vertex) — interior/closed segments would need a split into
+ * two polylines, which is out of scope. Returns null (no-op) otherwise.
+ */
+function trimPolyline(
+  e: PolylineEnt,
+  click: Vec2,
+  cut: { segs: Seg[]; circles: Circ[] },
+): Partial<CadEntity> | null {
+  const pts = e.pts
+  const n = pts.length
+  if (n < 2) return null
+  let bestI = -1
+  let bestJ = -1
+  let bd = Infinity
+  const consider = (i: number, j: number) => {
+    const d = distToSeg(click, pts[i], pts[j])
+    if (d < bd) {
+      bd = d
+      bestI = i
+      bestJ = j
+    }
+  }
+  for (let i = 0; i + 1 < n; i++) consider(i, i + 1)
+  if (e.closed && n > 2) consider(n - 1, 0)
+  if (bestI < 0) return null
+  const isFirst = bestI === 0 && bestJ === 1
+  const isLast = bestI === n - 2 && bestJ === n - 1
+  if (e.closed || (!isFirst && !isLast)) return null
+  const freeIdx = isFirst ? 0 : n - 1
+  const anchorIdx = isFirst ? 1 : n - 2
+  // free vertex sits at t=0 so a valid trim always moves the 'a' end.
+  const r = trimSegEnd(pts[freeIdx], pts[anchorIdx], click, cut)
+  if (!r || r.end !== 'a') return null
+  const np = pts.map((p) => v(p.x, p.y))
+  np[freeIdx] = r.pt
+  return { pts: np }
+}
+
+/** Arc trim: shrink start or end angle to the intersection nearest the pick. */
+function trimArc(
+  e: ArcEnt,
+  click: Vec2,
+  cut: { segs: Seg[]; circles: Circ[] },
+): Partial<CadEntity> | null {
+  const inters: Vec2[] = []
+  for (const s of cut.segs) for (const p of segCircleIntersect(s.a, s.b, e.c, e.r)) inters.push(p)
+  for (const c of cut.circles) {
+    for (const p of circleCircleIntersect(e.c, e.r, c.c, c.r)) {
+      if (!c.arc || angleInArc(lineAngle(c.c, p), c.arc.s, c.arc.e)) inters.push(p)
+    }
+  }
+  const base = e.start
+  let sweep = norm2pi(e.end - e.start)
+  if (sweep < 1e-9) sweep = 2 * Math.PI
+  const params = inters
+    .map((p) => norm2pi(lineAngle(e.c, p) - base))
+    .filter((a) => a > 1e-6 && a < sweep - 1e-6)
+  if (!params.length) return null
+  const pc = clamp(norm2pi(lineAngle(e.c, click) - base), 0, sweep)
+  let astar = params[0]
+  for (const a of params) if (Math.abs(a - pc) < Math.abs(astar - pc)) astar = a
+  // pick past the cut → remove the end side; else the start side.
+  return pc >= astar ? { end: base + astar } : { start: base + astar }
+}
+
+/** Shoot a ray from `from` along `dirRaw`; nearest cutting hit strictly ahead. */
+function rayExtend(from: Vec2, dirRaw: Vec2, cut: { segs: Seg[]; circles: Circ[] }): Vec2 | null {
+  const d = unit(dirRaw)
+  if (len(d) < 1e-9) return null
+  const far = add(from, mul(d, 1e5))
+  let bestT = Infinity
+  let best: Vec2 | null = null
+  for (const p of segCuts(from, far, cut)) {
+    const t = dot(sub(p, from), d)
+    if (t > 1e-6 && t < bestT) {
+      bestT = t
+      best = p
+    }
+  }
+  return best
+}
+
+function computeExtend(
+  e: CadEntity,
+  click: Vec2,
+  cut: { segs: Seg[]; circles: Circ[] },
+): Partial<CadEntity> | null {
+  switch (e.kind) {
+    case 'line': {
+      const useA = dist(click, e.a) <= dist(click, e.b)
+      const from = useA ? e.a : e.b
+      const other = useA ? e.b : e.a
+      const pt = rayExtend(from, sub(from, other), cut)
+      if (!pt) return null
+      return useA ? { a: pt } : { b: pt }
+    }
+    case 'polyline': {
+      const n = e.pts.length
+      if (n < 2 || e.closed) return null
+      const useFirst = dist(click, e.pts[0]) <= dist(click, e.pts[n - 1])
+      const fi = useFirst ? 0 : n - 1
+      const ni = useFirst ? 1 : n - 2
+      const pt = rayExtend(e.pts[fi], sub(e.pts[fi], e.pts[ni]), cut)
+      if (!pt) return null
+      const np = e.pts.map((p) => v(p.x, p.y))
+      np[fi] = pt
+      return { pts: np }
+    }
+    default:
+      return null
+  }
+}
+
+/**
+ * Fillet two lines: extend/trim both to their (possibly virtual) corner and,
+ * for R>0, drop in a tangent arc of radius R. The click on each line picks the
+ * side to KEEP. Returns endpoint patches for both lines + the arc to add.
+ */
+function filletLines(
+  l1: LineEnt,
+  c1: Vec2,
+  l2: LineEnt,
+  c2: Vec2,
+  R: number,
+  layer: string,
+): { patch1: Partial<LineEnt>; patch2: Partial<LineEnt>; arc: Omit<ArcEnt, 'id'> | null } | null {
+  const d1 = sub(l1.b, l1.a)
+  const d2 = sub(l2.b, l2.a)
+  const P = lineLineIntersect(l1.a, d1, l2.a, d2)
+  if (!P) return null // parallel — no corner
+  // kept directions from the corner toward each pick.
+  const u1 = unit(mul(d1, Math.sign(dot(sub(c1, P), d1)) || 1))
+  const u2 = unit(mul(d2, Math.sign(dot(sub(c2, P), d2)) || 1))
+  // the endpoint on the far (−u) side of P is the one that moves to the corner.
+  const e1: 'a' | 'b' = dot(sub(l1.a, P), u1) <= dot(sub(l1.b, P), u1) ? 'a' : 'b'
+  const e2: 'a' | 'b' = dot(sub(l2.a, P), u2) <= dot(sub(l2.b, P), u2) ? 'a' : 'b'
+  const phi = Math.acos(clamp(dot(u1, u2), -1, 1))
+  const half = phi / 2
+
+  let target1 = P
+  let target2 = P
+  let arc: Omit<ArcEnt, 'id'> | null = null
+  if (R > 1e-6 && half > 1e-3 && Math.abs(phi - Math.PI) > 1e-3) {
+    const along = R / Math.tan(half) // corner→tangent-point distance along each line
+    const O = add(P, mul(unit(add(u1, u2)), R / Math.sin(half))) // arc center on the bisector
+    target1 = add(P, mul(u1, along))
+    target2 = add(P, mul(u2, along))
+    const a1 = lineAngle(O, target1)
+    const a2 = lineAngle(O, target2)
+    // draw the MINOR arc CCW (render's arc convention: start→end, CCW).
+    const [start, end] = norm2pi(a2 - a1) <= Math.PI ? [a1, a2] : [a2, a1]
+    arc = { kind: 'arc', c: O, r: R, start, end, layer }
+  }
+  return {
+    patch1: e1 === 'a' ? { a: target1 } : { b: target1 },
+    patch2: e2 === 'a' ? { a: target2 } : { b: target2 },
+    arc,
+  }
+}
+
+// ===========================================================================
+// trim / extend / fillet — tools
+// ===========================================================================
+function makeTrim(): CadTool {
+  const hitKind = (k: CadEntity['kind']) => k === 'line' || k === 'polyline' || k === 'arc'
+  return {
+    id: 'trim',
+    onDown(world, _snap, ctx) {
+      const target = topmostHit(ctx.store.entities, world, SELECT_TOL_PX / ctx.pxPerM, hitKind)
+      if (!target) return
+      const patch = computeTrim(target, world, cuttingGeom(ctx.store.entities, target.id))
+      if (!patch) return // no intersection → silent no-op (ToolCtx has no hint channel)
+      ctx.store.snapshot()
+      ctx.store.update(target.id, patch)
+      ctx.requestRender()
+    },
+    onMove() {},
+    cancel() {},
+    hint() {
+      return 'trim: click the part to cut back'
+    },
+  }
+}
+
+function makeExtend(): CadTool {
+  const hitKind = (k: CadEntity['kind']) => k === 'line' || k === 'polyline'
+  return {
+    id: 'extend',
+    onDown(world, _snap, ctx) {
+      const target = topmostHit(ctx.store.entities, world, SELECT_TOL_PX / ctx.pxPerM, hitKind)
+      if (!target) return
+      const patch = computeExtend(target, world, cuttingGeom(ctx.store.entities, target.id))
+      if (!patch) return
+      ctx.store.snapshot()
+      ctx.store.update(target.id, patch)
+      ctx.requestRender()
+    },
+    onMove() {},
+    cancel() {},
+    hint() {
+      return 'extend: click near the end to lengthen'
+    },
+  }
+}
+
+/** Fillet radius (m); `[` halves / `]` doubles while the tool is active. */
+let FILLET_R = 0.3
+
+function makeFillet(): CadTool {
+  let first: { id: number; click: Vec2 } | null = null
+  const reset = () => {
+    first = null
+  }
+  const pickLine = (ctx: ToolCtx, world: Vec2): LineEnt | null => {
+    const e = topmostHit(ctx.store.entities, world, SELECT_TOL_PX / ctx.pxPerM, (k) => k === 'line')
+    return e && e.kind === 'line' ? e : null
+  }
+  return {
+    id: 'fillet',
+    onDown(world, _snap, ctx) {
+      const hit = pickLine(ctx, world)
+      if (!hit) return
+      if (!first) {
+        first = { id: hit.id, click: v(world.x, world.y) }
+        selection.ids.clear()
+        selection.ids.add(hit.id) // highlight the first pick
+        ctx.requestRender()
+        return
+      }
+      if (hit.id === first.id) return // need two distinct lines
+      const l1 = ctx.store.get(first.id)
+      const l2 = ctx.store.get(hit.id)
+      if (l1 && l1.kind === 'line' && l2 && l2.kind === 'line') {
+        const res = filletLines(l1, first.click, l2, v(world.x, world.y), FILLET_R, ctx.layer)
+        if (res) {
+          ctx.store.snapshot() // one undo step for both trims + the arc
+          ctx.store.update(l1.id, res.patch1)
+          ctx.store.update(l2.id, res.patch2)
+          if (res.arc) ctx.store.add(res.arc, true)
+        }
+      }
+      selection.ids.clear()
+      reset()
+      ctx.requestRender()
+    },
+    onMove() {},
+    onKey(key, ctx) {
+      if (key === '[') {
+        FILLET_R = FILLET_R / 2 < 0.02 ? 0 : FILLET_R / 2
+        ctx.requestRender()
+      } else if (key === ']') {
+        FILLET_R = FILLET_R === 0 ? 0.02 : FILLET_R * 2
+        ctx.requestRender()
+      }
+    },
+    hint() {
+      const r = `R=${FILLET_R.toFixed(2)} m`
+      return first ? `fillet ${r}: pick 2nd line` : `fillet ${r} ([ ] adjust): pick 1st line`
+    },
+    cancel() {
+      if (first) selection.ids.clear()
+      reset()
+    },
+  }
+}
+
+// ===========================================================================
 // tool registry
 // ===========================================================================
 export const EDIT_TOOLS: Record<string, () => CadTool> = {
@@ -1084,6 +1525,9 @@ export const EDIT_TOOLS: Record<string, () => CadTool> = {
   rotate: makeRotate,
   scale: makeScale,
   mirror: makeMirror,
+  trim: makeTrim,
+  extend: makeExtend,
+  fillet: makeFillet,
 }
 
 // Re-export the entity kinds these helpers narrow over, so callers importing from
