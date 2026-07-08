@@ -130,6 +130,18 @@ impl Editor {
         self.doc.keepouts.clear();
     }
 
+    /// Add a building entry point (world meters). The test-fit generator anchors
+    /// its primary circulation spine to the first entry (spec §3). Serializes
+    /// with the doc via `state()`/`snapshot()`.
+    pub fn add_entry(&mut self, x: f64, y: f64) {
+        self.doc.entries.push(Point::new(x, y));
+    }
+
+    /// Remove all entry points.
+    pub fn clear_entries(&mut self) {
+        self.doc.entries.clear();
+    }
+
     /// Hit-test components at (x,y) in world coords, topmost first. Sets and
     /// returns the selection (undefined in JS if nothing was hit).
     pub fn select_at(&mut self, x: f64, y: f64) -> Option<u32> {

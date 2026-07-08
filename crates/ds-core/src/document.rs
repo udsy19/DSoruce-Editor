@@ -17,6 +17,12 @@ pub struct Document {
     /// empty vec round-trips both ways — same pattern as `cad_json`.
     #[serde(default)]
     pub keepouts: Vec<KeepOut>,
+    /// Building entry points (world meters). The test-fit generator anchors its
+    /// primary circulation spine to the first entry (spec §3: enter → reception
+    /// → spine → neighborhoods). `default` keeps old snapshots deserializable;
+    /// an empty vec means "no entry" and the generator falls back to geometry.
+    #[serde(default)]
+    pub entries: Vec<crate::geometry::Point>,
     pub selection: Option<u32>,
     /// Monotonic id counter. **Serialized** (no `skip`) so a snapshot round-trip
     /// is lossless — otherwise restored ids would collide (Conflict §5). `default`
