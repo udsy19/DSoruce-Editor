@@ -102,16 +102,27 @@ export interface Program {
   desk_clearance_m: number
   /** Back-to-back paired desk rows (real-world bench desking). */
   bench_pairs: boolean
+  /** Derive + place the full professional support program (cabins, phone booths,
+   * focus, pantry, reception, print, IT, storage, wellness — spec §1.1) alongside
+   * the desks/meetings. Default true. */
+  support_spaces: boolean
+  /** Design headcount N. When set, drives `SpaceProgram::derive`; when omitted it
+   * is inferred from the desk target (desks ≈ 0.85·N). Absent → Rust `None`. */
+  headcount?: number
   w_capacity: number
   w_adjacency: number
   w_circulation: number
   w_density: number
+  /** Weight of `program_fit` (delivered vs derived room program). */
+  w_program: number
 }
 export interface LayoutScore {
   capacity: number
   adjacency: number
   circulation: number
   density: number
+  /** Delivered vs derived room program, 0..100 (M3/M4). */
+  program_fit: number
   total: number
   placed_desks: number
 }
@@ -158,10 +169,12 @@ export const DEFAULT_PROGRAM: Program = {
   target_corridor_m: 1.2,
   desk_clearance_m: 0.9,
   bench_pairs: true,
+  support_spaces: true,
   w_capacity: 0.35,
   w_adjacency: 0.2,
   w_circulation: 0.25,
   w_density: 0.2,
+  w_program: 0.1,
 }
 
 const GRID_M = 1 // 1-meter minor grid

@@ -80,6 +80,8 @@ const KEEPOUT_EDGE_BAND = 1 // cells — free cells this close to the plate edge
 const KEEPOUT_MERGE_GAP = 0.3 // m — candidate bboxes at most this far apart fuse into one core block
 const KEEPOUT_MAX_COUNT = 12 // sanity cap on emitted rects
 const KEEPOUT_AREA_FRAC = 0.4 // total keep-out area may claim at most this fraction of the plate
+const ENTRY_BOUNDARY_TOL = 1.0 // m — a door within this of the plate boundary is an exterior entry
+const ENTRY_MERGE_GAP = 1.5 // m — entries closer than this fuse (a double door → one entry)
 
 // ---- public API --------------------------------------------------------
 
@@ -202,6 +204,84 @@ export function pushPlateToEditor(ec: EditorCanvas, plate: PlateResult, thicknes
     ec.ed.add_wall(ax, ay, bx, by, thickness)
   }
   ec.refresh()
+}
+
+// ---- entries (test-fit circulation anchor) ---------------------------------
+
+/** Bounding-box center of a set of segments, or null if empty. */
+function segsCenter(segs: Segment[]): Pt | null {
+  if (segs.length === 0) return null
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
+  for (const [a, b] of segs) {
+    for (const [x, y] of [a, b]) {
+      x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y)
+    }
+  }
+  return [(x0 + x1) / 2, (y0 + y1) / 2]
+}
+
+/** Drop entries closer than `gap` to one already kept (double doors → one). */
+function dedupeNearby(pts: Pt[], gap: number): Pt[] {
+  const out: Pt[] = []
+  for (const p of pts) {
+    if (!out.some((q) => Math.hypot(p[0] - q[0], p[1] - q[1]) <= gap)) out.push(p)
+  }
+  return out
+}
+
+/**
+ * Building **entry points** for the test-fit generator's circulation spine
+ * (spec §3: enter → reception → spine → neighborhoods). Returned in EDITOR
+ * coordinates (plate offset applied) so they feed straight into
+ * `Editor.add_entry` (see the orchestrator snippet in the PR notes).
+ *
+ * Rule: a `door` entity or block INSERT whose center lies within
+ * `ENTRY_BOUNDARY_TOL` of the plate boundary is an exterior entry threshold.
+ * With no boundary door, fall back to the midpoint of the plate's longest edge
+ * (the most likely public frontage). Deterministic; nearby doubles are fused.
+ */
+export function extractEntries(drawing: Drawing, plate: PlateResult): Pt[] {
+  const ring = plate.boundary
+  const { x: ox, y: oy } = plate.offset
+  const entries: Pt[] = []
+  const consider = (cx: number, cy: number) => {
+    const p: Pt = [cx - ox, cy - oy] // source → editor coords
+    if (distToRing(p[0], p[1], ring) <= ENTRY_BOUNDARY_TOL) entries.push(p)
+  }
+  // Loose door linework (swing arcs / thresholds).
+  for (const e of drawing.entities) {
+    if (e.category !== 'door') continue
+    const segs: Segment[] = []
+    pushEntitySegments(e, segs)
+    const c = segsCenter(segs)
+    if (c) consider(c[0], c[1])
+  }
+  // Door block INSERTs (most real plans carry doors as blocks, not loose lines).
+  for (const f of drawing.furniture) {
+    if (f.category !== 'door') continue
+    consider((f.bbox[0] + f.bbox[2]) / 2, (f.bbox[1] + f.bbox[3]) / 2)
+  }
+  if (entries.length > 0) return dedupeNearby(entries, ENTRY_MERGE_GAP)
+
+  // Fallback: midpoint of the plate's longest boundary edge.
+  let bestLen = -1
+  let mid: Pt | null = null
+  for (let i = 0; i < ring.length; i++) {
+    const a = ring[i]
+    const b = ring[(i + 1) % ring.length]
+    const len = Math.hypot(b[0] - a[0], b[1] - a[1])
+    if (len > bestLen) {
+      bestLen = len
+      mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]
+    }
+  }
+  return mid ? [mid] : []
+}
+
+/** Push extracted entries into the editor (clears any previous ones first). */
+export function pushEntriesToEditor(ec: EditorCanvas, entries: Pt[]): void {
+  ec.ed.clear_entries()
+  for (const [x, y] of entries) ec.ed.add_entry(x, y)
 }
 
 // ---- interior partition walls ----------------------------------------------

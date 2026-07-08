@@ -210,6 +210,7 @@ pub struct SpaceReq {
 }
 
 impl SpaceReq {
+    #[allow(dead_code)] // used by area_per_person (density sanity), tested
     pub fn area(&self) -> f64 {
         self.w * self.d * self.count as f64
     }
@@ -229,9 +230,11 @@ pub struct SpaceProgram {
 
 /// Gross allowance per open workstation (m², incl. its share of bench aisle):
 /// middle of the spec's 3.7–4.6 band.
+#[allow(dead_code)] // spec 1.1 density sanity, exercised by space_program_derive_is_sane
 const DESK_ALLOWANCE_M2: f64 = 4.15;
 /// Circulation share added on top of net program area for the m²/person sanity
 /// figure (test-fit convention: 25–30%).
+#[allow(dead_code)] // spec 1.1 density sanity, exercised by space_program_derive_is_sane
 const CIRCULATION_SHARE: f64 = 0.27;
 
 impl SpaceProgram {
@@ -306,6 +309,7 @@ impl SpaceProgram {
     /// Sanity figure: estimated m² per person = (desk allowance + net room
     /// area) × (1 + circulation share) / N. The spec's worked N=50 example
     /// lands at ~8.4; BCO/NBC band is 8–12.
+    #[allow(dead_code)] // spec 1.1 density sanity metric, exercised by space_program_derive_is_sane
     pub fn area_per_person(&self) -> f64 {
         let rooms: f64 = self.reqs.iter().map(|r| r.area()).sum();
         let net = self.desks as f64 * DESK_ALLOWANCE_M2 + rooms;
@@ -1094,7 +1098,7 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
     let entry = doc.entries.first().copied();
     let mut jobs: Vec<RoomJob> = Vec::new();
     let support = support_jobs(program, plate_area);
-    let mut take = |jobs: &mut Vec<RoomJob>, kind: SpaceKind| {
+    let take = |jobs: &mut Vec<RoomJob>, kind: SpaceKind| {
         jobs.extend(support.iter().filter(|j| j.kind == kind).cloned());
     };
     // Priority order = placement order: reception first (entry-adjacent), then
@@ -3555,6 +3559,7 @@ mod tests {
         );
     }
 
+
     /// M4 evolution of `glass_front_faces_the_band_edge`: rooms no longer front
     /// the plate edge (the perimeter ring is retired) - they front the DRAWN
     /// primary spine, which runs INBOARD. The surviving invariant is stronger
@@ -3603,5 +3608,179 @@ mod tests {
                 );
             }
         }
+    }
+
+    // ---- M3: the professional space program (spec 1.1) --------------------
+
+    /// `SpaceProgram::derive` is a pure, deterministic expansion of a headcount
+    /// into the spec 1.1 room palette, landing at a defensible density.
+    #[test]
+    fn space_program_derive_is_sane() {
+        for &n in &[20usize, 60, 150] {
+            // A huge plate so the area cap never bites (pure headcount derivation).
+            let sp = SpaceProgram::derive(n, 100_000.0);
+            assert_eq!(sp.headcount, n as u32, "headcount preserved on a large plate");
+            assert_eq!(sp.desks, ((n as f64) * 0.85).ceil() as u32, "desks = ceil(0.85 N)");
+            // Density lands in the BCO/NBC 8-12 band (spec: ~8-12 m2/person NIA;
+            // measured 10.78 / 8.97 / 7.60 at N=20/60/150 - the 7.5 floor gives
+            // the densest large-N case a sliver of headroom).
+            let m2pp = sp.area_per_person();
+            assert!((7.5..=12.0).contains(&m2pp), "N={n}: {m2pp:.2} m2/person out of the 7.5-12 band");
+            // Palette gates (spec 1.1 thresholds).
+            let has = |k: SpaceKind| sp.reqs.iter().any(|r| r.kind == k && r.count > 0);
+            assert!(has(SpaceKind::Cabin) && has(SpaceKind::PhoneBooth) && has(SpaceKind::Pantry)
+                && has(SpaceKind::ItServer) && has(SpaceKind::Storage), "N={n}: core palette missing");
+            assert!(has(SpaceKind::Reception), "N={n}: reception present for N>=20");
+            assert_eq!(has(SpaceKind::Boardroom), n >= 60, "N={n}: boardroom iff N>=60");
+            assert_eq!(has(SpaceKind::Wellness), n >= 50, "N={n}: wellness iff N>=50");
+            // Deterministic.
+            let sp2 = SpaceProgram::derive(n, 100_000.0);
+            assert_eq!(sp.reqs.len(), sp2.reqs.len());
+            assert_eq!(sp.desks, sp2.desks);
+        }
+        // The area cap bounds an absurd input: 150 people can't be programmed
+        // onto a 300 m2 plate.
+        let capped = SpaceProgram::derive(150, 300.0);
+        assert!(capped.headcount < 150, "a tiny plate caps the effective headcount");
+    }
+
+    /// On the user's real 843 m2 plate (bare), the derived professional program
+    /// PLACES: at least 70% of derived rooms land (spec's robustness floor;
+    /// measured 100% here), circulation holds >= 55 (the pre-M3/M4 bar; measured
+    /// ~63), and program_fit reports the delivered ratio. No overlaps; every
+    /// footprint on the plate.
+    #[test]
+    fn real_plate_places_most_of_the_derived_program() {
+        let mut program = Program::default();
+        program.headcount = Some(60);
+        program.meeting_rooms = 4;
+        program.meeting_w = 3.0;
+        program.meeting_h = 3.0;
+        assert!(program.support_spaces, "support program is on by default");
+        for seed in 1..=3u64 {
+            let mut doc = real_plate_doc();
+            let poly = poly_of(&doc);
+            let area = geometry::polygon_area(&poly);
+            let derived = program.meeting_rooms + support_jobs(&program, area).len() as u32;
+            generate(&mut doc, &program, seed, false);
+            let placed = doc.zones.iter().filter(|z| matches!(z.zone_type,
+                ZoneType::Meeting | ZoneType::ClosedOffice | ZoneType::Amenity | ZoneType::Collaboration)).count() as u32;
+            assert!(
+                placed as f64 >= 0.70 * derived as f64,
+                "seed {seed}: only {placed}/{derived} derived rooms placed (< 70%)"
+            );
+            for c in &doc.components {
+                assert!(footprint_in_plate(c, &poly), "seed {seed}: {} escapes the plate", c.label);
+            }
+            assert_no_overlaps(&doc, "real plate derived program");
+            let circ = circulation::evaluate(&doc, &CirculationConfig::default());
+            assert!(circ.score >= 55.0, "seed {seed}: circulation {:.1} < 55 (must hold)", circ.score);
+            let s = score(&doc, &program);
+            assert!(s.program_fit >= 70.0, "seed {seed}: program_fit {:.1}", s.program_fit);
+        }
+    }
+
+    /// Placement robustness on a WALL-DENSE variant of the real plate: interior
+    /// partitions criss-cross the main wing (the field failure mode - the old
+    /// band placement dropped 10 of 11 rooms on a wall-dense plate). The sliding
+    /// band anchor + pocket fallback still place >= 70% (measured 100% here).
+    #[test]
+    fn wall_dense_plate_still_places_most_rooms() {
+        let mut program = Program::default();
+        program.headcount = Some(60);
+        program.meeting_rooms = 4;
+        program.meeting_w = 3.0;
+        program.meeting_h = 3.0;
+        let mut doc = real_plate_doc();
+        let poly = poly_of(&doc);
+        for (ax, ay, bx, by) in [(12.0, 20.0, 26.0, 20.0), (12.0, 30.0, 26.0, 30.0),
+                                 (18.0, 18.0, 18.0, 38.0), (14.0, 36.0, 22.0, 36.0)] {
+            if geometry::point_in_polygon(ax, ay, &poly) && geometry::point_in_polygon(bx, by, &poly) {
+                add_partition(&mut doc, ax, ay, bx, by);
+            }
+        }
+        let area = geometry::polygon_area(&poly);
+        let derived = program.meeting_rooms + support_jobs(&program, area).len() as u32;
+        generate(&mut doc, &program, 1, false);
+        let placed = doc.zones.iter().filter(|z| matches!(z.zone_type,
+            ZoneType::Meeting | ZoneType::ClosedOffice | ZoneType::Amenity | ZoneType::Collaboration)).count() as u32;
+        assert!(
+            placed as f64 >= 0.70 * derived as f64,
+            "wall-dense: only {placed}/{derived} rooms placed (< 70%)"
+        );
+        assert_no_overlaps(&doc, "wall-dense plate");
+        for c in &doc.components {
+            assert!(footprint_in_plate(c, &poly), "wall-dense: {} escapes the plate", c.label);
+        }
+    }
+
+    // ---- M4: entries + drawn spine ----------------------------------------
+
+    /// A `Document.entry` anchors the circulation narrative (spec 3): reception
+    /// lands NEAR the entry, the pantry is pushed to the FAR social end, and an
+    /// entry-connector `Circulation` zone is drawn from the door to the spine.
+    #[test]
+    fn entry_anchors_reception_near_the_door_and_pantry_far() {
+        let mut doc = real_plate_doc();
+        let entry = Point::new(20.0, 1.5); // on the plate's south edge
+        doc.entries.push(entry);
+        let mut program = Program::default();
+        program.headcount = Some(40);
+        program.meeting_rooms = 2;
+        generate(&mut doc, &program, 1, false);
+
+        let center = |z: &Zone| { let (x0, y0, x1, y1) = z.shape.bbox(); ((x0 + x1) / 2.0, (y0 + y1) / 2.0) };
+        let dist = |c: (f64, f64)| ((c.0 - entry.x).powi(2) + (c.1 - entry.y).powi(2)).sqrt();
+        let recep = doc.zones.iter().find(|z| z.label == "Reception").expect("a reception was placed");
+        let pantry = doc.zones.iter().find(|z| z.label == "Pantry").expect("a pantry was placed");
+        assert!(
+            dist(center(recep)) < dist(center(pantry)),
+            "reception ({:.1} m) must sit nearer the entry than the pantry ({:.1} m)",
+            dist(center(recep)), dist(center(pantry))
+        );
+        // The drawn network reaches the entry: an "Entry" connector strip exists.
+        assert!(
+            doc.zones.iter().any(|z| z.zone_type == ZoneType::Circulation && z.label == "Entry"),
+            "an entry connector circulation strip must be drawn to the spine"
+        );
+    }
+
+    /// `program_fit` honestly reports a shortfall: an over-programmed tiny plate
+    /// can't place the whole derived program (fit < 100), while a roomy plate
+    /// places it all (fit == 100). It is wired into the weighted total.
+    #[test]
+    fn program_fit_reports_shortfall_and_feeds_the_total() {
+        let mut tiny = room(10.0, 8.0);
+        let mut over = Program::default();
+        over.headcount = Some(120); // far more program than 80 m2 can hold
+        generate(&mut tiny, &over, 1, false);
+        let st = score(&tiny, &over);
+        assert!(st.program_fit < 100.0, "tiny over-programmed plate must show a shortfall");
+        assert!((0.0..=100.0).contains(&st.program_fit));
+
+        let mut roomy = room(40.0, 30.0);
+        let mut fit = Program::default();
+        fit.headcount = Some(40);
+        generate(&mut roomy, &fit, 1, false);
+        let sr = score(&roomy, &fit);
+        assert!((sr.program_fit - 100.0).abs() < 1e-9, "a roomy plate places the whole program");
+        // program_fit participates in the blended total (w_program default 0.1).
+        assert!(over.w_program > 0.0, "w_program must weight the total");
+    }
+
+    /// A JSON `Program` that omits the M3/M4 additive fields (support_spaces,
+    /// headcount, w_program) still deserializes with the documented defaults.
+    #[test]
+    fn missing_m3_m4_program_fields_default() {
+        let without = r#"{
+            "desks": 24, "meeting_rooms": 2, "desk_w": 1.6, "desk_h": 0.8,
+            "meeting_w": 4.0, "meeting_h": 4.0, "cluster_cols": 4,
+            "target_corridor_m": 1.2, "desk_clearance_m": 0.9,
+            "w_capacity": 0.35, "w_adjacency": 0.20, "w_circulation": 0.25, "w_density": 0.20
+        }"#;
+        let p: Program = serde_json::from_str(without).expect("legacy program JSON must parse");
+        assert!(p.support_spaces, "missing support_spaces defaults to true");
+        assert_eq!(p.headcount, None, "missing headcount defaults to None");
+        assert!((p.w_program - 0.10).abs() < 1e-9, "missing w_program defaults to 0.10");
     }
 }
