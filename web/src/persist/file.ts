@@ -160,17 +160,21 @@ export function parseProject(text: string): DSourceFile {
   }
 }
 
-/** Assemble the current session into a `DSourceFile` and download it. */
-export function saveProject(
-  opts: {
-    ec: EditorCanvas
-    drawing?: Drawing | null
-    bindings?: Map<string, BindingInfo> | null
-    ui?: DSourceUi
-  },
-  filename: string = DEFAULT_FILENAME,
-): void {
-  const file: DSourceFile = {
+/** Everything a v1 `DSourceFile` is assembled from (live editor + session extras). */
+interface ProjectParts {
+  ec: EditorCanvas
+  drawing?: Drawing | null
+  bindings?: Map<string, BindingInfo> | null
+  ui?: DSourceUi
+}
+
+/**
+ * Assemble the current session into a v1 `DSourceFile`. The single builder
+ * shared by ⌘S (`saveProject`) and the plan library (`persist/plans.ts`), so
+ * the two write paths can never drift.
+ */
+export function buildProjectFile(opts: ProjectParts): DSourceFile {
+  return {
     format: 'dsource',
     version: 1,
     savedAt: new Date().toISOString(),
@@ -182,6 +186,11 @@ export function saveProject(
       : {}),
     ...(opts.ui ? { ui: opts.ui } : {}),
   }
+}
+
+/** Assemble the current session into a `DSourceFile` and download it. */
+export function saveProject(opts: ProjectParts, filename: string = DEFAULT_FILENAME): void {
+  const file = buildProjectFile(opts)
   triggerDownload(new Blob([JSON.stringify(file)], { type: 'application/json' }), filename)
 }
 
