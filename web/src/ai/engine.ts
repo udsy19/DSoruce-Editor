@@ -88,7 +88,7 @@ function num(v: number | undefined): number {
   return typeof v === 'number' && Number.isFinite(v) ? v : 0
 }
 
-function delta(
+export function delta(
   label: string,
   b: number,
   a: number,

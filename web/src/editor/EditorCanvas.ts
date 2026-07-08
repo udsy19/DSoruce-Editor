@@ -927,7 +927,7 @@ const THUMB_OTHER = 'rgba(138, 144, 153, 0.55)'
  * live canvas with pan/zoom transforms, rulers, and CAD overlays; thumbnails
  * need an isolated fit-to-frame offscreen scene.
  */
-function renderThumb(st: DocState, w = 200, h = 140): string {
+export function renderThumb(st: DocState, w = 200, h = 140): string {
   const cv = document.createElement('canvas')
   cv.width = w
   cv.height = h
