@@ -28,6 +28,8 @@ import { exportPNG, triggerDownload } from './export/png'
 import { exportPlanPDF, exportDrawingPDF } from './export/pdf'
 import { downloadIFC } from './export/ifc'
 import { downloadOBJ } from './export/obj'
+import { exportSpacePlanningReport } from './export/report'
+import { exportQuantityTakeoff } from './export/takeoff'
 import { downloadDXF, downloadDrawingDXF } from './export/dxf'
 import { CandidateGallery } from './ui/CandidateGallery'
 import { CategoryPlan, type CategoryPlanGroup } from './ui/CategoryPlan'
@@ -38,6 +40,8 @@ import {
   pushKeepoutsToEditor,
   extractInteriorWalls,
   pushInteriorWallsToEditor,
+  extractEntries,
+  pushEntriesToEditor,
   type PlateResult,
 } from './import/testfit'
 import { saveProject, openProject, applyProject, type BindingInfo, type DSourceFile } from './persist/file'
@@ -107,6 +111,9 @@ export function App() {
   /** Right-inspector tab: the working plan vs the saved-plan library. */
   const [panelTab, setPanelTab] = useState<'plan' | 'library'>('plan')
   const [plans, setPlans] = useState<SavedPlan[]>([])
+  /** Last autonomous-search candidates, lifted from GenerateCard so the topbar
+   *  export menu can build the A/B/C space-planning report from them. */
+  const [candidates, setCandidates] = useState<Candidate[]>([])
   /** Which SavedPlan the live session came from — drives the floor switcher.
    *  Cleared when the doc stops being that record (file open / fresh doc). */
   const [currentPlanId, setCurrentPlanId] = useState<string | null>(null)
@@ -362,6 +369,9 @@ export function App() {
     // Interior partitions from the drawing become real document walls, so the
     // generator packs around them and circulation scores them.
     pushInteriorWallsToEditor(ec, extractInteriorWalls(drawing, plate))
+    // Entry points (boundary doors, else the longest-edge midpoint) anchor the
+    // generator's circulation spine and reception placement.
+    pushEntriesToEditor(ec, extractEntries(drawing, plate))
     ec.sync()
     // Plate-quality feedback. `coverage`/`areaM2` are additive optional fields
     // on PlateResult — guard so this works whether or not they're present.
@@ -497,7 +507,7 @@ export function App() {
               </>
             )}
           </button>
-          <ExportMenu ec={ec} mode={mode} drawing={drawing} bindings={bindings} />
+          <ExportMenu ec={ec} mode={mode} drawing={drawing} bindings={bindings} candidates={candidates} />
           <button
             className="icon-btn"
             onClick={() => setHelpOpen(true)}
@@ -740,7 +750,12 @@ export function App() {
                     </>
                   )}
                   <StatsPanel ec={ec} />
-                  <GenerateCard ec={ec} metrics={metrics} onSaveCandidate={saveCandidateToLibrary} />
+                  <GenerateCard
+                    ec={ec}
+                    metrics={metrics}
+                    onSaveCandidate={saveCandidateToLibrary}
+                    onCandidates={setCandidates}
+                  />
                 </>
               )}
             </>
@@ -837,11 +852,13 @@ function ExportMenu({
   mode,
   drawing,
   bindings,
+  candidates,
 }: {
   ec: EditorCanvas | null
   mode: '2d' | '3d' | 'import'
   drawing: Drawing | null
   bindings: Map<string, BindingInfo>
+  candidates: Candidate[]
 }) {
   const [open, setOpen] = useState(false)
   const importMode = mode === 'import' && !!drawing
@@ -921,6 +938,25 @@ function ExportMenu({
     setOpen(false)
   }
 
+  // qbiq-style multi-page report over the last A/B/C candidates (falls back to
+  // the live plan as a single alternative when nothing has been generated).
+  const exportReport = () => {
+    const best = candidates.slice(0, 3)
+    const alts = best.length
+      ? best.map((c, i) => ({ name: `Alternative ${'ABC'[i]}`, snapshot: c.snap as string }))
+      : ec
+        ? [{ name: 'Alternative A', snapshot: ec.snapshot() }]
+        : []
+    if (alts.length) void exportSpacePlanningReport(alts, { project: 'Untitled Plan' })
+    setOpen(false)
+  }
+
+  const exportTakeoff = () => {
+    if (!ec) return
+    exportQuantityTakeoff(ec.getState(), { bindings, floor: '1', project: 'Untitled Plan' })
+    setOpen(false)
+  }
+
   const source = importMode ? 'imported plan' : 'generated plan'
 
   return (
@@ -951,6 +987,26 @@ function ExportMenu({
           <div className="export-item" role="menuitem" onClick={exportPdf} data-testid="export-pdf">
             PDF sheet <span className="hint">A3 drawing</span>
           </div>
+          {!importMode && (
+            <>
+              <div
+                className="export-item"
+                role="menuitem"
+                onClick={exportReport}
+                data-testid="export-report"
+              >
+                Space planning report <span className="hint">multi-page PDF</span>
+              </div>
+              <div
+                className="export-item"
+                role="menuitem"
+                onClick={exportTakeoff}
+                data-testid="export-takeoff"
+              >
+                Quantity takeoff <span className="hint">Excel</span>
+              </div>
+            </>
+          )}
           <div className="export-sep" />
           <div className="export-item" role="menuitem" onClick={exportIfc} data-testid="export-ifc">
             IFC model <span className="hint">BIM</span>
@@ -1155,10 +1211,12 @@ function GenerateCard({
   ec,
   metrics,
   onSaveCandidate,
+  onCandidates,
 }: {
   ec: EditorCanvas
   metrics: Metrics | null
   onSaveCandidate?: (c: Candidate) => void
+  onCandidates?: (c: Candidate[]) => void
 }) {
   const [program, setProgram] = useState<Program>(ec.program)
   const [busy, setBusy] = useState(false)
@@ -1181,6 +1239,7 @@ function GenerateCard({
       const res = ec.autoGenerate(program, { maxIter: 18, target: 82, keepConfirmed })
       setResult(res)
       setActiveSeed(res.seed)
+      onCandidates?.(res.candidates) // lift to App for the report exporter
       setBusy(false)
       // Claude soft-goal evaluation. Gate = the best achieved score capped at
       // the hard target: when the search hits 82 the gate is vision-strict
