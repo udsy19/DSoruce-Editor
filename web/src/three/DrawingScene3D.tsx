@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Viewer3D, type ViewerMode, type PickHit } from './Viewer3D'
 import { Minimap, type MinimapHandle, type MinimapProps } from './Minimap'
-import { ViewerToolbar, type Quality, type ViewerWithExtras } from './ViewerToolbar'
+import { ViewerToolbar, DEFAULT_SUN, type Quality, type ViewerWithExtras } from './ViewerToolbar'
 import { buildFromDrawing } from './buildFromDrawing'
 // PickCard3D is the shared minimal 3D selection card (see its note about
 // merging with ui/SelectionCard once that component stabilizes).
@@ -116,9 +116,14 @@ export function DrawingScene3D({ drawing }: { drawing: Drawing }) {
         onView={(v) => viewerRef.current?.setView?.(v)}
         onFrame={() => viewerRef.current?.frameAll?.()}
         onQuality={(q) => {
-          viewerRef.current?.setQuality?.(q)
-          setQuality(q)
+          const v = viewerRef.current
+          v?.setQuality?.(q)
+          // Re-read so the UI tracks what the engine actually accepted (an old
+          // engine without the render tier no-ops or clamps the request).
+          setQuality(v?.getQuality?.() ?? q)
         }}
+        onSun={(elev, azim) => viewerRef.current?.setSun?.(elev, azim)}
+        getSun={() => viewerRef.current?.getSun?.() ?? DEFAULT_SUN}
       />
       {mode === 'orbit' && picked && picked.kind === 'furniture' && (
         <PickCard3D

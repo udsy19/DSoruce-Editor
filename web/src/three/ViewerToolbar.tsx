@@ -1,10 +1,19 @@
-import type { CSSProperties, ReactNode } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import type { ViewerMode, Viewer3D } from './Viewer3D'
 
 /** Camera framing presets offered by the upgraded viewer engine. */
 export type ViewPreset = 'persp' | 'top'
-/** Render-quality levels offered by the upgraded viewer engine. */
-export type Quality = 'high' | 'low'
+/** Render-quality tiers offered by the upgraded viewer engine. `render` is the
+ *  Enscape-like photoreal tier (adds sun control). */
+export type Quality = 'low' | 'high' | 'render'
+/** Sun position, degrees: elevation 5..90 above the horizon, azimuth 0..360. */
+export interface SunPosition {
+  elevationDeg: number
+  azimuthDeg: number
+}
+
+/** Engine default sun — used until the upgraded engine's `getSun` exists. */
+export const DEFAULT_SUN: SunPosition = { elevationDeg: 42, azimuthDeg: 135 }
 
 /**
  * Members the upgraded {@link Viewer3D} engine adds. The engine lands in a
@@ -17,7 +26,13 @@ export interface ViewerExtras {
   setView(preset: ViewPreset): void
   setQuality(q: Quality): void
   getQuality(): Quality
-  onQualityChange?: (q: Quality) => void
+  // Method syntax (not a property type) on purpose: the old engine declares
+  // this callback slot with the 2-state Quality, and only method parameters
+  // are checked bivariantly under strictFunctionTypes — so the facade stays
+  // assignable from both engine generations.
+  onQualityChange?(q: Quality): void
+  setSun(elevationDeg: number, azimuthDeg: number): void
+  getSun(): SunPosition
 }
 
 /** Typed facade over the current engine plus the (optional) upgraded API. */
@@ -30,6 +45,10 @@ export interface ViewerToolbarProps {
   onView: (v: ViewPreset) => void
   onFrame: () => void
   onQuality: (q: Quality) => void
+  /** Live sun update from the popover sliders (render tier only). */
+  onSun: (elevationDeg: number, azimuthDeg: number) => void
+  /** Current engine sun, read when the popover opens. */
+  getSun: () => SunPosition
 }
 
 // Local 16px viewer glyphs. Deliberately not added to ui/icons.tsx: that file
@@ -47,7 +66,7 @@ const glyph = {
   'aria-hidden': true,
 }
 
-const glyphs: Record<'orbit' | 'walk' | 'top' | 'cube' | 'frame' | 'sparkle', ReactNode> = {
+const glyphs: Record<'orbit' | 'walk' | 'top' | 'cube' | 'frame' | 'sparkle' | 'sun', ReactNode> = {
   orbit: (
     <svg {...glyph}>
       <circle cx="8" cy="8" r="3.1" />
@@ -81,6 +100,12 @@ const glyphs: Record<'orbit' | 'walk' | 'top' | 'cube' | 'frame' | 'sparkle', Re
     <svg {...glyph}>
       <path d="M8 1.8l1.4 4.2L13.6 7.4 9.4 8.8 8 13l-1.4-4.2L2.4 7.4l4.2-1.4z" />
       <path d="M13 11.6l.5 1.3 1.3.5-1.3.5-.5 1.3-.5-1.3-1.3-.5 1.3-.5z" strokeWidth={1.1} />
+    </svg>
+  ),
+  sun: (
+    <svg {...glyph}>
+      <circle cx="8" cy="8" r="2.7" />
+      <path d="M8 1.4v1.8M8 12.8v1.8M1.4 8h1.8M12.8 8h1.8M3.3 3.3l1.3 1.3M11.4 11.4l1.3 1.3M12.7 3.3l-1.3 1.3M4.6 11.4l-1.3 1.3" />
     </svg>
   ),
 }
@@ -123,17 +148,131 @@ const seg = (active: boolean, disabled: boolean): CSSProperties => ({
   opacity: disabled ? 0.35 : 1,
 })
 
+// The Render tier reads slightly premium: sparkle glyph plus a warm amber
+// gradient when active (the other segments stay flat accent).
+const renderSeg = (active: boolean): CSSProperties => ({
+  ...seg(active, false),
+  ...(active
+    ? {
+        background: 'linear-gradient(120deg, #E8A13C 0%, #F3C778 100%)',
+        boxShadow: '0 1px 4px rgba(232,161,60,0.45)',
+      }
+    : {}),
+})
+
+const popover: CSSProperties = {
+  position: 'absolute',
+  top: 'calc(100% + 8px)',
+  right: 0,
+  width: 232,
+  padding: '12px 14px',
+  border: '1px solid rgba(0,0,0,0.08)',
+  borderRadius: 9,
+  background: 'rgba(255,255,255,0.92)',
+  backdropFilter: 'blur(6px)',
+  boxShadow: '0 6px 20px rgba(0,0,0,0.14)',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 12,
+  cursor: 'default',
+}
+
+/** One labeled degree slider row inside the sun popover. */
+function SunSlider({
+  label,
+  min,
+  max,
+  value,
+  testid,
+  onInput,
+}: {
+  label: string
+  min: number
+  max: number
+  value: number
+  testid: string
+  onInput: (v: number) => void
+}) {
+  return (
+    <label style={{ display: 'block' }}>
+      <span
+        style={{
+          display: 'flex',
+          alignItems: 'baseline',
+          justifyContent: 'space-between',
+          marginBottom: 5,
+        }}
+      >
+        <span style={{ font: '500 11px/1 "Space Grotesk", system-ui, sans-serif', color: '#5c626c', letterSpacing: '0.03em' }}>
+          {label}
+        </span>
+        <span style={{ font: '400 11px/1 "IBM Plex Mono", ui-monospace, monospace', color: '#1b1d21' }}>
+          {value}°
+        </span>
+      </span>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={1}
+        value={value}
+        data-testid={testid}
+        onInput={(e) => onInput(Number(e.currentTarget.value))}
+        style={{ display: 'block', width: '100%', margin: 0, accentColor: '#E8A13C' }}
+      />
+    </label>
+  )
+}
+
 /**
  * Shared floating toolbar for the 3D views: orbit/walk camera mode, view
- * presets (top / perspective), frame-all, and a render-quality chip. Purely
- * presentational — wrappers own the state and talk to the viewer engine.
- * View presets and Frame only apply to the orbit camera, so they render
- * disabled while walking.
+ * presets (top / perspective), frame-all, and a three-tier quality segment
+ * (Lo / Hi / Render). Wrappers own mode/quality state and talk to the viewer
+ * engine; the render-tier sun popover (open flag + slider values) is view-local
+ * UI state kept here so both wrappers share it. View presets and Frame only
+ * apply to the orbit camera, so they render disabled while walking.
  */
-export function ViewerToolbar({ mode, quality, onMode, onView, onFrame, onQuality }: ViewerToolbarProps) {
+export function ViewerToolbar({ mode, quality, onMode, onView, onFrame, onQuality, onSun, getSun }: ViewerToolbarProps) {
   const walking = mode === 'walk'
+  const rootRef = useRef<HTMLDivElement>(null)
+  const [sunOpen, setSunOpen] = useState(false)
+  const [sun, setSun] = useState<SunPosition>(DEFAULT_SUN)
+
+  // Close the popover on outside click or Escape while it is open.
+  useEffect(() => {
+    if (!sunOpen) return
+    const onDown = (e: PointerEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setSunOpen(false)
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSunOpen(false)
+    }
+    document.addEventListener('pointerdown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('pointerdown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [sunOpen])
+
+  // The popover never survives a walk switch or leaving the render tier
+  // (auto-degrade included — quality flows back in via props).
+  useEffect(() => {
+    if (walking || quality !== 'render') setSunOpen(false)
+  }, [walking, quality])
+
+  const toggleSun = () => {
+    if (!sunOpen) setSun(getSun()) // seed sliders from the engine on open
+    setSunOpen(!sunOpen)
+  }
+
+  const changeSun = (next: SunPosition) => {
+    setSun(next)
+    onSun(next.elevationDeg, next.azimuthDeg)
+  }
+
   return (
-    <div style={pill} role="toolbar" aria-label="3D viewer controls">
+    <div ref={rootRef} style={pill} role="toolbar" aria-label="3D viewer controls">
       <button
         style={seg(mode === 'orbit', false)}
         onClick={() => onMode('orbit')}
@@ -187,15 +326,68 @@ export function ViewerToolbar({ mode, quality, onMode, onView, onFrame, onQualit
       </button>
       <span style={divider} />
       <button
+        style={seg(quality === 'low', false)}
+        onClick={() => onQuality('low')}
+        title="Performance mode"
+        aria-pressed={quality === 'low'}
+        data-testid="v3d-q-low"
+      >
+        Lo
+      </button>
+      <button
         style={seg(quality === 'high', false)}
-        onClick={() => onQuality(quality === 'high' ? 'low' : 'high')}
-        title={quality === 'high' ? 'High quality rendering (click for performance mode)' : 'Performance mode (click for high quality)'}
+        onClick={() => onQuality('high')}
+        title="High quality rendering"
         aria-pressed={quality === 'high'}
-        data-testid="v3d-quality"
+        data-testid="v3d-q-high"
+      >
+        Hi
+      </button>
+      <button
+        style={renderSeg(quality === 'render')}
+        onClick={() => onQuality('render')}
+        title="Photoreal render tier (sun control)"
+        aria-pressed={quality === 'render'}
+        data-testid="v3d-q-render"
       >
         {glyphs.sparkle}
-        HQ
+        Render
       </button>
+      {quality === 'render' && (
+        <>
+          <span style={divider} />
+          <button
+            style={seg(sunOpen, false)}
+            onClick={toggleSun}
+            title="Sun position"
+            aria-pressed={sunOpen}
+            aria-expanded={sunOpen}
+            data-testid="v3d-sun"
+          >
+            {glyphs.sun}
+          </button>
+        </>
+      )}
+      {sunOpen && (
+        <div style={popover} role="group" aria-label="Sun position">
+          <SunSlider
+            label="Elevation"
+            min={5}
+            max={90}
+            value={sun.elevationDeg}
+            testid="v3d-sun-elev"
+            onInput={(v) => changeSun({ ...sun, elevationDeg: v })}
+          />
+          <SunSlider
+            label="Azimuth"
+            min={0}
+            max={360}
+            value={sun.azimuthDeg}
+            testid="v3d-sun-azim"
+            onInput={(v) => changeSun({ ...sun, azimuthDeg: v })}
+          />
+        </div>
+      )}
     </div>
   )
 }
