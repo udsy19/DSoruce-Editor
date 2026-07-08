@@ -68,8 +68,21 @@ cd web && pnpm dev               # frontend only (uses existing wasm bindings)
 - Keep the exported TS interfaces in `EditorCanvas.ts` stable — `three/Scene3D` depends on them.
 - `web/src/wasm/` is generated (gitignored). Fresh clones must `make wasm` before `pnpm dev`.
 
+## Deployment (`deploy/`)
+
+One Node service (`dsource-api`) serves the built SPA + all `/api/*` routes (agent/claude/dwg/bank
+proxy/plans) + the `/ws` presence relay, behind Caddy at `app.46.202.179.28.sslip.io`.
+`./deploy/deploy.sh` builds, rsyncs, and starts everything (idempotent; needs SSH to the VPS).
+Local relay for dev: `cd deploy && npm i && node relay-dev.mjs` (vite proxies `/ws` → :8787).
+The prod API logic is a **port of the dev middlewares in `web/vite.config.ts`** — change one,
+change both (lockstep comments in `deploy/server.ts`).
+
 ## Status
 
-2D editor (draw/place/select/re-imagine), autonomous test-fit generation, circulation scoring, and a
-2D↔3D viewer all work. Rust: 11 tests pass. Not yet done: real material-bank API, import/export
-(DWG/PDF/IFC), Claude-in-the-loop soft-goal evaluation, multiplayer. See `research/08-open-questions.md`.
+Working: 2D editor + CAD drafting layer (draw/modify/trim/extend/fillet/hatch/layers/grips),
+DWG/DXF import with plate extraction + keep-outs, autonomous test-fit on irregular plates,
+circulation scoring, 2D↔3D viewer incl. Enscape-like render tier, live material bank (₹),
+AI drivers (Local/Cerebras/Claude) + Claude soft-goal evaluator, exports (CSV/PNG/DXF/PDF/IFC/OBJ),
+.dsource save/open, plan library + compare + version history (IndexedDB), presence/live cursors
+(multiplayer milestone 1). Rust: 50 tests. Next: multiplayer milestones 2–3 (op-log edit lease →
+full co-editing, `docs/design/multiplayer.md`), cloud plan sync. See `research/08-open-questions.md`.
