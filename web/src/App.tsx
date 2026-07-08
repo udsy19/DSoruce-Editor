@@ -15,12 +15,12 @@ import type { Drawing, FurnitureItem } from './import/types'
 import type { DrawingCanvas } from './import/DrawingCanvas'
 import type { OfficeProduct } from './materialBank/office'
 import { exportPNG } from './export/png'
-import { exportPlanPDF } from './export/pdf'
+import { exportPlanPDF, exportDrawingPDF } from './export/pdf'
 import { downloadIFC } from './export/ifc'
 import { downloadOBJ } from './export/obj'
 import { downloadDXF, downloadDrawingDXF } from './export/dxf'
 import { CandidateGallery } from './ui/CandidateGallery'
-import { CategoryPlan } from './ui/CategoryPlan'
+import { CategoryPlan, type CategoryPlanGroup } from './ui/CategoryPlan'
 import {
   extractPlate,
   pushPlateToEditor,
@@ -28,7 +28,7 @@ import {
   pushKeepoutsToEditor,
   type PlateResult,
 } from './import/testfit'
-import { saveProject, openProject, applyProject } from './persist/file'
+import { saveProject, openProject, applyProject, type BindingInfo } from './persist/file'
 import { evaluateCandidates, type SoftVerdict } from './ai/evaluator'
 
 // CAD drafting tools (map to EditorCanvas 'cad:<id>' tools).
@@ -77,9 +77,7 @@ export function App() {
 
   /** Full product data per binding (price ₹, thumbnail) — the item itself only
    *  carries id/name; the selection card + category plan need the rest. */
-  const [bindings, setBindings] = useState<Map<string, { price: number | null; image: string | null }>>(
-    () => new Map(),
-  )
+  const [bindings, setBindings] = useState<Map<string, BindingInfo>>(() => new Map())
 
   const bindProduct = (it: FurnitureItem, product: OfficeProduct) => {
     it.productId = product.id
@@ -151,7 +149,7 @@ export function App() {
   const onSave = () => {
     const ec = ecRef.current
     if (!ec) return
-    saveProject({ ec, drawing, ui: { mode, planView } })
+    saveProject({ ec, drawing, bindings, ui: { mode, planView } })
   }
   const onSaveRef = useRef(onSave)
   onSaveRef.current = onSave
@@ -164,6 +162,9 @@ export function App() {
       const f = await openProject(file)
       applyProject(ec, f) // document snapshot + program (core state)
       setDrawing(f.drawing ?? null) // React-owned import session
+      // Product-binding prices/thumbnails ride alongside the drawing —
+      // restore (or clear) so a reopened import session keeps its ₹ data.
+      setBindings(new Map(Object.entries(f.bindings ?? {})))
       setSelItem(null)
       // Best-effort UI restore — fall back safely when hints are absent.
       const m = f.ui?.mode
@@ -372,7 +373,7 @@ export function App() {
               </>
             )}
           </button>
-          <ExportMenu ec={ec} mode={mode} drawing={drawing} />
+          <ExportMenu ec={ec} mode={mode} drawing={drawing} bindings={bindings} />
           <button
             className="icon-btn"
             onClick={() => setHelpOpen(true)}
@@ -574,10 +575,12 @@ function ExportMenu({
   ec,
   mode,
   drawing,
+  bindings,
 }: {
   ec: EditorCanvas | null
   mode: '2d' | '3d' | 'import'
   drawing: Drawing | null
+  bindings: Map<string, BindingInfo>
 }) {
   const [open, setOpen] = useState(false)
   const importMode = mode === 'import' && !!drawing
@@ -632,9 +635,16 @@ function ExportMenu({
   }
 
   const exportPdf = () => {
-    if (!ec) return
-    // Exports the editor document (in import mode that's the test-fit doc).
-    void exportPlanPDF(ec.getState(), ec.getMetrics(), { project: 'Untitled Plan' })
+    if (importMode && drawing) {
+      // Imported-plan sheet: drawing linework + spec headline (same ₹ math as
+      // the sidebar's plan-by-category).
+      void exportDrawingPDF(drawing, {
+        boundCount: drawing.furniture.filter((f) => f.productId).length,
+        specTotalInr: importSpecTotal(buildCategoryGroups(drawing, bindings)),
+      })
+    } else if (ec) {
+      void exportPlanPDF(ec.getState(), ec.getMetrics(), { project: 'Untitled Plan' })
+    }
     setOpen(false)
   }
 
@@ -1003,6 +1013,56 @@ function GenerateCard({ ec, metrics }: { ec: EditorCanvas; metrics: Metrics | nu
 
 /* ------------------------------ Imported plan ----------------------------- */
 
+/**
+ * Materio-style "plan by category": group furniture by category, aggregate
+ * items by name with bound-product price/image rolled in. Pure — shared by
+ * the ImportPanel sidebar and the imported-plan PDF sheet (single source of
+ * the ₹ aggregation math).
+ */
+function buildCategoryGroups(
+  drawing: Drawing,
+  bindings: Map<string, BindingInfo>,
+): CategoryPlanGroup[] {
+  const byCat = new Map<string, Map<string, { qty: number; item: FurnitureItem }>>()
+  for (const f of drawing.furniture) {
+    const cat = byCat.get(f.category) ?? new Map()
+    const agg = cat.get(f.name) ?? { qty: 0, item: f }
+    agg.qty++
+    if (f.productId && !agg.item.productId) agg.item = f // prefer a bound exemplar
+    cat.set(f.name, agg)
+    byCat.set(f.category, cat)
+  }
+  return [...byCat.entries()]
+    .map(([category, items]) => {
+      const rows = [...items.entries()]
+        .map(([name, { qty, item: ex }]) => {
+          const b = ex.productId ? bindings.get(ex.productId) : undefined
+          return {
+            name,
+            qty,
+            priceInr: ex.productId ? (b?.price != null ? b.price * qty : null) : undefined,
+            image: b?.image ?? null,
+            bound: !!ex.productId,
+          }
+        })
+        .sort((a, b) => b.qty - a.qty)
+      const priced = rows.filter((r) => typeof r.priceInr === 'number')
+      return {
+        category,
+        count: rows.reduce((s, r) => s + r.qty, 0),
+        totalInr: priced.length ? priced.reduce((s, r) => s + (r.priceInr as number), 0) : null,
+        items: rows,
+      }
+    })
+    .sort((a, b) => b.count - a.count)
+}
+
+/** Σ of the groups' rolled-up ₹ totals — null when nothing priced is bound. */
+function importSpecTotal(groups: CategoryPlanGroup[]): number | null {
+  const priced = groups.filter((g) => g.totalInr != null)
+  return priced.length ? priced.reduce((s, g) => s + (g.totalInr as number), 0) : null
+}
+
 function ImportPanel({
   drawing,
   item,
@@ -1013,49 +1073,13 @@ function ImportPanel({
   drawing: Drawing
   item: FurnitureItem | null
   onBind: (it: FurnitureItem, p: OfficeProduct) => void
-  bindings: Map<string, { price: number | null; image: string | null }>
+  bindings: Map<string, BindingInfo>
   onPickItem?: (name: string) => void
 }) {
   const w = drawing.bounds[2] - drawing.bounds[0]
   const h = drawing.bounds[3] - drawing.bounds[1]
   const bound = drawing.furniture.filter((f) => f.productId).length
-
-  // Materio-style "plan by category": group furniture by category, aggregate
-  // items by name with bound-product price/image rolled in.
-  const groups = (() => {
-    const byCat = new Map<string, Map<string, { qty: number; item: FurnitureItem }>>()
-    for (const f of drawing.furniture) {
-      const cat = byCat.get(f.category) ?? new Map()
-      const agg = cat.get(f.name) ?? { qty: 0, item: f }
-      agg.qty++
-      if (f.productId && !agg.item.productId) agg.item = f // prefer a bound exemplar
-      cat.set(f.name, agg)
-      byCat.set(f.category, cat)
-    }
-    return [...byCat.entries()]
-      .map(([category, items]) => {
-        const rows = [...items.entries()]
-          .map(([name, { qty, item: ex }]) => {
-            const b = ex.productId ? bindings.get(ex.productId) : undefined
-            return {
-              name,
-              qty,
-              priceInr: ex.productId ? (b?.price != null ? b.price * qty : null) : undefined,
-              image: b?.image ?? null,
-              bound: !!ex.productId,
-            }
-          })
-          .sort((a, b) => b.qty - a.qty)
-        const priced = rows.filter((r) => typeof r.priceInr === 'number')
-        return {
-          category,
-          count: rows.reduce((s, r) => s + r.qty, 0),
-          totalInr: priced.length ? priced.reduce((s, r) => s + (r.priceInr as number), 0) : null,
-          items: rows,
-        }
-      })
-      .sort((a, b) => b.count - a.count)
-  })()
+  const groups = buildCategoryGroups(drawing, bindings)
 
   // Selected furniture → the re-imagine (material-bank) inspector.
   if (item) return <FurnitureInspector item={item} onBind={onBind} />
@@ -1083,9 +1107,11 @@ function ImportPanel({
         <span className="value">{drawing.layers.length}</span>
       </div>
 
-      <div className="metric-row">
-        <span className="label">Specified</span>
-        <span className="value">{bound}</span>
+      <div className="metric-row" data-testid="import-spec-total">
+        <span className="label">Specified furniture</span>
+        <span className="value">
+          {formatINR(importSpecTotal(groups))} · {bound} of {drawing.furniture.length} items
+        </span>
       </div>
       <div className="freeze-tip">
         Click furniture to re-imagine it · drag to move · R rotate · Del delete · ⌘D duplicate · ⌘Z undo

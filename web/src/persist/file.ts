@@ -26,6 +26,12 @@ export interface DSourceUi {
   planView?: string
 }
 
+/** Price/thumbnail of a bound bank product — keyed by productId in `bindings`. */
+export interface BindingInfo {
+  price: number | null
+  image: string | null
+}
+
 /** The on-disk `.dsource` format (v1). See header comment for evolution rules. */
 export interface DSourceFile {
   format: 'dsource'
@@ -38,6 +44,13 @@ export interface DSourceFile {
   program: Program
   /** Imported CAD drawing (entities + furniture + bounds), when an import session exists. */
   drawing?: Drawing
+  /**
+   * Product-binding details (price ₹, thumbnail) keyed by productId. The
+   * drawing's furniture items only carry productId/Name — this map completes
+   * them, so a saved import session keeps its prices on reopen. Additive v1
+   * key: old readers ignore it by design.
+   */
+  bindings?: Record<string, BindingInfo>
   /** Optional view state, restored best-effort. */
   ui?: DSourceUi
 }
@@ -78,6 +91,25 @@ function isDrawingShaped(v: unknown): v is Drawing {
 }
 
 /**
+ * Loose validation of the `bindings` map: a record of records. Each entry's
+ * price/image are coerced field-wise (bad values → null); malformed entries —
+ * or a malformed map — are dropped rather than failing the whole open, since
+ * bindings are decoration over the drawing, not document state.
+ */
+function sanitizeBindings(raw: unknown): Record<string, BindingInfo> | undefined {
+  if (!isRecord(raw)) return undefined
+  const out: Record<string, BindingInfo> = {}
+  for (const [id, v] of Object.entries(raw)) {
+    if (!isRecord(v)) continue
+    out[id] = {
+      price: typeof v.price === 'number' && Number.isFinite(v.price) ? v.price : null,
+      image: typeof v.image === 'string' ? v.image : null,
+    }
+  }
+  return Object.keys(out).length > 0 ? out : undefined
+}
+
+/**
  * Parse + validate `.dsource` text into a normalized `DSourceFile`.
  * Pure (no DOM/wasm) so the format contract is unit-testable in Node.
  * Throws an `Error` with a human-readable message on any failure.
@@ -112,6 +144,8 @@ export function parseProject(text: string): DSourceFile {
       }
     : undefined
 
+  const bindings = sanitizeBindings(raw.bindings)
+
   // Normalize to known keys; unknown top-level keys (future `cloud`, `meta`, …)
   // are tolerated on read and simply not carried into the live session.
   return {
@@ -121,13 +155,19 @@ export function parseProject(text: string): DSourceFile {
     snapshot: raw.snapshot,
     program: sanitizeProgram(raw.program),
     ...(isDrawingShaped(raw.drawing) ? { drawing: raw.drawing } : {}),
+    ...(bindings ? { bindings } : {}),
     ...(ui && Object.keys(ui).length > 0 ? { ui } : {}),
   }
 }
 
 /** Assemble the current session into a `DSourceFile` and download it. */
 export function saveProject(
-  opts: { ec: EditorCanvas; drawing?: Drawing | null; ui?: DSourceUi },
+  opts: {
+    ec: EditorCanvas
+    drawing?: Drawing | null
+    bindings?: Map<string, BindingInfo> | null
+    ui?: DSourceUi
+  },
   filename: string = DEFAULT_FILENAME,
 ): void {
   const file: DSourceFile = {
@@ -137,6 +177,9 @@ export function saveProject(
     snapshot: opts.ec.snapshot(),
     program: { ...opts.ec.program },
     ...(opts.drawing ? { drawing: opts.drawing } : {}),
+    ...(opts.bindings && opts.bindings.size > 0
+      ? { bindings: Object.fromEntries(opts.bindings) }
+      : {}),
     ...(opts.ui ? { ui: opts.ui } : {}),
   }
   triggerDownload(new Blob([JSON.stringify(file)], { type: 'application/json' }), filename)
