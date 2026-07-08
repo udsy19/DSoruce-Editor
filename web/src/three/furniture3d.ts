@@ -74,47 +74,216 @@ const UNIT_BOX = new THREE.BoxGeometry(1, 1, 1)
 const UNIT_CYL = new THREE.CylinderGeometry(0.5, 0.5, 1, 20) // r=0.5,h=1 → scale by (diam,height,diam)
 const BLOB = new THREE.IcosahedronGeometry(0.5, 1) // organic foliage lump, r=0.5
 
+// ── Procedural texture kit ───────────────────────────────────────────────────
+// Small canvas-generated textures created ONCE at module scope and shared by
+// every material (and by buildFromDrawing via `TEXTURES`) — no network assets,
+// no per-item allocation. Color maps are sRGB; roughness/bump maps stay linear.
+
+const TEX_SIZE = 256
+
+/** Deterministic PRNG so the kit is identical every load (and across derived maps). */
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0
+  return () => {
+    a = (a + 0x6d2b79f5) | 0
+    let t = Math.imul(a ^ (a >>> 15), 1 | a)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+function makeTexture(
+  draw: (ctx: CanvasRenderingContext2D, s: number) => void,
+  opts: { srgb?: boolean; repeat?: number } = {},
+): THREE.CanvasTexture {
+  const c = document.createElement('canvas')
+  c.width = c.height = TEX_SIZE
+  const ctx = c.getContext('2d')!
+  draw(ctx, TEX_SIZE)
+  const t = new THREE.CanvasTexture(c)
+  t.wrapS = t.wrapT = THREE.RepeatWrapping
+  t.anisotropy = 4
+  if (opts.srgb) t.colorSpace = THREE.SRGBColorSpace
+  if (opts.repeat) t.repeat.set(opts.repeat, opts.repeat)
+  return t
+}
+
+/**
+ * Two-tone oak grain: horizontal streak bands + a few thin wavy grain lines.
+ * Runs with a fixed seed so the color map and the derived roughness map draw
+ * the SAME grain — palette maps [base, lightStreak, darkStreak, grainLine].
+ */
+function drawWoodGrain(ctx: CanvasRenderingContext2D, s: number, palette: [string, string, string, string]) {
+  const rnd = mulberry32(0x00d5ea)
+  const [base, light, dark, line] = palette
+  ctx.fillStyle = base
+  ctx.fillRect(0, 0, s, s)
+  // broad tonal streak bands (full width → tiles seamlessly in X)
+  for (let i = 0; i < 90; i++) {
+    ctx.fillStyle = rnd() < 0.5 ? light : dark
+    ctx.globalAlpha = 0.05 + rnd() * 0.14
+    ctx.fillRect(0, rnd() * s, s, 1 + rnd() * 4)
+  }
+  // thin wavy grain lines
+  ctx.globalAlpha = 1
+  ctx.strokeStyle = line
+  ctx.lineWidth = 0.7
+  for (let i = 0; i < 22; i++) {
+    const y = rnd() * s
+    const amp = 1 + rnd() * 3
+    ctx.globalAlpha = 0.18 + rnd() * 0.25
+    ctx.beginPath()
+    ctx.moveTo(0, y)
+    for (let x = 0; x <= s; x += 16) ctx.lineTo(x, y + Math.sin((x / s) * Math.PI * (2 + rnd() * 2)) * amp)
+    ctx.stroke()
+  }
+  ctx.globalAlpha = 1
+}
+
+/** Per-pixel fabric weave: fine cross-hatch + noise. Contrast in [-c, +c] around base. */
+function drawWeave(ctx: CanvasRenderingContext2D, s: number, base: number, c: number) {
+  const rnd = mulberry32(0xfab41c)
+  const img = ctx.createImageData(s, s)
+  for (let y = 0; y < s; y++) {
+    for (let x = 0; x < s; x++) {
+      const hatch = ((x % 4 < 2 ? 1 : -1) + (y % 4 < 2 ? 1 : -1)) * c * 0.35
+      const v = Math.max(0, Math.min(255, base + hatch + (rnd() - 0.5) * c))
+      const i = (y * s + x) * 4
+      img.data[i] = img.data[i + 1] = img.data[i + 2] = v
+      img.data[i + 3] = 255
+    }
+  }
+  ctx.putImageData(img, 0, 0)
+}
+
+const TEX = {
+  /** Two-tone oak color map (sRGB). Worktops, cabinet caps, doors, casework. */
+  wood: makeTexture((ctx, s) => drawWoodGrain(ctx, s, ['#d8c4a2', '#eadbbe', '#b39062', '#8a6a44']), {
+    srgb: true,
+  }),
+  /** Derived wood roughness: grain lines darker → glossier along the grain. */
+  woodRough: makeTexture((ctx, s) => drawWoodGrain(ctx, s, ['#f0f0f0', '#fafafa', '#c9c9c9', '#8f8f8f'])),
+  /** Near-white weave color map (sRGB) — tinted by each material's color. */
+  fabric: makeTexture((ctx, s) => drawWeave(ctx, s, 228, 22), { srgb: true, repeat: 3 }),
+  /** Higher-contrast weave used as a tiny-scale bump map. */
+  fabricBump: makeTexture((ctx, s) => drawWeave(ctx, s, 128, 90), { repeat: 3 }),
+  /** Speckled low-contrast carpet (sRGB), near-white so floor color tints it. */
+  carpet: makeTexture((ctx, s) => {
+    const rnd = mulberry32(0xca39e7)
+    ctx.fillStyle = '#e4e2de'
+    ctx.fillRect(0, 0, s, s)
+    for (let i = 0; i < 9000; i++) {
+      const v = 210 + Math.floor(rnd() * 45)
+      ctx.fillStyle = `rgb(${v},${v - 2},${v - 5})`
+      ctx.globalAlpha = 0.5 + rnd() * 0.5
+      ctx.fillRect(rnd() * s, rnd() * s, 1.5, 1.5)
+    }
+    ctx.globalAlpha = 1
+  }, { srgb: true }),
+  /** Soft plaster/concrete blotches — roughness map for walls and planter pots. */
+  plasterRough: makeTexture((ctx, s) => {
+    const rnd = mulberry32(0x97a57e)
+    ctx.fillStyle = '#e2e2e2'
+    ctx.fillRect(0, 0, s, s)
+    for (let i = 0; i < 70; i++) {
+      const x = rnd() * s
+      const y = rnd() * s
+      const r = 10 + rnd() * 42
+      const g = ctx.createRadialGradient(x, y, 0, x, y, r)
+      const v = 165 + Math.floor(rnd() * 55)
+      g.addColorStop(0, `rgba(${v},${v},${v},${0.12 + rnd() * 0.2})`)
+      g.addColorStop(1, `rgba(${v},${v},${v},0)`)
+      ctx.fillStyle = g
+      ctx.beginPath()
+      ctx.arc(x, y, r, 0, Math.PI * 2)
+      ctx.fill()
+    }
+  }),
+} as const
+
+/** Shared procedural textures, reused by buildFromDrawing (walls/floor/doors/casework). */
+export const TEXTURES: Readonly<Record<keyof typeof TEX, THREE.CanvasTexture>> = TEX
+
 // ── Shared materials (natural furniture tones on cool content colors) ────────
 const std = (color: number, roughness: number, metalness: number) =>
   new THREE.MeshStandardMaterial({ color, roughness, metalness })
 
+/**
+ * Clearcoated oak — worktops, cabinet caps, door leaves, imported casework.
+ * Color tints the shared grain map. Exported so buildFromDrawing shares the
+ * same PBR recipe (create once per scene-build, not per item).
+ */
+export const woodPhysical = (color: number) =>
+  new THREE.MeshPhysicalMaterial({
+    color,
+    map: TEX.wood,
+    roughness: 0.55,
+    roughnessMap: TEX.woodRough,
+    metalness: 0.02,
+    clearcoat: 0.25,
+    clearcoatRoughness: 0.4,
+  })
+
+/** Sheened weave upholstery. Color tints the near-white fabric map. */
+const fabricPhysical = (color: THREE.ColorRepresentation, roughness: number) =>
+  new THREE.MeshPhysicalMaterial({
+    color,
+    map: TEX.fabric,
+    bumpMap: TEX.fabricBump,
+    bumpScale: 0.015,
+    roughness,
+    metalness: 0.0,
+    sheen: 0.5,
+    sheenRoughness: 0.6,
+    sheenColor: new THREE.Color(0xffffff),
+  })
+
 const MAT = {
-  laminate: std(0xd9c7a7, 0.62, 0.02), // matte oak worktop
-  wood: std(0xb99b76, 0.6, 0.03), // cabinet body
-  darkMetal: std(0x33373d, 0.45, 0.6), // legs / frames
-  alu: std(0x9ca2a8, 0.35, 0.8), // chair base, posts, handles
+  laminate: woodPhysical(0xf2ead9), // light oak worktop
+  wood: woodPhysical(0xcaa579), // warmer cabinet-cap / door-leaf oak
+  darkMetal: std(0x33373d, 0.35, 0.9), // legs / frames
+  alu: std(0x9ca2a8, 0.35, 0.9), // chair base, posts, handles
   shell: std(0x25282d, 0.55, 0.15), // chair back-shell, monitor housing
-  fabric: std(0x5c6675, 0.95, 0.0), // default upholstery (cool slate)
+  fabric: fabricPhysical(0x5c6675, 0.9), // default upholstery (cool slate)
   screen: new THREE.MeshStandardMaterial({
     color: 0x0e1b24,
     roughness: 0.25,
     metalness: 0.0,
     emissive: 0x16303f,
-    emissiveIntensity: 0.35,
+    emissiveIntensity: 0.5,
   }),
-  glass: new THREE.MeshStandardMaterial({
-    color: 0xaecbda,
+  // Real refractive glass. `transparent` stays false — three renders transmission
+  // in its own transmissive pass (default depthWrite). Panes are thin boxes, so
+  // the default FrontSide is correct and `thickness` supplies the volume.
+  glass: new THREE.MeshPhysicalMaterial({
+    color: 0xdfeef4,
     roughness: 0.05,
     metalness: 0.0,
-    transparent: true,
-    opacity: 0.22,
-    side: THREE.DoubleSide,
+    transmission: 0.85,
+    thickness: 0.02,
+    ior: 1.5,
+    transparent: false,
   }),
-  pot: std(0x8d8577, 0.9, 0.02), // stone / concrete planter
+  pot: new THREE.MeshStandardMaterial({
+    color: 0x8d8577,
+    roughness: 0.9,
+    roughnessMap: TEX.plasterRough,
+    metalness: 0.02,
+  }), // stone / concrete planter
   soil: std(0x3a322b, 1.0, 0.0),
-  foliage: std(0x4f7a50, 0.9, 0.0),
-  foliageDark: std(0x3d6440, 0.9, 0.0),
+  foliage: std(0x4f7a50, 0.85, 0.0),
+  foliageDark: std(0x3d6440, 0.95, 0.0),
 } as const
 
 // Category-tint (opts.color) upholstery/body material, cached so identical colors
 // share one material across the whole plan.
-const accentCache = new Map<string, THREE.MeshStandardMaterial>()
-function accent(color: number | string | undefined): THREE.MeshStandardMaterial {
+const accentCache = new Map<string, THREE.MeshPhysicalMaterial>()
+function accent(color: number | string | undefined): THREE.MeshPhysicalMaterial {
   if (color === undefined || color === null) return MAT.fabric
   const key = String(color)
   let m = accentCache.get(key)
   if (!m) {
-    m = new THREE.MeshStandardMaterial({ color: new THREE.Color(color as any), roughness: 0.88, metalness: 0.03 })
+    m = fabricPhysical(new THREE.Color(color as any), 0.88)
     accentCache.set(key, m)
   }
   return m

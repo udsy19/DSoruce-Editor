@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 // `three/addons/*` is the modern published alias for `three/examples/jsm/*`.
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
-import { buildFurniture3D } from './furniture3d'
+import { buildFurniture3D, TEXTURES, woodPhysical } from './furniture3d'
 import * as furniture3d from './furniture3d'
 import type { Drawing, DrawEntity } from '../import/types'
 
@@ -200,9 +200,15 @@ export function buildFromDrawing(drawing: Drawing): { root: THREE.Group; bounds:
   // ── Floor ───────────────────────────────────────────────────────────────
   const floorW = Math.max(maxX - minX, 1)
   const floorD = Math.max(maxY - minY, 1)
+  // Office-neutral carpet. The plane's UVs span 0..1, so the shared speckle map
+  // is cloned once per import with a repeat of ~1 tile/m (clone shares the same
+  // canvas; only the transform differs).
+  const carpetTex = TEXTURES.carpet.clone()
+  carpetTex.repeat.set(Math.max(1, Math.round(floorW)), Math.max(1, Math.round(floorD)))
+  carpetTex.needsUpdate = true
   const floor = new THREE.Mesh(
     new THREE.PlaneGeometry(floorW, floorD),
-    new THREE.MeshStandardMaterial({ color: 0xf4f2ee, roughness: 0.95, metalness: 0.0 }),
+    new THREE.MeshStandardMaterial({ color: 0xe8e6e1, map: carpetTex, roughness: 0.95, metalness: 0.0 }),
   )
   floor.rotation.x = -Math.PI / 2
   floor.position.set((minX + maxX) / 2, -0.002, (minY + maxY) / 2)
@@ -210,7 +216,16 @@ export function buildFromDrawing(drawing: Drawing): { root: THREE.Group; bounds:
   root.add(floor)
 
   // ── Shared materials ─────────────────────────────────────────────────────
-  const wallMat = new THREE.MeshStandardMaterial({ color: 0xd7dbe0, roughness: 0.9, metalness: 0.0 })
+  // Near-white plaster: the blotches live in the roughness response, not the color.
+  const wallMat = new THREE.MeshStandardMaterial({
+    color: 0xe2e5e9,
+    roughness: 0.95,
+    roughnessMap: TEXTURES.plasterRough,
+    metalness: 0.0,
+  })
+  // Imported shells can carry hundreds of glazed segments; transmission glass is
+  // reserved for furniture3d (pods/partitions/windows) and the shell keeps the
+  // cheap transparent material so the transmissive pass stays small.
   const glazingMat = new THREE.MeshStandardMaterial({
     color: 0x8fb6e6,
     roughness: 0.15,
@@ -220,8 +235,8 @@ export function buildFromDrawing(drawing: Drawing): { root: THREE.Group; bounds:
     depthWrite: false,
     side: THREE.DoubleSide,
   })
-  const doorMat = new THREE.MeshStandardMaterial({ color: 0x8a5a34, roughness: 0.8, metalness: 0.0 })
-  const caseworkMat = new THREE.MeshStandardMaterial({ color: 0xaf9b7d, roughness: 0.6, metalness: 0.05 }) // laminate/wood
+  const doorMat = woodPhysical(0x9c6b46) // door-leaf oak
+  const caseworkMat = woodPhysical(0xc9b48f) // laminate/wood counters
   const fixtureMat = new THREE.MeshStandardMaterial({ color: 0xd3d7da, roughness: 0.35, metalness: 0.0 }) // porcelain/appliance
   const otherMat = new THREE.MeshStandardMaterial({ color: 0xbfc3c7, roughness: 0.85, metalness: 0.0 }) // neutral built mass
 
