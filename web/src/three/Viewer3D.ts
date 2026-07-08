@@ -800,9 +800,30 @@ export class Viewer3D {
       this.content.add(this.buildComponent(c, c.id === state.selection))
     }
 
+    const prev = this.framed ? this.contentBounds.clone() : null
     this.contentBounds = this.boundsFromState(state)
     this.contentOffset = { x: 0, z: 0 } // generated plans render in source coords
-    if (!this.framed && !this.contentBounds.isEmpty()) this.frameBox()
+    // Re-frame when the content is SUBSTANTIALLY different (test-fit pushed a
+    // new plate, a candidate applied, a project opened) — a new world is a new
+    // framing contract, even mid-session. Small edits to the same plan keep
+    // the user's camera. Never frames while a mode transition is in flight.
+    let stale = !this.framed
+    if (prev && !this.contentBounds.isEmpty()) {
+      const span = Math.max(
+        prev.getSize(new THREE.Vector3()).length(),
+        this.contentBounds.getSize(new THREE.Vector3()).length(),
+        1,
+      )
+      const centerShift = prev
+        .getCenter(new THREE.Vector3())
+        .distanceTo(this.contentBounds.getCenter(new THREE.Vector3()))
+      const sizeShift = Math.abs(
+        prev.getSize(new THREE.Vector3()).length() -
+          this.contentBounds.getSize(new THREE.Vector3()).length(),
+      )
+      stale = centerShift > span * 0.25 || sizeShift > span * 0.4
+    }
+    if (stale && !this.contentBounds.isEmpty() && !this.isTransitioning()) this.frameBox()
     this.syncGroundDressing()
     this.syncCeiling()
   }
