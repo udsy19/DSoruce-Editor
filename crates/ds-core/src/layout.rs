@@ -3783,4 +3783,32 @@ mod tests {
         assert_eq!(p.headcount, None, "missing headcount defaults to None");
         assert!((p.w_program - 0.10).abs() < 1e-9, "missing w_program defaults to 0.10");
     }
+
+    /// `support_spaces` gates the whole derived program: off -> only the user's
+    /// meeting rooms (no ClosedOffice/Amenity/Collaboration support zones); on ->
+    /// the professional palette appears alongside the meetings.
+    #[test]
+    fn support_spaces_toggle_gates_the_program() {
+        let mut base = Program::default();
+        base.headcount = Some(40);
+        base.meeting_rooms = 2;
+        base.meeting_w = 3.0;
+        base.meeting_h = 3.0;
+
+        let mut off = base.clone();
+        off.support_spaces = false;
+        let mut d_off = room(30.0, 22.0);
+        generate(&mut d_off, &off, 1, false);
+        let support_off = d_off.zones.iter().filter(|z| matches!(z.zone_type,
+            ZoneType::ClosedOffice | ZoneType::Amenity | ZoneType::Collaboration)).count();
+        assert_eq!(support_off, 0, "support_spaces=false must place no support rooms");
+        assert!(d_off.zones.iter().filter(|z| z.zone_type == ZoneType::Meeting).count() >= 1,
+            "the user's meeting rooms still place with support off");
+
+        let mut d_on = room(30.0, 22.0);
+        generate(&mut d_on, &base, 1, false);
+        let support_on = d_on.zones.iter().filter(|z| matches!(z.zone_type,
+            ZoneType::ClosedOffice | ZoneType::Amenity | ZoneType::Collaboration)).count();
+        assert!(support_on >= 5, "support_spaces=true must place the professional palette (got {support_on})");
+    }
 }

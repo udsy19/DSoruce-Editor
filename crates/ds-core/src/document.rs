@@ -498,6 +498,22 @@ mod tests {
     }
 
     #[test]
+    fn entries_round_trip_through_snapshot() {
+        let mut doc = Document::new();
+        doc.entries.push(Point::new(12.5, 0.0));
+        doc.entries.push(Point::new(0.0, 8.25));
+        let snap = serde_json::to_string(&doc).unwrap();
+        let restored: Document = serde_json::from_str(&snap).unwrap();
+        assert_eq!(restored.entries.len(), 2, "entries survive the snapshot round-trip");
+        assert!((restored.entries[0].x - 12.5).abs() < 1e-12);
+        assert!((restored.entries[1].y - 8.25).abs() < 1e-12);
+        // A pre-M4 snapshot without the field restores to an empty entries vec.
+        let old = r#"{"walls":[],"components":[],"zones":[],"selection":null,"next_id":0}"#;
+        let r2: Document = serde_json::from_str(old).unwrap();
+        assert!(r2.entries.is_empty(), "missing entries field defaults to empty");
+    }
+
+    #[test]
     fn old_snapshot_without_keepouts_restores_to_empty() {
         // A hand-written pre-keepouts snapshot (the field simply absent) must
         // deserialize with `keepouts` defaulting to an empty vec.
