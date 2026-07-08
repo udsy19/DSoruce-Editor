@@ -117,20 +117,73 @@ fn default_bench_pairs() -> bool {
 /// path back to a nonzero gap on a finer circulation grid — is explicit.
 const SPINE_GAP: f64 = 0.0;
 
-/// The GLOBAL desk lattice for one `generate()` call: origin at the plate bbox
-/// min corner plus ONE seed-drawn jitter (`jx`,`jy`), shared by every region so
-/// adjacent wings' rows/columns land on the same lines across their seam.
+/// The global alignment module (m): EVERY emitted component coordinate and
+/// dimension snaps to this grid, so plan dimensions read as round numbers and
+/// rows share long straight lines (docs/design/testfit-pro-quality.md §4.1).
+const MODULE: f64 = 0.05;
+
+/// Snap a coordinate/dimension to the nearest module line.
+fn snap_module(v: f64) -> f64 {
+    (v / MODULE).round() * MODULE
+}
+
+/// Snap DOWN to the module — for dimensions clamped by available space, so the
+/// snapped size never exceeds it. The epsilon rescues exact multiples from
+/// binary-representation dust (4.0 / 0.05 sits fractionally below 80.0).
+fn snap_module_floor(v: f64) -> f64 {
+    ((v / MODULE) + 1e-9).floor() * MODULE
+}
+
+/// World-axis-aligned extents of a `w`×`h` footprint rotated by `rotation` —
+/// the exact AABB (w×h at 0/π, swapped at ±π/2). Obstacle registration must
+/// use this, not the raw local dims, now that portrait wings emit ±π/2 desks.
+fn world_extents(w: f64, h: f64, rotation: f64) -> (f64, f64) {
+    let (s, c) = rotation.sin_cos();
+    (w * c.abs() + h * s.abs(), w * s.abs() + h * c.abs())
+}
+
+/// The GLOBAL desk lattice for one `generate()` call: origin snapped to the
+/// module at the plate bbox min corner (plus the odd-seed half-pitch phase),
+/// shared by every region so adjacent wings' rows/columns land on the same
+/// lines across their seam. No continuous jitter — seed variety comes from
+/// the DISCRETE `SeedChoices` below (spec §4.1: jitter put every coordinate
+/// off-module, which is why plans read "broken").
 #[derive(Clone, Copy)]
 struct Lattice {
     ox: f64,
     oy: f64,
-    jx: f64,
-    jy: f64,
+}
+
+/// Discrete structural choices drawn once per `generate()` from the seed rng.
+/// Together with the odd-seed half-pitch lattice phase and the seed-rotated
+/// meeting round-robin (`allocate_regions`), these give the candidate gallery
+/// structurally distinct — yet individually disciplined — layouts.
+#[derive(Clone, Copy)]
+struct SeedChoices {
+    /// Meeting band anchors at the region's FAR end: a landscape wing's
+    /// column moves from the right edge to the left; a portrait wing's band
+    /// from the bottom edge to the top.
+    band_far: bool,
+    /// Desks per cluster before an aisle: the program's value or a valid
+    /// neighbour (±1, never below 2) — shifts the cross-aisle rhythm.
+    cluster_cols: u32,
+}
+
+impl SeedChoices {
+    fn draw(rng: &mut Rng, program: &Program) -> SeedChoices {
+        let base = program.cluster_cols.max(1);
+        let cluster_cols = match rng.next_u64() % 3 {
+            0 if base > 2 => base - 1,
+            2 => base + 1,
+            _ => base,
+        };
+        SeedChoices { band_far: rng.next_u64() & 1 == 1, cluster_cols }
+    }
 }
 
 /// Tiny inline PRNG — xorshift64* (Marsaglia). Deterministic, no `rand` crate.
-/// Used only to draw the one bounded global-lattice jitter per `generate()`, so
-/// different seeds yield distinct but still-valid candidates for the optimizer.
+/// Used only to draw the discrete `SeedChoices` per `generate()`, so different
+/// seeds yield structurally distinct but still-valid candidates.
 struct Rng {
     state: u64,
 }
@@ -149,11 +202,6 @@ impl Rng {
         x ^= x >> 27;
         self.state = x;
         x.wrapping_mul(0x2545_F491_4F6C_DD1D)
-    }
-
-    /// Uniform in [0, 1).
-    fn next_f64(&mut self) -> f64 {
-        (self.next_u64() >> 11) as f64 / (1u64 << 53) as f64
     }
 }
 
@@ -377,6 +425,19 @@ fn region_insets(regions: &[geometry::Rect], idx: usize, corridor: f64) -> Inset
 /// open walls with no plate) takes the historical single-work-rect path, which
 /// is placement-identical to before — the decomposition is never invoked for it.
 pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed: bool) {
+    // Snap the program's generator dimensions to the module ONCE, so every
+    // pitch and anchor derived from them lands on module lines (§4.1). The
+    // UI defaults are already module-aligned; this guards imported programs.
+    let program = &{
+        let mut p = program.clone();
+        p.desk_w = snap_module(p.desk_w);
+        p.desk_h = snap_module(p.desk_h);
+        p.meeting_w = snap_module(p.meeting_w);
+        p.meeting_h = snap_module(p.meeting_h);
+        p.target_corridor_m = snap_module(p.target_corridor_m.max(0.0));
+        p.desk_clearance_m = snap_module(p.desk_clearance_m.max(0.0));
+        p
+    };
     // Keep-outs are PERMANENT hard obstacles (the building core: stairs/lifts/
     // shafts/WCs) — always avoided regardless of `keep_confirmed`. They lead the
     // obstacle list so they sit before `frozen_len` (meetings reject slots over
@@ -410,7 +471,9 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
     if keep_confirmed {
         doc.components.retain(|c| c.decision == DecisionState::Confirmed);
         for c in &doc.components {
-            obstacles.push((c.x, c.y, c.w, c.h));
+            // World AABB, not local dims — a frozen portrait desk is ±π/2.
+            let (ww, wh) = world_extents(c.w, c.h, c.rotation);
+            obstacles.push((c.x, c.y, ww, wh));
         }
     } else {
         doc.components.clear();
@@ -471,22 +534,17 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
         .collect();
 
     // ONE global desk lattice per generate(): origin = plate bbox min corner,
-    // phase = a single seed-drawn jitter shared by EVERY region so adjacent
-    // wings' rows/columns land on the same lines across their seam (the old
-    // per-region jitter made them visibly misalign). Bounded to a quarter of the
-    // clearance, as the per-region jitter was; the region's first-line-≥-inset
-    // math absorbs it, so no desk is ever pushed into the corridor.
-    let mut jrng = Rng::new(seed);
-    let jitter = clear * 0.25;
-    // Odd seeds shift the whole lattice by half a pitch — a second structurally
-    // distinct family of layouts for the gallery (even/odd seeds differ by
-    // more than cosmetic jitter).
+    // snapped to the module, shared by EVERY region so adjacent wings' rows/
+    // columns land on the same lines across their seam. Odd seeds shift the
+    // whole lattice by half a pitch — one of the DISCRETE seed choices that
+    // replaced the old continuous jitter (which shifted the lattice up to
+    // ~0.22 m off any structural line — spec §4.1 / gap #6).
+    let mut rng = Rng::new(seed);
+    let choices = SeedChoices::draw(&mut rng, program);
     let half_phase = if seed % 2 == 1 { 0.5 } else { 0.0 };
     let lat = Lattice {
-        ox: min_x + half_phase * (program.desk_w + clear),
-        oy: min_y + half_phase * (program.desk_h + clear),
-        jx: jrng.next_f64() * jitter,
-        jy: jrng.next_f64() * jitter,
+        ox: snap_module(min_x + half_phase * (program.desk_w + clear)),
+        oy: snap_module(min_y + half_phase * (program.desk_h + clear)),
     };
 
     if regions.is_empty() {
@@ -498,7 +556,7 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
             /*column_major=*/ false, /*region_no=*/ None, /*tile_zones=*/ true,
             /*emit_zones=*/ true,
             plate.as_deref(), &iwalls, &mut obstacles, frozen_len, &mut mr_counter, lat,
-            Insets::uniform(corridor), corridor, clear,
+            Insets::uniform(corridor), corridor, clear, choices,
         );
     } else {
         // --- Irregular plate: decompose → allocate → per-region packing -----
@@ -513,7 +571,7 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
                 column_major, /*region_no=*/ Some((i + 1) as u32), /*tile_zones=*/ false,
                 /*emit_zones=*/ true,
                 plate.as_deref(), &iwalls, &mut obstacles, frozen_len, &mut mr_counter, lat,
-                insets[i], corridor, clear,
+                insets[i], corridor, clear, choices,
             );
         }
         // --- Top-up pass: reclaim the allocation lost to meetings/geometry ---
@@ -541,7 +599,7 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
                     column_major, /*region_no=*/ Some((i + 1) as u32), /*tile_zones=*/ false,
                     /*emit_zones=*/ false,
                     plate.as_deref(), &iwalls, &mut obstacles, all_frozen, &mut mr_counter, lat,
-                    insets[i], corridor, clear,
+                    insets[i], corridor, clear, choices,
                 );
                 shortfall = shortfall.saturating_sub(got);
             }
@@ -579,8 +637,6 @@ fn allocate_regions(
     seed: u64,
 ) -> Vec<(geometry::Rect, u32, u32)> {
     let n = regions.len();
-    let pitch_x = program.desk_w + clear;
-    let pitch_y = program.desk_h + clear;
 
     // Per-region inset dimensions, meeting-fit, meeting stack capacity, desk cap.
     let mut fits_meeting = vec![false; n];
@@ -593,7 +649,15 @@ fn allocate_regions(
             fits_meeting[i] = true;
             meeting_cap[i] = (((ih + clear) / (program.meeting_h + clear)).floor() as i64).max(0) as u32;
         }
-        if iw >= program.desk_w && ih >= program.desk_h && pitch_x > 0.0 && pitch_y > 0.0 {
+        // Capacity in the orientation the packer will actually use: a portrait
+        // region rotates desks ±π/2, so its world footprint swaps w/h.
+        let (dw, dh) = if reg.height() > reg.width() {
+            (program.desk_h, program.desk_w)
+        } else {
+            (program.desk_w, program.desk_h)
+        };
+        let (pitch_x, pitch_y) = (dw + clear, dh + clear);
+        if iw >= dw && ih >= dh && pitch_x > 0.0 && pitch_y > 0.0 {
             let cols = (((iw + clear) / pitch_x).floor() as i64).max(0);
             let rows = (((ih + clear) / pitch_y).floor() as i64).max(0);
             desk_cap[i] = (cols * rows) as u32;
@@ -603,9 +667,8 @@ fn allocate_regions(
     // Meetings: round-robin over fitting regions (area-desc), respecting each
     // region's vertical stack capacity, until the target or all capacity is used.
     // The seed ROTATES the round-robin start so different seeds put meetings in
-    // different wings — the structural variety the candidate gallery needs
-    // (with the global lattice, jitter alone made every seed near-identical
-    // and the near-duplicate filter collapsed the gallery to one option).
+    // different wings — one of the DISCRETE choices (alongside `SeedChoices`)
+    // that give the candidate gallery structural variety without jitter.
     let start = if n > 0 { (seed as usize) % n } else { 0 };
     let mut m_alloc = vec![0u32; n];
     let mut remaining_m = meetings;
@@ -716,6 +779,7 @@ fn pack_region(
     insets: Insets,
     corridor: f64,
     clear: f64,
+    choices: SeedChoices,
 ) -> u32 {
     // Inset by the (possibly asymmetric) corridor per edge → the work zone.
     // Everything placed lives strictly inside this rect, guaranteeing the
@@ -748,23 +812,25 @@ fn pack_region(
         );
     }
 
-    // --- 1. Meeting rooms: anchored at the region's SHORT end (the end of the
-    // long axis) so rooms cluster at the wing tip like real test-fits, keeping
-    // the desk field contiguous. A landscape (row-major) region anchors a
-    // vertical column at the RIGHT edge; a portrait (column-major) region anchors
-    // a horizontal band along the TOP edge. In `tile_zones` mode (rectangular,
-    // always landscape) we only claim the column when a desk column still fits
-    // beside it, and reserve it out of the desk field; the per-region path drops
-    // that guard (a meeting-sized wing can still host a room) and lets desks pack
-    // around the room footprints. Rooms clamp to fit.
+    // --- 1. Meeting rooms: anchored at one END of the region so rooms cluster
+    // at a wing tip like real test-fits, keeping the desk field contiguous. A
+    // landscape (row-major) region anchors a vertical column at the right edge
+    // (or the LEFT when `choices.band_far` — a discrete seed choice); a portrait
+    // (column-major) region anchors a horizontal band along the bottom edge (or
+    // the TOP under `band_far`). In `tile_zones` mode (rectangular, always
+    // landscape) we only claim the column when a desk column still fits beside
+    // it, and reserve it out of the desk field; the per-region path drops that
+    // guard (a meeting-sized wing can still host a room) and lets desks pack
+    // around the room footprints. Rooms clamp to fit, snapped to the module.
+    let mut dz_x0 = x0;
     let mut dz_x1 = x1;
     let mut claimed = false;
     let mut col_x0 = x1;
     let mut col_mw = 0.0f64;
     let mut meeting_intervals: Vec<(f64, f64)> = Vec::new();
     if meeting_target > 0 && program.meeting_w > 0.0 && program.meeting_h > 0.0 {
-        let mw = program.meeting_w.min(x1 - x0);
-        let mh = program.meeting_h.min(y1 - y0);
+        let mw = snap_module_floor(program.meeting_w.min(x1 - x0));
+        let mh = snap_module_floor(program.meeting_h.min(y1 - y0));
         let mut placed_here = 0u32;
         // Place one room at `(cx, cy)`, recording the obstacle + Meeting zone.
         let place = |doc: &mut Document,
@@ -792,18 +858,19 @@ fn pack_region(
         };
 
         if column_major {
-            // Portrait wing → a horizontal band of rooms along the BOTTOM (base)
-            // edge, so the daylit wing tip stays open desk space (real test-fits
-            // give the perimeter/window wall to workstations, rooms to the core).
+            // Portrait wing → a horizontal band of rooms along the base edge
+            // (bottom, or top under `band_far`), so the daylit wing tip stays
+            // open desk space (real test-fits give the perimeter/window wall to
+            // workstations, rooms to the core).
             let mr_pitch = mw + clear;
             let cols = (((x1 - x0) + clear) / mr_pitch).floor() as i64;
+            let cy = snap_module(if choices.band_far { y1 - mh / 2.0 } else { y0 + mh / 2.0 });
             if cols > 0 {
                 for c in 0..cols {
                     if placed_here >= meeting_target {
                         break;
                     }
-                    let cx = x0 + mw / 2.0 + (c as f64) * mr_pitch;
-                    let cy = y0 + mh / 2.0;
+                    let cx = snap_module(x0 + mw / 2.0 + (c as f64) * mr_pitch);
                     if place(doc, obstacles, mr_counter, cx, cy) {
                         placed_here += 1;
                         claimed = true;
@@ -811,18 +878,23 @@ fn pack_region(
                 }
             }
         } else {
-            // Landscape wing → a vertical column at the right edge (historical).
-            let cx0 = x1 - mw;
+            // Landscape wing → a vertical column at the right edge (or the left
+            // under `band_far`).
+            let cx = snap_module(if choices.band_far { x0 + mw / 2.0 } else { x1 - mw / 2.0 });
             let mr_pitch = mh + clear;
             let rows = (((y1 - y0) + clear) / mr_pitch).floor() as i64;
-            let desk_room = !tile_zones || (cx0 - clear - x0) >= program.desk_w;
+            let desk_room = !tile_zones
+                || if choices.band_far {
+                    (x1 - (cx + mw / 2.0) - clear) >= program.desk_w
+                } else {
+                    ((cx - mw / 2.0) - clear - x0) >= program.desk_w
+                };
             if rows > 0 && desk_room {
                 for r in 0..rows {
                     if placed_here >= meeting_target {
                         break;
                     }
-                    let cx = cx0 + mw / 2.0;
-                    let cy = y0 + mh / 2.0 + (r as f64) * mr_pitch;
+                    let cy = snap_module(y0 + mh / 2.0 + (r as f64) * mr_pitch);
                     if place(doc, obstacles, mr_counter, cx, cy) {
                         meeting_intervals.push((cy - mh / 2.0, cy + mh / 2.0));
                         placed_here += 1;
@@ -830,10 +902,15 @@ fn pack_region(
                     }
                 }
                 if claimed {
-                    col_x0 = cx0;
+                    col_x0 = cx - mw / 2.0;
                     col_mw = mw;
                     if tile_zones {
-                        dz_x1 = cx0 - clear; // reserve the column out of the desk field
+                        // Reserve the column out of the desk field.
+                        if choices.band_far {
+                            dz_x0 = col_x0 + mw + clear;
+                        } else {
+                            dz_x1 = col_x0 - clear;
+                        }
                     }
                 }
             }
@@ -845,18 +922,27 @@ fn pack_region(
         Some(n) => format!("Open Workspace ({})", n),
         None => "Open Workspace".to_string(),
     };
-    // In tile mode the Workspace stops at the reserved meeting column; the
-    // per-region path lays a single full-width Workspace (meetings sit on top of
-    // it as their own zones — desks pack around their footprints).
-    let ws_x1 = if tile_zones && claimed { col_x0 } else { x1 };
+    // In tile mode the Workspace stops at the reserved meeting column
+    // (whichever side it landed on); the per-region path lays a single
+    // full-width Workspace (meetings sit on top of it as their own zones —
+    // desks pack around their footprints).
+    let (ws_x0, ws_x1) = if tile_zones && claimed {
+        if choices.band_far {
+            (col_x0 + col_mw, x1)
+        } else {
+            (x0, col_x0)
+        }
+    } else {
+        (x0, x1)
+    };
     if emit_zones {
         push_zone(
             doc,
             ZoneType::Workspace,
             ZoneShape::Rect {
-                x: (x0 + ws_x1) / 2.0,
+                x: (ws_x0 + ws_x1) / 2.0,
                 y: (y0 + y1) / 2.0,
-                w: ws_x1 - x0,
+                w: ws_x1 - ws_x0,
                 h: y1 - y0,
             },
             &ws_label,
@@ -903,36 +989,47 @@ fn pack_region(
         if program.desk_w <= 0.0 || program.desk_h <= 0.0 {
             break 'desks;
         }
-        let (dz_x0, dz_y0, dz_y1) = (x0, y0, y1);
+        let (dz_y0, dz_y1) = (y0, y1);
         if dz_x1 <= dz_x0 || dz_y1 <= dz_y0 {
             break 'desks;
         }
-        let pitch_x = program.desk_w + clear;
-        let pitch_y = program.desk_h + clear;
-        let cluster_cols = program.cluster_cols.max(1);
+        let cluster_cols = choices.cluster_cols.max(1);
         let bench = program.bench_pairs;
-        let hw = program.desk_w / 2.0;
-        let hh = program.desk_h / 2.0;
+
+        // World-axis desk footprint. A portrait wing rotates every desk ±π/2 so
+        // rows read along the wing's long (Y) axis with the SAME back-to-back
+        // pair convention as landscape wings — the world footprint swaps w/h
+        // (spec §4.2; the old code paired unrotated desks side-by-side along X
+        // and flipped them π about the wrong axis, so symbols read scrambled).
+        let (fw, fh, base_rot) = if column_major {
+            (program.desk_h, program.desk_w, std::f64::consts::FRAC_PI_2)
+        } else {
+            (program.desk_w, program.desk_h, 0.0)
+        };
+        let hw = fw / 2.0;
+        let hh = fh / 2.0;
+        let pitch_x = fw + clear;
+        let pitch_y = fh + clear;
 
         // Two axes. The INNER axis runs uniform-pitch desks along the region's
         // long side (cluster aisles accrue here). The OUTER axis carries the rows
         // that PAIR back-to-back under bench desking. Row-major (landscape) runs
         // rows along Y (outer) with long desk rows along X (inner); a portrait
-        // region transposes so its wing fills with vertical rows.
+        // region transposes so its wing fills with natural vertical rows.
         let (inner_o, inner_dz0, inner_dz1, inner_half, inner_pitch, inner_size) = if column_major {
-            (lat.oy + lat.jy, dz_y0, dz_y1, hh, pitch_y, program.desk_h)
+            (lat.oy, dz_y0, dz_y1, hh, pitch_y, fh)
         } else {
-            (lat.ox + lat.jx, dz_x0, dz_x1, hw, pitch_x, program.desk_w)
+            (lat.ox, dz_x0, dz_x1, hw, pitch_x, fw)
         };
         let (outer_o, outer_dz0, outer_dz1, outer_half, outer_pitch, outer_desk) = if column_major {
-            (lat.ox + lat.jx, dz_x0, dz_x1, hw, pitch_x, program.desk_w)
+            (lat.ox, dz_x0, dz_x1, hw, pitch_x, fw)
         } else {
-            (lat.oy + lat.jy, dz_y0, dz_y1, hh, pitch_y, program.desk_h)
+            (lat.oy, dz_y0, dz_y1, hh, pitch_y, fh)
         };
 
         // GLOBAL lattice phase: the first desk line in each region is the first
-        // line of the shared lattice (origin = plate bbox min + one seed jitter)
-        // that clears this region's inset. Because the phase comes from the plate
+        // line of the shared lattice (module-snapped origin at the plate bbox
+        // min, plus the odd-seed half-pitch) that clears this region's inset. Because the phase comes from the plate
         // origin — not the region corner — adjacent wings' rows/columns land on
         // the SAME lines across the seam. `ceil` picks that first line; the offset
         // it introduces is why global alignment can cost a fractional row (bench
@@ -959,7 +1056,9 @@ fn pack_region(
         // region's near edge, shrinking the field's spread). Two regions sharing
         // the outer range still resolve the same start, so their rows align.
         let outer_first_near = outer_first - outer_half;
-        // Center + rotation of outer desk index `o`.
+        // Center + rotation of outer desk index `o`. The pair partner mirrors
+        // across the spine: base orientation + π (0/π in landscape wings,
+        // π/2 / 3π/2 in portrait wings — same reading convention, rotated).
         let outer_at = |o: i64| -> (f64, f64) {
             if bench {
                 let p = o / 2;
@@ -967,9 +1066,10 @@ fn pack_region(
                 let near = outer_first_near
                     + p as f64 * block
                     + if w == 1 { outer_desk + SPINE_GAP } else { 0.0 };
-                (near + outer_half, if w == 1 { std::f64::consts::PI } else { 0.0 })
+                let rot = if w == 1 { base_rot + std::f64::consts::PI } else { base_rot };
+                (near + outer_half, rot)
             } else {
-                (outer_first + o as f64 * outer_pitch, 0.0)
+                (outer_first + o as f64 * outer_pitch, base_rot)
             }
         };
         let outer_n = {
@@ -992,71 +1092,56 @@ fn pack_region(
 
         // Two clearance regimes. Same-grid desks are pitched `clear` apart (or
         // SPINE_GAP apart for a bench pair) BY CONSTRUCTION, so their check needs
-        // only guard fp noise; meetings/frozen/earlier-phase footprints still need
+        // only guard fp noise; meetings/frozen/earlier-pass footprints still need
         // the FULL clearance so a person can pass. Under pairing the same-grid pad
         // shrinks below the spine so the intended 0.15 m gap (or a touching 0.0)
         // is never flagged as a collision.
         let same_grid_pad = if bench { SPINE_GAP * 0.5 - 1e-6 } else { clear * 0.5 };
 
-        // Two grid PHASES: the base grid, then a half-pitch-shifted pass that
-        // catches slots a meeting room's clearance shadow stole from tight wings.
-        // Earlier-phase desks fall before `grid_start`, so the full-clearance
-        // regime keeps phase-2 desks a true aisle away from phase-1 rows.
-        'phases: for phase in 0..2u32 {
-            if desks_here >= desk_target {
-                break 'phases;
-            }
-            let (inner_ph, outer_ph) = if phase == 0 {
-                (0.0, 0.0)
-            } else {
-                (inner_pitch * 0.5, outer_pitch * 0.5)
-            };
-            let grid_start = obstacles.len();
-            'grid: for o in 0..outer_n {
-                let (outer_c, rot) = outer_at(o);
-                for i in 0..inner_n {
-                    if desks_here >= desk_target {
-                        break 'grid;
-                    }
-                    let aisle = ((i as u32 / cluster_cols).min(max_aisles)) as f64 * clear;
-                    let inner_c = inner_first + inner_ph + i as f64 * inner_pitch + aisle;
-                    let outer_cc = outer_c + outer_ph;
-                    let (cx, cy) = if column_major {
-                        (outer_cc, inner_c)
-                    } else {
-                        (inner_c, outer_cc)
-                    };
-                    // stop if the cluster aisle pushed this desk past the inner edge
-                    let past_edge = if column_major {
-                        cy + hh > inner_dz1
-                    } else {
-                        cx + hw > inner_dz1
-                    };
-                    if past_edge {
-                        continue;
-                    }
-                    // Clamp into the work zone (never into the corridor). Phase-0
-                    // positions already sit inside by construction, so this only
-                    // reins in a half-pitch phase-2 slot at the edge.
-                    let fx = cx.clamp(dz_x0 + hw, dz_x1 - hw);
-                    let fy = cy.clamp(dz_y0 + hh, dz_y1 - hh);
-                    let ok = slot_fits_plate(plate, fx, fy, program.desk_w, program.desk_h, corridor)
-                        && slot_clears_walls(iwalls, fx, fy, program.desk_w, program.desk_h)
-                        && !footprint_overlaps(
-                            &obstacles[..grid_start],
-                            fx, fy, program.desk_w, program.desk_h, clear - 1e-6,
-                        )
-                        && !footprint_overlaps(
-                            &obstacles[grid_start..],
-                            fx, fy, program.desk_w, program.desk_h, same_grid_pad,
-                        );
-                    if !ok {
-                        continue;
-                    }
-                    push_component(doc, "Desk", fx, fy, program.desk_w, program.desk_h, rot);
-                    obstacles.push((fx, fy, program.desk_w, program.desk_h));
-                    desks_here += 1;
+        // ONE grid pass on the base lattice. (A half-pitch phase-2 infill used
+        // to half-offset stragglers into meeting-shadow gaps; it broke row
+        // rhythm — the exact "half-desk offset" tell §4.5 bans — and is gone.
+        // Cross-region shortfall recovery is the top-up pass in `generate`.)
+        let grid_start = obstacles.len();
+        'grid: for o in 0..outer_n {
+            let (outer_c, rot) = outer_at(o);
+            for i in 0..inner_n {
+                if desks_here >= desk_target {
+                    break 'grid;
                 }
+                let aisle = ((i as u32 / cluster_cols).min(max_aisles)) as f64 * clear;
+                let inner_c = inner_first + i as f64 * inner_pitch + aisle;
+                let (cx, cy) = if column_major {
+                    (outer_c, inner_c)
+                } else {
+                    (inner_c, outer_c)
+                };
+                // Snap to the module; the snapped footprint must stay inside
+                // the work zone (a cluster aisle can push a slot past the inner
+                // edge, and on off-module plates the snap itself may shift a
+                // slot 0.025 m outward — drop it rather than break alignment).
+                let fx = snap_module(cx);
+                let fy = snap_module(cy);
+                if fx - hw < dz_x0 - 1e-9
+                    || fx + hw > dz_x1 + 1e-9
+                    || fy - hh < dz_y0 - 1e-9
+                    || fy + hh > dz_y1 + 1e-9
+                {
+                    continue;
+                }
+                let ok = slot_fits_plate(plate, fx, fy, fw, fh, corridor)
+                    && slot_clears_walls(iwalls, fx, fy, fw, fh)
+                    && !footprint_overlaps(&obstacles[..grid_start], fx, fy, fw, fh, clear - 1e-6)
+                    && !footprint_overlaps(&obstacles[grid_start..], fx, fy, fw, fh, same_grid_pad);
+                if !ok {
+                    continue;
+                }
+                // Local (unrotated) dims + rotation — the renderer, 3D, and the
+                // circulation rasterizer all rotate; only the obstacle list is
+                // AABB and takes the world extents (fw × fh).
+                push_component(doc, "Desk", fx, fy, program.desk_w, program.desk_h, rot);
+                obstacles.push((fx, fy, fw, fh));
+                desks_here += 1;
             }
         }
     }
@@ -1214,21 +1299,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn different_seeds_produce_different_layouts() {
-        let program = Program::default();
-        let mut a = room(20.0, 15.0);
-        let mut b = room(20.0, 15.0);
-        generate(&mut a, &program, 1, false);
-        generate(&mut b, &program, 2, false);
-        // same counts, but jittered positions must differ somewhere
-        let differs = a
-            .components
-            .iter()
-            .zip(b.components.iter())
-            .any(|(ca, cb)| (ca.x - cb.x).abs() > 1e-9 || (ca.y - cb.y).abs() > 1e-9);
-        assert!(differs, "distinct seeds should yield distinct layouts");
-    }
+    // (seed-to-seed variety is asserted structurally by
+    // `seed_gallery_is_structurally_diverse` at the end of this module.)
 
     #[test]
     fn everything_stays_inside_the_perimeter_corridor() {
@@ -1525,16 +1597,20 @@ mod tests {
         geometry::trace_floor_polygon(&segs, geometry::LOOP_SNAP_TOL).expect("plate loop")
     }
 
-    /// All 9 sample points (corners, edge midpoints, center) inside the plate.
+    /// All 9 sample points (corners, edge midpoints, center) of the WORLD
+    /// footprint (rotation-aware — portrait desks are ±π/2) inside the plate.
     fn footprint_in_plate(c: &crate::model::Component, poly: &[Point]) -> bool {
-        let xs = [c.x - c.w / 2.0, c.x, c.x + c.w / 2.0];
-        let ys = [c.y - c.h / 2.0, c.y, c.y + c.h / 2.0];
+        let (ww, wh) = world_extents(c.w, c.h, c.rotation);
+        let xs = [c.x - ww / 2.0, c.x, c.x + ww / 2.0];
+        let ys = [c.y - wh / 2.0, c.y, c.y + wh / 2.0];
         xs.iter().all(|&px| ys.iter().all(|&py| geometry::point_in_polygon(px, py, poly)))
     }
 
     fn footprints_overlap(a: &crate::model::Component, b: &crate::model::Component) -> bool {
-        (a.x - b.x).abs() < (a.w + b.w) / 2.0 - 1e-6
-            && (a.y - b.y).abs() < (a.h + b.h) / 2.0 - 1e-6
+        let (aw, ah) = world_extents(a.w, a.h, a.rotation);
+        let (bw, bh) = world_extents(b.w, b.h, b.rotation);
+        (a.x - b.x).abs() < (aw + bw) / 2.0 - 1e-6
+            && (a.y - b.y).abs() < (ah + bh) / 2.0 - 1e-6
     }
 
     fn assert_no_overlaps(doc: &Document, ctx: &str) {
@@ -1636,7 +1712,14 @@ mod tests {
             assert!(circ.score >= 55.0, "seed {seed}: circulation score {:.1} < 55", circ.score);
 
             // Spread: the desk field must span the building, not clump in one
-            // wing - its bbox covers >=60% of the plate bbox on BOTH axes.
+            // wing - its bbox covers >=55% of the plate bbox on x and >=60% on
+            // y. The x bar was 60% pre-M2: the 6.5 m west annex then seated 2-3
+            // desks via the (banned) half-pitch infill + off-module jitter. With
+            // the 0.05 m module + one global lattice (testfit-pro-quality.md
+            // §4.1/§4.5 — professional alignment beats squeezing stragglers into
+            // misaligned slots), the annex hosts its meeting room only, so the
+            // desk field legitimately spans just the two structural wings
+            // (x centers ~13.1→36.5 of a 37.5 m plate, ~56-58% across seeds).
             let (px0, py0, px1, py1) = poly.iter().fold(
                 (f64::MAX, f64::MAX, f64::MIN, f64::MIN),
                 |(a, b, c2, d), p| (a.min(p.x), b.min(p.y), c2.max(p.x), d.max(p.y)),
@@ -1646,7 +1729,7 @@ mod tests {
                 |(a, b, c2, d), k| (a.min(k.x), b.min(k.y), c2.max(k.x), d.max(k.y)),
             );
             assert!(
-                (dx1 - dx0) >= 0.6 * (px1 - px0),
+                (dx1 - dx0) >= 0.55 * (px1 - px0),
                 "seed {seed}: desk spread x {:.1} of {:.1}",
                 dx1 - dx0,
                 px1 - px0
@@ -1673,9 +1756,10 @@ mod tests {
 
     // ---- Interior keep-outs (building core) -------------------------------
 
-    /// True if component `c`'s footprint intersects rect (center `kx,ky`, `kw×kh`).
+    /// True if component `c`'s WORLD footprint intersects rect (center `kx,ky`, `kw×kh`).
     fn intersects(c: &crate::model::Component, kx: f64, ky: f64, kw: f64, kh: f64) -> bool {
-        (c.x - kx).abs() < (c.w + kw) / 2.0 - 1e-9 && (c.y - ky).abs() < (c.h + kh) / 2.0 - 1e-9
+        let (cw, ch) = world_extents(c.w, c.h, c.rotation);
+        (c.x - kx).abs() < (cw + kw) / 2.0 - 1e-9 && (c.y - ky).abs() < (ch + kh) / 2.0 - 1e-9
     }
 
     #[test]
@@ -1851,13 +1935,14 @@ mod tests {
         }
     }
 
-    /// Two adjacent regions of one plate anchor their desk grids to the SAME global
-    /// lattice, so every desk in BOTH regions lies on shared lines modulo pitch.
+    /// Regions of one plate anchor their desk grids to the SAME global lattice:
+    /// within an orientation class (landscape 0/π vs portrait ±π/2 — each has
+    /// its own world pitches), every desk lies on shared lines modulo pitch.
     #[test]
     fn regions_share_the_global_lattice() {
-        // L-plate decomposes into a bottom band and an upper-left wing (both
-        // row-major). bench off + no cluster aisles + a target below capacity (so
-        // only the base phase runs) leaves a pure pitch lattice on both axes.
+        // The L-plate decomposes into the tall left leg [0,12]×[0,14] (portrait
+        // → ±π/2 desks) and the bottom-right leg [12,20]×[0,8] (landscape).
+        // bench off + no cluster aisles leaves a pure pitch lattice per class.
         let mut program = Program::default();
         program.desks = 10;
         program.meeting_rooms = 0;
@@ -1866,22 +1951,31 @@ mod tests {
         let mut doc = l_room();
         generate(&mut doc, &program, 3, false);
         let desks: Vec<_> = doc.components.iter().filter(|c| c.category == "Desk").collect();
-        // Both regions are populated (band below y=8, wing above it at x<12).
-        let band = desks.iter().filter(|c| c.y < 8.0).count();
-        let wing = desks.iter().filter(|c| c.y > 8.0 && c.x < 12.0).count();
-        assert!(band > 0 && wing > 0, "need desks in both regions (band {band}, wing {wing})");
+        // Both regions are populated (left leg at x<12, bottom-right at x>12).
+        let leg = desks.iter().filter(|c| c.x < 12.0).count();
+        let band = desks.iter().filter(|c| c.x > 12.0).count();
+        assert!(leg > 0 && band > 0, "need desks in both regions (leg {leg}, band {band})");
 
-        // A single global lattice: every desk x is congruent to a common residue
-        // mod pitch_x, and every desk y mod pitch_y — across BOTH regions.
-        let pitch_x = program.desk_w + program.desk_clearance_m;
-        let pitch_y = program.desk_h + program.desk_clearance_m;
-        let x0 = desks.iter().map(|c| c.x).fold(f64::MAX, f64::min);
-        let y0 = desks.iter().map(|c| c.y).fold(f64::MAX, f64::min);
-        for c in &desks {
-            let kx = (c.x - x0) / pitch_x;
-            let ky = (c.y - y0) / pitch_y;
-            assert!((kx - kx.round()).abs() < 1e-6, "x {} off the shared lattice", c.x);
-            assert!((ky - ky.round()).abs() < 1e-6, "y {} off the shared lattice", c.y);
+        let clear = program.desk_clearance_m;
+        for class in [0.0, std::f64::consts::FRAC_PI_2] {
+            let members: Vec<_> = desks
+                .iter()
+                .filter(|c| ((c.rotation - class).rem_euclid(std::f64::consts::PI)).abs() < 1e-9)
+                .collect();
+            if members.len() < 2 {
+                continue;
+            }
+            // World pitches for this orientation class.
+            let (ww, wh) = world_extents(program.desk_w, program.desk_h, class);
+            let (pitch_x, pitch_y) = (ww + clear, wh + clear);
+            let x0 = members.iter().map(|c| c.x).fold(f64::MAX, f64::min);
+            let y0 = members.iter().map(|c| c.y).fold(f64::MAX, f64::min);
+            for c in &members {
+                let kx = (c.x - x0) / pitch_x;
+                let ky = (c.y - y0) / pitch_y;
+                assert!((kx - kx.round()).abs() < 1e-6, "x {} off the shared lattice", c.x);
+                assert!((ky - ky.round()).abs() < 1e-6, "y {} off the shared lattice", c.y);
+            }
         }
     }
 
@@ -1922,8 +2016,10 @@ mod tests {
     /// A footprint straddles/presses the wall when it comes closer to the
     /// centerline than half the wall thickness (same exact distance the packer
     /// uses, minus its extra clearance so the assertion is the harder bound).
+    /// World extents: portrait desks are emitted at ±π/2.
     fn straddles(c: &crate::model::Component, a: Point, b: Point) -> bool {
-        geometry::rect_segment_dist(c.x, c.y, c.w, c.h, a, b) < 0.05 - 1e-9
+        let (cw, ch) = world_extents(c.w, c.h, c.rotation);
+        geometry::rect_segment_dist(c.x, c.y, cw, ch, a, b) < 0.05 - 1e-9
     }
 
     #[test]
@@ -2033,5 +2129,150 @@ mod tests {
         for c in &doc.components {
             assert!(!straddles(c, a, b), "{} straddles the partition after freeze", c.label);
         }
+    }
+
+    // ---- M2 alignment discipline (module snap, portrait pairs, seed gallery) --
+
+    /// `v` sits exactly on the 0.05 m module (the deliverable's acceptance
+    /// expression: `(v / 0.05).round() * 0.05 == v` within 1e-9).
+    fn on_module(v: f64) -> bool {
+        ((v / MODULE).round() * MODULE - v).abs() < 1e-9
+    }
+
+    /// EVERY emitted component coordinate and dimension lands on the 0.05 m
+    /// module — even when the plate's own corners are off-module, and on the
+    /// real 43-vertex building. No continuous jitter survives anywhere.
+    #[test]
+    fn emitted_geometry_snaps_to_the_module() {
+        // A room whose SW corner sits 0.13 / 0.07 off the grid: the lattice
+        // origin and every derived anchor must still snap onto module lines.
+        for seed in 1..=4u64 {
+            let mut doc = room_from_corners(&[
+                (0.13, 0.07),
+                (20.13, 0.07),
+                (20.13, 15.07),
+                (0.13, 15.07),
+            ]);
+            generate(&mut doc, &Program::default(), seed, false);
+            let desks = doc.components.iter().filter(|c| c.category == "Desk").count();
+            assert!(desks > 0, "seed {seed}: off-module room seats no desks");
+            for c in &doc.components {
+                for v in [c.x, c.y, c.w, c.h] {
+                    assert!(on_module(v), "seed {seed}: {} has off-module value {v}", c.label);
+                }
+            }
+        }
+        // The real building plate (0.25 m-grid corners) with the full program.
+        let mut program = Program::default();
+        program.desks = 60;
+        program.meeting_rooms = 4;
+        program.meeting_w = 3.0;
+        program.meeting_h = 3.0;
+        for seed in 1..=3u64 {
+            let mut doc = real_plate_doc();
+            generate(&mut doc, &program, seed, false);
+            for c in &doc.components {
+                for v in [c.x, c.y, c.w, c.h] {
+                    assert!(on_module(v), "seed {seed}: {} has off-module value {v}", c.label);
+                }
+            }
+        }
+    }
+
+    /// Portrait wings (rows along the long/Y axis) pair desks BACK-TO-BACK
+    /// across a vertical spine: partners sit `desk_h + SPINE_GAP` apart along
+    /// X at the SAME y, rotated ±π/2 (the landscape 0/π convention rotated
+    /// with the wing). Regression: the old code left portrait desks unrotated
+    /// and π-flipped the partner about the wrong axis, so pairs were 1.6 m
+    /// apart side-by-side and the symbols read scrambled (spec gap #6).
+    #[test]
+    fn portrait_wing_pairs_desks_across_the_spine() {
+        // L-plate with a tall-thin left wing [0,6]×[0,30] (portrait) and a
+        // bottom band [6,16]×[0,6] (landscape).
+        let mut program = Program::default();
+        program.desks = 60; // over capacity, so the wing fills completely
+        program.meeting_rooms = 0;
+        program.cluster_cols = 100; // no cluster aisles between pair columns
+        assert!(program.bench_pairs, "bench pairing is the default");
+        let mut doc = room_from_corners(&[
+            (0.0, 0.0),
+            (16.0, 0.0),
+            (16.0, 6.0),
+            (6.0, 6.0),
+            (6.0, 30.0),
+            (0.0, 30.0),
+        ]);
+        generate(&mut doc, &program, 2, false);
+        let wing: Vec<_> = doc
+            .components
+            .iter()
+            .filter(|c| c.category == "Desk" && c.x < 6.0 && c.y > 7.0)
+            .collect();
+        assert!(wing.len() >= 8, "portrait wing seated only {} desks", wing.len());
+
+        let q = std::f64::consts::FRAC_PI_2;
+        for c in &wing {
+            let is_portrait = (c.rotation - q).abs() < 1e-9 || (c.rotation - 3.0 * q).abs() < 1e-9;
+            assert!(is_portrait, "{} not rotated ±π/2 in a portrait wing: {}", c.label, c.rotation);
+        }
+
+        // Group into rows by y; each row pairs across the spine along X.
+        use std::collections::BTreeMap;
+        let mut rows: BTreeMap<i64, Vec<&&Component>> = BTreeMap::new();
+        for c in &wing {
+            rows.entry((c.y * 1000.0).round() as i64).or_default().push(c);
+        }
+        let mut paired_rows = 0;
+        for row in rows.values_mut() {
+            row.sort_by(|a, b| a.x.partial_cmp(&b.x).unwrap());
+            if row.len() < 2 {
+                continue;
+            }
+            // Pair partners are ADJACENT ALONG X (mirror across the vertical
+            // spine), separated by exactly the desk depth + spine gap — not by
+            // the 1.6 m desk width the old wrong-axis pairing produced.
+            let dx = row[1].x - row[0].x;
+            assert!(
+                (dx - (program.desk_h + SPINE_GAP)).abs() < 1e-6,
+                "pair spacing {dx:.3} != depth {}",
+                program.desk_h + SPINE_GAP
+            );
+            assert!((row[0].rotation - q).abs() < 1e-9, "near desk should read +π/2");
+            assert!(
+                (row[1].rotation - 3.0 * q).abs() < 1e-9,
+                "far desk should mirror at 3π/2 (π/2 + π)"
+            );
+            paired_rows += 1;
+        }
+        assert!(paired_rows >= 4, "need ≥4 paired rows to trust the axis, got {paired_rows}");
+    }
+
+    /// The candidate gallery stays diverse WITHOUT jitter: over seeds 1..8 on
+    /// one plate, at least 4 structurally distinct layouts appear (distinct =
+    /// different component count or a different position multiset). Variety
+    /// comes from discrete choices only: odd-seed half-pitch lattice phase,
+    /// meeting band end A/B, cluster-column count, meeting round-robin start.
+    #[test]
+    fn seed_gallery_is_structurally_diverse() {
+        let program = Program::default();
+        let mut signatures = std::collections::BTreeSet::new();
+        for seed in 1..=8u64 {
+            let mut doc = room(20.0, 15.0);
+            generate(&mut doc, &program, seed, false);
+            let mut positions: Vec<(i64, i64)> = doc
+                .components
+                .iter()
+                .map(|c| (((c.x * 1000.0).round()) as i64, ((c.y * 1000.0).round()) as i64))
+                .collect();
+            positions.sort_unstable();
+            signatures.insert((doc.components.len(), positions));
+        }
+        // Measured at M2 time: 7/8 distinct here, 5/8 on the L-plate, 8/8 on
+        // the real 43-vertex plate.
+        assert!(
+            signatures.len() >= 4,
+            "seeds 1..8 produced only {} structurally distinct layouts",
+            signatures.len()
+        );
     }
 }
