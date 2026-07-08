@@ -172,6 +172,14 @@ export function entityHitTest(e: CadEntity, world: Vec2, tolM: number): boolean 
       if (e.closed && n > 2 && distToSeg(world, e.pts[n - 1], e.pts[0]) <= tolM) return true
       return false
     }
+    case 'hatch': {
+      // pick by the (always-closed) boundary ring, same as a closed polyline
+      const n = e.pts.length
+      for (let i = 0; i < n; i++) {
+        if (distToSeg(world, e.pts[i], e.pts[(i + 1) % n]) <= tolM) return true
+      }
+      return false
+    }
     case 'rect':
     case 'column': {
       const c = e.kind === 'rect' ? v(e.x, e.y) : e.at
@@ -217,6 +225,7 @@ export function translateEntity(e: CadEntity, dx: number, dy: number): CadEntity
     case 'line':
       return { ...e, a: add(e.a, d), b: add(e.b, d) }
     case 'polyline':
+    case 'hatch':
       return { ...e, pts: e.pts.map((p) => add(p, d)) }
     case 'rect':
       return { ...e, x: e.x + dx, y: e.y + dy }
@@ -243,6 +252,7 @@ export function rotateEntity(e: CadEntity, center: Vec2, rad: number): CadEntity
     case 'line':
       return { ...e, a: r(e.a), b: r(e.b) }
     case 'polyline':
+    case 'hatch':
       return { ...e, pts: e.pts.map(r) }
     case 'rect': {
       const c = r(v(e.x, e.y))
@@ -276,6 +286,8 @@ export function scaleEntity(e: CadEntity, center: Vec2, f: number): CadEntity {
       return { ...e, a: s(e.a), b: s(e.b) }
     case 'polyline':
       return { ...e, pts: e.pts.map(s) }
+    case 'hatch':
+      return { ...e, pts: e.pts.map(s), spacing: e.spacing * af }
     case 'rect': {
       const c = s(v(e.x, e.y))
       return { ...e, x: c.x, y: c.y, w: e.w * af, h: e.h * af }
@@ -307,6 +319,7 @@ export function mirrorEntity(e: CadEntity, a: Vec2, b: Vec2): CadEntity {
     case 'line':
       return { ...e, a: m(e.a), b: m(e.b) }
     case 'polyline':
+    case 'hatch':
       return { ...e, pts: e.pts.map(m) }
     case 'rect': {
       const c = m(v(e.x, e.y))
@@ -380,6 +393,7 @@ export function offsetEntity(e: CadEntity, distM: number, side: Vec2): CadEntity
     case 'door':
     case 'window':
     case 'column':
+    case 'hatch':
       return null
   }
 }
@@ -478,7 +492,8 @@ export function applyGrip(e: CadEntity, gripIndex: number, world: Vec2): CadEnti
   switch (e.kind) {
     case 'line':
       return gripIndex === 0 ? { ...e, a: w0 } : { ...e, b: w0 }
-    case 'polyline': {
+    case 'polyline':
+    case 'hatch': {
       const pts = e.pts.map((p) => v(p.x, p.y))
       if (gripIndex >= 0 && gripIndex < pts.length) pts[gripIndex] = w0
       return { ...e, pts }
@@ -562,6 +577,7 @@ function boundsOf(e: CadEntity): Bounds {
       pts.push(e.a, e.b)
       break
     case 'polyline':
+    case 'hatch':
       pts.push(...e.pts)
       break
     case 'rect':

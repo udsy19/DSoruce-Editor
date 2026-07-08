@@ -143,6 +143,44 @@ export function Icon({ name, size = 19 }: Props) {
           <path d="M14 10l6-6M20 4v5M20 4h-5" strokeWidth={1.2} />
         </svg>
       )
+    case 'trim':
+      return (
+        <svg {...p}>
+          <path d="M4 6l10 10M14 6L4 16" />
+          <path d="M14 16l6-2M14 6l6 2" strokeWidth={1.2} strokeDasharray="2 2" />
+          <circle cx="15.5" cy="17" r="2" />
+          <circle cx="15.5" cy="5" r="2" />
+        </svg>
+      )
+    case 'extend':
+      return (
+        <svg {...p}>
+          <path d="M20 4v16" />
+          <path d="M4 12h9" />
+          <path d="M13 12h5M18 12l-2.5-2.5M18 12l-2.5 2.5" strokeWidth={1.2} strokeDasharray="2 2" />
+        </svg>
+      )
+    case 'fillet':
+      return (
+        <svg {...p}>
+          <path d="M5 20v-8q0-7 7-7h8" />
+          <path d="M5 12V5h7" strokeWidth={1.2} strokeDasharray="2 2" />
+        </svg>
+      )
+    case 'hatch':
+      return (
+        <svg {...p}>
+          <rect x="4" y="4" width="16" height="16" rx="0.5" />
+          <path d="M4 12l8-8M4 20L20 4M12 20l8-8" strokeWidth={1.2} />
+        </svg>
+      )
+    case 'layers':
+      return (
+        <svg {...p}>
+          <path d="M12 3l9 5-9 5-9-5z" />
+          <path d="M3 13l9 5 9-5" strokeWidth={1.2} />
+        </svg>
+      )
     case 'line':
       return (
         <svg {...p}>

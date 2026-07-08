@@ -251,6 +251,8 @@ export class EditorCanvas {
     this.cad.store.onChange = () => {
       if (!this.cadHydrating) this.ed.set_cad_json(JSON.stringify(this.cad.store.entities))
       cadRender?.()
+      // React side re-derives from the store (empty-state overlay, layers card).
+      this.onChange?.()
     }
     this.attach()
     this.resize()
@@ -571,6 +573,13 @@ export class EditorCanvas {
 
   private onKey = (e: KeyboardEvent) => {
     if (this.cad.active) {
+      // ⌘Z / Ctrl+Z pops the CAD undo stack (grip drags, trims, fillets, …).
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault()
+        this.cad.store.undo()
+        this.render()
+        return
+      }
       // CAD tools consume typing (text) + shortcuts (door 'f', column 'r', Esc).
       if (e.key === 'Backspace') e.preventDefault()
       this.cad.key(e.key)
@@ -652,6 +661,7 @@ export class EditorCanvas {
       toScreen: (p) => this.toScreen(p.x, p.y),
       pxPerM: this.scale,
       selected: this.cad.selected,
+      hiddenLayers: this.cad.store.hiddenLayers,
       colors: { wall: C.wall, ink: C.label, accent: C.accent, dim: '#2d5bd6', faint: C.rulerText },
     })
 

@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useReducer, useRef, useState } from 'react'
 import { EditorCanvas, DocComponent, Metrics, Program, GenResult, DEFAULT_PROGRAM } from './editor/EditorCanvas'
 import { CATALOG, catByCategory } from './editor/catalog'
 import { searchBank } from './materialBank/mock'
 import { searchBankLive, bankQueryFor, formatINR, type BankProduct } from './materialBank/client'
 import { Icon } from './ui/icons'
 import { StatsPanel } from './ui/StatsPanel'
+import { LayersPanel } from './ui/LayersPanel'
 import { AgentPanel } from './ai/AgentPanel'
 import { suggestProgram, suggestProgramSummary } from './ai/suggestProgram'
 import { Scene3D } from './three/Scene3D'
@@ -45,11 +46,15 @@ const CAD_RAIL: { id: string; icon: string; label: string; hint?: string }[] = [
   { id: 'door', icon: 'door', label: 'Door' },
   { id: 'window', icon: 'window', label: 'Window' },
   { id: 'column', icon: 'column', label: 'Column' },
+  { id: 'hatch', icon: 'hatch', label: 'Hatch' },
   { id: 'move', icon: 'move', label: 'Move' },
   { id: 'copy', icon: 'copy', label: 'Copy' },
   { id: 'rotate', icon: 'rotate', label: 'Rotate' },
   { id: 'mirror', icon: 'mirror', label: 'Mirror' },
   { id: 'scale', icon: 'scale', label: 'Scale' },
+  { id: 'trim', icon: 'trim', label: 'Trim' },
+  { id: 'extend', icon: 'extend', label: 'Extend' },
+  { id: 'fillet', icon: 'fillet', label: 'Fillet ( [ / ] radius )' },
 ]
 
 export function App() {
@@ -207,7 +212,13 @@ export function App() {
   const ec = ecRef.current
   const selected = ready && ec ? ec.getSelected() : null
   const metrics = ready && ec ? ec.getMetrics() : null
-  const docEmpty = !!metrics && metrics.wall_count === 0 && metrics.component_count === 0
+  // CAD entities count as content too — otherwise the empty-state overlay sits
+  // over the canvas and hijacks clicks while someone drafts on a blank sheet.
+  const docEmpty =
+    !!metrics &&
+    metrics.wall_count === 0 &&
+    metrics.component_count === 0 &&
+    (ec?.cad.store.entities.length ?? 0) === 0
 
   const pickTool = (t: string) => {
     setTool(t)
@@ -525,6 +536,7 @@ export function App() {
             <ReimaginePanel ec={ec} c={selected} />
           ) : ec ? (
             <>
+              {tool.startsWith('cad:') && <LayersCard ec={ec} />}
               <StatsPanel ec={ec} />
               <GenerateCard ec={ec} metrics={metrics} />
             </>
@@ -567,6 +579,42 @@ export function App() {
 
       {helpOpen && <ShortcutsOverlay onClose={() => setHelpOpen(false)} />}
     </div>
+  )
+}
+
+/** Layers card — shown while a CAD drafting tool is active. The store is the
+ *  source of truth; interactions repaint the canvas via store.onChange and
+ *  bump this card so the React side stays in step. */
+function LayersCard({ ec }: { ec: EditorCanvas }) {
+  const [, bump] = useReducer((n: number) => n + 1, 0)
+  const store = ec.cad.store
+  const counts = new Map<string, number>()
+  for (const e of store.entities) {
+    const l = e.layer ?? '0'
+    counts.set(l, (counts.get(l) ?? 0) + 1)
+  }
+  return (
+    <LayersPanel
+      layers={store.layers().map((name) => ({
+        name,
+        count: counts.get(name) ?? 0,
+        visible: store.isVisible(name),
+        active: name === store.activeLayer,
+      }))}
+      onToggle={(n) => {
+        store.toggleLayer(n)
+        bump()
+      }}
+      onSetActive={(n) => {
+        store.setActiveLayer(n)
+        bump()
+      }}
+      onAdd={(n) => {
+        // a layer exists once it is active — new entities are stamped with it
+        store.setActiveLayer(n)
+        bump()
+      }}
+    />
   )
 }
 
