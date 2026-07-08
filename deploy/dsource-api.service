@@ -1,0 +1,14 @@
+[Unit]
+Description=DSource Editor app + API (static SPA, LLM relays, DWG convert, bank proxy, plan store)
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/node /opt/dsource/server.mjs
+WorkingDirectory=/opt/dsource
+EnvironmentFile=/opt/dsource/env
+Restart=always
+RestartSec=2
+User=root
+
+[Install]
+WantedBy=multi-user.target

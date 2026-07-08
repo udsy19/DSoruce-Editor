@@ -1,0 +1,14 @@
+{
+  "name": "dsource-api",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "bundle": "esbuild server.ts --bundle --platform=node --format=esm --banner:js=\"import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);\" --outfile=dist-server/server.mjs"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  }
+}

@@ -1,0 +1,8 @@
+
+# DSource Editor app (appended by deploy/deploy.sh — do not duplicate).
+# sslip.io resolves any prefix label to the embedded IP, so this hostname gets
+# automatic Let's Encrypt without DNS setup. Caddy proxies /ws upgrades too.
+app.46.202.179.28.sslip.io {
+	encode gzip
+	reverse_proxy 127.0.0.1:8790
+}

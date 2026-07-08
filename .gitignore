@@ -5,6 +5,7 @@
 # Node
 node_modules
 web/dist
+deploy/dist-server
 
 # Generated wasm bindings (built via `make wasm`)
 web/src/wasm
