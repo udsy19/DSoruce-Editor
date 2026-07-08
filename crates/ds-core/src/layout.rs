@@ -198,6 +198,23 @@ fn slot_fits_plate(plate: Option<&[Point]>, cx: f64, cy: f64, w: f64, h: f64, ma
     })
 }
 
+/// Raster cell size (m) for plate decomposition — 0.5 m keeps the grid at a few
+/// thousand cells (trivial cost) while resolving real wing geometry.
+const REGION_CELL: f64 = 0.5;
+/// A decomposition region must be at least this wide/tall (m) — narrower slivers
+/// can't usefully hold a corridor-inset desk row, so they're discarded.
+const REGION_MIN_DIM: f64 = 3.0;
+/// …and at least this many m² — below this a region is noise, not a wing.
+const REGION_MIN_AREA: f64 = 9.0;
+
+/// Per-region deterministic RNG stream: derived from `(seed, region_index)` so a
+/// region's layout is reproducible and region order can't perturb its neighbours.
+/// `index == 0` collapses to `Rng::new(seed)`, so the single-region (rectangular)
+/// path is byte-identical to the historical `Rng::new(seed)` behavior.
+fn region_rng(seed: u64, index: u64) -> Rng {
+    Rng::new(seed ^ index.wrapping_mul(0x9E37_79B9_7F4A_7C15))
+}
+
 /// Deterministically generate a test-fit into `doc` for `program`, seeded by `seed`.
 ///
 /// Walls are preserved. When `keep_confirmed` is true, components left `Confirmed`
@@ -205,6 +222,12 @@ fn slot_fits_plate(plate: Option<&[Point]>, cx: f64, cy: f64, w: f64, h: f64, ma
 /// pack around them (Laiout-style Freeze/Regenerate, design §4). When false, all
 /// components are cleared for a fresh fit. Frozen items count toward the program
 /// targets, so regenerating tops the plan up to the requested counts.
+///
+/// Path selection: a **materially non-rectangular** plate (`polygon_area <
+/// 0.98·bbox_area`) is decomposed into rectangular regions and packed per-region
+/// (Stages 1–4) so every wing gets its own desk field. A rectangular room (or
+/// open walls with no plate) takes the historical single-work-rect path, which
+/// is placement-identical to before — the decomposition is never invoked for it.
 pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed: bool) {
     // Freeze: keep Confirmed components, drop the rest. Frozen footprints become
     // obstacles the new placement must avoid.
@@ -233,105 +256,279 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
     };
 
     // The floor-plate polygon: the largest closed loop through the walls. For a
-    // rectangular room it equals the bbox, so every check below passes and the
-    // output is identical to the pure-bbox path. `None` (open walls) keeps the
+    // rectangular room it equals the bbox. `None` (open walls) keeps the
     // historical bbox-only behavior.
     let plate = geometry::trace_floor_polygon(&wall_segments(doc), geometry::LOOP_SNAP_TOL);
 
     let corridor = program.target_corridor_m.max(0.0);
     let clear = program.desk_clearance_m.max(0.0);
 
-    // Inset by the perimeter corridor on all sides → the work zone. Everything
-    // placed lives strictly inside this rect, guaranteeing the corridor.
-    let x0 = min_x + corridor;
-    let y0 = min_y + corridor;
-    let x1 = max_x - corridor;
-    let y1 = max_y - corridor;
-    if x1 <= x0 || y1 <= y0 {
-        return; // corridor swallowed the whole floor
+    // Frozen items already count toward the program targets, so we only place the
+    // remainder. These global counters also number Meeting-Room zone labels.
+    let mut mr_counter = doc.components.iter().filter(|c| c.category == "MeetingRoom").count() as u32;
+    let frozen_desks = doc.components.iter().filter(|c| c.category == "Desk").count() as u32;
+    let remaining_meetings = program.meeting_rooms.saturating_sub(mr_counter);
+    let remaining_desks = program.desks.saturating_sub(frozen_desks);
+
+    // Path selection: only a materially non-rectangular plate is decomposed.
+    let bbox_area = (max_x - min_x) * (max_y - min_y);
+    let regions = match &plate {
+        Some(poly) if geometry::polygon_area(poly) < 0.98 * bbox_area => {
+            geometry::decompose_plate(poly, REGION_CELL, REGION_MIN_DIM, REGION_MIN_AREA)
+        }
+        _ => Vec::new(),
+    };
+
+    if regions.is_empty() {
+        // --- Rectangular room / open walls / undecomposable plate -----------
+        // The single-work-rect path: identical to the historical generator.
+        let outer = geometry::Rect { x0: min_x, y0: min_y, x1: max_x, y1: max_y };
+        let mut rng = Rng::new(seed);
+        pack_region(
+            doc, program, outer, remaining_meetings, remaining_desks,
+            /*column_major=*/ false, /*region_no=*/ None, /*tile_zones=*/ true,
+            plate.as_deref(), &mut obstacles, frozen_len, &mut mr_counter, &mut rng,
+            corridor, clear,
+        );
+    } else {
+        // --- Irregular plate: decompose → allocate → per-region packing -----
+        let plans = allocate_regions(program, &regions, corridor, clear, remaining_meetings, remaining_desks);
+        for (i, &(region, m_target, d_target)) in plans.iter().enumerate() {
+            let mut rng = region_rng(seed, i as u64);
+            // Desk rows run along the region's long axis: a portrait region packs
+            // column-major so its wing fills with natural vertical rows.
+            let column_major = region.height() > region.width();
+            pack_region(
+                doc, program, region, m_target, d_target,
+                column_major, /*region_no=*/ Some((i + 1) as u32), /*tile_zones=*/ false,
+                plate.as_deref(), &mut obstacles, frozen_len, &mut mr_counter, &mut rng,
+                corridor, clear,
+            );
+        }
     }
 
-    let mut rng = Rng::new(seed);
+    // Fill each zone's component_ids by point-in-zone on component centers.
+    doc.reassign_components();
+}
 
-    // Frozen items already count toward the program targets.
-    let mut rooms_placed = doc.components.iter().filter(|c| c.category == "MeetingRoom").count() as u32;
-    let mut desks_placed = doc.components.iter().filter(|c| c.category == "Desk").count() as u32;
+/// Allocate the program across decomposition `regions` (already area-desc).
+/// Returns `(region, meetings, desks)` per region. Meeting rooms are handed out
+/// round-robin over the regions that fit one (largest-first); desks are split by
+/// each region's inset grid capacity via largest-remainder rounding, so regions
+/// too small for a single desk get zero.
+fn allocate_regions(
+    program: &Program,
+    regions: &[geometry::Rect],
+    corridor: f64,
+    clear: f64,
+    meetings: u32,
+    desks: u32,
+) -> Vec<(geometry::Rect, u32, u32)> {
+    let n = regions.len();
+    let pitch_x = program.desk_w + clear;
+    let pitch_y = program.desk_h + clear;
+
+    // Per-region inset dimensions, meeting-fit, meeting stack capacity, desk cap.
+    let mut fits_meeting = vec![false; n];
+    let mut meeting_cap = vec![0u32; n];
+    let mut desk_cap = vec![0u32; n];
+    for (i, reg) in regions.iter().enumerate() {
+        let iw = reg.width() - 2.0 * corridor;
+        let ih = reg.height() - 2.0 * corridor;
+        if iw >= program.meeting_w && ih >= program.meeting_h && program.meeting_w > 0.0 && program.meeting_h > 0.0 {
+            fits_meeting[i] = true;
+            meeting_cap[i] = (((ih + clear) / (program.meeting_h + clear)).floor() as i64).max(0) as u32;
+        }
+        if iw >= program.desk_w && ih >= program.desk_h && pitch_x > 0.0 && pitch_y > 0.0 {
+            let cols = (((iw + clear) / pitch_x).floor() as i64).max(0);
+            let rows = (((ih + clear) / pitch_y).floor() as i64).max(0);
+            desk_cap[i] = (cols * rows) as u32;
+        }
+    }
+
+    // Meetings: round-robin over fitting regions (area-desc), respecting each
+    // region's vertical stack capacity, until the target or all capacity is used.
+    let mut m_alloc = vec![0u32; n];
+    let mut remaining_m = meetings;
+    loop {
+        if remaining_m == 0 {
+            break;
+        }
+        let mut progressed = false;
+        for i in 0..n {
+            if remaining_m == 0 {
+                break;
+            }
+            if fits_meeting[i] && m_alloc[i] < meeting_cap[i] {
+                m_alloc[i] += 1;
+                remaining_m -= 1;
+                progressed = true;
+            }
+        }
+        if !progressed {
+            break;
+        }
+    }
+
+    // Desks: largest-remainder split proportional to desk capacity, clamped to it.
+    let total_cap: u32 = desk_cap.iter().sum();
+    let mut d_alloc = vec![0u32; n];
+    if total_cap > 0 {
+        let target = desks.min(total_cap);
+        let mut rema: Vec<(f64, usize)> = Vec::with_capacity(n);
+        let mut assigned = 0u32;
+        for i in 0..n {
+            let exact = target as f64 * desk_cap[i] as f64 / total_cap as f64;
+            let base = (exact.floor() as u32).min(desk_cap[i]);
+            d_alloc[i] = base;
+            assigned += base;
+            rema.push((exact - exact.floor(), i));
+        }
+        // Distribute the leftover to the largest fractional remainders, respecting
+        // each cap; iterate to termination since total_cap ≥ target guarantees room.
+        rema.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+        let mut left = target - assigned;
+        while left > 0 {
+            let mut progressed = false;
+            for &(_, i) in &rema {
+                if left == 0 {
+                    break;
+                }
+                if d_alloc[i] < desk_cap[i] {
+                    d_alloc[i] += 1;
+                    left -= 1;
+                    progressed = true;
+                }
+            }
+            if !progressed {
+                break;
+            }
+        }
+    }
+
+    (0..n).map(|i| (regions[i], m_alloc[i], d_alloc[i])).collect()
+}
+
+/// Pack one rectangular work region: a perimeter Circulation ring, up to
+/// `meeting_target` meeting rooms in a right-edge column, the Workspace zone(s),
+/// and a grid-packed desk field (up to `desk_target`). Frozen/just-placed
+/// footprints in `obstacles` are avoided; every footprint is validated against
+/// the plate polygon. `rng` is the region's own stream. Returns desks placed.
+///
+/// `tile_zones == true` reproduces the historical single-region generator exactly
+/// (meeting column reserved out of the desk field, Workspace shrunk to it, Core
+/// bands filling the column) and is used for the rectangular path. `false` (the
+/// per-region path) instead packs desks across the *full* work rect around the
+/// meeting footprints and emits a single full-width Workspace — a deliberate fork:
+/// narrow wings would otherwise lose half their desks to a reserved full-height
+/// column, and cross-region corridors already come from the overlapping rings.
+#[allow(clippy::too_many_arguments)]
+fn pack_region(
+    doc: &mut Document,
+    program: &Program,
+    outer: geometry::Rect,
+    meeting_target: u32,
+    desk_target: u32,
+    column_major: bool,
+    region_no: Option<u32>,
+    tile_zones: bool,
+    plate: Option<&[Point]>,
+    obstacles: &mut Vec<(f64, f64, f64, f64)>,
+    frozen_len: usize,
+    mr_counter: &mut u32,
+    rng: &mut Rng,
+    corridor: f64,
+    clear: f64,
+) -> u32 {
+    // Inset by the perimeter corridor on all sides → the work zone. Everything
+    // placed lives strictly inside this rect, guaranteeing the corridor.
+    let x0 = outer.x0 + corridor;
+    let y0 = outer.y0 + corridor;
+    let x1 = outer.x1 - corridor;
+    let y1 = outer.y1 - corridor;
+    if x1 <= x0 || y1 <= y0 {
+        return 0; // corridor swallowed this region
+    }
 
     // --- Zone tiling, part 1: perimeter Circulation ring ------------------
-    // The corridor is a rectangular ring: the wall bbox minus the work-zone hole
-    // (the concentric inset). Ring + work zone tile the whole bbox with no gap.
+    // A rectangular ring: the region bbox minus the work-zone hole. Adjacent
+    // regions' rings overlap along shared edges → the internal corridor network.
     push_zone(
         doc,
         ZoneType::Circulation,
         ZoneShape::RectRing {
-            x: (min_x + max_x) / 2.0,
-            y: (min_y + max_y) / 2.0,
-            w: max_x - min_x,
-            h: max_y - min_y,
+            x: (outer.x0 + outer.x1) / 2.0,
+            y: (outer.y0 + outer.y1) / 2.0,
+            w: outer.width(),
+            h: outer.height(),
             in_w: x1 - x0,
             in_h: y1 - y0,
         },
         "Circulation",
     );
 
-    // --- 1. Meeting rooms: a column down the right edge of the work zone.
-    // A side column (vs a full-width top band) keeps the desk field contiguous —
-    // better for circulation and bench adjacency — and we only claim the column
-    // if at least one desk column still fits beside it, so a shallow room never
-    // ends up with meeting rooms and zero desks. Room size is clamped to fit.
-    // Slots that would collide with a frozen component are skipped. Each placed
-    // room also emits a `Meeting` zone matching its footprint. ---
+    // --- 1. Meeting rooms: a column down the right edge of the work zone ----
+    // A side column keeps the desk field contiguous. In `tile_zones` mode we only
+    // claim the column when a desk column still fits beside it (a shallow room
+    // never ends up with rooms and zero desks); the per-region path drops that
+    // guard so a meeting-sized wing can still host a room. Rooms clamp to fit.
     let mut dz_x1 = x1;
     let mut claimed = false;
-    let mut col_x0 = x1; // meeting-column left edge; stays x1 when no column claimed
+    let mut col_x0 = x1;
     let mut col_mw = 0.0f64;
-    let mut meeting_intervals: Vec<(f64, f64)> = Vec::new(); // (top, bottom) per placed room
-    if rooms_placed < program.meeting_rooms && program.meeting_w > 0.0 && program.meeting_h > 0.0 {
+    let mut meeting_intervals: Vec<(f64, f64)> = Vec::new();
+    if meeting_target > 0 && program.meeting_w > 0.0 && program.meeting_h > 0.0 {
         let mw = program.meeting_w.min(x1 - x0);
         let mh = program.meeting_h.min(y1 - y0);
         let cx0 = x1 - mw;
         let mr_pitch = mh + clear;
         let rows = (((y1 - y0) + clear) / mr_pitch).floor() as i64;
-        // Require room for a desk column to the left before claiming the strip.
-        if rows > 0 && (cx0 - clear - x0) >= program.desk_w {
+        let desk_room = !tile_zones || (cx0 - clear - x0) >= program.desk_w;
+        if rows > 0 && desk_room {
+            let mut placed_here = 0u32;
             for r in 0..rows {
-                if rooms_placed >= program.meeting_rooms {
+                if placed_here >= meeting_target {
                     break;
                 }
                 let cx = cx0 + mw / 2.0;
                 let cy = y0 + mh / 2.0 + (r as f64) * mr_pitch;
-                if !slot_fits_plate(plate.as_deref(), cx, cy, mw, mh, corridor)
+                if !slot_fits_plate(plate, cx, cy, mw, mh, corridor)
                     || footprint_overlaps(&obstacles[..frozen_len], cx, cy, mw, mh, clear)
                 {
                     continue;
                 }
                 push_component(doc, "MeetingRoom", cx, cy, mw, mh);
-                let room_no = rooms_placed + 1;
+                *mr_counter += 1;
                 push_zone(
                     doc,
                     ZoneType::Meeting,
                     ZoneShape::Rect { x: cx, y: cy, w: mw, h: mh },
-                    &format!("Meeting Room {}", room_no),
+                    &format!("Meeting Room {}", *mr_counter),
                 );
                 obstacles.push((cx, cy, mw, mh));
                 meeting_intervals.push((cy - mh / 2.0, cy + mh / 2.0));
-                rooms_placed += 1;
+                placed_here += 1;
                 claimed = true;
             }
             if claimed {
-                dz_x1 = cx0 - clear;
                 col_x0 = cx0;
                 col_mw = mw;
+                if tile_zones {
+                    dz_x1 = cx0 - clear; // reserve the column out of the desk field
+                }
             }
         }
     }
 
-    // --- Zone tiling, part 2: Workspace + Core ----------------------------
-    // Workspace covers the desk field with its right edge EXTENDED to the meeting
-    // column (absorbing the clear-wide aisle, v1 option (a)); when no column was
-    // claimed it spans the full work-zone width. This makes ring · workspace ·
-    // meeting-column a strict tile of the bbox.
-    let ws_x1 = if claimed { col_x0 } else { x1 };
+    // --- Zone tiling, part 2: Workspace (+ Core in tile mode) --------------
+    let ws_label = match region_no {
+        Some(n) => format!("Open Workspace ({})", n),
+        None => "Open Workspace".to_string(),
+    };
+    // In tile mode the Workspace stops at the reserved meeting column; the
+    // per-region path lays a single full-width Workspace (meetings sit on top of
+    // it as their own zones — desks pack around their footprints).
+    let ws_x1 = if tile_zones && claimed { col_x0 } else { x1 };
     push_zone(
         doc,
         ZoneType::Workspace,
@@ -341,21 +538,17 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
             w: ws_x1 - x0,
             h: y1 - y0,
         },
-        "Open Workspace",
+        &ws_label,
     );
-    // Fill the meeting column's leftover bands (between stacked rooms and below
-    // the last one) with `Core` zones so the column tiles exactly. Slivers under
-    // ~1 m² are skipped to avoid noise.
-    if claimed {
+    // Fill the meeting column's leftover bands with `Core` zones so the column
+    // tiles exactly (tile mode only). Slivers under ~1 m² of plate are skipped.
+    if tile_zones && claimed {
         meeting_intervals.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
         let cx = col_x0 + col_mw / 2.0;
         let mut prev_bottom = y0;
         let emit_core = |top: f64, bottom: f64, doc: &mut Document| {
             let h = bottom - top;
-            // Honest sliver check: measure the band's area *on the plate*
-            // (clipped to the floor polygon), so a band living entirely in an
-            // L-plate notch is skipped instead of reported as usable Core.
-            let on_plate = match &plate {
+            let on_plate = match plate {
                 Some(poly) => geometry::rect_polygon_clip_area(
                     poly,
                     cx - col_mw / 2.0,
@@ -381,19 +574,17 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
         emit_core(prev_bottom, y1, doc);
     }
 
-    // --- 2. Desk grid fills the remaining work zone (full height), skipping
-    // any grid cell that would collide with a frozen or just-placed obstacle. ---
+    // --- 2. Desk grid fills the work zone, skipping any cell that collides
+    // with a frozen or just-placed obstacle (including meeting footprints). ----
+    let mut desks_here = 0u32;
     'desks: {
         if program.desk_w <= 0.0 || program.desk_h <= 0.0 {
             break 'desks;
         }
-        let dz_x0 = x0;
-        let dz_y0 = y0;
-        let dz_y1 = y1;
+        let (dz_x0, dz_y0, dz_y1) = (x0, y0, y1);
         if dz_x1 <= dz_x0 || dz_y1 <= dz_y0 {
             break 'desks;
         }
-
         let pitch_x = program.desk_w + clear;
         let pitch_y = program.desk_h + clear;
         let cols = (((dz_x1 - dz_x0) + clear) / pitch_x).floor() as i64;
@@ -401,44 +592,52 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
         if cols <= 0 || rows <= 0 {
             break 'desks;
         }
-
         let cluster_cols = program.cluster_cols.max(1);
-        // Jitter is bounded to 25 % of the clearance so it can never eat the gap.
         let jitter = clear * 0.25;
 
-        'grid: for r in 0..rows {
-            for c in 0..cols {
-                if desks_placed >= program.desks {
+        // Row-major (rows outer) for landscape/rect regions — identical to the
+        // historical order; column-major (cols outer) for portrait regions so
+        // desk rows run down the long axis. The cluster aisle follows the inner
+        // axis in each case.
+        let (outer_n, inner_n) = if column_major { (cols, rows) } else { (rows, cols) };
+        'grid: for o in 0..outer_n {
+            for i in 0..inner_n {
+                if desks_here >= desk_target {
                     break 'grid;
                 }
-                // extra aisle offset: one clearance gap per completed cluster to the left
-                let aisle = ((c as u32) / cluster_cols) as f64 * clear;
-                let cx = dz_x0 + program.desk_w / 2.0 + (c as f64) * pitch_x + aisle;
-                let cy = dz_y0 + program.desk_h / 2.0 + (r as f64) * pitch_y;
-                // stop if the aisle pushed this column past the zone edge
-                if cx + program.desk_w / 2.0 > dz_x1 {
+                let (c, r) = if column_major { (o, i) } else { (i, o) };
+                let (cx, cy, past_edge) = if column_major {
+                    let aisle = ((r as u32) / cluster_cols) as f64 * clear;
+                    let cy = dz_y0 + program.desk_h / 2.0 + (r as f64) * pitch_y + aisle;
+                    (dz_x0 + program.desk_w / 2.0 + (c as f64) * pitch_x, cy, cy + program.desk_h / 2.0 > dz_y1)
+                } else {
+                    let aisle = ((c as u32) / cluster_cols) as f64 * clear;
+                    let cx = dz_x0 + program.desk_w / 2.0 + (c as f64) * pitch_x + aisle;
+                    (cx, dz_y0 + program.desk_h / 2.0 + (r as f64) * pitch_y, cx + program.desk_w / 2.0 > dz_x1)
+                };
+                // stop if the aisle pushed this desk past the field edge
+                if past_edge {
                     continue;
                 }
-                // Apply bounded jitter, then clamp so the footprint can never leave
-                // the work zone (and thus never the perimeter corridor).
+                // Bounded jitter, then clamp so the footprint can never leave the
+                // work zone (and thus never the perimeter corridor).
                 let jx = rng.signed() * jitter;
                 let jy = rng.signed() * jitter;
                 let fx = (cx + jx).clamp(dz_x0 + program.desk_w / 2.0, dz_x1 - program.desk_w / 2.0);
                 let fy = (cy + jy).clamp(dz_y0 + program.desk_h / 2.0, dz_y1 - program.desk_h / 2.0);
-                if !slot_fits_plate(plate.as_deref(), fx, fy, program.desk_w, program.desk_h, corridor)
-                    || footprint_overlaps(&obstacles, fx, fy, program.desk_w, program.desk_h, clear * 0.5)
+                if !slot_fits_plate(plate, fx, fy, program.desk_w, program.desk_h, corridor)
+                    || footprint_overlaps(obstacles, fx, fy, program.desk_w, program.desk_h, clear * 0.5)
                 {
                     continue;
                 }
                 push_component(doc, "Desk", fx, fy, program.desk_w, program.desk_h);
                 obstacles.push((fx, fy, program.desk_w, program.desk_h));
-                desks_placed += 1;
+                desks_here += 1;
             }
         }
     }
 
-    // Fill each zone's component_ids by point-in-zone on component centers.
-    doc.reassign_components();
+    desks_here
 }
 
 /// Score a layout against the program. Sub-scores are 0..100; `total` is the

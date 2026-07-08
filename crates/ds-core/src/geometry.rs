@@ -267,6 +267,159 @@ pub fn trace_floor_polygon(segments: &[(Point, Point)], tol: f64) -> Option<Vec<
     best.map(|(_, pts)| pts)
 }
 
+// ---------------------------------------------------------------------------
+// Plate decomposition: tile the (possibly irregular) floor-plate polygon with a
+// small set of maximal axis-aligned rectangles. The layout generator packs each
+// rectangle independently so wings of an L/U/multi-wing plate each get their own
+// desk field instead of a single global grid clumping wherever the wall-bbox
+// grid happens to intersect the plate.
+// ---------------------------------------------------------------------------
+
+/// Axis-aligned rectangle in world meters, **corner-origin** (unlike `Component`
+/// / `ZoneShape::Rect`, which are center-origin). The output unit of
+/// [`decompose_plate`]; the layout generator treats each as a sub-plate to pack.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Rect {
+    pub x0: f64,
+    pub y0: f64,
+    pub x1: f64,
+    pub y1: f64,
+}
+
+impl Rect {
+    pub fn width(&self) -> f64 {
+        self.x1 - self.x0
+    }
+    pub fn height(&self) -> f64 {
+        self.y1 - self.y0
+    }
+    pub fn area(&self) -> f64 {
+        self.width().max(0.0) * self.height().max(0.0)
+    }
+}
+
+/// A raster cell counts as inside the plate iff its center **and** its four
+/// corners are inside (or exactly on the boundary). Conservative on diagonal
+/// edges (a cut cell has ≥1 corner strictly outside → dropped, so a region
+/// never pokes past the plate), yet lossless on axis-aligned edges flush with a
+/// grid line (corners land exactly on the wall → kept, so coverage stays high).
+fn cell_inside(poly: &[Point], cx: f64, cy: f64, half: f64) -> bool {
+    let on_or_in = |x: f64, y: f64| -> bool {
+        if point_in_polygon(x, y, poly) {
+            return true;
+        }
+        // Exactly-on-boundary corners (flush with an axis-aligned wall) are
+        // ambiguous for the even-odd ray cast; accept them explicitly so a cell
+        // flush inside the plate is kept.
+        (0..poly.len()).any(|i| {
+            let a = poly[i];
+            let b = poly[(i + 1) % poly.len()];
+            point_segment_dist(Point::new(x, y), a, b) <= 1e-7
+        })
+    };
+    on_or_in(cx, cy)
+        && on_or_in(cx - half, cy - half)
+        && on_or_in(cx + half, cy - half)
+        && on_or_in(cx + half, cy + half)
+        && on_or_in(cx - half, cy + half)
+}
+
+/// Largest all-true axis-aligned rectangle in a `cols`×`rows` boolean raster
+/// (classic histogram-stack algorithm, O(cols·rows)). Returns
+/// `(area_in_cells, c0, r0, c1, r1)` with **inclusive** cell indices, or an
+/// area of 0 when the raster is empty.
+fn max_true_rectangle(inside: &[bool], cols: usize, rows: usize) -> (usize, usize, usize, usize, usize) {
+    let mut heights = vec![0usize; cols];
+    let mut best = (0usize, 0usize, 0usize, 0usize, 0usize);
+    for r in 0..rows {
+        for c in 0..cols {
+            heights[c] = if inside[r * cols + c] { heights[c] + 1 } else { 0 };
+        }
+        // Largest rectangle in the histogram `heights`, whose bottom is row `r`.
+        // Stack holds (start_col, height) with strictly increasing heights.
+        let mut stack: Vec<(usize, usize)> = Vec::new();
+        for c in 0..=cols {
+            let h = if c < cols { heights[c] } else { 0 };
+            let mut start = c;
+            while let Some(&(s, ph)) = stack.last() {
+                if ph <= h {
+                    break;
+                }
+                stack.pop();
+                let area = ph * (c - s);
+                if area > best.0 {
+                    // cols [s, c-1], height ph, bottom row r → top row r+1-ph.
+                    best = (area, s, r + 1 - ph, c - 1, r);
+                }
+                start = s;
+            }
+            if stack.last().map_or(true, |&(_, ph)| ph < h) {
+                stack.push((start, h));
+            }
+        }
+    }
+    best
+}
+
+/// Decompose a floor-plate polygon into a small set of maximal inscribed
+/// axis-aligned rectangles. Rasterises the interior on a `cell`-meter grid
+/// (conservative — see [`cell_inside`]), then repeatedly extracts the
+/// largest-area all-inside rectangle and clears its cells, stopping once the
+/// best rectangle is thinner than `min_dim` on either side or smaller than
+/// `min_area`. Rectangles are returned **largest-area first** and never cross
+/// the polygon boundary. Typical real plates yield 2–6 rectangles covering
+/// ~80–95 % of the plate area.
+pub fn decompose_plate(poly: &[Point], cell: f64, min_dim: f64, min_area: f64) -> Vec<Rect> {
+    if poly.len() < 3 || cell <= 0.0 {
+        return Vec::new();
+    }
+    let (mut minx, mut miny, mut maxx, mut maxy) =
+        (f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY);
+    for p in poly {
+        minx = minx.min(p.x);
+        miny = miny.min(p.y);
+        maxx = maxx.max(p.x);
+        maxy = maxy.max(p.y);
+    }
+    let cols = (((maxx - minx) / cell).ceil() as usize).max(1);
+    let rows = (((maxy - miny) / cell).ceil() as usize).max(1);
+    let half = cell / 2.0;
+    let mut inside = vec![false; cols * rows];
+    for r in 0..rows {
+        for c in 0..cols {
+            let cx = minx + (c as f64 + 0.5) * cell;
+            let cy = miny + (r as f64 + 0.5) * cell;
+            if cell_inside(poly, cx, cy, half) {
+                inside[r * cols + c] = true;
+            }
+        }
+    }
+
+    let mut out = Vec::new();
+    loop {
+        let (area_cells, c0, r0, c1, r1) = max_true_rectangle(&inside, cols, rows);
+        if area_cells == 0 {
+            break;
+        }
+        let rect = Rect {
+            x0: minx + c0 as f64 * cell,
+            y0: miny + r0 as f64 * cell,
+            x1: minx + (c1 + 1) as f64 * cell,
+            y1: miny + (r1 + 1) as f64 * cell,
+        };
+        if rect.width() < min_dim || rect.height() < min_dim || rect.area() < min_area {
+            break;
+        }
+        for r in r0..=r1 {
+            for c in c0..=c1 {
+                inside[r * cols + c] = false;
+            }
+        }
+        out.push(rect);
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -325,5 +478,58 @@ mod tests {
         let poly = trace_floor_polygon(&segs, LOOP_SNAP_TOL).expect("snapped loop closes");
         assert_eq!(poly.len(), 4);
         assert!((polygon_area(&poly) - 100.0).abs() < 0.2);
+    }
+
+    #[test]
+    fn decompose_l_plate_tiles_into_two_rects() {
+        // The L (20×14 minus an 8×6 notch) decomposes into exactly two maximal
+        // rectangles: the tall left leg [0,12]×[0,14] (168 m², extracted first as
+        // the larger) and the bottom-right leg [12,20]×[0,8] (64 m²).
+        let rects = decompose_plate(&l_poly(), 0.5, 2.0, 4.0);
+        assert_eq!(rects.len(), 2, "L should tile into 2 rects, got {:?}", rects);
+        // Largest-first ordering.
+        assert!(rects[0].area() >= rects[1].area());
+        assert_eq!(rects[0], Rect { x0: 0.0, y0: 0.0, x1: 12.0, y1: 14.0 });
+        assert_eq!(rects[1], Rect { x0: 12.0, y0: 0.0, x1: 20.0, y1: 8.0 });
+    }
+
+    #[test]
+    fn decompose_rects_never_cross_the_polygon() {
+        // No rectangle may contain a point (its center or any corner) outside the
+        // plate — i.e. no rectangle pokes into the notch void or past the walls.
+        let poly = l_poly();
+        for rect in decompose_plate(&poly, 0.5, 2.0, 4.0) {
+            let pts = [
+                (rect.x0, rect.y0),
+                (rect.x1, rect.y0),
+                (rect.x1, rect.y1),
+                (rect.x0, rect.y1),
+                ((rect.x0 + rect.x1) / 2.0, (rect.y0 + rect.y1) / 2.0),
+            ];
+            for (x, y) in pts {
+                // On-boundary corners are allowed (flush with a wall); a point
+                // strictly inside the notch void must never occur.
+                assert!(
+                    !(x > 12.0 + 1e-9 && y > 8.0 + 1e-9),
+                    "rect {:?} reaches into the notch at ({}, {})",
+                    rect,
+                    x,
+                    y
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn decompose_covers_most_of_the_plate() {
+        let poly = l_poly();
+        let covered: f64 = decompose_plate(&poly, 0.5, 2.0, 4.0).iter().map(|r| r.area()).sum();
+        let plate = polygon_area(&poly); // 232 m²
+        assert!(
+            covered >= 0.90 * plate,
+            "coverage {} m² < 90% of plate {} m²",
+            covered,
+            plate
+        );
     }
 }
