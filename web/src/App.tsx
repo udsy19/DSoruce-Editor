@@ -36,6 +36,8 @@ import {
   pushPlateToEditor,
   extractKeepouts,
   pushKeepoutsToEditor,
+  extractInteriorWalls,
+  pushInteriorWallsToEditor,
   type PlateResult,
 } from './import/testfit'
 import { saveProject, openProject, applyProject, type BindingInfo, type DSourceFile } from './persist/file'
@@ -50,6 +52,9 @@ import {
 } from './persist/plans'
 import { noteChange, listHistory, restoreEntry, type HistoryEntry } from './persist/history'
 import { comparePlans, snapshotThumb, type PlanComparison } from './plans/compare'
+import { commitCadToPlan } from './cad/commit'
+import { PlacePalette } from './import/PlacePalette'
+import type { PlaceSpec } from './import/DrawingCanvas'
 import { renderThumb } from './editor/EditorCanvas'
 import { LibraryPanel } from './ui/LibraryPanel'
 import { CompareView } from './ui/CompareView'
@@ -172,7 +177,7 @@ export function App() {
       ec.coordEl = coordRef.current
       ec.scaleEl = scaleRef.current
       ec.refresh()
-      if (import.meta.env.DEV) (window as unknown as { __ec: EditorCanvas }).__ec = ec
+      // dev __ec seam lives in EditorCanvas.create itself
       setReady(true)
     })
     return () => {
@@ -354,6 +359,9 @@ export function App() {
     // rooms) become keep-outs so the generator never furnishes them.
     // Guarded no-op until the wasm add_keepout binding is present.
     pushKeepoutsToEditor(ec, extractKeepouts(drawing, plate))
+    // Interior partitions from the drawing become real document walls, so the
+    // generator packs around them and circulation scores them.
+    pushInteriorWallsToEditor(ec, extractInteriorWalls(drawing, plate))
     ec.sync()
     // Plate-quality feedback. `coverage`/`areaM2` are additive optional fields
     // on PlateResult — guard so this works whether or not they're present.
@@ -630,6 +638,7 @@ export function App() {
               item={selItem}
               onBind={bindProduct}
               bindings={bindings}
+              onPlace={(spec) => drawCanvasRef.current?.beginPlace(spec)}
               onPickItem={(name) => {
                 const it = drawing.furniture.find((f) => f.name === name)
                 if (!it) return
@@ -699,7 +708,27 @@ export function App() {
                 />
               ) : (
                 <>
-                  {tool.startsWith('cad:') && <LayersCard ec={ec} />}
+                  {tool.startsWith('cad:') && (
+                    <>
+                      {ec.cad.store.entities.length > 0 && (
+                        <button
+                          className="cta-ghost"
+                          data-testid="commit-sketch"
+                          title="Convert drafted lines/polylines/rects into document walls"
+                          onClick={() => {
+                            const r = commitCadToPlan(ec)
+                            setPlateNotice({
+                              variant: 'ok',
+                              msg: `${r.walls} wall${r.walls === 1 ? '' : 's'} committed to the plan${r.skipped ? ` · ${r.skipped} skipped (curves/annotation)` : ''}`,
+                            })
+                          }}
+                        >
+                          Commit sketch to plan
+                        </button>
+                      )}
+                      <LayersCard ec={ec} />
+                    </>
+                  )}
                   <StatsPanel ec={ec} />
                   <GenerateCard ec={ec} metrics={metrics} onSaveCandidate={saveCandidateToLibrary} />
                 </>
@@ -1300,12 +1329,14 @@ function ImportPanel({
   onBind,
   bindings,
   onPickItem,
+  onPlace,
 }: {
   drawing: Drawing
   item: FurnitureItem | null
   onBind: (it: FurnitureItem, p: OfficeProduct) => void
   bindings: Map<string, BindingInfo>
   onPickItem?: (name: string) => void
+  onPlace?: (spec: PlaceSpec) => void
 }) {
   const w = drawing.bounds[2] - drawing.bounds[0]
   const h = drawing.bounds[3] - drawing.bounds[1]
@@ -1347,6 +1378,8 @@ function ImportPanel({
       <div className="freeze-tip">
         Click furniture to re-imagine it · drag to move · R rotate · Del delete · ⌘D duplicate · ⌘Z undo
       </div>
+
+      {onPlace && <PlacePalette onPlace={onPlace} />}
 
       <CategoryPlan groups={groups} onPick={onPickItem} />
     </div>
