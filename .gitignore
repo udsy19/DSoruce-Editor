@@ -26,3 +26,9 @@ web/src/wasm
 # Generated from the sample DWG via dwg2dxf
 samples/*.dxf
 .claude/worktrees/
+
+# Qbiq reference samples (kept on disk, not in git — large binaries)
+docs/reference/qbiq/*.zip
+docs/reference/qbiq/extracted/Rendered Images Samples from Qbiq/
+docs/reference/qbiq/extracted/**/__MACOSX/
+**/.DS_Store

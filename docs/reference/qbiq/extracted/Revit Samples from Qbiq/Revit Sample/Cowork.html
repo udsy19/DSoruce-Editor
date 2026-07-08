@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QBIQ</title>
+    <script src="https://developer.api.autodesk.com/modelderivative/v2/viewers/7.*/viewer3D.min.js"></script>
+    <style>
+        html, body {
+            margin: 0;
+            height: 100%;
+            overflow: hidden;
+        }
+        #forgeViewer {
+            width: 100%;
+            height: 100vh;
+            background-color: white !important;
+        }
+    </style>
+</head>
+<body>
+    <div id="forgeViewer"></div>
+    <script>
+        var viewer;
+        var documents = [
+            'urn:adsk.objects:os.object:marketing/Revit_Traditional%20planning.rvt',
+            'urn:adsk.objects:os.object:marketing/Revit_Modern%20planning.rvt',
+            'urn:adsk.objects:os.object:marketing/Revit_Co-Work%20planning.rvt'
+        ];
+
+        function getUrlParam(name) {
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get(name);
+        }
+
+        
+        idx = 2;
+
+        function fetchAccessToken(callback) {
+            fetch('https://3uhhpqdesa73453v2ng4smup5q0qhlhh.lambda-url.eu-west-1.on.aws/')
+                .then(response => response.json())
+                .then(data => callback(data.access_token))
+                .catch(error => console.error('Failed to retrieve access token:', error));
+        }
+
+        fetchAccessToken(function(accessToken) {
+            var options = {
+                env: 'AutodeskProduction',
+                accessToken: accessToken
+            };
+
+            Autodesk.Viewing.Initializer(options, function () {
+                var viewerDiv = document.getElementById('forgeViewer');
+                viewer = new Autodesk.Viewing.Viewer3D(viewerDiv, {});
+                viewer.start();
+
+                var urn = documents[idx];
+                var documentId = 'urn:' + window.btoa(unescape(encodeURIComponent(urn)));
+                Autodesk.Viewing.Document.load(documentId, onDocumentLoadSuccess, onDocumentLoadFailure);
+            });
+        });
+
+        function onDocumentLoadSuccess(doc) {
+            var viewables = doc.getRoot().search({ name: 'Marketing' }, true);
+            if (viewables.length > 0) {
+                viewer.loadDocumentNode(doc, viewables[0]).then(() => {
+                    console.log('Marketing view loaded!');
+                    viewer.impl.toggleEnvMapBackground();
+                    viewer.setBackgroundColor(255, 255, 255, 255, 255, 255);
+                });
+            } else {
+                console.warn('Marketing view not found, loading default view.');
+                var defaultView = doc.getRoot().getDefaultGeometry();
+                viewer.loadDocumentNode(doc, defaultView);
+            }
+        }
+
+        function onDocumentLoadFailure() {
+            console.error('Failed to load Forge model.');
+        }
+    </script>
+</body>
+</html>
