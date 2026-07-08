@@ -45,6 +45,13 @@ pub struct Program {
     pub meeting_h: f64,
     /// desks per bench cluster before an aisle is inserted
     pub cluster_cols: u32,
+    /// pair desk rows back-to-back (bench desking) instead of uniform single
+    /// rows. Default **true**. The struct carries no blanket `#[serde(default)]`,
+    /// so a partial JSON blob that omits this field would otherwise ERROR — the
+    /// field-level default makes a missing `bench_pairs` deserialize to `true`
+    /// (verified by `missing_bench_pairs_field_defaults_true`).
+    #[serde(default = "default_bench_pairs")]
+    pub bench_pairs: bool,
 
     // --- hard constraints ---
     /// perimeter circulation corridor width, meters
@@ -69,6 +76,7 @@ impl Default for Program {
             meeting_w: 4.0,
             meeting_h: 4.0,
             cluster_cols: 4,
+            bench_pairs: true,
             target_corridor_m: 1.2,
             desk_clearance_m: 0.9,
             w_capacity: 0.35,
@@ -93,9 +101,36 @@ pub struct LayoutScore {
     pub placed_desks: u32,
 }
 
+/// serde field-default for `Program::bench_pairs` (missing field → bench desking on).
+fn default_bench_pairs() -> bool {
+    true
+}
+
+/// Back-to-back spine gap (m) between the two rows of a bench pair. Set to 0.0
+/// (**touching** pairs — desks share the spine over a common cable tray, the most
+/// common real bench-desking detail). A 0.15 m gap was tried first, but the
+/// circulation evaluator's 0.15 m occupancy cells resolved that slot as a spurious
+/// ~0.30 m "corridor" (2×cell) flanked by desks, tanking `min_corridor_width` far
+/// below the aisle clearance in `l_plate_circulation_quality`. Touching pairs
+/// leave no walkable cell between the two rows, so no bogus min-corridor appears,
+/// and they pack even denser. Kept as a named constant so the intent — and the
+/// path back to a nonzero gap on a finer circulation grid — is explicit.
+const SPINE_GAP: f64 = 0.0;
+
+/// The GLOBAL desk lattice for one `generate()` call: origin at the plate bbox
+/// min corner plus ONE seed-drawn jitter (`jx`,`jy`), shared by every region so
+/// adjacent wings' rows/columns land on the same lines across their seam.
+#[derive(Clone, Copy)]
+struct Lattice {
+    ox: f64,
+    oy: f64,
+    jx: f64,
+    jy: f64,
+}
+
 /// Tiny inline PRNG — xorshift64* (Marsaglia). Deterministic, no `rand` crate.
-/// Used only for bounded per-desk jitter so different seeds yield distinct but
-/// still-valid candidates for the optimizer to compare.
+/// Used only to draw the one bounded global-lattice jitter per `generate()`, so
+/// different seeds yield distinct but still-valid candidates for the optimizer.
 struct Rng {
     state: u64,
 }
@@ -122,7 +157,7 @@ impl Rng {
     }
 }
 
-fn push_component(doc: &mut Document, category: &str, x: f64, y: f64, w: f64, h: f64) {
+fn push_component(doc: &mut Document, category: &str, x: f64, y: f64, w: f64, h: f64, rotation: f64) {
     let id = doc.alloc_id();
     doc.components.push(Component {
         id,
@@ -131,7 +166,7 @@ fn push_component(doc: &mut Document, category: &str, x: f64, y: f64, w: f64, h:
         y,
         w,
         h,
-        rotation: 0.0,
+        rotation,
         label: format!("{} {}", category, id),
         product_id: None,
             price_inr: None,
@@ -201,14 +236,6 @@ const REGION_CELL: f64 = 0.5;
 const REGION_MIN_DIM: f64 = 3.0;
 /// …and at least this many m² — below this a region is noise, not a wing.
 const REGION_MIN_AREA: f64 = 9.0;
-
-/// Per-region deterministic RNG stream: derived from `(seed, region_index)` so a
-/// region's layout is reproducible and region order can't perturb its neighbours.
-/// `index == 0` collapses to `Rng::new(seed)`, so the single-region (rectangular)
-/// path is byte-identical to the historical `Rng::new(seed)` behavior.
-fn region_rng(seed: u64, index: u64) -> Rng {
-    Rng::new(seed ^ index.wrapping_mul(0x9E37_79B9_7F4A_7C15))
-}
 
 /// Per-edge corridor inset for one region. On an edge facing the plate boundary
 /// or unshared space the full `corridor` is inset; on an edge shared with an
@@ -372,16 +399,30 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
         .map(|i| region_insets(&regions, i, corridor))
         .collect();
 
+    // ONE global desk lattice per generate(): origin = plate bbox min corner,
+    // phase = a single seed-drawn jitter shared by EVERY region so adjacent
+    // wings' rows/columns land on the same lines across their seam (the old
+    // per-region jitter made them visibly misalign). Bounded to a quarter of the
+    // clearance, as the per-region jitter was; the region's first-line-≥-inset
+    // math absorbs it, so no desk is ever pushed into the corridor.
+    let mut jrng = Rng::new(seed);
+    let jitter = clear * 0.25;
+    let lat = Lattice {
+        ox: min_x,
+        oy: min_y,
+        jx: jrng.next_f64() * jitter,
+        jy: jrng.next_f64() * jitter,
+    };
+
     if regions.is_empty() {
         // --- Rectangular room / open walls / undecomposable plate -----------
-        // The single-work-rect path: identical to the historical generator.
+        // The single-work-rect path.
         let outer = geometry::Rect { x0: min_x, y0: min_y, x1: max_x, y1: max_y };
-        let mut rng = Rng::new(seed);
         pack_region(
             doc, program, outer, remaining_meetings, remaining_desks,
             /*column_major=*/ false, /*region_no=*/ None, /*tile_zones=*/ true,
             /*emit_zones=*/ true,
-            plate.as_deref(), &mut obstacles, frozen_len, &mut mr_counter, &mut rng,
+            plate.as_deref(), &mut obstacles, frozen_len, &mut mr_counter, lat,
             Insets::uniform(corridor), corridor, clear,
         );
     } else {
@@ -389,7 +430,6 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
         let plans = allocate_regions(program, &regions, corridor, clear, remaining_meetings, remaining_desks);
         let mut placed_desks = 0u32;
         for (i, &(region, m_target, d_target)) in plans.iter().enumerate() {
-            let mut rng = region_rng(seed, i as u64);
             // Desk rows run along the region's long axis: a portrait region packs
             // column-major so its wing fills with natural vertical rows.
             let column_major = region.height() > region.width();
@@ -397,7 +437,7 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
                 doc, program, region, m_target, d_target,
                 column_major, /*region_no=*/ Some((i + 1) as u32), /*tile_zones=*/ false,
                 /*emit_zones=*/ true,
-                plate.as_deref(), &mut obstacles, frozen_len, &mut mr_counter, &mut rng,
+                plate.as_deref(), &mut obstacles, frozen_len, &mut mr_counter, lat,
                 insets[i], corridor, clear,
             );
         }
@@ -416,19 +456,16 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
                 if shortfall == 0 {
                     break;
                 }
-                // SAME rng stream as the first pass → same grid offset, so
-                // top-up slots either coincide with occupied pitches (rejected)
-                // or fill genuinely free ones in perfect row alignment. A fresh
-                // offset would interleave desks between existing rows and
-                // pinch the aisles the grid-level jitter fix just guaranteed.
-                let mut rng = region_rng(seed, i as u64);
+                // SAME global lattice as the first pass → top-up slots either
+                // coincide with occupied lines (rejected) or fill genuinely free
+                // ones in perfect row alignment. Zones are already emitted.
                 let column_major = region.height() > region.width();
                 let all_frozen = obstacles.len(); // everything placed so far blocks
                 let got = pack_region(
                     doc, program, region, 0, shortfall,
                     column_major, /*region_no=*/ Some((i + 1) as u32), /*tile_zones=*/ false,
                     /*emit_zones=*/ false,
-                    plate.as_deref(), &mut obstacles, all_frozen, &mut mr_counter, &mut rng,
+                    plate.as_deref(), &mut obstacles, all_frozen, &mut mr_counter, lat,
                     insets[i], corridor, clear,
                 );
                 shortfall = shortfall.saturating_sub(got);
@@ -554,8 +591,8 @@ fn allocate_regions(
 /// `meeting_target` meeting rooms anchored at the region's short end, the
 /// Workspace zone(s), and a grid-packed desk field (up to `desk_target`).
 /// Frozen/just-placed footprints in `obstacles` are avoided; every footprint is
-/// validated against the plate polygon. `rng` is the region's own stream.
-/// Returns desks placed.
+/// validated against the plate polygon. `lat` is the call's GLOBAL desk lattice,
+/// so this region's rows align with its neighbours'. Returns desks placed.
 ///
 /// `insets` gives the per-edge corridor inset: full `corridor` on plate-boundary
 /// edges, `corridor/2` on edges shared with a neighbour so the two half-insets
@@ -590,7 +627,7 @@ fn pack_region(
     obstacles: &mut Vec<(f64, f64, f64, f64)>,
     frozen_len: usize,
     mr_counter: &mut u32,
-    rng: &mut Rng,
+    lat: Lattice,
     insets: Insets,
     corridor: f64,
     clear: f64,
@@ -656,7 +693,7 @@ fn pack_region(
             {
                 return false;
             }
-            push_component(doc, "MeetingRoom", cx, cy, mw, mh);
+            push_component(doc, "MeetingRoom", cx, cy, mw, mh, 0.0);
             *mr_counter += 1;
             push_zone(
                 doc,
@@ -773,8 +810,8 @@ fn pack_region(
         emit_core(prev_bottom, y1, doc);
     }
 
-    // --- 2. Desk grid fills the work zone, skipping any cell that collides
-    // with a frozen or just-placed obstacle (including meeting footprints). ----
+    // --- 2. Desk grid fills the work zone on the GLOBAL lattice, skipping any
+    // cell that collides with a frozen or just-placed obstacle (incl. meetings).
     let mut desks_here = 0u32;
     'desks: {
         if program.desk_w <= 0.0 || program.desk_h <= 0.0 {
@@ -786,128 +823,155 @@ fn pack_region(
         }
         let pitch_x = program.desk_w + clear;
         let pitch_y = program.desk_h + clear;
-        let cols = (((dz_x1 - dz_x0) + clear) / pitch_x).floor() as i64;
-        let rows = (((dz_y1 - dz_y0) + clear) / pitch_y).floor() as i64;
-        if cols <= 0 || rows <= 0 {
+        let cluster_cols = program.cluster_cols.max(1);
+        let bench = program.bench_pairs;
+        let hw = program.desk_w / 2.0;
+        let hh = program.desk_h / 2.0;
+
+        // Two axes. The INNER axis runs uniform-pitch desks along the region's
+        // long side (cluster aisles accrue here). The OUTER axis carries the rows
+        // that PAIR back-to-back under bench desking. Row-major (landscape) runs
+        // rows along Y (outer) with long desk rows along X (inner); a portrait
+        // region transposes so its wing fills with vertical rows.
+        let (inner_o, inner_dz0, inner_dz1, inner_half, inner_pitch, inner_size) = if column_major {
+            (lat.oy + lat.jy, dz_y0, dz_y1, hh, pitch_y, program.desk_h)
+        } else {
+            (lat.ox + lat.jx, dz_x0, dz_x1, hw, pitch_x, program.desk_w)
+        };
+        let (outer_o, outer_dz0, outer_dz1, outer_half, outer_pitch, outer_desk) = if column_major {
+            (lat.ox + lat.jx, dz_x0, dz_x1, hw, pitch_x, program.desk_w)
+        } else {
+            (lat.oy + lat.jy, dz_y0, dz_y1, hh, pitch_y, program.desk_h)
+        };
+
+        // GLOBAL lattice phase: the first desk line in each region is the first
+        // line of the shared lattice (origin = plate bbox min + one seed jitter)
+        // that clears this region's inset. Because the phase comes from the plate
+        // origin — not the region corner — adjacent wings' rows/columns land on
+        // the SAME lines across the seam. `ceil` picks that first line; the offset
+        // it introduces is why global alignment can cost a fractional row (bench
+        // pairing more than pays it back). Inner axis (uniform pitch):
+        let inner_first =
+            inner_o + ((inner_dz0 - inner_o) / inner_pitch).ceil() * inner_pitch + inner_half;
+        let inner_n = if inner_first + inner_half <= inner_dz1 + 1e-9 {
+            (((inner_dz1 - inner_half - inner_first) / inner_pitch).floor() as i64 + 1).max(0)
+        } else {
+            0
+        };
+
+        // OUTER axis. Under bench pairing rows come back-to-back in PAIRS:
+        //   [desk | SPINE_GAP | desk(rotated π) | clear aisle] repeating,
+        // block = 2·desk + SPINE_GAP + clear — DENSER than 2·(desk+clear) single
+        // rows, which is exactly why real plans pair. Pairs anchor to global BLOCK
+        // lines so stacked wings still share pair lines. `bench == false` restores
+        // uniform single rows on the same global lattice.
+        let block = 2.0 * outer_desk + SPINE_GAP + clear;
+        let outer_first =
+            outer_o + ((outer_dz0 - outer_o) / outer_pitch).ceil() * outer_pitch + outer_half;
+        // Pairs start at the first PITCH-aligned line clearing the inset (not the
+        // coarser block line — that wasted up to a full 2·desk+clear block at each
+        // region's near edge, shrinking the field's spread). Two regions sharing
+        // the outer range still resolve the same start, so their rows align.
+        let outer_first_near = outer_first - outer_half;
+        // Center + rotation of outer desk index `o`.
+        let outer_at = |o: i64| -> (f64, f64) {
+            if bench {
+                let p = o / 2;
+                let w = o % 2;
+                let near = outer_first_near
+                    + p as f64 * block
+                    + if w == 1 { outer_desk + SPINE_GAP } else { 0.0 };
+                (near + outer_half, if w == 1 { std::f64::consts::PI } else { 0.0 })
+            } else {
+                (outer_first + o as f64 * outer_pitch, 0.0)
+            }
+        };
+        let outer_n = {
+            let mut n = 0i64;
+            while outer_at(n).0 + outer_half <= outer_dz1 + 1e-9 {
+                n += 1;
+            }
+            n
+        };
+        if inner_n <= 0 || outer_n <= 0 {
             break 'desks;
         }
-        let cluster_cols = program.cluster_cols.max(1);
-        // GRID-level jitter: one offset for the whole desk field. Per-desk
-        // jitter let adjacent desks drift toward each other, eroding the
-        // guaranteed aisle from `clear` down to ~0.5·clear. A single shared
-        // offset keeps seeds producing distinct layouts while every aisle stays
-        // exactly `clear`. The offset is POSITIVE-only and bounded to each axis'
-        // real slack (free space beyond the packed grid): the grid is bottom-/
-        // left-aligned, so any negative shift would push the first row into the
-        // corridor and force a per-desk clamp that COMPRESSES that row's aisle
-        // below `clear` (the "min corridor 0.60 m" failure). A uniform in-bounds
-        // shift moves the whole field together, preserving every pitch.
-        let jitter = clear * 0.25;
-        // Cluster aisles accrue on the INNER axis only. Cap how many the region
-        // can host to what its slack absorbs: a bench aisle must never push the
-        // last desk past the field edge and cost a whole row/column (an 11.6 m
-        // portrait column tight-packs 7 rows but has no room for a 0.9 m
-        // cross-aisle — inserting one drops it to 6). Utilization wins; the
-        // perimeter/seam corridors already carry egress.
-        let (inner_n, inner_pitch, inner_size, inner_dz) = if column_major {
-            (rows, pitch_y, program.desk_h, dz_y1 - dz_y0)
-        } else {
-            (cols, pitch_x, program.desk_w, dz_x1 - dz_x0)
-        };
-        let tight_used = (inner_n - 1).max(0) as f64 * inner_pitch + inner_size;
-        let max_aisles = ((inner_dz - tight_used).max(0.0) / clear).floor().max(0.0) as u32;
-        // Aisle count *before* the last inner desk, capped to `max_aisles`.
-        let aisle_total = |n: i64| -> f64 {
-            ((((n - 1).max(0) as u32) / cluster_cols).min(max_aisles)) as f64 * clear
-        };
-        let (aisle_x, aisle_y) = if column_major {
-            (0.0, aisle_total(rows))
-        } else {
-            (aisle_total(cols), 0.0)
-        };
-        let used_x = (cols - 1).max(0) as f64 * pitch_x + program.desk_w + aisle_x;
-        let used_y = (rows - 1).max(0) as f64 * pitch_y + program.desk_h + aisle_y;
-        let slack_x = ((dz_x1 - dz_x0) - used_x).max(0.0);
-        let slack_y = ((dz_y1 - dz_y0) - used_y).max(0.0);
-        let jx = rng.next_f64() * jitter.min(slack_x);
-        let jy = rng.next_f64() * jitter.min(slack_y);
 
-        // Row-major (rows outer) for landscape/rect regions — identical to the
-        // historical order; column-major (cols outer) for portrait regions so
-        // desk rows run down the long axis. The cluster aisle follows the inner
-        // axis in each case.
-        //
-        // Two grid PHASES: the base grid, then (only if the target is unmet) a
-        // half-pitch-shifted grid that catches slots the base phase lost to a
-        // meeting room's clearance shadow — the failure mode of tight wings,
-        // where every base row lands 0.3–0.5 m too close to the room. Desks
-        // from an earlier phase fall before `grid_start`, so the full-clearance
+        // Cluster aisles accrue on the INNER axis only, capped to what the inner
+        // slack absorbs so a bench aisle never costs a whole row (utilization wins;
+        // the perimeter/seam corridors carry egress).
+        let inner_tight = (inner_n - 1).max(0) as f64 * inner_pitch + inner_size;
+        let inner_span = inner_dz1 - (inner_first - inner_half);
+        let max_aisles = ((inner_span - inner_tight).max(0.0) / clear).floor().max(0.0) as u32;
+
+        // Two clearance regimes. Same-grid desks are pitched `clear` apart (or
+        // SPINE_GAP apart for a bench pair) BY CONSTRUCTION, so their check needs
+        // only guard fp noise; meetings/frozen/earlier-phase footprints still need
+        // the FULL clearance so a person can pass. Under pairing the same-grid pad
+        // shrinks below the spine so the intended 0.15 m gap (or a touching 0.0)
+        // is never flagged as a collision.
+        let same_grid_pad = if bench { SPINE_GAP * 0.5 - 1e-6 } else { clear * 0.5 };
+
+        // Two grid PHASES: the base grid, then a half-pitch-shifted pass that
+        // catches slots a meeting room's clearance shadow stole from tight wings.
+        // Earlier-phase desks fall before `grid_start`, so the full-clearance
         // regime keeps phase-2 desks a true aisle away from phase-1 rows.
-        let (outer_n, inner_n) = if column_major { (cols, rows) } else { (rows, cols) };
         'phases: for phase in 0..2u32 {
-        if desks_here >= desk_target {
-            break 'phases;
-        }
-        let (px, py) = if phase == 0 {
-            (0.0, 0.0)
-        } else {
-            (pitch_x * 0.5, pitch_y * 0.5)
-        };
-        let grid_start = obstacles.len();
-        'grid: for o in 0..outer_n {
-            for i in 0..inner_n {
-                if desks_here >= desk_target {
-                    break 'grid;
-                }
-                let (c, r) = if column_major { (o, i) } else { (i, o) };
-                let (cx, cy, past_edge) = if column_major {
-                    let aisle = ((r as u32 / cluster_cols).min(max_aisles)) as f64 * clear;
-                    let cy = dz_y0 + py + program.desk_h / 2.0 + (r as f64) * pitch_y + aisle;
-                    (dz_x0 + px + program.desk_w / 2.0 + (c as f64) * pitch_x, cy, cy + program.desk_h / 2.0 > dz_y1)
-                } else {
-                    let aisle = ((c as u32 / cluster_cols).min(max_aisles)) as f64 * clear;
-                    let cx = dz_x0 + px + program.desk_w / 2.0 + (c as f64) * pitch_x + aisle;
-                    (cx, dz_y0 + py + program.desk_h / 2.0 + (r as f64) * pitch_y, cx + program.desk_w / 2.0 > dz_x1)
-                };
-                // stop if the aisle pushed this desk past the field edge
-                if past_edge {
-                    continue;
-                }
-                // Apply the shared grid offset, clamped so the footprint can
-                // never leave the work zone (and thus never the corridor).
-                let fx = (cx + jx).clamp(dz_x0 + program.desk_w / 2.0, dz_x1 - program.desk_w / 2.0);
-                let fy = (cy + jy).clamp(dz_y0 + program.desk_h / 2.0, dz_y1 - program.desk_h / 2.0);
-                // Two clearance regimes: same-grid desks are pitched exactly
-                // `clear` apart by construction (half-pad only guards fp noise),
-                // but meetings/frozen/earlier-pass footprints need the FULL
-                // clearance or people can't pass between a desk and a room.
-                let ok = |px: f64, py: f64| {
-                    slot_fits_plate(plate, px, py, program.desk_w, program.desk_h, corridor)
+            if desks_here >= desk_target {
+                break 'phases;
+            }
+            let (inner_ph, outer_ph) = if phase == 0 {
+                (0.0, 0.0)
+            } else {
+                (inner_pitch * 0.5, outer_pitch * 0.5)
+            };
+            let grid_start = obstacles.len();
+            'grid: for o in 0..outer_n {
+                let (outer_c, rot) = outer_at(o);
+                for i in 0..inner_n {
+                    if desks_here >= desk_target {
+                        break 'grid;
+                    }
+                    let aisle = ((i as u32 / cluster_cols).min(max_aisles)) as f64 * clear;
+                    let inner_c = inner_first + inner_ph + i as f64 * inner_pitch + aisle;
+                    let outer_cc = outer_c + outer_ph;
+                    let (cx, cy) = if column_major {
+                        (outer_cc, inner_c)
+                    } else {
+                        (inner_c, outer_cc)
+                    };
+                    // stop if the cluster aisle pushed this desk past the inner edge
+                    let past_edge = if column_major {
+                        cy + hh > inner_dz1
+                    } else {
+                        cx + hw > inner_dz1
+                    };
+                    if past_edge {
+                        continue;
+                    }
+                    // Clamp into the work zone (never into the corridor). Phase-0
+                    // positions already sit inside by construction, so this only
+                    // reins in a half-pitch phase-2 slot at the edge.
+                    let fx = cx.clamp(dz_x0 + hw, dz_x1 - hw);
+                    let fy = cy.clamp(dz_y0 + hh, dz_y1 - hh);
+                    let ok = slot_fits_plate(plate, fx, fy, program.desk_w, program.desk_h, corridor)
                         && !footprint_overlaps(
                             &obstacles[..grid_start],
-                            px, py, program.desk_w, program.desk_h, clear - 1e-6,
+                            fx, fy, program.desk_w, program.desk_h, clear - 1e-6,
                         )
                         && !footprint_overlaps(
                             &obstacles[grid_start..],
-                            px, py, program.desk_w, program.desk_h, clear * 0.5,
-                        )
-                };
-                // Knife-edge wings: a slot exactly at the plate margin dies to
-                // ANY jitter. Fall back to the pure grid position before
-                // giving the slot up — tight wings fill, roomy fields jitter.
-                let (fx, fy) = if ok(fx, fy) {
-                    (fx, fy)
-                } else {
-                    let gx = cx.clamp(dz_x0 + program.desk_w / 2.0, dz_x1 - program.desk_w / 2.0);
-                    let gy = cy.clamp(dz_y0 + program.desk_h / 2.0, dz_y1 - program.desk_h / 2.0);
-                    if ok(gx, gy) { (gx, gy) } else { continue; }
-                };
-                push_component(doc, "Desk", fx, fy, program.desk_w, program.desk_h);
-                obstacles.push((fx, fy, program.desk_w, program.desk_h));
-                desks_here += 1;
+                            fx, fy, program.desk_w, program.desk_h, same_grid_pad,
+                        );
+                    if !ok {
+                        continue;
+                    }
+                    push_component(doc, "Desk", fx, fy, program.desk_w, program.desk_h, rot);
+                    obstacles.push((fx, fy, program.desk_w, program.desk_h));
+                    desks_here += 1;
+                }
             }
         }
-        } // 'phases
     }
 
     desks_here
@@ -1410,8 +1474,9 @@ mod tests {
         generate(&mut doc, &program, 3, false);
         let poly = poly_of(&doc);
         let desks: Vec<_> = doc.components.iter().filter(|c| c.category == "Desk").collect();
-        // Seam-shared corridors + capacity-aware cluster aisles lift this from
-        // the old 21 bar to 26 placed; 24 leaves headroom (see workstream 2).
+        // Back-to-back bench pairing (denser than single rows) plus seam-shared
+        // corridors seat 25–29 here across seeds; the ≥24 bar keeps headroom for
+        // the global-lattice alignment cost.
         assert!(desks.len() >= 24, "placed only {} of 30 desks", desks.len());
         // The L = a 20x8 bottom band + a 12x6 upper-left wing. BOTH must fill.
         let in_band = desks.iter().filter(|c| c.y < 8.0).count();
@@ -1426,10 +1491,11 @@ mod tests {
 
     #[test]
     fn l_plate_circulation_quality() {
-        // Aisle semantics: desk rows are pitched at desk_clearance_m by design,
-        // so the narrowest measured passage is an access AISLE (>= clearance);
-        // egress corridors (>= target) come from the per-region rings. The
-        // grid-level jitter fix guarantees aisles never erode below clearance.
+        // Aisle semantics: bench PAIRS touch at a 0.0 m spine (no walkable cell
+        // between them, so no bogus min-corridor), and the aisle between pairs is
+        // pitched at desk_clearance_m by design — so the narrowest measured passage
+        // is an access AISLE (>= clearance); egress corridors (>= target) come from
+        // the per-region rings. The shared global lattice keeps aisles from eroding.
         let mut program = Program::default();
         program.desks = 30;
         program.meeting_rooms = 2;
@@ -1610,6 +1676,150 @@ mod tests {
             let cores = doc.zones.iter().filter(|z| z.zone_type == ZoneType::Core).count();
             assert_eq!(cores, kos.len(), "seed {seed}: expected {} Core zones, got {cores}", kos.len());
         }
+    }
+
+    // ---- Bench-pair desking + global lattice (round 3) --------------------
+
+    /// Desks in a bench pair alternate rotation 0 / π, sit SPINE_GAP apart at the
+    /// shared spine, and the aisle BETWEEN pairs is a full clearance.
+    #[test]
+    fn bench_pairs_alternate_rotation() {
+        let mut program = Program::default();
+        program.desks = 40;
+        program.meeting_rooms = 0; // keep the field clean of a meeting column
+        program.cluster_cols = 100; // no inner cluster aisles to interleave
+        assert!(program.bench_pairs, "bench pairing is the default");
+        let mut doc = room(20.0, 15.0); // landscape → rows pair along Y
+        generate(&mut doc, &program, 5, false);
+        let desks: Vec<_> = doc.components.iter().filter(|c| c.category == "Desk").collect();
+        assert!(desks.len() >= 8, "need several rows to see pairs");
+
+        // Both orientations must appear.
+        let flat = desks.iter().filter(|c| c.rotation.abs() < 1e-9).count();
+        let flipped = desks.iter().filter(|c| (c.rotation - std::f64::consts::PI).abs() < 1e-9).count();
+        assert!(flat > 0 && flipped > 0, "expected both 0 and π rows, got {flat}/{flipped}");
+        // Every desk is exactly one of the two orientations.
+        for c in &desks {
+            assert!(
+                c.rotation.abs() < 1e-9 || (c.rotation - std::f64::consts::PI).abs() < 1e-9,
+                "unexpected rotation {}",
+                c.rotation
+            );
+        }
+
+        // Take the fullest column (desks sharing an x line) and read its rows.
+        use std::collections::BTreeMap;
+        let mut cols: BTreeMap<i64, Vec<&&Component>> = BTreeMap::new();
+        for c in &desks {
+            cols.entry((c.x * 1000.0).round() as i64).or_default().push(c);
+        }
+        let mut col = cols.into_values().max_by_key(|v| v.len()).unwrap();
+        col.sort_by(|a, b| a.y.partial_cmp(&b.y).unwrap());
+        assert!(col.len() >= 4, "need ≥2 pairs in a column, got {}", col.len());
+
+        let desk_h = program.desk_h;
+        let clear = program.desk_clearance_m;
+        // Row 0 flat, row 1 flipped (the pair), spine gap == SPINE_GAP.
+        assert!(col[0].rotation.abs() < 1e-9, "row 0 should be un-rotated");
+        assert!((col[1].rotation - std::f64::consts::PI).abs() < 1e-9, "row 1 should be π");
+        let spine = (col[1].y - col[0].y) - desk_h;
+        assert!((spine - SPINE_GAP).abs() < 1e-6, "spine gap {spine:.3} != {SPINE_GAP}");
+        // Aisle between the pair and the next pair is ≥ a full clearance.
+        let aisle = (col[2].y - col[1].y) - desk_h;
+        assert!(aisle >= clear - 1e-6, "pair aisle {aisle:.3} < clearance {clear}");
+        assert!(col[2].rotation.abs() < 1e-9, "next pair starts un-rotated");
+    }
+
+    /// With `bench_pairs = false` the generator falls back to uniform single rows:
+    /// zero π rotations and a constant `desk_h + clear` row pitch.
+    #[test]
+    fn bench_pairs_false_reproduces_single_rows() {
+        let mut program = Program::default();
+        program.desks = 40;
+        program.meeting_rooms = 0;
+        program.cluster_cols = 100;
+        program.bench_pairs = false;
+        let mut doc = room(20.0, 15.0);
+        generate(&mut doc, &program, 5, false);
+        let desks: Vec<_> = doc.components.iter().filter(|c| c.category == "Desk").collect();
+        assert!(desks.len() >= 8);
+
+        // No desk is flipped.
+        for c in &desks {
+            assert!(c.rotation.abs() < 1e-9, "single rows must not rotate: {}", c.rotation);
+        }
+        // Old pitch: every consecutive gap in a column is desk_h + clear (no spine).
+        use std::collections::BTreeMap;
+        let mut cols: BTreeMap<i64, Vec<&&Component>> = BTreeMap::new();
+        for c in &desks {
+            cols.entry((c.x * 1000.0).round() as i64).or_default().push(c);
+        }
+        let mut col = cols.into_values().max_by_key(|v| v.len()).unwrap();
+        col.sort_by(|a, b| a.y.partial_cmp(&b.y).unwrap());
+        assert!(col.len() >= 3);
+        let pitch_y = program.desk_h + program.desk_clearance_m;
+        for w in col.windows(2) {
+            let gap = w[1].y - w[0].y;
+            assert!((gap - pitch_y).abs() < 1e-6, "row pitch {gap:.3} != single-row {pitch_y:.3}");
+        }
+    }
+
+    /// Two adjacent regions of one plate anchor their desk grids to the SAME global
+    /// lattice, so every desk in BOTH regions lies on shared lines modulo pitch.
+    #[test]
+    fn regions_share_the_global_lattice() {
+        // L-plate decomposes into a bottom band and an upper-left wing (both
+        // row-major). bench off + no cluster aisles + a target below capacity (so
+        // only the base phase runs) leaves a pure pitch lattice on both axes.
+        let mut program = Program::default();
+        program.desks = 10;
+        program.meeting_rooms = 0;
+        program.cluster_cols = 100;
+        program.bench_pairs = false;
+        let mut doc = l_room();
+        generate(&mut doc, &program, 3, false);
+        let desks: Vec<_> = doc.components.iter().filter(|c| c.category == "Desk").collect();
+        // Both regions are populated (band below y=8, wing above it at x<12).
+        let band = desks.iter().filter(|c| c.y < 8.0).count();
+        let wing = desks.iter().filter(|c| c.y > 8.0 && c.x < 12.0).count();
+        assert!(band > 0 && wing > 0, "need desks in both regions (band {band}, wing {wing})");
+
+        // A single global lattice: every desk x is congruent to a common residue
+        // mod pitch_x, and every desk y mod pitch_y — across BOTH regions.
+        let pitch_x = program.desk_w + program.desk_clearance_m;
+        let pitch_y = program.desk_h + program.desk_clearance_m;
+        let x0 = desks.iter().map(|c| c.x).fold(f64::MAX, f64::min);
+        let y0 = desks.iter().map(|c| c.y).fold(f64::MAX, f64::min);
+        for c in &desks {
+            let kx = (c.x - x0) / pitch_x;
+            let ky = (c.y - y0) / pitch_y;
+            assert!((kx - kx.round()).abs() < 1e-6, "x {} off the shared lattice", c.x);
+            assert!((ky - ky.round()).abs() < 1e-6, "y {} off the shared lattice", c.y);
+        }
+    }
+
+    /// A JSON `Program` that omits `bench_pairs` must deserialize (not error) with
+    /// the field defaulting to `true` — the field-level `#[serde(default)]` at work
+    /// (the struct carries no blanket default, so this is the only thing keeping the
+    /// UI's not-yet-updated payload from failing).
+    #[test]
+    fn missing_bench_pairs_field_defaults_true() {
+        let without = r#"{
+            "desks": 24, "meeting_rooms": 2, "desk_w": 1.6, "desk_h": 0.8,
+            "meeting_w": 4.0, "meeting_h": 4.0, "cluster_cols": 4,
+            "target_corridor_m": 1.2, "desk_clearance_m": 0.9,
+            "w_capacity": 0.35, "w_adjacency": 0.20, "w_circulation": 0.25, "w_density": 0.20
+        }"#;
+        let p: Program = serde_json::from_str(without).expect("missing bench_pairs must not error");
+        assert!(p.bench_pairs, "omitted bench_pairs should default to true");
+
+        // And an explicit false is still honored.
+        let with_false = without.replace(
+            "\"cluster_cols\": 4,",
+            "\"cluster_cols\": 4, \"bench_pairs\": false,",
+        );
+        let p2: Program = serde_json::from_str(&with_false).expect("explicit bench_pairs parses");
+        assert!(!p2.bench_pairs, "explicit false must be honored");
     }
 
 }
