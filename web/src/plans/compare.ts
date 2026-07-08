@@ -62,6 +62,16 @@ function readSide(input: { snapshot: string; name: string }, thumb: ThumbRendere
   }
 }
 
+/** Plan-schematic dataURL for a stored snapshot (hover-lazy history thumbs). */
+export function snapshotThumb(snapshot: string, w = 200, h = 140): string {
+  const ed = Editor.from_snapshot(snapshot)
+  try {
+    return renderThumb(ed.state() as DocState, w, h)
+  } finally {
+    ed.free()
+  }
+}
+
 /**
  * Pure compare of two plans given their opaque snapshots. Never touches the
  * live editor. `thumb` defaults to the real canvas renderer; injectable so
@@ -79,7 +89,7 @@ export function comparePlans(
   // dir/valence read "B relative to A".
   const m2 = (n: number) => `${Math.round(n)} m²`
   const one = (n: number) => n.toFixed(1)
-  const money = (n: number) => `$${Math.round(n).toLocaleString('en-US')}`
+  const money = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`
   const kg = (n: number) => `${Math.round(n).toLocaleString('en-US')}`
 
   const deltas: MetricDelta[] = [

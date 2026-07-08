@@ -5,9 +5,10 @@
 // files, "export plan to .dsource" is a field copy, and cloud sync (§5)
 // posts the same JSON. Metrics are denormalized for list/compare without wasm.
 
-import type { EditorCanvas } from '../editor/EditorCanvas'
+import { Editor } from '../wasm/ds_core'
+import type { EditorCanvas, Metrics, CirculationScore } from '../editor/EditorCanvas'
 import type { Drawing } from '../import/types'
-import type { DSourceFile, DSourceUi } from './file'
+import type { BindingInfo, DSourceFile, DSourceUi } from './file'
 import { applyProject, buildProjectFile } from './file'
 import { dbDel, dbGetAll, dbPut } from './db'
 
@@ -43,13 +44,33 @@ export interface SavedPlan {
 export function buildSavedPlan(
   ec: EditorCanvas,
   name: string,
-  opts: { drawing?: Drawing | null; ui?: DSourceUi; snapshot?: string; thumb?: string } = {},
+  opts: {
+    drawing?: Drawing | null
+    ui?: DSourceUi
+    snapshot?: string
+    thumb?: string
+    bindings?: Map<string, BindingInfo> | null
+  } = {},
 ): SavedPlan {
-  const file = buildProjectFile({ ec, drawing: opts.drawing, ui: opts.ui })
+  const file = buildProjectFile({ ec, drawing: opts.drawing, bindings: opts.bindings, ui: opts.ui })
   if (opts.snapshot) file.snapshot = opts.snapshot
-  const m = ec.getMetrics()
+  // Metrics must describe the PARKED document: when a non-live snapshot is
+  // given (gallery candidate), read them from a scratch clone, not the live doc.
   // Degenerate-at-0-walls gotcha (CLAUDE.md): only score circulation inside a plate.
-  const circ = m.wall_count > 0 ? ec.circulation() : null
+  let m: Metrics
+  let circ: CirculationScore | null
+  if (opts.snapshot) {
+    const ed = Editor.from_snapshot(opts.snapshot)
+    try {
+      m = ed.metrics() as Metrics
+      circ = m.wall_count > 0 ? (ed.circulation() as CirculationScore) : null
+    } finally {
+      ed.free()
+    }
+  } else {
+    m = ec.getMetrics()
+    circ = m.wall_count > 0 ? ec.circulation() : null
+  }
   const now = new Date().toISOString()
   return {
     id: crypto.randomUUID(),

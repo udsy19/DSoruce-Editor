@@ -1,5 +1,13 @@
 import { useEffect, useReducer, useRef, useState } from 'react'
-import { EditorCanvas, DocComponent, Metrics, Program, GenResult, DEFAULT_PROGRAM } from './editor/EditorCanvas'
+import {
+  EditorCanvas,
+  DocComponent,
+  Metrics,
+  Program,
+  GenResult,
+  Candidate,
+  DEFAULT_PROGRAM,
+} from './editor/EditorCanvas'
 import { CATALOG, catByCategory } from './editor/catalog'
 import { searchBank } from './materialBank/mock'
 import { searchBankLive, bankQueryFor, formatINR, type BankProduct } from './materialBank/client'
@@ -30,7 +38,13 @@ import {
   pushKeepoutsToEditor,
   type PlateResult,
 } from './import/testfit'
-import { saveProject, openProject, applyProject, type BindingInfo } from './persist/file'
+import { saveProject, openProject, applyProject, type BindingInfo, type DSourceFile } from './persist/file'
+import { buildSavedPlan, listPlans, putPlan, deletePlan, type SavedPlan } from './persist/plans'
+import { noteChange, listHistory, restoreEntry, type HistoryEntry } from './persist/history'
+import { comparePlans, snapshotThumb, type PlanComparison } from './plans/compare'
+import { renderThumb } from './editor/EditorCanvas'
+import { LibraryPanel } from './ui/LibraryPanel'
+import { CompareView } from './ui/CompareView'
 import { evaluateCandidates, type SoftVerdict } from './ai/evaluator'
 
 // CAD drafting tools (map to EditorCanvas 'cad:<id>' tools).
@@ -77,6 +91,14 @@ export function App() {
     msg: string
   } | null>(null)
   const [helpOpen, setHelpOpen] = useState(false)
+  /** Right-inspector tab: the working plan vs the saved-plan library. */
+  const [panelTab, setPanelTab] = useState<'plan' | 'library'>('plan')
+  const [plans, setPlans] = useState<SavedPlan[]>([])
+  const [history, setHistory] = useState<HistoryEntry[]>([])
+  /** Open compare modal + the two library records behind its panes. */
+  const [compare, setCompare] = useState<{ cmp: PlanComparison; a: SavedPlan; b: SavedPlan } | null>(
+    null,
+  )
   const fileRef = useRef<HTMLInputElement>(null)
   const drawCanvasRef = useRef<DrawingCanvas | null>(null)
   const [, setDrawVer] = useState(0)
@@ -132,7 +154,10 @@ export function App() {
       }
       inst = ec
       ecRef.current = ec
-      ec.onChange = () => setTick((t) => t + 1)
+      ec.onChange = () => {
+        setTick((t) => t + 1)
+        noteChange(ec, 'edit') // autosave ring (debounced/deduped in history.ts)
+      }
       ec.coordEl = coordRef.current
       ec.scaleEl = scaleRef.current
       ec.refresh()
@@ -161,24 +186,78 @@ export function App() {
   onSaveRef.current = onSave
 
   const projectFileRef = useRef<HTMLInputElement>(null)
+  /** Make a parsed DSourceFile the live session — shared by "Open" (file
+   *  picker) and the plan library, so restore semantics can never drift. */
+  const applyOpenedFile = (ec: EditorCanvas, f: DSourceFile) => {
+    applyProject(ec, f) // document snapshot + program (core state)
+    setDrawing(f.drawing ?? null) // React-owned import session
+    // Product-binding prices/thumbnails ride alongside the drawing —
+    // restore (or clear) so a reopened import session keeps its ₹ data.
+    setBindings(new Map(Object.entries(f.bindings ?? {})))
+    setSelItem(null)
+    // Best-effort UI restore — fall back safely when hints are absent.
+    const m = f.ui?.mode
+    setMode(m === '3d' ? '3d' : m === 'import' && f.drawing ? 'import' : '2d')
+    setPlanView(f.ui?.planView === '3d' ? '3d' : '2d')
+  }
+
   const onOpenProject = async (file: File) => {
     const ec = ecRef.current
     if (!ec) return
     try {
-      const f = await openProject(file)
-      applyProject(ec, f) // document snapshot + program (core state)
-      setDrawing(f.drawing ?? null) // React-owned import session
-      // Product-binding prices/thumbnails ride alongside the drawing —
-      // restore (or clear) so a reopened import session keeps its ₹ data.
-      setBindings(new Map(Object.entries(f.bindings ?? {})))
-      setSelItem(null)
-      // Best-effort UI restore — fall back safely when hints are absent.
-      const m = f.ui?.mode
-      setMode(m === '3d' ? '3d' : m === 'import' && f.drawing ? 'import' : '2d')
-      setPlanView(f.ui?.planView === '3d' ? '3d' : '2d')
+      applyOpenedFile(ec, await openProject(file))
     } catch (e) {
       setImportErr(e instanceof Error ? e.message : String(e))
     }
+  }
+
+  // ----- Plan library (IndexedDB) — docs/design/plan-library.md -----
+  const refreshLibrary = async () => {
+    setPlans(await listPlans())
+    setHistory(await listHistory())
+  }
+  useEffect(() => {
+    if (panelTab === 'library') void refreshLibrary()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [panelTab])
+
+  const saveCurrentToLibrary = async (name: string) => {
+    const ec = ecRef.current
+    if (!ec) return
+    const thumb = renderThumb(ec.getState(), 200, 140)
+    await putPlan(buildSavedPlan(ec, name, { drawing, bindings, ui: { mode, planView }, thumb }))
+    await refreshLibrary()
+  }
+
+  const saveCandidateToLibrary = async (c: Candidate) => {
+    const ec = ecRef.current
+    if (!ec) return
+    const name = `Option · seed ${c.seed}`
+    await putPlan(
+      buildSavedPlan(ec, name, {
+        drawing,
+        bindings,
+        ui: { mode, planView },
+        snapshot: c.snap as string,
+        thumb: c.thumb,
+      }),
+    )
+    await refreshLibrary()
+  }
+
+  const openSavedPlan = (p: SavedPlan) => {
+    const ec = ecRef.current
+    if (!ec) return
+    // SavedPlan.file IS a v1 DSourceFile — same restore path as the file picker.
+    applyOpenedFile(ec, p.file)
+    setPanelTab('plan')
+  }
+
+  const restoreHistory = async (e: HistoryEntry) => {
+    const ec = ecRef.current
+    if (!ec) return
+    await restoreEntry(ec, e)
+    await refreshLibrary()
   }
 
   // Global "?" opens the shortcut help; Escape closes it; ⌘S saves. Ignored
@@ -536,9 +615,60 @@ export function App() {
             <ReimaginePanel ec={ec} c={selected} />
           ) : ec ? (
             <>
-              {tool.startsWith('cad:') && <LayersCard ec={ec} />}
-              <StatsPanel ec={ec} />
-              <GenerateCard ec={ec} metrics={metrics} />
+              <div className="stat-tabs" role="tablist">
+                <button
+                  role="tab"
+                  aria-selected={panelTab === 'plan'}
+                  className={panelTab === 'plan' ? 'stat-tab on' : 'stat-tab'}
+                  onClick={() => setPanelTab('plan')}
+                  data-testid="tab-plan"
+                >
+                  Plan
+                </button>
+                <button
+                  role="tab"
+                  aria-selected={panelTab === 'library'}
+                  className={panelTab === 'library' ? 'stat-tab on' : 'stat-tab'}
+                  onClick={() => setPanelTab('library')}
+                  data-testid="tab-library"
+                >
+                  Library
+                </button>
+              </div>
+              {panelTab === 'library' ? (
+                <LibraryPanel
+                  plans={plans}
+                  onLoad={openSavedPlan}
+                  onCompare={(a, b) =>
+                    setCompare({
+                      cmp: comparePlans(
+                        { snapshot: a.file.snapshot, name: a.name },
+                        { snapshot: b.file.snapshot, name: b.name },
+                      ),
+                      a,
+                      b,
+                    })
+                  }
+                  onDelete={(id) => void deletePlan(id).then(refreshLibrary)}
+                  onRename={(id, name) => {
+                    const p = plans.find((x) => x.id === id)
+                    if (!p) return
+                    void putPlan({ ...p, name, updatedAt: new Date().toISOString() }).then(
+                      refreshLibrary,
+                    )
+                  }}
+                  onSaveCurrent={(name) => void saveCurrentToLibrary(name)}
+                  history={history}
+                  onRestore={(e) => void restoreHistory(e)}
+                  renderHistoryThumb={(e) => snapshotThumb(e.snapshot)}
+                />
+              ) : (
+                <>
+                  {tool.startsWith('cad:') && <LayersCard ec={ec} />}
+                  <StatsPanel ec={ec} />
+                  <GenerateCard ec={ec} metrics={metrics} onSaveCandidate={saveCandidateToLibrary} />
+                </>
+              )}
             </>
           ) : null}
         </aside>
@@ -578,6 +708,16 @@ export function App() {
       )}
 
       {helpOpen && <ShortcutsOverlay onClose={() => setHelpOpen(false)} />}
+      {compare && (
+        <CompareView
+          cmp={compare.cmp}
+          onOpenSide={(side) => {
+            openSavedPlan(side === 'a' ? compare.a : compare.b)
+            setCompare(null)
+          }}
+          onClose={() => setCompare(null)}
+        />
+      )}
     </div>
   )
 }
@@ -937,7 +1077,15 @@ function ShortcutsOverlay({ onClose }: { onClose: () => void }) {
 
 /* ---------------------------- Autonomous test-fit -------------------------- */
 
-function GenerateCard({ ec, metrics }: { ec: EditorCanvas; metrics: Metrics | null }) {
+function GenerateCard({
+  ec,
+  metrics,
+  onSaveCandidate,
+}: {
+  ec: EditorCanvas
+  metrics: Metrics | null
+  onSaveCandidate?: (c: Candidate) => void
+}) {
   const [program, setProgram] = useState<Program>(ec.program)
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<GenResult | null>(null)
@@ -1051,6 +1199,7 @@ function GenerateCard({ ec, metrics }: { ec: EditorCanvas; metrics: Metrics | nu
               setActiveSeed(c.seed)
               setResult((r) => (r ? { ...r, best: c.score } : r))
             }}
+            onSave={onSaveCandidate}
           />
         </div>
       )}
