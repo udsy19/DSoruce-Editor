@@ -1,7 +1,7 @@
 //! The editable document: walls + placed components + current selection.
 //! Pure Rust, serializable, UI-agnostic (the frontend reads it to render).
 
-use crate::model::{Component, Wall};
+use crate::model::{Component, KeepOut, Wall};
 use crate::zone::{Axis, Zone, ZoneError, ZoneShape, ZoneType};
 use serde::{Deserialize, Serialize};
 
@@ -12,6 +12,11 @@ pub struct Document {
     /// Tiled floor regions (rooms / corridors). Share the `alloc_id` space with
     /// walls + components, so any entity is addressable by one integer.
     pub zones: Vec<Zone>,
+    /// Permanent interior keep-outs (building core: stairs/lifts/shafts/WCs).
+    /// `default` keeps old snapshots (without the field) deserializable, and an
+    /// empty vec round-trips both ways — same pattern as `cad_json`.
+    #[serde(default)]
+    pub keepouts: Vec<KeepOut>,
     pub selection: Option<u32>,
     /// Monotonic id counter. **Serialized** (no `skip`) so a snapshot round-trip
     /// is lossless — otherwise restored ids would collide (Conflict §5). `default`
@@ -457,6 +462,29 @@ mod tests {
         let snap = serde_json::to_string(&doc).unwrap();
         let restored: Document = serde_json::from_str(&snap).unwrap();
         assert_eq!(restored.cad_json, doc.cad_json, "cad_json survives snapshot/restore");
+    }
+
+    #[test]
+    fn keepouts_round_trip_through_snapshot() {
+        let mut doc = Document::new();
+        let kid = doc.alloc_id();
+        doc.keepouts.push(KeepOut {
+            id: kid, x: 5.0, y: 6.0, w: 2.5, h: 3.0, label: "Stair core".into(),
+        });
+        let snap = serde_json::to_string(&doc).unwrap();
+        let restored: Document = serde_json::from_str(&snap).unwrap();
+        assert_eq!(restored.keepouts.len(), 1);
+        let k = &restored.keepouts[0];
+        assert_eq!((k.x, k.y, k.w, k.h, k.label.as_str()), (5.0, 6.0, 2.5, 3.0, "Stair core"));
+    }
+
+    #[test]
+    fn old_snapshot_without_keepouts_restores_to_empty() {
+        // A hand-written pre-keepouts snapshot (the field simply absent) must
+        // deserialize with `keepouts` defaulting to an empty vec.
+        let old = r#"{"walls":[],"components":[],"zones":[],"selection":null,"next_id":0}"#;
+        let restored: Document = serde_json::from_str(old).unwrap();
+        assert!(restored.keepouts.is_empty(), "missing keepouts field defaults to empty");
     }
 
     #[test]

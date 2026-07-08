@@ -37,6 +37,22 @@ pub struct Wall {
     pub thickness: f64,
 }
 
+/// A permanent interior **keep-out**: the building core (stairs, lifts, shafts,
+/// WCs) that the traced plate now includes but that can never hold furniture.
+/// Center-based like `Component`. Keep-outs are hard obstacles the generator
+/// always avoids (independent of the freeze state) and surface as `Core` zones.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct KeepOut {
+    pub id: u32,
+    /// center position, meters
+    pub x: f64,
+    pub y: f64,
+    /// footprint, meters
+    pub w: f64,
+    pub h: f64,
+    pub label: String,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Component {
     pub id: u32,

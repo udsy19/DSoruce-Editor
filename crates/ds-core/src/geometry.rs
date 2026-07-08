@@ -390,7 +390,18 @@ fn max_true_rectangle(
 /// `min_area`. Rectangles are returned **largest-area first** and never cross
 /// the polygon boundary. Typical real plates yield 2–6 rectangles covering
 /// ~80–95 % of the plate area.
-pub fn decompose_plate(poly: &[Point], cell: f64, min_dim: f64, min_area: f64) -> Vec<Rect> {
+///
+/// `holes` are interior keep-out rects (building core: stairs/lifts/WCs)
+/// subtracted from the raster before extraction: any cell overlapping a hole is
+/// treated as outside, so no region ever spans a keep-out (the wing splits
+/// around it) and the core is never handed to the desk packer.
+pub fn decompose_plate(
+    poly: &[Point],
+    cell: f64,
+    min_dim: f64,
+    min_area: f64,
+    holes: &[Rect],
+) -> Vec<Rect> {
     if poly.len() < 3 || cell <= 0.0 {
         return Vec::new();
     }
@@ -410,7 +421,12 @@ pub fn decompose_plate(poly: &[Point], cell: f64, min_dim: f64, min_area: f64) -
         for c in 0..cols {
             let cx = minx + (c as f64 + 0.5) * cell;
             let cy = miny + (r as f64 + 0.5) * cell;
-            if cell_inside(poly, cx, cy, half) {
+            // A cell that touches any keep-out is dropped (treated as outside),
+            // so extracted regions never cover the building core.
+            let in_hole = holes.iter().any(|k| {
+                cx - half < k.x1 && cx + half > k.x0 && cy - half < k.y1 && cy + half > k.y0
+            });
+            if !in_hole && cell_inside(poly, cx, cy, half) {
                 inside[r * cols + c] = true;
             }
         }
@@ -509,7 +525,7 @@ mod tests {
         // The L (20×14 minus an 8×6 notch) decomposes into exactly two maximal
         // rectangles: the tall left leg [0,12]×[0,14] (168 m², extracted first as
         // the larger) and the bottom-right leg [12,20]×[0,8] (64 m²).
-        let rects = decompose_plate(&l_poly(), 0.5, 2.0, 4.0);
+        let rects = decompose_plate(&l_poly(), 0.5, 2.0, 4.0, &[]);
         assert_eq!(rects.len(), 2, "L should tile into 2 rects, got {:?}", rects);
         // Largest-first ordering.
         assert!(rects[0].area() >= rects[1].area());
@@ -522,7 +538,7 @@ mod tests {
         // No rectangle may contain a point (its center or any corner) outside the
         // plate — i.e. no rectangle pokes into the notch void or past the walls.
         let poly = l_poly();
-        for rect in decompose_plate(&poly, 0.5, 2.0, 4.0) {
+        for rect in decompose_plate(&poly, 0.5, 2.0, 4.0, &[]) {
             let pts = [
                 (rect.x0, rect.y0),
                 (rect.x1, rect.y0),
@@ -547,7 +563,7 @@ mod tests {
     #[test]
     fn decompose_covers_most_of_the_plate() {
         let poly = l_poly();
-        let covered: f64 = decompose_plate(&poly, 0.5, 2.0, 4.0).iter().map(|r| r.area()).sum();
+        let covered: f64 = decompose_plate(&poly, 0.5, 2.0, 4.0, &[]).iter().map(|r| r.area()).sum();
         let plate = polygon_area(&poly); // 232 m²
         assert!(
             covered >= 0.90 * plate,
@@ -555,5 +571,32 @@ mod tests {
             covered,
             plate
         );
+    }
+
+    #[test]
+    fn decompose_splits_around_a_keepout_hole() {
+        // A plain 20×14 rectangle with a 4×4 keep-out centered at (10, 7).
+        let poly: Vec<Point> = [(0.0, 0.0), (20.0, 0.0), (20.0, 14.0), (0.0, 14.0)]
+            .iter()
+            .map(|&(x, y)| Point::new(x, y))
+            .collect();
+        let hole = Rect { x0: 8.0, y0: 5.0, x1: 12.0, y1: 9.0 };
+        let rects = decompose_plate(&poly, 0.5, 2.0, 4.0, &[hole]);
+        assert!(rects.len() >= 2, "hole must split the plate, got {:?}", rects);
+        // No rectangle's interior may overlap the keep-out.
+        for r in &rects {
+            let ox = (r.x1.min(hole.x1) - r.x0.max(hole.x0)).max(0.0);
+            let oy = (r.y1.min(hole.y1) - r.y0.max(hole.y0)).max(0.0);
+            assert!(
+                ox <= 1e-9 || oy <= 1e-9,
+                "rect {:?} overlaps the keep-out by ({}, {})",
+                r,
+                ox,
+                oy
+            );
+        }
+        // Coverage drops by roughly the hole's 16 m² (plus grid rounding).
+        let covered: f64 = rects.iter().map(|r| r.area()).sum();
+        assert!(covered <= 280.0 - 16.0 + 1e-6, "keep-out area still covered: {covered} m²");
     }
 }

@@ -16,7 +16,7 @@ mod zone;
 
 use document::Document;
 use geometry::Point;
-use model::{Component, DecisionState, Wall};
+use model::{Component, DecisionState, KeepOut, Wall};
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
 use zone::{Axis, ZoneShape, ZoneType};
@@ -111,6 +111,21 @@ impl Editor {
         });
         self.doc.selection = Some(id);
         id
+    }
+
+    /// Add a permanent interior keep-out (building core: stairs/lifts/shafts/
+    /// WCs) as a center-based rect. Keep-outs are hard obstacles `generate()`
+    /// always avoids regardless of freeze state, and render as `Core` zones.
+    /// Returns the new keep-out id. Serializes with the doc via `state()`.
+    pub fn add_keepout(&mut self, x: f64, y: f64, w: f64, h: f64, label: String) -> u32 {
+        let id = self.doc.alloc_id();
+        self.doc.keepouts.push(KeepOut { id, x, y, w, h, label });
+        id
+    }
+
+    /// Remove all keep-outs.
+    pub fn clear_keepouts(&mut self) {
+        self.doc.keepouts.clear();
     }
 
     /// Hit-test components at (x,y) in world coords, topmost first. Sets and

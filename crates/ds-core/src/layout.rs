@@ -120,11 +120,6 @@ impl Rng {
     fn next_f64(&mut self) -> f64 {
         (self.next_u64() >> 11) as f64 / (1u64 << 53) as f64
     }
-
-    /// Uniform in [-1, 1).
-    fn signed(&mut self) -> f64 {
-        self.next_f64() * 2.0 - 1.0
-    }
 }
 
 fn push_component(doc: &mut Document, category: &str, x: f64, y: f64, w: f64, h: f64) {
@@ -215,6 +210,68 @@ fn region_rng(seed: u64, index: u64) -> Rng {
     Rng::new(seed ^ index.wrapping_mul(0x9E37_79B9_7F4A_7C15))
 }
 
+/// Per-edge corridor inset for one region. On an edge facing the plate boundary
+/// or unshared space the full `corridor` is inset; on an edge shared with an
+/// adjacent region only `corridor/2` — the two neighbours' half-insets meet at
+/// the seam to form exactly ONE shared corridor instead of a double-width one.
+#[derive(Clone, Copy)]
+struct Insets {
+    left: f64,
+    right: f64,
+    top: f64,
+    bottom: f64,
+}
+
+impl Insets {
+    /// Full corridor on all four sides — the rectangular / single-region path,
+    /// byte-identical to the historical symmetric inset.
+    fn uniform(c: f64) -> Self {
+        Insets { left: c, right: c, top: c, bottom: c }
+    }
+    /// Smallest horizontal / vertical inset — the symmetric `RectRing` band that
+    /// still nests inside the (possibly asymmetric) work rect without overlap.
+    fn min_x(&self) -> f64 {
+        self.left.min(self.right)
+    }
+    fn min_y(&self) -> f64 {
+        self.top.min(self.bottom)
+    }
+}
+
+/// Minimum shared-edge overlap (m) for two regions to count as adjacent — below
+/// this a mere corner-touch shouldn't halve a whole edge's corridor.
+const SEAM_MIN_OVERLAP: f64 = 1.0;
+
+/// Compute region `idx`'s per-edge insets: an edge is halved to `corridor/2`
+/// when another region abuts it (co-linear within epsilon, overlapping by
+/// ≥ `SEAM_MIN_OVERLAP`), else it keeps the full `corridor`.
+fn region_insets(regions: &[geometry::Rect], idx: usize, corridor: f64) -> Insets {
+    let r = &regions[idx];
+    let half = corridor / 2.0;
+    let eps = 1e-3;
+    let mut ins = Insets::uniform(corridor);
+    for (j, o) in regions.iter().enumerate() {
+        if j == idx {
+            continue;
+        }
+        let y_overlap = (r.y1.min(o.y1) - r.y0.max(o.y0)).max(0.0);
+        let x_overlap = (r.x1.min(o.x1) - r.x0.max(o.x0)).max(0.0);
+        if (o.x1 - r.x0).abs() < eps && y_overlap >= SEAM_MIN_OVERLAP {
+            ins.left = half;
+        }
+        if (o.x0 - r.x1).abs() < eps && y_overlap >= SEAM_MIN_OVERLAP {
+            ins.right = half;
+        }
+        if (o.y1 - r.y0).abs() < eps && x_overlap >= SEAM_MIN_OVERLAP {
+            ins.bottom = half;
+        }
+        if (o.y0 - r.y1).abs() < eps && x_overlap >= SEAM_MIN_OVERLAP {
+            ins.top = half;
+        }
+    }
+    ins
+}
+
 /// Deterministically generate a test-fit into `doc` for `program`, seeded by `seed`.
 ///
 /// Walls are preserved. When `keep_confirmed` is true, components left `Confirmed`
@@ -229,9 +286,36 @@ fn region_rng(seed: u64, index: u64) -> Rng {
 /// open walls with no plate) takes the historical single-work-rect path, which
 /// is placement-identical to before — the decomposition is never invoked for it.
 pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed: bool) {
-    // Freeze: keep Confirmed components, drop the rest. Frozen footprints become
-    // obstacles the new placement must avoid.
+    // Keep-outs are PERMANENT hard obstacles (the building core: stairs/lifts/
+    // shafts/WCs) — always avoided regardless of `keep_confirmed`. They lead the
+    // obstacle list so they sit before `frozen_len` (meetings reject slots over
+    // them) and before every desk `grid_start` (the full-clearance regime keeps
+    // furniture a real aisle away). Held as corner-origin holes for the plate
+    // decomposition too, so no region ever spans the core.
+    let holes: Vec<geometry::Rect> = doc
+        .keepouts
+        .iter()
+        .map(|k| geometry::Rect {
+            x0: k.x - k.w / 2.0,
+            y0: k.y - k.h / 2.0,
+            x1: k.x + k.w / 2.0,
+            y1: k.y + k.h / 2.0,
+        })
+        .collect();
+    // Center + label snapshot for the Core zones emitted at the end (taken now,
+    // before `doc` is mutated further).
+    let keepout_zones: Vec<(f64, f64, f64, f64, String)> = doc
+        .keepouts
+        .iter()
+        .map(|k| (k.x, k.y, k.w, k.h, k.label.clone()))
+        .collect();
+
+    // Freeze: keep Confirmed components, drop the rest. Keep-outs + frozen
+    // footprints become obstacles the new placement must avoid.
     let mut obstacles: Vec<(f64, f64, f64, f64)> = Vec::new();
+    for k in &doc.keepouts {
+        obstacles.push((k.x, k.y, k.w, k.h));
+    }
     if keep_confirmed {
         doc.components.retain(|c| c.decision == DecisionState::Confirmed);
         for c in &doc.components {
@@ -244,10 +328,10 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
     // keep_confirmed — frozen components are simply re-bucketed into the new zones.
     doc.zones.clear();
     doc.selection = None;
-    // Only frozen footprints block new placement. Items placed in this call are
-    // laid out on non-overlapping pitches by construction, so they must NOT be
-    // checked against each other (their spacing == the overlap threshold, which
-    // floating-point rounding would otherwise flag as a collision).
+    // Only keep-outs + frozen footprints block new placement. Items placed in
+    // this call are laid out on non-overlapping pitches by construction, so they
+    // must NOT be checked against each other (their spacing == the overlap
+    // threshold, which floating-point rounding would otherwise flag as a collision).
     let frozen_len = obstacles.len();
 
     let (min_x, min_y, max_x, max_y) = match doc.wall_bbox() {
@@ -278,10 +362,15 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
     let min_dim = REGION_MIN_DIM.max(2.0 * corridor + program.desk_w.min(program.desk_h));
     let regions = match &plate {
         Some(poly) if geometry::polygon_area(poly) < 0.98 * bbox_area => {
-            geometry::decompose_plate(poly, REGION_CELL, min_dim, REGION_MIN_AREA)
+            geometry::decompose_plate(poly, REGION_CELL, min_dim, REGION_MIN_AREA, &holes)
         }
         _ => Vec::new(),
     };
+    // Per-region corridor insets: full corridor on plate-boundary edges, half on
+    // seams shared with an adjacent region, so neighbours share ONE corridor.
+    let insets: Vec<Insets> = (0..regions.len())
+        .map(|i| region_insets(&regions, i, corridor))
+        .collect();
 
     if regions.is_empty() {
         // --- Rectangular room / open walls / undecomposable plate -----------
@@ -293,7 +382,7 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
             /*column_major=*/ false, /*region_no=*/ None, /*tile_zones=*/ true,
             /*emit_zones=*/ true,
             plate.as_deref(), &mut obstacles, frozen_len, &mut mr_counter, &mut rng,
-            corridor, clear,
+            Insets::uniform(corridor), corridor, clear,
         );
     } else {
         // --- Irregular plate: decompose → allocate → per-region packing -----
@@ -309,7 +398,7 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
                 column_major, /*region_no=*/ Some((i + 1) as u32), /*tile_zones=*/ false,
                 /*emit_zones=*/ true,
                 plate.as_deref(), &mut obstacles, frozen_len, &mut mr_counter, &mut rng,
-                corridor, clear,
+                insets[i], corridor, clear,
             );
         }
         // --- Top-up pass: reclaim the allocation lost to meetings/geometry ---
@@ -340,11 +429,23 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
                     column_major, /*region_no=*/ Some((i + 1) as u32), /*tile_zones=*/ false,
                     /*emit_zones=*/ false,
                     plate.as_deref(), &mut obstacles, all_frozen, &mut mr_counter, &mut rng,
-                    corridor, clear,
+                    insets[i], corridor, clear,
                 );
                 shortfall = shortfall.saturating_sub(got);
             }
         }
+    }
+
+    // Keep-outs surface as `Core` zones (gray tint, Core cost/NIA rate). Emitted
+    // last so a point inside a keep-out buckets to Core, winning the
+    // last-non-Circulation-wins tie over any overlapping Workspace rect.
+    for (kx, ky, kw, kh, label) in &keepout_zones {
+        push_zone(
+            doc,
+            ZoneType::Core,
+            ZoneShape::Rect { x: *kx, y: *ky, w: *kw, h: *kh },
+            label,
+        );
     }
 
     // Fill each zone's component_ids by point-in-zone on component centers.
@@ -450,10 +551,20 @@ fn allocate_regions(
 }
 
 /// Pack one rectangular work region: a perimeter Circulation ring, up to
-/// `meeting_target` meeting rooms in a right-edge column, the Workspace zone(s),
-/// and a grid-packed desk field (up to `desk_target`). Frozen/just-placed
-/// footprints in `obstacles` are avoided; every footprint is validated against
-/// the plate polygon. `rng` is the region's own stream. Returns desks placed.
+/// `meeting_target` meeting rooms anchored at the region's short end, the
+/// Workspace zone(s), and a grid-packed desk field (up to `desk_target`).
+/// Frozen/just-placed footprints in `obstacles` are avoided; every footprint is
+/// validated against the plate polygon. `rng` is the region's own stream.
+/// Returns desks placed.
+///
+/// `insets` gives the per-edge corridor inset: full `corridor` on plate-boundary
+/// edges, `corridor/2` on edges shared with a neighbour so the two half-insets
+/// meet at the seam as ONE shared corridor (no double-width waste). The work
+/// rect uses the asymmetric insets; the symmetric `RectRing` is emitted at the
+/// per-axis MINIMUM inset so it always nests inside the work rect without
+/// overlap — the honest choice, since `RectRing` can't be off-center (the only
+/// cost is that the extra corridor strip on a full-inset boundary edge renders
+/// as plate rather than corridor-blue, never as an overlap).
 ///
 /// `tile_zones == true` reproduces the historical single-region generator exactly
 /// (meeting column reserved out of the desk field, Workspace shrunk to it, Core
@@ -480,22 +591,25 @@ fn pack_region(
     frozen_len: usize,
     mr_counter: &mut u32,
     rng: &mut Rng,
+    insets: Insets,
     corridor: f64,
     clear: f64,
 ) -> u32 {
-    // Inset by the perimeter corridor on all sides → the work zone. Everything
-    // placed lives strictly inside this rect, guaranteeing the corridor.
-    let x0 = outer.x0 + corridor;
-    let y0 = outer.y0 + corridor;
-    let x1 = outer.x1 - corridor;
-    let y1 = outer.y1 - corridor;
+    // Inset by the (possibly asymmetric) corridor per edge → the work zone.
+    // Everything placed lives strictly inside this rect, guaranteeing the
+    // corridor on plate edges and half-corridors that pair up on shared seams.
+    let x0 = outer.x0 + insets.left;
+    let y0 = outer.y0 + insets.bottom;
+    let x1 = outer.x1 - insets.right;
+    let y1 = outer.y1 - insets.top;
     if x1 <= x0 || y1 <= y0 {
         return 0; // corridor swallowed this region
     }
 
     // --- Zone tiling, part 1: perimeter Circulation ring ------------------
-    // A rectangular ring: the region bbox minus the work-zone hole. Adjacent
-    // regions' rings overlap along shared edges → the internal corridor network.
+    // A symmetric ring at the per-axis minimum inset — it nests inside the work
+    // rect (never overlaps it) even when the insets are asymmetric. Adjacent
+    // regions' rings meet along shared edges → the internal corridor network.
     if emit_zones {
         push_zone(
             doc,
@@ -505,18 +619,22 @@ fn pack_region(
                 y: (outer.y0 + outer.y1) / 2.0,
                 w: outer.width(),
                 h: outer.height(),
-                in_w: x1 - x0,
-                in_h: y1 - y0,
+                in_w: outer.width() - 2.0 * insets.min_x(),
+                in_h: outer.height() - 2.0 * insets.min_y(),
             },
             "Circulation",
         );
     }
 
-    // --- 1. Meeting rooms: a column down the right edge of the work zone ----
-    // A side column keeps the desk field contiguous. In `tile_zones` mode we only
-    // claim the column when a desk column still fits beside it (a shallow room
-    // never ends up with rooms and zero desks); the per-region path drops that
-    // guard so a meeting-sized wing can still host a room. Rooms clamp to fit.
+    // --- 1. Meeting rooms: anchored at the region's SHORT end (the end of the
+    // long axis) so rooms cluster at the wing tip like real test-fits, keeping
+    // the desk field contiguous. A landscape (row-major) region anchors a
+    // vertical column at the RIGHT edge; a portrait (column-major) region anchors
+    // a horizontal band along the TOP edge. In `tile_zones` mode (rectangular,
+    // always landscape) we only claim the column when a desk column still fits
+    // beside it, and reserve it out of the desk field; the per-region path drops
+    // that guard (a meeting-sized wing can still host a room) and lets desks pack
+    // around the room footprints. Rooms clamp to fit.
     let mut dz_x1 = x1;
     let mut claimed = false;
     let mut col_x0 = x1;
@@ -525,41 +643,75 @@ fn pack_region(
     if meeting_target > 0 && program.meeting_w > 0.0 && program.meeting_h > 0.0 {
         let mw = program.meeting_w.min(x1 - x0);
         let mh = program.meeting_h.min(y1 - y0);
-        let cx0 = x1 - mw;
-        let mr_pitch = mh + clear;
-        let rows = (((y1 - y0) + clear) / mr_pitch).floor() as i64;
-        let desk_room = !tile_zones || (cx0 - clear - x0) >= program.desk_w;
-        if rows > 0 && desk_room {
-            let mut placed_here = 0u32;
-            for r in 0..rows {
-                if placed_here >= meeting_target {
-                    break;
-                }
-                let cx = cx0 + mw / 2.0;
-                let cy = y0 + mh / 2.0 + (r as f64) * mr_pitch;
-                if !slot_fits_plate(plate, cx, cy, mw, mh, corridor)
-                    || footprint_overlaps(&obstacles[..frozen_len], cx, cy, mw, mh, clear)
-                {
-                    continue;
-                }
-                push_component(doc, "MeetingRoom", cx, cy, mw, mh);
-                *mr_counter += 1;
-                push_zone(
-                    doc,
-                    ZoneType::Meeting,
-                    ZoneShape::Rect { x: cx, y: cy, w: mw, h: mh },
-                    &format!("Meeting Room {}", *mr_counter),
-                );
-                obstacles.push((cx, cy, mw, mh));
-                meeting_intervals.push((cy - mh / 2.0, cy + mh / 2.0));
-                placed_here += 1;
-                claimed = true;
+        let mut placed_here = 0u32;
+        // Place one room at `(cx, cy)`, recording the obstacle + Meeting zone.
+        let place = |doc: &mut Document,
+                         obstacles: &mut Vec<(f64, f64, f64, f64)>,
+                         mr_counter: &mut u32,
+                         cx: f64,
+                         cy: f64|
+         -> bool {
+            if !slot_fits_plate(plate, cx, cy, mw, mh, corridor)
+                || footprint_overlaps(&obstacles[..frozen_len], cx, cy, mw, mh, clear)
+            {
+                return false;
             }
-            if claimed {
-                col_x0 = cx0;
-                col_mw = mw;
-                if tile_zones {
-                    dz_x1 = cx0 - clear; // reserve the column out of the desk field
+            push_component(doc, "MeetingRoom", cx, cy, mw, mh);
+            *mr_counter += 1;
+            push_zone(
+                doc,
+                ZoneType::Meeting,
+                ZoneShape::Rect { x: cx, y: cy, w: mw, h: mh },
+                &format!("Meeting Room {}", *mr_counter),
+            );
+            obstacles.push((cx, cy, mw, mh));
+            true
+        };
+
+        if column_major {
+            // Portrait wing → a horizontal band of rooms along the BOTTOM (base)
+            // edge, so the daylit wing tip stays open desk space (real test-fits
+            // give the perimeter/window wall to workstations, rooms to the core).
+            let mr_pitch = mw + clear;
+            let cols = (((x1 - x0) + clear) / mr_pitch).floor() as i64;
+            if cols > 0 {
+                for c in 0..cols {
+                    if placed_here >= meeting_target {
+                        break;
+                    }
+                    let cx = x0 + mw / 2.0 + (c as f64) * mr_pitch;
+                    let cy = y0 + mh / 2.0;
+                    if place(doc, obstacles, mr_counter, cx, cy) {
+                        placed_here += 1;
+                        claimed = true;
+                    }
+                }
+            }
+        } else {
+            // Landscape wing → a vertical column at the right edge (historical).
+            let cx0 = x1 - mw;
+            let mr_pitch = mh + clear;
+            let rows = (((y1 - y0) + clear) / mr_pitch).floor() as i64;
+            let desk_room = !tile_zones || (cx0 - clear - x0) >= program.desk_w;
+            if rows > 0 && desk_room {
+                for r in 0..rows {
+                    if placed_here >= meeting_target {
+                        break;
+                    }
+                    let cx = cx0 + mw / 2.0;
+                    let cy = y0 + mh / 2.0 + (r as f64) * mr_pitch;
+                    if place(doc, obstacles, mr_counter, cx, cy) {
+                        meeting_intervals.push((cy - mh / 2.0, cy + mh / 2.0));
+                        placed_here += 1;
+                        claimed = true;
+                    }
+                }
+                if claimed {
+                    col_x0 = cx0;
+                    col_mw = mw;
+                    if tile_zones {
+                        dz_x1 = cx0 - clear; // reserve the column out of the desk field
+                    }
                 }
             }
         }
@@ -642,12 +794,43 @@ fn pack_region(
         let cluster_cols = program.cluster_cols.max(1);
         // GRID-level jitter: one offset for the whole desk field. Per-desk
         // jitter let adjacent desks drift toward each other, eroding the
-        // guaranteed aisle from `clear` down to ~0.5·clear (user-visible as
-        // "min corridor 0.30–0.60 m" warnings). A shared offset keeps seeds
-        // producing distinct layouts while every aisle stays exactly `clear`.
+        // guaranteed aisle from `clear` down to ~0.5·clear. A single shared
+        // offset keeps seeds producing distinct layouts while every aisle stays
+        // exactly `clear`. The offset is POSITIVE-only and bounded to each axis'
+        // real slack (free space beyond the packed grid): the grid is bottom-/
+        // left-aligned, so any negative shift would push the first row into the
+        // corridor and force a per-desk clamp that COMPRESSES that row's aisle
+        // below `clear` (the "min corridor 0.60 m" failure). A uniform in-bounds
+        // shift moves the whole field together, preserving every pitch.
         let jitter = clear * 0.25;
-        let jx = rng.signed() * jitter;
-        let jy = rng.signed() * jitter;
+        // Cluster aisles accrue on the INNER axis only. Cap how many the region
+        // can host to what its slack absorbs: a bench aisle must never push the
+        // last desk past the field edge and cost a whole row/column (an 11.6 m
+        // portrait column tight-packs 7 rows but has no room for a 0.9 m
+        // cross-aisle — inserting one drops it to 6). Utilization wins; the
+        // perimeter/seam corridors already carry egress.
+        let (inner_n, inner_pitch, inner_size, inner_dz) = if column_major {
+            (rows, pitch_y, program.desk_h, dz_y1 - dz_y0)
+        } else {
+            (cols, pitch_x, program.desk_w, dz_x1 - dz_x0)
+        };
+        let tight_used = (inner_n - 1).max(0) as f64 * inner_pitch + inner_size;
+        let max_aisles = ((inner_dz - tight_used).max(0.0) / clear).floor().max(0.0) as u32;
+        // Aisle count *before* the last inner desk, capped to `max_aisles`.
+        let aisle_total = |n: i64| -> f64 {
+            ((((n - 1).max(0) as u32) / cluster_cols).min(max_aisles)) as f64 * clear
+        };
+        let (aisle_x, aisle_y) = if column_major {
+            (0.0, aisle_total(rows))
+        } else {
+            (aisle_total(cols), 0.0)
+        };
+        let used_x = (cols - 1).max(0) as f64 * pitch_x + program.desk_w + aisle_x;
+        let used_y = (rows - 1).max(0) as f64 * pitch_y + program.desk_h + aisle_y;
+        let slack_x = ((dz_x1 - dz_x0) - used_x).max(0.0);
+        let slack_y = ((dz_y1 - dz_y0) - used_y).max(0.0);
+        let jx = rng.next_f64() * jitter.min(slack_x);
+        let jy = rng.next_f64() * jitter.min(slack_y);
 
         // Row-major (rows outer) for landscape/rect regions — identical to the
         // historical order; column-major (cols outer) for portrait regions so
@@ -678,11 +861,11 @@ fn pack_region(
                 }
                 let (c, r) = if column_major { (o, i) } else { (i, o) };
                 let (cx, cy, past_edge) = if column_major {
-                    let aisle = ((r as u32) / cluster_cols) as f64 * clear;
+                    let aisle = ((r as u32 / cluster_cols).min(max_aisles)) as f64 * clear;
                     let cy = dz_y0 + py + program.desk_h / 2.0 + (r as f64) * pitch_y + aisle;
                     (dz_x0 + px + program.desk_w / 2.0 + (c as f64) * pitch_x, cy, cy + program.desk_h / 2.0 > dz_y1)
                 } else {
-                    let aisle = ((c as u32) / cluster_cols) as f64 * clear;
+                    let aisle = ((c as u32 / cluster_cols).min(max_aisles)) as f64 * clear;
                     let cx = dz_x0 + px + program.desk_w / 2.0 + (c as f64) * pitch_x + aisle;
                     (cx, dz_y0 + py + program.desk_h / 2.0 + (r as f64) * pitch_y, cx + program.desk_w / 2.0 > dz_x1)
                 };
@@ -1227,7 +1410,9 @@ mod tests {
         generate(&mut doc, &program, 3, false);
         let poly = poly_of(&doc);
         let desks: Vec<_> = doc.components.iter().filter(|c| c.category == "Desk").collect();
-        assert!(desks.len() >= 21, "placed only {} of 30 desks", desks.len());
+        // Seam-shared corridors + capacity-aware cluster aisles lift this from
+        // the old 21 bar to 26 placed; 24 leaves headroom (see workstream 2).
+        assert!(desks.len() >= 24, "placed only {} of 30 desks", desks.len());
         // The L = a 20x8 bottom band + a 12x6 upper-left wing. BOTH must fill.
         let in_band = desks.iter().filter(|c| c.y < 8.0).count();
         let in_wing = desks.iter().filter(|c| c.y > 8.0 && c.x < 12.0).count();
@@ -1281,12 +1466,21 @@ mod tests {
             let poly = poly_of(&doc);
             let desks: Vec<_> = doc.components.iter().filter(|c| c.category == "Desk").collect();
             let meetings = doc.components.iter().filter(|c| c.category == "MeetingRoom").count();
-            assert!(desks.len() >= 45, "seed {seed}: placed {} of 60 desks", desks.len());
+            // Seam-shared corridors + capacity-aware cluster aisles fill the
+            // whole program (60/60) on this plate; 52 leaves headroom (was 45).
+            assert!(desks.len() >= 52, "seed {seed}: placed {} of 60 desks", desks.len());
             assert!(meetings >= 3, "seed {seed}: only {meetings} of 4 meeting rooms");
             for c in &doc.components {
                 assert!(footprint_in_plate(c, &poly), "seed {seed}: {} escapes", c.label);
             }
             assert_no_overlaps(&doc, "real plate");
+
+            // Circulation stays walkable. The narrowest passage is plate-inherent
+            // (this real building has a ~0.30 m structural neck present even with
+            // ZERO furniture), so only the aggregate score is asserted here — the
+            // desk-to-desk aisle guarantee is covered by l_plate_circulation_quality.
+            let circ = circulation::evaluate(&doc, &CirculationConfig::default());
+            assert!(circ.score >= 55.0, "seed {seed}: circulation score {:.1} < 55", circ.score);
 
             // Spread: the desk field must span the building, not clump in one
             // wing - its bbox covers >=60% of the plate bbox on BOTH axes.
@@ -1321,6 +1515,100 @@ mod tests {
                     (b.category.as_str(), b.x.to_bits(), b.y.to_bits())
                 );
             }
+        }
+    }
+
+    // ---- Interior keep-outs (building core) -------------------------------
+
+    /// True if component `c`'s footprint intersects rect (center `kx,ky`, `kw×kh`).
+    fn intersects(c: &crate::model::Component, kx: f64, ky: f64, kw: f64, kh: f64) -> bool {
+        (c.x - kx).abs() < (c.w + kw) / 2.0 - 1e-9 && (c.y - ky).abs() < (c.h + kh) / 2.0 - 1e-9
+    }
+
+    #[test]
+    fn keepout_blocks_furniture_and_emits_core_zone() {
+        // Capacity-bound program (asks for far more desks than the room seats) so
+        // the keep-out's blocked core measurably lowers the placed count.
+        let mut program = Program::default();
+        program.desks = 100;
+        program.meeting_rooms = 0;
+        // Baseline capacity with no keep-out.
+        let mut base = room(20.0, 15.0);
+        generate(&mut base, &program, 7, false);
+        let base_desks = base.components.iter().filter(|c| c.category == "Desk").count();
+
+        // Same room with a 3×3 keep-out dead center.
+        let mut doc = room(20.0, 15.0);
+        doc.keepouts.push(crate::model::KeepOut {
+            id: 900, x: 10.0, y: 7.5, w: 3.0, h: 3.0, label: "Stair".into(),
+        });
+        generate(&mut doc, &program, 7, false);
+
+        // (a) Not one component footprint intersects the keep-out.
+        for c in &doc.components {
+            assert!(!intersects(c, 10.0, 7.5, 3.0, 3.0), "{} sits in the keep-out", c.label);
+        }
+        // (b) A Core zone with the keep-out's label + footprint exists (distinct
+        // from the meeting-column Core bands the tile path also emits).
+        let core = doc
+            .zones
+            .iter()
+            .find(|z| z.zone_type == ZoneType::Core && z.label == "Stair")
+            .expect("a Core zone for the keep-out");
+        match core.shape {
+            ZoneShape::Rect { x, y, w, h } => assert!(
+                (x - 10.0).abs() < 1e-9 && (y - 7.5).abs() < 1e-9
+                    && (w - 3.0).abs() < 1e-9 && (h - 3.0).abs() < 1e-9
+            ),
+            _ => panic!("Core zone should be a Rect"),
+        }
+        // (c) Capacity drops — the blocked core seats fewer desks.
+        let ko_desks = doc.components.iter().filter(|c| c.category == "Desk").count();
+        assert!(
+            ko_desks < base_desks,
+            "keep-out should reduce capacity ({ko_desks} placed vs {base_desks} baseline)"
+        );
+    }
+
+    #[test]
+    fn real_plate_with_keepouts_still_meets_rigor() {
+        let mut program = Program::default();
+        program.desks = 60;
+        program.meeting_rooms = 4;
+        program.meeting_w = 3.0;
+        program.meeting_h = 3.0;
+        // Two plausible core rects inside the plate's lower wing.
+        let kos = [(14.0, 36.0, 2.5, 2.5), (20.0, 38.0, 2.5, 2.5)];
+        for seed in 1..=3u64 {
+            let mut doc = real_plate_doc();
+            let poly0 = poly_of(&doc);
+            for &(x, y, _, _) in &kos {
+                assert!(geometry::point_in_polygon(x, y, &poly0), "keep-out ({x},{y}) not inside plate");
+            }
+            for (i, &(x, y, w, h)) in kos.iter().enumerate() {
+                doc.keepouts.push(crate::model::KeepOut {
+                    id: 1000 + i as u32, x, y, w, h, label: format!("Core {i}"),
+                });
+            }
+            generate(&mut doc, &program, seed, false);
+
+            let poly = poly_of(&doc);
+            let desks: Vec<_> = doc.components.iter().filter(|c| c.category == "Desk").collect();
+            let meetings = doc.components.iter().filter(|c| c.category == "MeetingRoom").count();
+            // Rigor still holds with two keep-outs removing ~12 m² of core.
+            assert!(desks.len() >= 52, "seed {seed}: only {} desks with keep-outs", desks.len());
+            assert!(meetings >= 3, "seed {seed}: only {meetings} meeting rooms");
+            for c in &doc.components {
+                assert!(footprint_in_plate(c, &poly), "seed {seed}: {} escapes plate", c.label);
+                for &(kx, ky, kw, kh) in &kos {
+                    assert!(!intersects(c, kx, ky, kw, kh),
+                        "seed {seed}: {} sits in the keep-out at ({kx},{ky})", c.label);
+                }
+            }
+            assert_no_overlaps(&doc, "real plate + keep-outs");
+            // One Core zone per keep-out.
+            let cores = doc.zones.iter().filter(|z| z.zone_type == ZoneType::Core).count();
+            assert_eq!(cores, kos.len(), "seed {seed}: expected {} Core zones, got {cores}", kos.len());
         }
     }
 
