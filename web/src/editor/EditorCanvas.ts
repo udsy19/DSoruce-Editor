@@ -79,6 +79,16 @@ export interface ZoneStat {
 
 export type ToolId = string // 'select' | 'wall' | 'place:<Category>'
 
+/** A room tag computed by drawZones, drawn above furniture by drawZoneTags. */
+interface ZoneTag {
+  name: string
+  metrics: string | null
+  cx: number
+  cy: number
+  namePx: number
+  color: string
+}
+
 /** Test-fit program + objective weights (mirrors Rust `layout::Program`). */
 export interface Program {
   desks: number
@@ -168,7 +178,10 @@ const C = {
   axis: 'rgba(45,91,214,0.20)',
   wall: '#2e343b',
   wallExt: '#1e2329',
-  furniture: '#8a9099',
+  wallGen: '#4a525c', // generated partitions — lightest ink in the hierarchy
+  // Matches DrawingCanvas FURNITURE_LINE so generated + imported plans read alike.
+  furniture: '#5c6670',
+  labelSub: '#5f6771', // zone-tag metrics line (area · pax)
   preview: 'rgba(45,91,214,0.70)',
   accent: '#2d5bd6',
   label: '#1a1d21',
@@ -210,6 +223,10 @@ export class EditorCanvas {
   scale = 46 // px per meter
   offset = { x: 120, y: 96 } // screen px of world origin
   tool: ToolId = 'select'
+  /** Presentation ("paper") mode: white full-bleed sheet — no grid, no axis,
+   *  no rulers — lightened zone tints and a bottom-right plan-summary block.
+   *  Toggle via {@link setPresentation} or the 'p' shortcut. */
+  presentation = false
 
   // Optional status-bar readouts updated by direct DOM writes (no React churn).
   coordEl: HTMLElement | null = null
@@ -310,6 +327,14 @@ export class EditorCanvas {
     const s = this.getState()
     if (s.selection == null) return null
     return s.components.find((c) => c.id === s.selection) ?? null
+  }
+  /** Enter/leave presentation ("paper") mode; repaints and notifies React so
+   *  any toggle button can reflect the state. */
+  setPresentation(on: boolean) {
+    if (this.presentation === on) return
+    this.presentation = on
+    this.render()
+    this.onChange?.()
   }
   setTool(t: ToolId) {
     this.tool = t
@@ -593,7 +618,12 @@ export class EditorCanvas {
       this.cad.key(e.key)
       return
     }
-    if (e.key === 'Escape') {
+    const t = e.target as HTMLElement | null
+    const typing = !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)
+    if (e.key.toLowerCase() === 'p' && !typing && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      e.preventDefault()
+      this.setPresentation(!this.presentation)
+    } else if (e.key === 'Escape') {
       this.wallStart = null
       this.ed.clear_selection()
       this.commit()
@@ -641,31 +671,51 @@ export class EditorCanvas {
 
     const st = this.getState()
 
-    // Gray mat everywhere, white floor plate over the building footprint.
-    ctx.fillStyle = C.mat
-    ctx.fillRect(0, 0, w, h)
-    const bb = wallBbox(st.walls)
-    if (bb) {
-      const p0 = this.toScreen(bb.minX, bb.minY)
-      const p1 = this.toScreen(bb.maxX, bb.maxY)
-      ctx.fillStyle = C.surface
-      ctx.fillRect(p0.x, p0.y, p1.x - p0.x, p1.y - p0.y)
-    } else {
+    // Presentation: full-bleed paper white. Normal: gray mat everywhere with a
+    // white floor plate over the building footprint, plus grid + axis.
+    if (this.presentation) {
       ctx.fillStyle = C.surface
       ctx.fillRect(0, 0, w, h)
+    } else {
+      ctx.fillStyle = C.mat
+      ctx.fillRect(0, 0, w, h)
+      const bb = wallBbox(st.walls)
+      if (bb) {
+        const p0 = this.toScreen(bb.minX, bb.minY)
+        const p1 = this.toScreen(bb.maxX, bb.maxY)
+        ctx.fillStyle = C.surface
+        ctx.fillRect(p0.x, p0.y, p1.x - p0.x, p1.y - p0.y)
+      } else {
+        ctx.fillStyle = C.surface
+        ctx.fillRect(0, 0, w, h)
+      }
+      this.drawGrid(w, h)
     }
-    this.drawGrid(w, h)
     this.updatePlate(st.walls)
-    this.drawZones(st.zones)
+    const tags = this.drawZones(st.zones)
 
     for (const wall of st.walls) {
-      if (wall.glazing) this.drawGlazing(wall.a, wall.b)
-      else this.drawSegment(wall.a, wall.b, wall.thickness, C.wall)
+      // Glass fronts get the triple-line convention; everything else draws in
+      // the lineweight hierarchy (exterior > interior > generated partition).
+      if (wall.glazing) {
+        this.drawGlazing(wall.a, wall.b)
+      } else {
+        const s = this.wallStyle(wall)
+        this.drawSegment(wall.a, wall.b, s.width, s.color)
+      }
     }
     if (this.tool === 'wall' && this.wallStart) {
-      this.drawSegment(this.wallStart, this.snap(this.mouseWorld), 0.1, C.preview)
+      this.drawSegment(
+        this.wallStart,
+        this.snap(this.mouseWorld),
+        Math.max(2, 0.1 * this.scale),
+        C.preview,
+      )
     }
     for (const c of st.components) this.drawComponent(c, c.id === st.selection)
+    // Room tags sit ABOVE furniture (architect's sheet convention) with a soft
+    // paper halo so they stay legible over desks and linework.
+    this.drawZoneTags(tags)
 
     // CAD layer: entities + tool preview + snap indicator + grips.
     this.cad.render(ctx, {
@@ -676,13 +726,36 @@ export class EditorCanvas {
       colors: { wall: C.wall, ink: C.label, accent: C.accent, dim: '#2d5bd6', faint: C.rulerText },
     })
 
-    this.drawRulers(w, h)
+    if (this.presentation) {
+      if (st.walls.length || st.components.length) this.drawSummary(w, h)
+    } else {
+      this.drawRulers(w, h)
+    }
+  }
+
+  /**
+   * Lineweight hierarchy (architect's sheet convention, cf. DrawingCanvas
+   * LINE_WEIGHT): exterior/plate walls heaviest in the darkest ink, interior
+   * user walls medium, generated partitions lightest. Stroke is proportional
+   * to true thickness with min/max clamps so hierarchy survives any zoom.
+   */
+  private wallStyle(w: DocWall): { color: string; width: number } {
+    const t = w.thickness * this.scale
+    if (w.generated ?? false) {
+      return { color: C.wallGen, width: clampN(t * 0.8, 1.4, 8) }
+    }
+    if (this.exteriorIds.has(w.id)) {
+      return { color: C.wallExt, width: clampN(t * 1.15, 3, 14) }
+    }
+    return { color: C.wall, width: clampN(t, 2, 10) }
   }
 
   /** Floor-plate polygon for zone clipping, cached on a cheap wall fingerprint
-   *  (walls change rarely; `ed.plate()` re-traces + serializes on every call). */
+   *  (walls change rarely; `ed.plate()` re-traces + serializes on every call).
+   *  Also classifies which walls lie ON the plate boundary (exterior ink). */
   private platePoly: [number, number][] | null = null
   private plateKey = ''
+  private exteriorIds = new Set<number>()
 
   private updatePlate(walls: DocWall[]) {
     let sum = 0
@@ -691,10 +764,21 @@ export class EditorCanvas {
     if (key === this.plateKey) return
     this.plateKey = key
     this.platePoly = (this.ed.plate() as [number, number][] | null | undefined) ?? null
+    // Exterior = both endpoints sit on the traced plate boundary (within 8 cm).
+    this.exteriorIds.clear()
+    const poly = this.platePoly
+    if (poly && poly.length >= 3) {
+      for (const w of walls) {
+        if (w.generated ?? false) continue
+        if (distToPoly(poly, w.a) < 0.08 && distToPoly(poly, w.b) < 0.08) {
+          this.exteriorIds.add(w.id)
+        }
+      }
+    }
   }
 
-  private drawZones(zones?: DocZone[]) {
-    if (!zones || zones.length === 0) return
+  private drawZones(zones?: DocZone[]): ZoneTag[] {
+    if (!zones || zones.length === 0) return []
     const ctx = this.ctx
 
     // Zone shapes are rectangles even on an L-shaped plate; clip their fills to
@@ -715,10 +799,11 @@ export class EditorCanvas {
       ctx.clip()
     }
 
-    const labels: { text: string; x: number; y: number; color: string }[] = []
+    this.updateZoneStats(zones)
+    const tags: ZoneTag[] = []
     for (const z of zones) {
       const pal = ZONE[z.zone_type] ?? ZONE.Core
-      ctx.fillStyle = pal.fill
+      ctx.fillStyle = this.presentation ? lighten(pal.fill, 0.4) : pal.fill
       if (z.shape.kind === 'RectRing') {
         const s = z.shape
         const o = this.toScreen(s.x - s.w / 2, s.y - s.h / 2)
@@ -736,20 +821,75 @@ export class EditorCanvas {
         ctx.strokeStyle = pal.line
         ctx.lineWidth = 1
         ctx.strokeRect(p.x + 0.5, p.y + 0.5, w - 1, h - 1)
-        if (w > 60 && h > 26) {
-          labels.push({ text: z.label.toUpperCase(), x: p.x + 6, y: p.y + 5, color: pal.line })
+
+        // Centered room tag: NAME over "area m² · N pax" (architect's sheet
+        // style). Skip when the zone is tiny (< 6 m²) or the tag can't fit;
+        // shrink the name one step before giving up.
+        const stat = this.zoneStats.get(z.id)
+        const area = stat?.area ?? s.w * s.h
+        if (area < 6 || h < 18) continue
+        const name = z.label.toUpperCase()
+        const maxW = w - 10
+        ctx.font = '600 10px "Hanken Grotesk", system-ui, sans-serif'
+        let namePx = 10
+        if (ctx.measureText(name).width > maxW) {
+          ctx.font = '600 8px "Hanken Grotesk", system-ui, sans-serif'
+          namePx = 8
+          if (ctx.measureText(name).width > maxW) continue
         }
+        const cap = stat?.capacity ?? 0
+        let metrics: string | null = `${fmtArea(area)} m²${cap > 0 ? ` · ${cap} pax` : ''}`
+        ctx.font = '9.5px "IBM Plex Mono", ui-monospace, monospace'
+        if (h < 34 || ctx.measureText(metrics).width > maxW) metrics = null
+        const c = this.toScreen(s.x, s.y)
+        tags.push({ name, metrics, cx: c.x, cy: c.y, namePx, color: pal.line })
       }
     }
     if (clipped) ctx.restore()
+    return tags
+  }
 
-    ctx.font = '600 10px "Hanken Grotesk", system-ui, sans-serif'
-    ctx.textAlign = 'left'
-    ctx.textBaseline = 'top'
-    for (const l of labels) {
-      ctx.fillStyle = l.color
-      ctx.fillText(l.text, l.x, l.y)
+  /** Draw collected room tags (after furniture) with a soft paper halo. */
+  private drawZoneTags(tags: ZoneTag[]) {
+    const ctx = this.ctx
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    for (const t of tags) {
+      ctx.font = `600 ${t.namePx}px "Hanken Grotesk", system-ui, sans-serif`
+      const nameW = ctx.measureText(t.name).width
+      ctx.font = '9.5px "IBM Plex Mono", ui-monospace, monospace'
+      const metW = t.metrics ? ctx.measureText(t.metrics).width : 0
+      const halfW = Math.max(nameW, metW) / 2 + 5
+      const halfH = t.metrics ? 15 : 9
+      ctx.fillStyle = 'rgba(255,255,255,0.78)'
+      ctx.fillRect(t.cx - halfW, t.cy - halfH, halfW * 2, halfH * 2)
+
+      ctx.fillStyle = t.color
+      ctx.font = `600 ${t.namePx}px "Hanken Grotesk", system-ui, sans-serif`
+      ctx.fillText(t.name, t.cx, t.metrics ? t.cy - 6 : t.cy)
+      if (t.metrics) {
+        ctx.fillStyle = C.labelSub
+        ctx.font = '9.5px "IBM Plex Mono", ui-monospace, monospace'
+        ctx.fillText(t.metrics, t.cx, t.cy + 7)
+      }
     }
+  }
+
+  /** Per-zone Rust-truth stats (plate-clipped area, capacity), cached on a
+   *  zone fingerprint — `zone_stats()` re-clips + serializes on every call. */
+  private zoneStats = new Map<number, ZoneStat>()
+  private zoneStatsKey = ''
+
+  private updateZoneStats(zones: DocZone[]) {
+    let sum = 0
+    for (const z of zones) {
+      const s = z.shape
+      sum += z.id * 3 + s.x + s.y * 7 + s.w * 13 + s.h * 31
+    }
+    const key = `${zones.length}:${sum.toFixed(4)}:${this.plateKey}`
+    if (key === this.zoneStatsKey) return
+    this.zoneStatsKey = key
+    this.zoneStats = new Map(this.getZoneStats().map((s) => [s.id, s]))
   }
 
   private drawGrid(w: number, h: number) {
@@ -778,14 +918,14 @@ export class EditorCanvas {
   private drawSegment(
     a: { x: number; y: number },
     b: { x: number; y: number },
-    thick: number,
+    widthPx: number,
     color: string,
   ) {
     const ctx = this.ctx
     const pa = this.toScreen(a.x, a.y)
     const pb = this.toScreen(b.x, b.y)
     ctx.strokeStyle = color
-    ctx.lineWidth = Math.max(2, thick * this.scale)
+    ctx.lineWidth = widthPx
     ctx.lineCap = 'round'
     ctx.beginPath()
     ctx.moveTo(pa.x, pa.y)
@@ -820,6 +960,52 @@ export class EditorCanvas {
     ctx.moveTo(pa.x, pa.y)
     ctx.lineTo(pb.x, pb.y)
     ctx.stroke()
+  }
+
+  /** Presentation-mode plan summary block (bottom-right): the test-fit
+   *  deliverable card — name, NIA, workstations, m²/ws, efficiency. */
+  private drawSummary(w: number, h: number) {
+    const m = this.getMetrics()
+    const rows: [string, string][] = [
+      ['AREA (NIA)', `${fmtArea(m.net_internal_area ?? m.floor_area)} m²`],
+      ['WORKSTATIONS', `${m.workstations ?? 0}`],
+      ['M² / WS', m.area_per_workstation ? m.area_per_workstation.toFixed(1) : '—'],
+      ['EFFICIENCY', m.efficiency_pct != null ? `${Math.round(m.efficiency_pct)} %` : '—'],
+    ]
+    const ctx = this.ctx
+    const W = 196
+    const pad = 12
+    const rowH = 17
+    const H = 30 + rows.length * rowH + pad - 4
+    const x = w - W - 16
+    const y = h - H - 16
+    ctx.fillStyle = C.surface
+    ctx.fillRect(x, y, W, H)
+    ctx.strokeStyle = 'rgba(23,26,30,0.30)'
+    ctx.lineWidth = 1
+    ctx.strokeRect(x + 0.5, y + 0.5, W - 1, H - 1)
+
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'alphabetic'
+    ctx.fillStyle = C.label
+    ctx.font = '700 10px "Hanken Grotesk", system-ui, sans-serif'
+    ctx.fillText('TEST FIT', x + pad, y + 18)
+    ctx.strokeStyle = 'rgba(23,26,30,0.14)'
+    line(ctx, x + pad, y + 24.5, x + W - pad, y + 24.5)
+
+    let ry = y + 24 + rowH - 4
+    for (const [label, value] of rows) {
+      ctx.fillStyle = C.labelSub
+      ctx.font = '600 8px "Hanken Grotesk", system-ui, sans-serif'
+      ctx.textAlign = 'left'
+      ctx.fillText(label, x + pad, ry)
+      ctx.fillStyle = C.label
+      ctx.font = '10px "IBM Plex Mono", ui-monospace, monospace'
+      ctx.textAlign = 'right'
+      ctx.fillText(value, x + W - pad, ry)
+      ry += rowH
+    }
+    ctx.textAlign = 'left'
   }
 
   private drawComponent(c: DocComponent, selected: boolean) {
@@ -1060,6 +1246,37 @@ function line(ctx: CanvasRenderingContext2D, x1: number, y1: number, x2: number,
   ctx.moveTo(x1, y1)
   ctx.lineTo(x2, y2)
   ctx.stroke()
+}
+
+function clampN(v: number, lo: number, hi: number): number {
+  return Math.min(hi, Math.max(lo, v))
+}
+
+/** Min distance (m) from point `p` to the polygon's boundary edges. */
+function distToPoly(poly: [number, number][], p: { x: number; y: number }): number {
+  let best = Infinity
+  for (let i = 0; i < poly.length; i++) {
+    const [ax, ay] = poly[i]
+    const [bx, by] = poly[(i + 1) % poly.length]
+    const dx = bx - ax
+    const dy = by - ay
+    const len2 = dx * dx + dy * dy
+    const t = len2 > 0 ? clampN(((p.x - ax) * dx + (p.y - ay) * dy) / len2, 0, 1) : 0
+    best = Math.min(best, Math.hypot(p.x - (ax + t * dx), p.y - (ay + t * dy)))
+  }
+  return best
+}
+
+/** Blend a #rrggbb color toward white by `amt` (0..1) — presentation tints. */
+function lighten(hex: string, amt: number): string {
+  const n = parseInt(hex.slice(1), 16)
+  const ch = (c: number) => Math.round(c + (255 - c) * amt)
+  return `rgb(${ch((n >> 16) & 255)}, ${ch((n >> 8) & 255)}, ${ch(n & 255)})`
+}
+
+/** Area readout: whole m² from 10 up, one decimal below ("42 m²", "7.5 m²"). */
+function fmtArea(a: number): string {
+  return a >= 10 ? String(Math.round(a)) : a.toFixed(1)
 }
 
 function niceStep(pxPerM: number): number {

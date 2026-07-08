@@ -25,3 +25,4 @@ web/src/wasm
 
 # Generated from the sample DWG via dwg2dxf
 samples/*.dxf
+.claude/worktrees/

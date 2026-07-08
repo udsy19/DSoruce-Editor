@@ -555,6 +555,16 @@ export function App() {
         <main className="stage">
           <div className="canvas-wrap">
             <canvas ref={canvasRef} style={{ display: mode === '2d' ? 'block' : 'none' }} />
+            {mode === '2d' && ready && ec && !docEmpty && (
+              <button
+                className={ec.presentation ? 'present-toggle on' : 'present-toggle'}
+                onClick={() => ec.setPresentation(!ec.presentation)}
+                title="Presentation mode (P)"
+                data-testid="presentation-toggle"
+              >
+                Paper
+              </button>
+            )}
             {mode === '3d' && ready && ec && <Scene3D state={ec.getState()} />}
             {mode === 'import' && drawing && planView === '3d' && (
               <DrawingScene3D drawing={drawing} />

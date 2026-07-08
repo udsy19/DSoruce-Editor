@@ -395,6 +395,30 @@ button {
   letter-spacing: 0.3px;
 }
 
+/* Presentation ("paper") mode toggle floating over the 2D canvas. */
+.present-toggle {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  padding: 4px 10px;
+  font: 600 11px var(--font-ui);
+  letter-spacing: 0.04em;
+  color: var(--text-2);
+  background: var(--surface);
+  border: 1px solid rgba(23, 26, 30, 0.14);
+  border-radius: var(--r-pill);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+}
+.present-toggle:hover {
+  border-color: rgba(23, 26, 30, 0.28);
+}
+.present-toggle.on {
+  color: #fff;
+  background: var(--wall);
+  border-color: var(--wall);
+}
+
 /* ------------------------------ Inspector ------------------------------- */
 .inspector {
   background: var(--surface);
