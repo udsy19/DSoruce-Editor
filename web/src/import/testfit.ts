@@ -57,6 +57,8 @@ const EDITOR_MARGIN = 1 // m — where the plate's min corner lands in the edito
 const DESPIKE_WEDGE_DEG = 25 // ° — wedge at a vertex below this is a spike candidate
 const DESPIKE_AREA_FRAC = 0.005 // fraction of |ring area| a single removal may change
 const SIMPLIFY_POST = 0.05 // m — light DP pass to collapse collinear runs left by despiking
+const SMOOTH_TRI_M2 = 0.45 // m² — Visvalingam: vertices whose triangle is smaller are jags
+const SMOOTH_DRIFT_FRAC = 0.02 // total |area| drift budget for the whole smoothing pass
 const COVERAGE_ACCEPT = 0.85 // accept the first candidate covering this fraction of furniture
 const COVERAGE_EDGE_TOL = 0.5 // m — a center this close to the boundary counts as inside
 // (perimeter windows/doors sit ON the traced wall line — ±1 grid cell)
@@ -106,7 +108,7 @@ export function extractPlate(drawing: Drawing): PlateResult | null {
   }
   if (bigLoop && bigArea >= plausible) {
     // Simplify → despike → light simplify (despiking leaves collinear runs).
-    const ring = simplify(despike(simplify(orientCCW(bigLoop), SIMPLIFY_LOOP, true)), SIMPLIFY_POST, true)
+    const ring = simplify(smooth(despike(simplify(orientCCW(bigLoop), SIMPLIFY_LOOP, true))), SIMPLIFY_POST, true)
     const ok = accept(ring, 'loop')
     if (ok) return finishPlate(ok)
   }
@@ -153,7 +155,7 @@ function contourRing(segments: Segment[], dilate: number): Pt[] | null {
   if (!contour || contour.length < 3) return null
   // gridContour already ran DP; despike the needles the tracer squeezes
   // through wall gaps, then a light simplify for leftover collinear runs.
-  const ring = simplify(despike(orientCCW(contour)), SIMPLIFY_POST, true)
+  const ring = simplify(smooth(despike(orientCCW(contour))), SIMPLIFY_POST, true)
   return ring.length >= 3 ? ring : null
 }
 
@@ -651,6 +653,47 @@ export function despike(
 }
 
 /** Douglas-Peucker simplification. `closed` treats pts as a ring. */
+
+/**
+ * Visvalingam–Whyatt smoothing: repeatedly remove the vertex whose triangle
+ * (prev, v, next) has the smallest area, while it stays under `triM2` and the
+ * ring's cumulative |area| drift stays under `driftFrac`. Complements despike:
+ * despike kills needle REVERSALS; this collapses the small jags and stair-step
+ * wedges the occupancy tracer leaves at diagonal walls — the slivers that made
+ * even an EMPTY plate report a 0.3 m "min corridor".
+ */
+export function smooth(
+  ring: Pt[],
+  opts: { triM2?: number; driftFrac?: number } = {},
+): Pt[] {
+  const triM2 = opts.triM2 ?? SMOOTH_TRI_M2
+  const driftFrac = opts.driftFrac ?? SMOOTH_DRIFT_FRAC
+  const out = [...ring]
+  const total = Math.abs(signedArea(out))
+  let budget = total * driftFrac
+  const triArea = (i: number): number => {
+    const n = out.length
+    const [ax, ay] = out[(i - 1 + n) % n]
+    const [bx, by] = out[i]
+    const [cx, cy] = out[(i + 1) % n]
+    return Math.abs((bx - ax) * (cy - ay) - (cx - ax) * (by - ay)) / 2
+  }
+  while (out.length > 4) {
+    let best = -1
+    let bestA = triM2
+    for (let i = 0; i < out.length; i++) {
+      const a = triArea(i)
+      if (a < bestA) {
+        bestA = a
+        best = i
+      }
+    }
+    if (best < 0 || bestA > budget) break
+    out.splice(best, 1)
+    budget -= bestA
+  }
+  return out
+}
 export function simplify(pts: Pt[], tol: number, closed = false): Pt[] {
   // Collapse consecutive duplicates first.
   const src: Pt[] = []

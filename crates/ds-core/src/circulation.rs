@@ -284,7 +284,7 @@ pub fn evaluate(doc: &Document, cfg: &CirculationConfig) -> CirculationScore {
     // passage centreline = 2·clearance.
     // We measure width at *chokepoints* — saddle points of the clearance field,
     // where a passage is a local max across its width but a local min along its
-    // length (see `is_chokepoint`). Saddles are exactly the constrictions a
+    // length (see `choke_axis`). Saddles are exactly the constrictions a
     // person must pass through, and unlike raw medial-axis maxima they do not
     // suffer from boundary/corner spurs (which are monotonic slopes, not saddles).
     let mut clearance_sum = 0.0f64;
@@ -293,6 +293,15 @@ pub fn evaluate(doc: &Document, cfg: &CirculationConfig) -> CirculationScore {
     let mut choke_below = 0usize;
     let mut min_width = f64::INFINITY;
     let mut max_clearance = 0.0f64;
+    // A pinch only counts as a CORRIDOR chokepoint if it separates meaningful
+    // walkable area on both pinch sides. The traced plate's V-shaped boundary
+    // notches form walkable strings that narrow to nothing — locally they look
+    // exactly like corridors (walkable both ways, strict ridge), so dead-end-
+    // ness must be established by connectivity, not the saddle test. 2 m² is
+    // "a human can stand there and needs to get out"; anything smaller is a
+    // geometry artifact nobody routes through.
+    let pocket_cells = ((2.0 / (grid.cell * grid.cell)).ceil() as usize).max(4);
+    let mut chokes: Vec<(usize, usize, bool, f64)> = Vec::new();
 
     for y in 0..grid.rows {
         for x in 0..grid.cols {
@@ -305,14 +314,19 @@ pub fn evaluate(doc: &Document, cfg: &CirculationConfig) -> CirculationScore {
             clearance_count += 1;
             max_clearance = max_clearance.max(d * grid.cell);
 
-            if is_chokepoint(&grid, &dt, x, y) {
-                choke_count += 1;
-                let width = 2.0 * d * grid.cell;
-                min_width = min_width.min(width);
-                if width < cfg.target_corridor_width {
-                    choke_below += 1;
-                }
+            if let Some(vertical) = choke_axis(&grid, &dt, x, y) {
+                chokes.push((x, y, vertical, 2.0 * d * grid.cell));
             }
+        }
+    }
+    for &(x, y, vertical, width) in &chokes {
+        if !separates_area(&grid, &walkable, x, y, vertical, pocket_cells) {
+            continue; // dead-end pocket, not a route
+        }
+        choke_count += 1;
+        min_width = min_width.min(width);
+        if width < cfg.target_corridor_width {
+            choke_below += 1;
         }
     }
 
@@ -589,13 +603,107 @@ fn distance_transform(grid: &Grid) -> Vec<f64> {
 /// slope axis). Ties are allowed so flat plateaus in wide rooms still register
 /// (with their large, non-penalising width). Blocked neighbours read as 0, so a
 /// cell needs obstacles flanking *both* sides of the constricted axis to qualify.
-fn is_chokepoint(grid: &Grid, dt: &[f64], x: usize, y: usize) -> bool {
+/// True when severing the corridor at chokepoint `(x, y)` (blocking the whole
+/// contiguous walkable run ACROSS the passage, not just one cell — a flood
+/// could otherwise sneak around the block within the pinch's own width) still
+/// leaves at least `need` walkable cells reachable on EACH route side. A pinch
+/// guarding a dead-end pocket fails this: it is boundary-geometry, not a route.
+/// `vertical` = the route runs along y. Bounded BFS (stops at `need`).
+fn separates_area(
+    grid: &Grid,
+    walkable: &[bool],
+    x: usize,
+    y: usize,
+    vertical: bool,
+    need: usize,
+) -> bool {
+    // The blocked band: the contiguous walkable run through (x, y) along the
+    // WIDTH axis (x for a vertical passage, y for a horizontal one).
+    let mut blocked = vec![false; walkable.len()];
+    if vertical {
+        let mut c = x;
+        loop {
+            blocked[grid.idx(c, y)] = true;
+            if c == 0 || !walkable[grid.idx(c - 1, y)] {
+                break;
+            }
+            c -= 1;
+        }
+        let mut c = x;
+        while c + 1 < grid.cols && walkable[grid.idx(c + 1, y)] {
+            c += 1;
+            blocked[grid.idx(c, y)] = true;
+        }
+    } else {
+        let mut r = y;
+        loop {
+            blocked[grid.idx(x, r)] = true;
+            if r == 0 || !walkable[grid.idx(x, r - 1)] {
+                break;
+            }
+            r -= 1;
+        }
+        let mut r = y;
+        while r + 1 < grid.rows && walkable[grid.idx(x, r + 1)] {
+            r += 1;
+            blocked[grid.idx(x, r)] = true;
+        }
+    }
+
+    // Flood each route side independently; both must reach `need`.
+    let sides: [(i64, i64); 2] = if vertical { [(0, -1), (0, 1)] } else { [(-1, 0), (1, 0)] };
+    for &(dx, dy) in &sides {
+        let nx = x as i64 + dx;
+        let ny = y as i64 + dy;
+        if nx < 0 || ny < 0 || nx as usize >= grid.cols || ny as usize >= grid.rows {
+            return false;
+        }
+        let start = grid.idx(nx as usize, ny as usize);
+        if !walkable[start] || blocked[start] {
+            return false;
+        }
+        let mut seen = vec![false; walkable.len()];
+        let mut queue = std::collections::VecDeque::new();
+        seen[start] = true;
+        queue.push_back((nx as usize, ny as usize));
+        let mut count = 0usize;
+        while let Some((cx, cy)) = queue.pop_front() {
+            count += 1;
+            if count >= need {
+                break;
+            }
+            let steps = [
+                (cx.wrapping_sub(1), cy),
+                (cx + 1, cy),
+                (cx, cy.wrapping_sub(1)),
+                (cx, cy + 1),
+            ];
+            for &(sx, sy) in &steps {
+                if sx >= grid.cols || sy >= grid.rows {
+                    continue;
+                }
+                let si = grid.idx(sx, sy);
+                if walkable[si] && !seen[si] && !blocked[si] {
+                    seen[si] = true;
+                    queue.push_back((sx, sy));
+                }
+            }
+        }
+        if count < need {
+            return false;
+        }
+    }
+    true
+}
+/// The passage direction at a chokepoint: `Some(true)` = the route runs along
+/// y (vertical passage; its width is measured across x), `Some(false)` = along
+/// x. `None` = not a chokepoint (incl. plateau cells and dead-end wedges).
+fn choke_axis(grid: &Grid, dt: &[f64], x: usize, y: usize) -> Option<bool> {
     let i = grid.idx(x, y);
     let c = dt[i];
     if !c.is_finite() || c <= 0.0 {
-        return false;
+        return None;
     }
-    // Neighbour clearances; out-of-grid / blocked read as 0 (an obstacle).
     let nb = |nx: i64, ny: i64| -> f64 {
         if nx < 0 || ny < 0 || nx as usize >= grid.cols || ny as usize >= grid.rows {
             0.0
@@ -605,19 +713,18 @@ fn is_chokepoint(grid: &Grid, dt: &[f64], x: usize, y: usize) -> bool {
     };
     let xi = x as i64;
     let yi = y as i64;
-    let left = nb(xi - 1, yi);
-    let right = nb(xi + 1, yi);
-    let up = nb(xi, yi - 1);
-    let down = nb(xi, yi + 1);
-
-    let max_h = c >= left && c >= right;
+    let (left, right, up, down) = (nb(xi - 1, yi), nb(xi + 1, yi), nb(xi, yi - 1), nb(xi, yi + 1));
+    let max_h = c >= left && c >= right && (c > left || c > right);
     let min_h = left >= c && right >= c;
-    let max_v = c >= up && c >= down;
+    let max_v = c >= up && c >= down && (c > up || c > down);
     let min_v = up >= c && down >= c;
-
-    // Vertical passage: wide across x (max_h), pinched along y (min_v).
-    // Horizontal passage: wide across y (max_v), pinched along x (min_h).
-    (max_h && min_v) || (max_v && min_h)
+    if max_h && min_v && up > 0.0 && down > 0.0 {
+        Some(true) // vertical passage: wide across x, route along y
+    } else if max_v && min_h && left > 0.0 && right > 0.0 {
+        Some(false) // horizontal passage: route along x
+    } else {
+        None
+    }
 }
 
 #[cfg(test)]
