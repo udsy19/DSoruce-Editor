@@ -1269,7 +1269,7 @@ function clampN(v: number, lo: number, hi: number): number {
 }
 
 /** Min distance (m) from point `p` to the polygon's boundary edges. */
-function distToPoly(poly: [number, number][], p: { x: number; y: number }): number {
+export function distToPoly(poly: [number, number][], p: { x: number; y: number }): number {
   let best = Infinity
   for (let i = 0; i < poly.length; i++) {
     const [ax, ay] = poly[i]
