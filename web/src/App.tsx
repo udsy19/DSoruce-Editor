@@ -936,6 +936,19 @@ function GenerateCard({ ec, metrics }: { ec: EditorCanvas; metrics: Metrics | nu
         suffix="m"
         onChange={(v) => set({ target_corridor_m: v })}
       />
+      <label
+        className="freeze-tip"
+        style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', userSelect: 'none' }}
+      >
+        <input
+          type="checkbox"
+          checked={program.bench_pairs}
+          onChange={(e) => set({ bench_pairs: e.target.checked })}
+          data-testid="bench-pairs"
+          style={{ accentColor: 'var(--accent, #2d5bd6)' }}
+        />
+        Bench desking (back-to-back pairs)
+      </label>
 
       <button className="cta" onClick={() => run(false)} disabled={busy} data-testid="generate">
         {busy ? 'Searching layouts…' : 'Generate test-fit'}

@@ -86,6 +86,8 @@ export interface Program {
   cluster_cols: number
   target_corridor_m: number
   desk_clearance_m: number
+  /** Back-to-back paired desk rows (real-world bench desking). */
+  bench_pairs: boolean
   w_capacity: number
   w_adjacency: number
   w_circulation: number
@@ -141,6 +143,7 @@ export const DEFAULT_PROGRAM: Program = {
   cluster_cols: 4,
   target_corridor_m: 1.2,
   desk_clearance_m: 0.9,
+  bench_pairs: true,
   w_capacity: 0.35,
   w_adjacency: 0.2,
   w_circulation: 0.25,

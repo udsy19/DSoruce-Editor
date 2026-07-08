@@ -55,12 +55,14 @@ function isRecord(v: unknown): v is Record<string, unknown> {
  */
 export function sanitizeProgram(raw: unknown): Program {
   const src = isRecord(raw) ? raw : {}
-  const out = { ...DEFAULT_PROGRAM }
+  const out: Record<string, number | boolean> = { ...DEFAULT_PROGRAM }
   for (const key of Object.keys(DEFAULT_PROGRAM) as (keyof Program)[]) {
     const v = src[key]
-    if (typeof v === 'number' && Number.isFinite(v)) out[key] = v
+    const want = typeof DEFAULT_PROGRAM[key] // field-wise: number OR boolean
+    if (want === 'number' && typeof v === 'number' && Number.isFinite(v)) out[key] = v
+    else if (want === 'boolean' && typeof v === 'boolean') out[key] = v
   }
-  return out
+  return out as unknown as Program
 }
 
 /** Light structural check of an embedded `Drawing` (present ⇒ must be sane). */
