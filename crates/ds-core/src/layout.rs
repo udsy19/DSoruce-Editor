@@ -531,6 +531,19 @@ const BAND_STEP: f64 = 0.15;
 /// Candidate step (m) of the interior clear-pocket scan for rooms that found
 /// no band slot on a wall-dense plate.
 const POCKET_STEP: f64 = 0.6;
+/// Band-depth cap (m) on the plate's DOMINANT region(s) — one standard room
+/// deep (a meeting room / cabin is ~3.0–3.3 m). The largest wing is reserved
+/// for the open workstation field (spec §1: desks are the MAJORITY use), so its
+/// long band stays shallow: without this cap one deep support room (collab
+/// 4.2 m, pantry 3.6 m) landing in the big wing deepens its ENTIRE band and
+/// steals a whole desk row per extra meter across the wing's length (the
+/// field-theft bug — a single 4.2 m room cut the 462 m² wing from 54 to 42
+/// desks). Deep rooms clamp to this depth here and prefer the smaller wings.
+const FIELD_REGION_BAND_D: f64 = 3.3;
+/// A region counts as a DOMINANT field region (shallow-band capped) when its
+/// area is at least this fraction of the LARGEST region's — so a plate with two
+/// comparably large wings reserves both for desks, not just the single biggest.
+const FIELD_REGION_FRAC: f64 = 0.6;
 
 // ---- M5: professional scoring (spec §5) ----
 
@@ -1135,6 +1148,18 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
     if single_region {
         regions.push(geometry::Rect { x0: min_x, y0: min_y, x1: max_x, y1: max_y });
     }
+    // Dominant wing(s) reserved for the open desk field (spec §1: desks are the
+    // MAJORITY use): they get a shallow room band and a band-only room pocket so
+    // no deep support room deepens their long band or fragments their field. Only
+    // when the plate has MORE THAN ONE region — a single (rectangular) plate must
+    // host the whole program in its one band.
+    let field_regions: Vec<bool> = {
+        let max_area = regions.iter().map(|r| r.area()).fold(0.0f64, f64::max);
+        regions
+            .iter()
+            .map(|r| regions.len() > 1 && r.area() >= FIELD_REGION_FRAC * max_area)
+            .collect()
+    };
     // Per-region insets: 0.9 m facade gap on plate-boundary edges (desks get
     // the window wall), corridor/2 on seams shared with an adjacent region so
     // neighbours form ONE shared corridor.
@@ -1202,7 +1227,7 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
     // A band may only claim depth that still leaves one desk row in front.
     let min_field_d = program.desk_w.min(program.desk_h) + clear;
     let (mut region_jobs, band_depths, mut overflow) =
-        allocate_rooms(jobs, &regions, &insets, entry_idx, min_field_d);
+        allocate_rooms(jobs, &regions, &insets, entry_idx, min_field_d, &field_regions);
 
     // --- Region plans: band + spine + connector + link geometry -----------
     let plans: Vec<RegionPlan> = (0..regions.len())
@@ -1214,6 +1239,7 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
                 choices.band_far,
                 band_depths[i],
                 if i == entry_idx { entry } else { None },
+                field_regions[i],
             )
         })
         .collect();
@@ -1425,6 +1451,7 @@ fn allocate_rooms(
     insets: &[Insets],
     entry_idx: usize,
     min_field_d: f64,
+    field_regions: &[bool],
 ) -> (Vec<Vec<RoomJob>>, Vec<f64>, Vec<RoomJob>) {
     let n = regions.len();
     let mut lists: Vec<Vec<RoomJob>> = (0..n).map(|_| Vec::new()).collect();
@@ -1453,6 +1480,18 @@ fn allocate_rooms(
         // to the pocket pass rather than swallowing the wing with a room band
         // (spec 1: rooms cluster, desks line the facade).
         cap_d[i] = (cross - BAND_BACK_GAP - SPINE_W - FACADE_GAP - min_field_d).max(0.0);
+    }
+
+    // Reserve the plate's dominant wing(s) for the open desk field: cap their
+    // band shallow (one standard room deep) so no deep room deepens the whole
+    // long band and eats desk rows (spec §1). `field_regions` already excludes
+    // the single-region case (that plate must host every room in its one band).
+    // Deep rooms clamp to this cap and, being tested smallest-wing-first, prefer
+    // the smaller wings before spilling here.
+    for i in 0..n {
+        if field_regions[i] {
+            cap_d[i] = cap_d[i].min(FIELD_REGION_BAND_D);
+        }
     }
 
     // Pantry anchors the region farthest from the entry (social far end).
@@ -1627,6 +1666,7 @@ fn plan_region(
     band_far: bool,
     band_depth: f64,
     entry: Option<Point>,
+    field_region: bool,
 ) -> RegionPlan {
     // Along-axis span (the long axis) and cross-axis outer coords + edges.
     let (a0, a1, c0, c1, e_lo, e_hi) = if portrait {
@@ -1688,7 +1728,23 @@ fn plan_region(
 
     let spine = spine_c.map(|(s0, s1)| rect(a0, a1, s0, s1));
     let field = rect(a0, a1, field_c.0, field_c.1);
-    let pocket = if !band_far {
+    // Pocket-scan area for overflow rooms the band pass couldn't seat. For a
+    // DOMINANT field region it is the BAND STRIP ONLY (banded edge → band
+    // front): the pocket used to span the whole cross-section, so a room-heavy
+    // plate dropped deep support rooms — pantry, collab, storage — into the
+    // middle of the daylit desk field, fragmenting it (the field bug: the
+    // 462 m² wing seated 16 of 54 desks). Reserving that wing's field for
+    // workstations (spec §1: desks are the majority use) keeps its pocket in the
+    // band. Other regions (small wings, and every region of a single-region
+    // plate) keep the FULL cross-section so overflow rooms can stack in a second
+    // band row rather than being dropped.
+    let pocket = if field_region {
+        if !band_far {
+            rect(a0, a1, c0 + e_lo.inset, band_front.max(c0 + e_lo.inset))
+        } else {
+            rect(a0, a1, band_front.min(c1 - e_hi.inset), c1 - e_hi.inset)
+        }
+    } else if !band_far {
         rect(a0, a1, band_base, c1 - e_hi.inset)
     } else {
         rect(a0, a1, c0 + e_lo.inset, band_base)
@@ -3027,6 +3083,85 @@ mod tests {
         room_from_corners(&REAL_PLATE)
     }
 
+    /// FIELD-FIRST rebalance (docs/design/testfit-pro-quality.md §1): with the
+    /// FULL professional program (support_spaces on) on the user's real ~843 m²
+    /// multi-wing plate, the open workstation field is the MAJORITY use — the
+    /// dominant wing is reserved for desks, and the support rooms fit around it.
+    ///
+    /// Regression bar for the two field-theft bugs this change fixed:
+    ///  1. the pocket pass dropped deep support rooms (pantry/collab/storage)
+    ///     into the middle of the dominant wing's daylit desk field, and
+    ///  2. one deep room deepened that wing's whole long band,
+    /// which together cratered the field to ~14–23 desks against ~34 rooms
+    /// (rooms outnumbering workstations — the opposite of a real office).
+    #[test]
+    fn real_plate_open_field_dominates_the_program() {
+        let area = geometry::polygon_area(&poly_of(&real_plate_doc()));
+        // The program a fresh professional fit derives for this plate (mirrors
+        // the app's headcount-driven `suggestProgram`): headcount at 10 m²/person,
+        // desks at the 0.85 open share, a MODEST meeting count (~1 per 17 people).
+        let headcount = (area / 10.0).round() as u32;
+        let mut program = Program::default();
+        program.headcount = Some(headcount);
+        program.desks = ((headcount as f64) * 0.85).round() as u32;
+        program.meeting_rooms = 5;
+        program.meeting_w = 3.0;
+        program.meeting_h = 3.0;
+
+        for seed in 1..=4u64 {
+            let mut doc = real_plate_doc();
+            generate(&mut doc, &program, seed, false);
+            let desks = doc.components.iter().filter(|c| c.category == "Desk").count();
+            let rooms = doc
+                .zones
+                .iter()
+                .filter(|z| {
+                    matches!(
+                        z.zone_type,
+                        ZoneType::Meeting | ZoneType::ClosedOffice | ZoneType::Amenity | ZoneType::Collaboration
+                    )
+                })
+                .count();
+            let meeting_seats: f64 = doc
+                .zones
+                .iter()
+                .filter(|z| matches!(z.zone_type, ZoneType::Meeting | ZoneType::Collaboration))
+                .map(|z| z.capacity() as f64)
+                .sum();
+            let seats = desks as f64 + meeting_seats;
+
+            // (a) OPEN-DESK DOMINANT: workstations are the majority of all seats.
+            assert!(
+                desks as f64 > 0.6 * seats,
+                "seed {seed}: workstations {desks} are not the majority of {seats:.0} seats"
+            );
+            // (b) The field fills to a professional headcount: at least the open
+            // share of a 45-person floor (this 843 m² plate derives ~84).
+            assert!(desks >= 45, "seed {seed}: only {desks} workstations on an 843 m² plate");
+            // (c) Density in the professional band (seat-based m²/person, 8–12).
+            let m2pp = area / seats;
+            assert!(
+                (8.0..=12.0).contains(&m2pp),
+                "seed {seed}: {m2pp:.1} m²/seat outside the professional 8–12 band"
+            );
+            // (d) Rooms still placed AND sane — a real support set, never the
+            // 34-room field-eater. The derived program is ~28 rooms; most fit.
+            assert!(
+                (12..=30).contains(&rooms),
+                "seed {seed}: {rooms} rooms is not a sane professional support set"
+            );
+            // (e) Walkable.
+            let circ = circulation::evaluate(&doc, &CirculationConfig::default());
+            assert!(circ.score >= 54.0, "seed {seed}: circulation {:.1} < 54", circ.score);
+            // (f) No overlaps, everything on the plate.
+            assert_no_overlaps(&doc, "real plate full program");
+            let poly = poly_of(&doc);
+            for c in &doc.components {
+                assert!(footprint_in_plate(c, &poly), "seed {seed}: {} escapes the plate", c.label);
+            }
+        }
+    }
+
     fn poly_of(doc: &Document) -> Vec<Point> {
         let segs: Vec<(Point, Point)> = doc.walls.iter().map(|w| (w.a, w.b)).collect();
         geometry::trace_floor_polygon(&segs, geometry::LOOP_SNAP_TOL).expect("plate loop")
@@ -3907,10 +4042,24 @@ mod tests {
             "reception ({:.1} m) must sit nearer the entry than the pantry ({:.1} m)",
             dist(center(recep)), dist(center(pantry))
         );
-        // The drawn network reaches the entry: an "Entry" connector strip exists.
+        // The drawn circulation network reaches the entry — EITHER a dedicated
+        // "Entry" connector strip is drawn to the spine, OR (since the field-first
+        // rebalance moved the dominant wing's shallow-band spine onto the entry's
+        // cross-line) a spine/corridor already passes through the entry's cross
+        // position, so no connector is needed. Both satisfy "network reaches the
+        // door"; the old test assumed only the connector case.
+        let circ_reaches_entry = doc.zones.iter().any(|z| {
+            z.zone_type == ZoneType::Circulation && z.label == "Entry"
+        }) || doc.zones.iter().any(|z| {
+            if z.zone_type != ZoneType::Circulation {
+                return false;
+            }
+            let (x0, _, x1, _) = z.shape.bbox();
+            x0 - 1e-6 <= entry.x && entry.x <= x1 + 1e-6
+        });
         assert!(
-            doc.zones.iter().any(|z| z.zone_type == ZoneType::Circulation && z.label == "Entry"),
-            "an entry connector circulation strip must be drawn to the spine"
+            circ_reaches_entry,
+            "the drawn circulation network must reach the entry (connector or aligned spine)"
         );
     }
 
