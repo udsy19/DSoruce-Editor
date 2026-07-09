@@ -35,8 +35,10 @@ The qbiq-style flow: Project → Upload → Program → Generate → Editor → 
   Rust `Program.rooms: Vec<RoomReq>` (serde-additive); generator honors explicit counts + soft placement
   bias, falls back to derive() when empty; `sanitizeProgram` carries rooms through save/open. 78 Rust
   tests, E2E 7/7 (explicit counts honored on generate). `program/spec.ts`, `shell/steps/ProgramStep.tsx`.
-- [ ] **S6 — Anchor pins.** Pick a room type, click the plan to force it onto a spot (+bumps count);
-  generator consumes anchors (mirrors `add_entry`).
+- [x] **S6 — Anchor pins.** "Place on Plan": pick a room type, drop a pin on the plan → generator places
+  that room FIRST at/near the pin (nearest-feasible, surfaced via program_fit) and bumps the count.
+  `Document.anchors` + add_anchor/clear_anchors; blue-diamond pins; `pushAnchorsToEditor`. 83 Rust tests.
+  Pinned Reception landed 1.8m from the click. Persists; cleared on re-upload.
 - [ ] **S7 — Generate step + real export meta.** Alternatives A/B/C with category-winner badges; real
   project name/address/logo/floor flow into the report + takeoff.
 - Decisions locked: upload **CAD-only v1** (raster/PDF deferred); Window/Core/Flexible = **soft bias**;
