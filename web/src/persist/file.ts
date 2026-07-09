@@ -15,7 +15,7 @@
 // unit-testable in Node; only `saveProject` (download) and `applyProject`
 // (Editor mutation) touch the environment.
 
-import type { EditorCanvas, Program } from '../editor/EditorCanvas'
+import type { EditorCanvas, Placement, Program, RoomReq, SpaceKind } from '../editor/EditorCanvas'
 import { DEFAULT_PROGRAM } from '../editor/EditorCanvas'
 import type { Drawing } from '../import/types'
 import { triggerDownload } from '../export/png'
@@ -61,19 +61,61 @@ function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v)
 }
 
+const SPACE_KINDS = new Set<SpaceKind>([
+  'Meeting', 'Cabin', 'Meeting4P', 'Meeting6P', 'Boardroom', 'PhoneBooth', 'Focus',
+  'Collab', 'Reception', 'Pantry', 'Print', 'ItServer', 'Storage', 'Wellness',
+])
+const PLACEMENTS = new Set<Placement>(['Window', 'Core', 'Flexible'])
+
 /**
- * Coerce an unknown `program` value into a valid `Program`: every known field
- * is taken from the input when it is a finite number, otherwise filled from
- * `DEFAULT_PROGRAM`. Unknown fields are dropped. Pure; exported for tests.
+ * Validate the `Program.rooms` array (the Detailed builder's explicit program).
+ * ⚠ THE DATA-LOSS TRAP (workflow.md §3.4): `sanitizeProgram`'s scalar loop would
+ * silently DROP this non-scalar field, so a saved detailed program would vanish
+ * on reopen. Each entry is coerced field-wise; malformed entries are dropped
+ * rather than failing the whole open (rooms are recoverable working state, not
+ * document geometry). Optional `w`/`d` are carried only when finite.
+ */
+function sanitizeRooms(raw: unknown): RoomReq[] {
+  if (!Array.isArray(raw)) return []
+  const out: RoomReq[] = []
+  for (const v of raw) {
+    if (!isRecord(v)) continue
+    if (typeof v.kind !== 'string' || !SPACE_KINDS.has(v.kind as SpaceKind)) continue
+    if (typeof v.count !== 'number' || !Number.isFinite(v.count) || v.count < 0) continue
+    const req: RoomReq = { kind: v.kind as SpaceKind, count: Math.round(v.count) }
+    if (typeof v.w === 'number' && Number.isFinite(v.w)) req.w = v.w
+    if (typeof v.d === 'number' && Number.isFinite(v.d)) req.d = v.d
+    if (typeof v.placement === 'string' && PLACEMENTS.has(v.placement as Placement)) {
+      req.placement = v.placement as Placement
+    }
+    out.push(req)
+  }
+  return out
+}
+
+/**
+ * Coerce an unknown `program` value into a valid `Program`: every scalar field
+ * is taken from the input when it is a finite number/boolean, otherwise filled
+ * from `DEFAULT_PROGRAM`. The non-scalar `rooms` array (validated) and the
+ * optional `headcount` are carried through explicitly — the scalar loop alone
+ * would drop both. Unknown fields are dropped. Pure; exported for tests.
  */
 export function sanitizeProgram(raw: unknown): Program {
   const src = isRecord(raw) ? raw : {}
-  const out: Record<string, number | boolean> = { ...DEFAULT_PROGRAM }
+  const out: Record<string, unknown> = { ...DEFAULT_PROGRAM }
   for (const key of Object.keys(DEFAULT_PROGRAM) as (keyof Program)[]) {
     const v = src[key]
-    const want = typeof DEFAULT_PROGRAM[key] // field-wise: number OR boolean
+    const want = typeof DEFAULT_PROGRAM[key] // field-wise: number OR boolean (arrays handled below)
     if (want === 'number' && typeof v === 'number' && Number.isFinite(v)) out[key] = v
     else if (want === 'boolean' && typeof v === 'boolean') out[key] = v
+  }
+  out.rooms = sanitizeRooms(src.rooms)
+  // headcount is optional (absent from DEFAULT_PROGRAM) → carry it when present,
+  // drop it otherwise so it maps to Rust `None`.
+  if (typeof src.headcount === 'number' && Number.isFinite(src.headcount)) {
+    out.headcount = Math.round(src.headcount)
+  } else {
+    delete out.headcount
   }
   return out as unknown as Program
 }

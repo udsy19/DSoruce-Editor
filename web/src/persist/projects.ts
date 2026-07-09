@@ -18,6 +18,7 @@ import { dbDel, dbGet, dbGetAll, dbPut } from './db'
 import type { Drawing } from '../import/types'
 import type { Pt } from '../import/testfit'
 import type { RoomMarker } from '../import/markers'
+import type { ProgramSpec } from '../program/spec'
 
 /**
  * Pre-generation working state carried across the wizard steps. Reserved for
@@ -57,6 +58,8 @@ export interface ProjectDraft {
   areaPolygon?: Pt[]
   /** §3.2 room markers + reference numbers (drawing/source coords). */
   markers?: RoomMarker[]
+  /** §3.4 Program-builder state (Concept/Detailed) → the resolved `Program`. */
+  spec?: ProgramSpec
   /** Reproduces the chosen candidate — generate is deterministic per seed. */
   winningSeed?: number
 }

@@ -79,6 +79,39 @@ export interface ZoneStat {
 
 export type ToolId = string // 'select' | 'wall' | 'place:<Category>'
 
+/** The core's room-type vocabulary (mirrors Rust `layout::SpaceKind`). A
+ *  `RoomReq.kind` names one of these by string; the Program builder's richer
+ *  vocabulary (Executive/Large/Medium office, XL conference, …) maps onto these
+ *  at different footprints (see `program/spec.ts`). */
+export type SpaceKind =
+  | 'Meeting'
+  | 'Cabin'
+  | 'Meeting4P'
+  | 'Meeting6P'
+  | 'Boardroom'
+  | 'PhoneBooth'
+  | 'Focus'
+  | 'Collab'
+  | 'Reception'
+  | 'Pantry'
+  | 'Print'
+  | 'ItServer'
+  | 'Storage'
+  | 'Wellness'
+/** Facade preference for an explicit room (mirrors Rust `layout::Placement`). */
+export type Placement = 'Window' | 'Core' | 'Flexible'
+/** One explicit room request from the Detailed program builder (mirrors Rust
+ *  `layout::RoomReq`). Serializes 1:1 to the wasm `generate` program. */
+export interface RoomReq {
+  kind: SpaceKind
+  count: number
+  /** Corridor-run width (m); omitted → the kind's default footprint. */
+  w?: number
+  /** Depth (m); omitted → the kind's default. */
+  d?: number
+  placement?: Placement
+}
+
 /** A room tag computed by drawZones, drawn above furniture by drawZoneTags. */
 interface ZoneTag {
   name: string
@@ -109,6 +142,10 @@ export interface Program {
   /** Design headcount N. When set, drives `SpaceProgram::derive`; when omitted it
    * is inferred from the desk target (desks ≈ 0.85·N). Absent → Rust `None`. */
   headcount?: number
+  /** Explicit room program from the Detailed builder (workflow.md §3.4). Empty →
+   * the derived support program + `meeting_rooms` override (today's behaviour);
+   * non-empty → these rooms replace it, counts + placement bias honored. */
+  rooms?: RoomReq[]
   w_capacity: number
   w_adjacency: number
   w_circulation: number
@@ -179,6 +216,7 @@ export const DEFAULT_PROGRAM: Program = {
   desk_clearance_m: 0.9,
   bench_pairs: true,
   support_spaces: true,
+  rooms: [],
   w_capacity: 0.35,
   w_adjacency: 0.2,
   w_circulation: 0.25,

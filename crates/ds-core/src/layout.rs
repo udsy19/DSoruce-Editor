@@ -63,6 +63,14 @@ pub struct Program {
     /// default open share (desks = 0.85·N). Drives `SpaceProgram::derive`.
     #[serde(default)]
     pub headcount: Option<u32>,
+    /// Explicit room program from the Detailed builder (workflow.md §3.4). Empty
+    /// (the default, and every pre-S5 JSON blob) → the derived support program +
+    /// `meeting_rooms` override, i.e. today's behaviour. Non-empty → these rooms
+    /// REPLACE that room program; the generator honours their counts and
+    /// placement bias. `#[serde(default)]` so a missing field never errors and
+    /// old documents round-trip unchanged.
+    #[serde(default)]
+    pub rooms: Vec<RoomReq>,
 
     // --- hard constraints ---
     /// perimeter circulation corridor width, meters
@@ -103,6 +111,7 @@ impl Default for Program {
             bench_pairs: true,
             support_spaces: true,
             headcount: None,
+            rooms: Vec::new(),
             target_corridor_m: 1.2,
             desk_clearance_m: 0.9,
             w_capacity: 0.35,
@@ -207,8 +216,9 @@ fn snap_room_floor(v: f64) -> f64 {
 
 // ---- M3: the professional space program (docs/design/testfit-pro-quality.md §1.1) ----
 
-/// One space type of the derived program.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+/// One space type of the derived program. `Deserialize` so the Program builder
+/// (workflow.md §3.4) can send explicit `RoomReq`s naming these kinds by string.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SpaceKind {
     /// Generic meeting room — the `Program::meeting_rooms` user override.
     Meeting,
@@ -242,6 +252,42 @@ impl SpaceReq {
     pub fn area(&self) -> f64 {
         self.w * self.d * self.count as f64
     }
+}
+
+/// Facade preference for an explicit room request (qbiq Window/Core/Flexible,
+/// workflow.md §3.4). A SOFT placement BIAS, never a hard solver: Window rooms
+/// sort toward facade-adjacent band slots (and, on a decomposed plate,
+/// facade-adjacent wings); Core rooms toward the interior; Flexible keeps the
+/// default order. Default `Flexible` → serde-missing fields and every legacy
+/// (derived-program) room behave exactly as before.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum Placement {
+    Window,
+    Core,
+    #[default]
+    Flexible,
+}
+
+/// One explicit room request from the Detailed program builder (workflow.md
+/// §3.4). When `Program.rooms` is non-empty it REPLACES the derived support
+/// program + meeting override: the generator places exactly these rooms (counts
+/// honored where they fit, honestly reported through `program_fit` where they
+/// don't). Desks still scale to the headcount/plate, unchanged.
+///
+/// `w`/`d` (meters, corridor-run × depth) override the per-kind default
+/// footprint — the builder's Executive / Large / Medium / Small office are the
+/// SAME `SpaceKind::Cabin` at different sizes, so the size lives on the request,
+/// not in a combinatorial enum. Omitted → the kind's default from `job_template`.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RoomReq {
+    pub kind: SpaceKind,
+    pub count: u32,
+    #[serde(default)]
+    pub w: Option<f64>,
+    #[serde(default)]
+    pub d: Option<f64>,
+    #[serde(default)]
+    pub placement: Placement,
 }
 
 /// The full professional program for a headcount, per the spec §1.1 table.
@@ -1185,43 +1231,48 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
         oy: snap_module(min_y + half_phase * (program.desk_h + clear)),
     };
 
-    // --- Rooms: meeting override + derived support program ----------------
+    // --- Rooms: explicit builder program, or meeting override + derived ----
     let entry = doc.entries.first().copied();
-    let mut jobs: Vec<RoomJob> = Vec::new();
-    let support = support_jobs(program, plate_area);
-    let take = |jobs: &mut Vec<RoomJob>, kind: SpaceKind| {
-        jobs.extend(support.iter().filter(|j| j.kind == kind).cloned());
+    // Detailed builder: `program.rooms` REPLACES the derived room program +
+    // meeting override (workflow.md §3.4). Desks still scale to the plate.
+    // Empty → today's derive path, byte-identical.
+    let jobs: Vec<RoomJob> = if !program.rooms.is_empty() {
+        explicit_jobs(program)
+    } else {
+        let mut jobs: Vec<RoomJob> = Vec::new();
+        let support = support_jobs(program, plate_area);
+        let take = |jobs: &mut Vec<RoomJob>, kind: SpaceKind| {
+            jobs.extend(support.iter().filter(|j| j.kind == kind).cloned());
+        };
+        // Priority order = placement order: reception first (entry-adjacent),
+        // then the big rooms while band space is plentiful, small/distributed
+        // last.
+        take(&mut jobs, SpaceKind::Reception);
+        for k in 0..remaining_meetings {
+            let t = job_template(SpaceKind::Meeting, program);
+            jobs.push(t.to_job(
+                SpaceKind::Meeting,
+                format!("Meeting Room {}", mr_counter + k + 1),
+                program.meeting_w,
+                program.meeting_h,
+                Placement::Flexible,
+            ));
+        }
+        for kind in [
+            SpaceKind::Cabin,
+            SpaceKind::Collab,
+            SpaceKind::Pantry,
+            SpaceKind::ItServer,
+            SpaceKind::Storage,
+            SpaceKind::Wellness,
+            SpaceKind::Focus,
+            SpaceKind::Print,
+            SpaceKind::PhoneBooth,
+        ] {
+            take(&mut jobs, kind);
+        }
+        jobs
     };
-    // Priority order = placement order: reception first (entry-adjacent), then
-    // the big rooms while band space is plentiful, small/distributed last.
-    take(&mut jobs, SpaceKind::Reception);
-    for k in 0..remaining_meetings {
-        jobs.push(RoomJob {
-            kind: SpaceKind::Meeting,
-            label: format!("Meeting Room {}", mr_counter + k + 1),
-            w: program.meeting_w,
-            d: program.meeting_h,
-            zone_type: ZoneType::Meeting,
-            glass_front: true,
-            door_w: DOOR_W,
-            furniture: RoomFurniture::ConferenceTable,
-            walls: true,
-            far: false,
-        });
-    }
-    for kind in [
-        SpaceKind::Cabin,
-        SpaceKind::Collab,
-        SpaceKind::Pantry,
-        SpaceKind::ItServer,
-        SpaceKind::Storage,
-        SpaceKind::Wellness,
-        SpaceKind::Focus,
-        SpaceKind::Print,
-        SpaceKind::PhoneBooth,
-    ] {
-        take(&mut jobs, kind);
-    }
 
     let entry_idx = entry_region_idx(&regions, entry);
     // A band may only claim depth that still leaves one desk row in front.
@@ -1362,6 +1413,9 @@ struct RoomJob {
     /// at the far end of the spine; storage/IT/wellness/focus = quiet end;
     /// booths distributed away from reception).
     far: bool,
+    /// Facade preference (explicit rooms only; derived rooms are `Flexible`).
+    /// Biases region choice and within-band ordering — see `allocate_rooms`.
+    placement: Placement,
 }
 
 /// Expand the derived support program into placeable room jobs (spec §1.1).
@@ -1381,43 +1435,116 @@ fn support_jobs(program: &Program, plate_area: f64) -> Vec<RoomJob> {
     let sp = SpaceProgram::derive(program_headcount(program, plate_area) as usize, plate_area);
     let mut jobs = Vec::new();
     for req in &sp.reqs {
-        use RoomFurniture::*;
-        use SpaceKind::*;
-        let (zone, name, glass, door_w, furniture, walls, far) = match req.kind {
-            Meeting | Meeting4P | Meeting6P | Boardroom => continue,
-            Cabin => (ZoneType::ClosedOffice, "Cabin", true, DOOR_W, WorkPoint, true, false),
-            // Booths: solid fronts (spec §2), narrow leaf for the 1.3 m run.
-            PhoneBooth => (ZoneType::ClosedOffice, "Phone Booth", false, 0.8, WorkPoint, true, true),
-            Focus => (ZoneType::ClosedOffice, "Focus Room", true, DOOR_W, WorkPoint, true, true),
-            Collab => (ZoneType::Collaboration, "Collab", false, 0.0, ConferenceTable, false, false),
-            // Reception/pantry doors at 1.0 m (NBC exit-leaf rooms, spec §2).
-            Reception => (ZoneType::Amenity, "Reception", true, 1.0, ReceptionDesk, true, false),
-            Pantry => (ZoneType::Amenity, "Pantry", false, 1.0, Counter, true, true),
-            Print => (ZoneType::Amenity, "Print Point", false, 0.0, ConferenceTable, false, false),
-            ItServer => (ZoneType::Amenity, "IT / Server", false, DOOR_W, Empty, true, true),
-            Storage => (ZoneType::Amenity, "Storage", false, DOOR_W, Empty, true, true),
-            Wellness => (ZoneType::Amenity, "Wellness Room", false, DOOR_W, Empty, true, true),
-        };
+        // Meeting-typed kinds are covered by the `meeting_rooms` override in
+        // the derive path and are not duplicated in the support program.
+        if matches!(
+            req.kind,
+            SpaceKind::Meeting | SpaceKind::Meeting4P | SpaceKind::Meeting6P | SpaceKind::Boardroom
+        ) {
+            continue;
+        }
+        let t = job_template(req.kind, program);
         for i in 0..req.count {
             let label = if req.count == 1 {
-                name.to_string()
+                t.name.to_string()
             } else {
-                format!("{} {}", name, i + 1)
+                format!("{} {}", t.name, i + 1)
             };
-            jobs.push(RoomJob {
-                kind: req.kind,
-                label,
-                w: snap_module(req.w),
-                d: snap_module(req.d),
-                zone_type: zone,
-                glass_front: glass,
-                door_w,
-                furniture,
-                walls,
-                far,
-            });
+            // Derived rooms carry their derive() footprint; every derived room is
+            // placement-neutral (`Flexible`).
+            jobs.push(t.to_job(req.kind, label, snap_module(req.w), snap_module(req.d), Placement::Flexible));
         }
     }
+    jobs
+}
+
+/// The per-kind room recipe: zone type, display name, glass/door/furniture
+/// flags, whether it is a walled enclosure, which band end it prefers, and its
+/// DEFAULT footprint (corridor-run `w` × depth `d`). Shared by the derived
+/// program (`support_jobs`, which supplies its own derive() sizes) and the
+/// explicit builder (`explicit_jobs`, which uses the default sizes unless the
+/// `RoomReq` overrides them) so the two paths can never drift (no-bloat).
+struct JobTemplate {
+    zone_type: ZoneType,
+    name: &'static str,
+    glass_front: bool,
+    door_w: f64,
+    furniture: RoomFurniture,
+    walls: bool,
+    far: bool,
+    w: f64,
+    d: f64,
+}
+
+impl JobTemplate {
+    fn to_job(&self, kind: SpaceKind, label: String, w: f64, d: f64, placement: Placement) -> RoomJob {
+        RoomJob {
+            kind,
+            label,
+            w,
+            d,
+            zone_type: self.zone_type,
+            glass_front: self.glass_front,
+            door_w: self.door_w,
+            furniture: self.furniture,
+            walls: self.walls,
+            far: self.far,
+            placement,
+        }
+    }
+}
+
+/// Recipe + default footprint for one `SpaceKind`. Meeting-family kinds use the
+/// user's `meeting_w`/`meeting_h`; everything else mirrors `SpaceProgram::derive`.
+fn job_template(kind: SpaceKind, program: &Program) -> JobTemplate {
+    use RoomFurniture::*;
+    use SpaceKind::*;
+    let (zone_type, name, glass_front, door_w, furniture, walls, far, w, d) = match kind {
+        Meeting => (ZoneType::Meeting, "Meeting Room", true, DOOR_W, ConferenceTable, true, false, program.meeting_w, program.meeting_h),
+        Meeting4P => (ZoneType::Meeting, "Team Room", true, DOOR_W, ConferenceTable, true, false, 2.7, 3.3),
+        Meeting6P => (ZoneType::Meeting, "Team Room", true, DOOR_W, ConferenceTable, true, false, 3.6, 4.2),
+        Boardroom => (ZoneType::Meeting, "Boardroom", true, DOOR_W, ConferenceTable, true, false, 4.5, 6.5),
+        Cabin => (ZoneType::ClosedOffice, "Cabin", true, DOOR_W, WorkPoint, true, false, 3.0, 3.3),
+        // Booths: solid fronts (spec §2), narrow leaf for the 1.3 m run.
+        PhoneBooth => (ZoneType::ClosedOffice, "Phone Booth", false, 0.8, WorkPoint, true, true, 1.3, 1.1),
+        Focus => (ZoneType::ClosedOffice, "Focus Room", true, DOOR_W, WorkPoint, true, true, 1.8, 2.4),
+        Collab => (ZoneType::Collaboration, "Collab", false, 0.0, ConferenceTable, false, false, 4.8, 4.2),
+        // Reception/pantry doors at 1.0 m (NBC exit-leaf rooms, spec §2).
+        Reception => (ZoneType::Amenity, "Reception", true, 1.0, ReceptionDesk, true, false, 4.0, 3.2),
+        Pantry => (ZoneType::Amenity, "Pantry", false, 1.0, Counter, true, true, 3.6, 3.0),
+        Print => (ZoneType::Amenity, "Print Point", false, 0.0, ConferenceTable, false, false, 2.0, 1.5),
+        ItServer => (ZoneType::Amenity, "IT / Server", false, DOOR_W, Empty, true, true, 3.0, 2.4),
+        Storage => (ZoneType::Amenity, "Storage", false, DOOR_W, Empty, true, true, 3.0, 2.0),
+        Wellness => (ZoneType::Amenity, "Wellness Room", false, DOOR_W, Empty, true, true, 3.0, 2.4),
+    };
+    JobTemplate { zone_type, name, glass_front, door_w, furniture, walls, far, w, d }
+}
+
+/// Expand `Program.rooms` (the Detailed builder) into placeable jobs. Sizes come
+/// from each request (falling back to the kind default), placement bias rides
+/// through to `allocate_rooms`. Ordered reception-first then largest-first so big
+/// rooms claim band space while it is plentiful — the same priority the derived
+/// path uses.
+fn explicit_jobs(program: &Program) -> Vec<RoomJob> {
+    let mut jobs = Vec::new();
+    for req in &program.rooms {
+        let t = job_template(req.kind, program);
+        let w = snap_module(req.w.unwrap_or(t.w).max(0.5));
+        let d = snap_module(req.d.unwrap_or(t.d).max(0.5));
+        for i in 0..req.count {
+            let label = if req.count == 1 {
+                t.name.to_string()
+            } else {
+                format!("{} {}", t.name, i + 1)
+            };
+            jobs.push(t.to_job(req.kind, label, w, d, req.placement));
+        }
+    }
+    // Reception first (entry-adjacent), then largest footprint first.
+    jobs.sort_by(|a, b| {
+        let key = |j: &RoomJob| (j.kind != SpaceKind::Reception, -(j.w * j.d));
+        key(a).partial_cmp(&key(b)).unwrap_or(std::cmp::Ordering::Equal)
+    });
     jobs
 }
 
@@ -1437,6 +1564,31 @@ fn entry_region_idx(regions: &[geometry::Rect], entry: Option<Point>) -> usize {
         }
     }
     best
+}
+
+/// Length (m) of a region's edges that lie on the plate BOUNDARY (facade) —
+/// non-seam edges. High for a perimeter wing, low for one hemmed in by seams
+/// with an adjacent region. The window/core placement bias sorts wings by this
+/// (`allocate_rooms`): Window rooms prefer high-facade wings, Core low-facade.
+fn region_facade_len(r: &geometry::Rect, ins: &Insets) -> f64 {
+    let mut f = 0.0;
+    if !ins.left.seam { f += r.height(); }
+    if !ins.right.seam { f += r.height(); }
+    if !ins.top.seam { f += r.width(); }
+    if !ins.bottom.seam { f += r.width(); }
+    f
+}
+
+/// Sort rank for the within-band placement bias: Window rooms take the band's
+/// facade-end slots first, Core rooms fill the interior last, Flexible sits
+/// between (its default order preserved by the STABLE sort). All-`Flexible`
+/// (every derived-program room) → a no-op, so the derive path is byte-identical.
+fn placement_rank(p: Placement) -> u8 {
+    match p {
+        Placement::Window => 0,
+        Placement::Flexible => 1,
+        Placement::Core => 2,
+    }
 }
 
 /// Assign room jobs to regions. Returns per-region ordered job lists (the
@@ -1526,6 +1678,9 @@ fn allocate_rooms(
             .unwrap_or(std::cmp::Ordering::Equal)
             .then(a.cmp(&b))
     });
+    // Per-wing facade length for the window/core region bias (soft, additive:
+    // only non-Flexible jobs consult it).
+    let facade_len: Vec<f64> = (0..n).map(|i| region_facade_len(&regions[i], &insets[i])).collect();
     for job in jobs {
         // Reception hugs the entry wing, pantry the far wing; every other room
         // takes the smallest wing that still fits, falling down the order.
@@ -1534,9 +1689,26 @@ fn allocate_rooms(
             SpaceKind::Pantry => Some(far_idx),
             _ => None,
         };
+        // Placement bias (soft): Window rooms prefer the highest-facade wings,
+        // Core rooms the lowest (most interior); Flexible keeps the smallest-
+        // wing-first order that reserves the largest wing for the desk field.
+        // Stable re-sort → ties fall back to that base order.
+        let scan: Vec<usize> = match job.placement {
+            Placement::Flexible => order.clone(),
+            Placement::Window => {
+                let mut o = order.clone();
+                o.sort_by(|&a, &b| facade_len[b].partial_cmp(&facade_len[a]).unwrap_or(std::cmp::Ordering::Equal));
+                o
+            }
+            Placement::Core => {
+                let mut o = order.clone();
+                o.sort_by(|&a, &b| facade_len[a].partial_cmp(&facade_len[b]).unwrap_or(std::cmp::Ordering::Equal));
+                o
+            }
+        };
         // A clamped room (down to 70% of the asked size) still counts as fitting.
         let mut target = None;
-        for &i in first.iter().chain(order.iter()) {
+        for &i in first.iter().chain(scan.iter()) {
             if 0.7 * job.d <= cap_d[i] && 0.7 * job.w + ROOM_GAP <= len_left[i] {
                 target = Some(i);
                 break;
@@ -1549,6 +1721,14 @@ fn allocate_rooms(
             }
             None => overflow.push(job),
         }
+    }
+
+    // Within-band placement bias: Window rooms slide in FIRST (nearest the
+    // facade band-end), Core rooms LAST (toward the interior). Stable, so within
+    // each placement class the size/priority order set above is preserved; a
+    // list of all-`Flexible` jobs is left untouched (derive path unaffected).
+    for l in lists.iter_mut() {
+        l.sort_by_key(|j| placement_rank(j.placement));
     }
 
     let depths: Vec<f64> = (0..n)
@@ -4128,6 +4308,139 @@ mod tests {
         let support_on = d_on.zones.iter().filter(|z| matches!(z.zone_type,
             ZoneType::ClosedOffice | ZoneType::Amenity | ZoneType::Collaboration)).count();
         assert!(support_on >= 5, "support_spaces=true must place the professional palette (got {support_on})");
+    }
+
+    // ---- S5: explicit room program (Detailed builder, workflow.md §3.4) ----
+
+    /// ClosedOffice zone centers (Cabin / Focus / Phone-booth rooms), left→right.
+    fn closed_office_centers(doc: &Document) -> Vec<(f64, f64)> {
+        let mut v: Vec<(f64, f64)> = doc
+            .zones
+            .iter()
+            .filter(|z| z.zone_type == ZoneType::ClosedOffice)
+            .map(|z| match z.shape {
+                ZoneShape::Rect { x, y, .. } => (x, y),
+                _ => panic!("closed-office zone must be a Rect"),
+            })
+            .collect();
+        v.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+        v
+    }
+
+    /// An explicit `rooms` program REPLACES the derived support program +
+    /// meeting override: exactly the requested rooms are placed (counts honored
+    /// when they fit), no derived palette leaks in, and desks still fill the
+    /// field. Guards the S5 generator branch.
+    #[test]
+    fn explicit_rooms_replace_derived_program_and_honor_counts() {
+        let mut program = Program::default();
+        program.headcount = Some(40); // desks still derive from this
+        program.rooms = vec![
+            RoomReq { kind: SpaceKind::Cabin, count: 4, w: None, d: None, placement: Placement::Flexible },
+            RoomReq { kind: SpaceKind::Meeting, count: 1, w: None, d: None, placement: Placement::Flexible },
+        ];
+        let mut doc = room(30.0, 22.0);
+        generate(&mut doc, &program, 1, false);
+
+        let cabins = doc.zones.iter().filter(|z| z.zone_type == ZoneType::ClosedOffice).count();
+        assert_eq!(cabins, 4, "the 4 requested offices must all place on this ample plate");
+        let meetings = doc.zones.iter().filter(|z| z.zone_type == ZoneType::Meeting).count();
+        assert_eq!(meetings, 1, "exactly the 1 requested meeting room (override ignored under explicit rooms)");
+        // No DERIVED support rooms (pantry/reception/IT/…): explicit list is the
+        // whole room program, so Amenity/Collaboration zones are absent.
+        let derived = doc.zones.iter().filter(|z| matches!(z.zone_type,
+            ZoneType::Amenity | ZoneType::Collaboration)).count();
+        assert_eq!(derived, 0, "explicit rooms must not pull in the derived support palette");
+        // Desks still scale to the plate (rooms replace only the ROOM program).
+        assert!(doc.components.iter().any(|c| c.category == "Desk"), "desks must still fill the field");
+    }
+
+    /// Empty `rooms` (the default) leaves the derive path byte-identical: a
+    /// bare default program still emits the professional support palette.
+    #[test]
+    fn empty_rooms_falls_back_to_derive() {
+        let mut doc = room(30.0, 22.0);
+        generate(&mut doc, &Program::default(), 1, false);
+        let support = doc.zones.iter().filter(|z| matches!(z.zone_type,
+            ZoneType::ClosedOffice | ZoneType::Amenity | ZoneType::Collaboration)).count();
+        assert!(support >= 5, "empty rooms → derived program still places the palette (got {support})");
+    }
+
+    /// Placement bias (SOFT): with a clear facade at x=0, Window offices land
+    /// nearer it than Core offices — and the bias, not the request order, drives
+    /// it (feeding the rooms in the opposite order yields the SAME layout).
+    #[test]
+    fn explicit_placement_biases_window_toward_facade() {
+        let cabin = |p: Placement| RoomReq { kind: SpaceKind::Cabin, count: 2, w: None, d: None, placement: p };
+        let mut win_first = Program::default();
+        win_first.support_spaces = false;
+        win_first.headcount = Some(20);
+        win_first.rooms = vec![cabin(Placement::Window), cabin(Placement::Core)];
+        let mut a = room(40.0, 12.0);
+        generate(&mut a, &win_first, 1, false);
+        let ca = closed_office_centers(&a);
+        assert_eq!(ca.len(), 4, "all four offices place on the 40×12 band");
+
+        // Window rooms (placed first, low-x facade end) sit clear of the Core rooms.
+        let (win_x, core_x) = ((ca[0].0 + ca[1].0) / 2.0, (ca[2].0 + ca[3].0) / 2.0);
+        assert!(win_x < core_x, "window mean x {win_x:.1} must be left (facade) of core mean x {core_x:.1}");
+        // …and genuinely nearer the x=0 facade wall than the core rooms.
+        let dist = |x: f64| x.min(40.0 - x);
+        assert!(
+            (dist(ca[0].0) + dist(ca[1].0)) / 2.0 < (dist(ca[2].0) + dist(ca[3].0)) / 2.0,
+            "window offices must average nearer a facade edge than core offices"
+        );
+
+        // Bias — not input order — decides: swap the requests, get the same plan.
+        let mut core_first = win_first.clone();
+        core_first.rooms = vec![cabin(Placement::Core), cabin(Placement::Window)];
+        let mut b = room(40.0, 12.0);
+        generate(&mut b, &core_first, 1, false);
+        let cb = closed_office_centers(&b);
+        for (pa, pb) in ca.iter().zip(cb.iter()) {
+            assert!((pa.0 - pb.0).abs() < 1e-9 && (pa.1 - pb.1).abs() < 1e-9,
+                "placement sort must make request order irrelevant");
+        }
+    }
+
+    /// Serde round-trip of the S5 additive fields: `rooms` (with per-request
+    /// `placement`, optional `w`/`d`) survives, and a JSON blob that omits
+    /// `rooms` entirely deserializes to an empty list (the sanitizeProgram trap's
+    /// core-side guarantee). Legacy programs never error.
+    #[test]
+    fn program_rooms_serde_round_trip() {
+        let mut p = Program::default();
+        p.rooms = vec![
+            RoomReq { kind: SpaceKind::Cabin, count: 3, w: Some(4.5), d: Some(4.0), placement: Placement::Window },
+            RoomReq { kind: SpaceKind::Pantry, count: 1, w: None, d: None, placement: Placement::Core },
+        ];
+        let s = serde_json::to_string(&p).expect("serialize");
+        let p2: Program = serde_json::from_str(&s).expect("round-trip");
+        assert_eq!(p2.rooms.len(), 2);
+        assert_eq!(p2.rooms[0].kind, SpaceKind::Cabin);
+        assert_eq!(p2.rooms[0].count, 3);
+        assert_eq!(p2.rooms[0].w, Some(4.5));
+        assert_eq!(p2.rooms[0].placement, Placement::Window);
+        assert_eq!(p2.rooms[1].placement, Placement::Core);
+        assert_eq!(p2.rooms[1].w, None);
+
+        // Missing `rooms` (every pre-S5 blob) → empty, and a missing per-request
+        // `placement` → Flexible.
+        let legacy: Program = serde_json::from_str(
+            r#"{"desks":24,"meeting_rooms":2,"desk_w":1.6,"desk_h":0.8,"meeting_w":4.0,
+                "meeting_h":4.0,"cluster_cols":4,"target_corridor_m":1.2,"desk_clearance_m":0.9,
+                "w_capacity":0.35,"w_adjacency":0.2,"w_circulation":0.25,"w_density":0.2}"#,
+        )
+        .expect("legacy JSON parses");
+        assert!(legacy.rooms.is_empty(), "missing rooms → empty");
+        let one: Program = serde_json::from_str(
+            r#"{"desks":10,"meeting_rooms":0,"desk_w":1.6,"desk_h":0.8,"meeting_w":4.0,"meeting_h":4.0,
+                "cluster_cols":4,"target_corridor_m":1.2,"desk_clearance_m":0.9,"w_capacity":0.35,
+                "w_adjacency":0.2,"w_circulation":0.25,"w_density":0.2,
+                "rooms":[{"kind":"Cabin","count":1}]}"#,
+        )
+        .expect("partial room parses");
+        assert_eq!(one.rooms[0].placement, Placement::Flexible, "missing placement → Flexible");
     }
 
     // ---- M5: professional density + recentered scoring --------------------

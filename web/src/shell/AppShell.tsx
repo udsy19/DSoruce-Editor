@@ -22,7 +22,9 @@ import { ProjectLibrary } from './ProjectLibrary'
 import { CreateProject } from './CreateProject'
 import { WizardChrome } from './WizardChrome'
 import { SpaceStep } from './steps/SpaceStep'
+import { ProgramStep } from './steps/ProgramStep'
 import { getProject } from '../persist/projects'
+import { defaultSpec, programSpecToProgram } from '../program/spec'
 
 export function AppShell() {
   const route = useRoute()
@@ -34,16 +36,19 @@ export function AppShell() {
   const [editorMounted, setEditorMounted] = useState(editorActive)
   if (editorActive && !editorMounted) setEditorMounted(true)
 
-  // The Space step owns the screen (its own WizardChrome); the editor is mounted
-  // behind it (for importFile / loadDrawing) but hidden. Every other editor
-  // route shows the editor directly — including the Program/Generate stubs.
+  // The Space and Program steps own the screen (their own WizardChrome); the
+  // editor is mounted behind them (for importFile / loadDrawing / setProgram)
+  // but hidden. Only the Generate step (and the plain editor route) show the
+  // editor directly.
   const onSpace = route.name === 'wizard' && route.step === 'space'
+  const onProgram = route.name === 'wizard' && route.step === 'program'
   const editorVisible =
-    route.name === 'editor' || (route.name === 'wizard' && route.step !== 'space')
+    route.name === 'editor' || (route.name === 'wizard' && route.step === 'generate')
 
   // Whether the Space step has a plate loaded — gates the chrome's Next button
   // (WizardChrome owns Back/Next; the step reports readiness up).
   const [spaceReady, setSpaceReady] = useState(false)
+  const [programReady, setProgramReady] = useState(false)
 
   return (
     <>
@@ -84,6 +89,31 @@ export function AppShell() {
             projectId={route.projectId}
             controller={editorRef}
             onReadyChange={setSpaceReady}
+          />
+        </WizardChrome>
+      )}
+      {onProgram && (
+        <WizardChrome
+          current="program"
+          title="State the program"
+          subtitle="Say what to build — how many of each room type, the desk type and size, and where offices should sit. Start from a template or a headcount, then tune every count in Detailed."
+          onBack={() => navigate({ name: 'wizard', projectId: route.projectId, step: 'space' })}
+          onNext={async () => {
+            // Resolve the persisted ProgramSpec into the core Program and set it
+            // on the (mounted-behind) editor, then advance to Generate.
+            const rec = await getProject(route.projectId)
+            const spec = rec?.draft?.spec ?? defaultSpec(rec?.draft?.readouts?.usableAreaM2 ?? null)
+            editorRef.current?.setProgram(programSpecToProgram(spec))
+            navigate({ name: 'wizard', projectId: route.projectId, step: 'generate' })
+          }}
+          nextLabel="Next: Generate"
+          nextTestId="program-next"
+          nextDisabled={!programReady}
+        >
+          <ProgramStep
+            key={route.projectId}
+            projectId={route.projectId}
+            onReadyChange={setProgramReady}
           />
         </WizardChrome>
       )}

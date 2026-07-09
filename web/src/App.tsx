@@ -133,6 +133,9 @@ export interface EditorController {
   /** Push a previously-parsed Drawing into the editor (wizard reload / resume). */
   loadDrawing(d: Drawing | null): void
   testFit(opts?: TestFitOpts): void
+  /** Set the editor's live test-fit program (the Program step's output). Also
+   *  re-syncs the mounted GenerateCard so its form + a Generate click use it. */
+  setProgram(p: Program): void
   runGenerate(p: Program, o?: { maxIter?: number; target?: number; keepConfirmed?: boolean }): GenResult | null
   setMode(m: '2d' | '3d' | 'import'): void
   ec(): EditorCanvas | null
@@ -149,6 +152,9 @@ export const EditorView = forwardRef<EditorController>(function EditorView(_prop
   const ecRef = useRef<EditorCanvas | null>(null)
   const [ready, setReady] = useState(false)
   const [, setTick] = useState(0)
+  // Bumped when the Program step sets a new program → re-keys GenerateCard so it
+  // re-reads `ec.program` (its form state is seeded once at mount otherwise).
+  const [programVersion, setProgramVersion] = useState(0)
   const [tool, setTool] = useState('select')
   const [mode, setMode] = useState<'2d' | '3d' | 'import'>('2d')
   const [aiOpen, setAiOpen] = useState(false)
@@ -509,6 +515,10 @@ export const EditorView = forwardRef<EditorController>(function EditorView(_prop
       importFile: onImportFile,
       loadDrawing,
       testFit: testFitPlan,
+      setProgram: (p) => {
+        if (ecRef.current) ecRef.current.program = { ...p }
+        setProgramVersion((v) => v + 1)
+      },
       runGenerate: (program, o) =>
         ecRef.current
           ? ecRef.current.autoGenerate(program, {
@@ -870,6 +880,7 @@ export const EditorView = forwardRef<EditorController>(function EditorView(_prop
                   )}
                   <StatsPanel ec={ec} />
                   <GenerateCard
+                    key={programVersion}
                     ec={ec}
                     metrics={metrics}
                     onSaveCandidate={saveCandidateToLibrary}

@@ -27,6 +27,13 @@ const MAX_MEETINGS = 6
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
 
+/** Design headcount the plate holds at the professional density (10 m²/person),
+ *  clamped to a sane 4–400. The single source both the Space→Program prefill and
+ *  the Concept "generate from headcount" default reuse (workflow.md §3.4). */
+export function headcountForArea(plateAreaM2: number): number {
+  return clamp(Math.round(plateAreaM2 / M2_PER_PERSON), 4, 400)
+}
+
 /**
  * Derive a fresh, open-plan-dominant Program from the plate, on top of `current`:
  * - headcount: the plate filled to the professional design density (10 m²/person)
@@ -40,7 +47,7 @@ const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v
  *   one per conference cluster detected in the OLD layout.
  */
 export function suggestProgram(drawing: Drawing, plateAreaM2: number, current: Program): Program {
-  const headcount = clamp(Math.round(plateAreaM2 / M2_PER_PERSON), 4, 400)
+  const headcount = headcountForArea(plateAreaM2)
 
   const drawnDesks = drawing.furniture.filter((f) => DESK_CATEGORIES.has(bankCategoryForItem(f))).length
   const desks = clamp(Math.round(Math.max(headcount * OPEN_SHARE, drawnDesks)), 10, 400)

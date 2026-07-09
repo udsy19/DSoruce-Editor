@@ -28,6 +28,7 @@ export function WizardChrome({
   backLabel = 'Back',
   nextLabel = 'Next',
   nextDisabled = false,
+  nextTestId = 'wizard-next',
   children,
 }: {
   current: WizardStepId
@@ -38,6 +39,8 @@ export function WizardChrome({
   backLabel?: string
   nextLabel?: string
   nextDisabled?: boolean
+  /** testid of the Next button — per-step so E2E can target e.g. `program-next`. */
+  nextTestId?: string
   children: ReactNode
 }) {
   const idx = STEPS.findIndex((s) => s.id === current)
@@ -92,7 +95,7 @@ export function WizardChrome({
         <button
           type="button"
           className="empty-btn primary"
-          data-testid="wizard-next"
+          data-testid={nextTestId}
           onClick={onNext}
           disabled={nextDisabled || !onNext}
         >
