@@ -85,9 +85,12 @@ Make generated plans read like a senior architect's work, not a diagram.
   band+spine overhead costs ~3 desks/room. Needs an `allocate_rooms`/M4 room-concentration rework (rooms
   hug fewer wings), not more ratio tuning. Plan is already professional + open-dominant, so this is
   upside, not a blocker.
-- 🔄 **Smarter test-fits** (user: "needs to be smarter"). Strategy-diverse A/B/C (Open / Balanced /
-  Cellular — genuinely distinct room mix + layout, not seed-noise) + adjacency intelligence (meetings↔
-  entry, focus↔facade, pantry central, IT↔core, coherent desk clusters). The flagship differentiator.
+- [x] **Smarter test-fits** (user: "needs to be smarter"). `Strategy {Open,Balanced,Cellular}` shifts
+  the derived mix + scoring weights so A/B/C are genuinely distinct (real DWG: Open 76 desks/5 offices →
+  Balanced 67/10 → Cellular 61/19; gallery labels "A · Open / B · Balanced / C · Cellular"); explicit
+  program counts still win. Adjacency model: meetings↔entry cluster, focus↔facade, pantry central, IT↔
+  core, desk-cluster coherence (soft score + placement bias). `autoGenerate` runs one search per
+  strategy. 89 Rust tests. `layout.rs`, `editor/strategy.ts`.
 - [ ] **Keep-existing / respect-partitions mode** (workflow-gated) — re-enable pushing imported walls
   when the user wants to work *around* their existing fit-out (via S2/S4 controls).
 
