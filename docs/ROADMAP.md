@@ -80,11 +80,13 @@ Make generated plans read like a senior architect's work, not a diagram.
   field always keeps the majority. Real DWG: rooms 28→20, open field now 62% of area (was a minority),
   54 workstations @ 13 m²/ws, density in band. Explicit S5 counts still win; only derived defaults got
   leaner. 84 Rust tests. `layout.rs`, `suggestProgram.ts`.
-- [~] **Reach ~80–110 workstations on 882m².** Still caps ~54 — a GEOMETRY limit, not a ratio one: the
-  plate's dominant wing is a narrow 7×29m strip (~54 desks); the bare plate holds 127 but the per-wing
-  band+spine overhead costs ~3 desks/room. Needs an `allocate_rooms`/M4 room-concentration rework (rooms
-  hug fewer wings), not more ratio tuning. Plan is already professional + open-dominant, so this is
-  upside, not a blocker.
+- [x] **Room concentration → 80+ workstations.** `allocate_rooms` now gives field (dominant) wings ZERO
+  band capacity — the largest wing packs desks edge-to-edge with no room band/spine eating it; rooms
+  concentrate in the smaller wings. Real DWG: **Open 75→80+ desks, Balanced 67→76**, largest wing is a
+  pure desk field across every strategy, density in the 8-12 band. 91 Rust tests. (Cellular stays ~61 by
+  design; program_fit dips as rooms overflow the reserved desk area — the inherent trade-off.)
+- [~] **Circulation dipped to ~50** on the real plate (per-wing spines removed to free the desk field) —
+  the circulation-depth pass (Track B, in flight) restores it via a proper spine hierarchy.
 - [x] **Smarter test-fits** (user: "needs to be smarter"). `Strategy {Open,Balanced,Cellular}` shifts
   the derived mix + scoring weights so A/B/C are genuinely distinct (real DWG: Open 76 desks/5 offices →
   Balanced 67/10 → Cellular 61/19; gallery labels "A · Open / B · Balanced / C · Cellular"); explicit
@@ -129,8 +131,12 @@ Make generated plans read like a senior architect's work, not a diagram.
 ## Track G — AI backbone
 - [x] Drivers: Local intent parser · Cerebras LLM · Claude (`/api/claude`); 3-way toggle; preview→approve
   →undo; consequence reasoning; Claude soft-goal candidate evaluator.
-- [ ] Workflow-aware AI: reference rooms by number ("tell me about room 502"), program-from-brief,
-  in-loop generation steering.
+- [x] **AI-in-the-loop steering** — `ai/refine.ts` + `refineWithAI`: Claude proposes bounded program
+  deltas (`adjust_program` tool) → apply → regenerate → keep only if it improves on a fixed yardstick →
+  converge (cap 3). "Refine with AI" button in GenerateCard; clean no-op without a key. Live-verified
+  (Claude proposed a corridor/weight tweak, loop scored it below base, reverted, converged).
+- [x] **Regenerate variety** — each press slides to a disjoint seed window (was deterministic-identical).
+- [ ] Workflow-aware AI: reference rooms by number ("tell me about room 502"), program-from-brief.
 
 ## Track H — 3D / visualization
 - [x] Three.js 2D↔3D viewer, walkthrough, Enscape-like render tier (sky/GTAO/bloom), glass/PBR,
