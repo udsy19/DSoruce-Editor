@@ -15,7 +15,7 @@
 // the visible EditorView as a forward-compatible stub (the routes already
 // exist, so #/p/:pid/program deep-links today and gains its own chrome later).
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { EditorView, type EditorController } from '../App'
 import { navigate, useRoute } from './route'
 import { ProjectLibrary } from './ProjectLibrary'
@@ -23,8 +23,8 @@ import { CreateProject } from './CreateProject'
 import { WizardChrome } from './WizardChrome'
 import { SpaceStep } from './steps/SpaceStep'
 import { ProgramStep } from './steps/ProgramStep'
-import { getProject } from '../persist/projects'
-import { defaultSpec, programSpecToProgram } from '../program/spec'
+import { GenerateStep } from './steps/GenerateStep'
+import { getProject, type ProjectRecord } from '../persist/projects'
 
 export function AppShell() {
   const route = useRoute()
@@ -42,13 +42,36 @@ export function AppShell() {
   // editor directly.
   const onSpace = route.name === 'wizard' && route.step === 'space'
   const onProgram = route.name === 'wizard' && route.step === 'program'
-  const editorVisible =
-    route.name === 'editor' || (route.name === 'wizard' && route.step === 'generate')
+  const onGenerate = route.name === 'wizard' && route.step === 'generate'
+  // The Generate step steers the mounted-behind editor (runGenerate /
+  // openCandidate) but shows its own gallery chrome; only the plain editor
+  // route shows the editor directly.
+  const editorVisible = route.name === 'editor'
 
   // Whether the Space step has a plate loaded — gates the chrome's Next button
   // (WizardChrome owns Back/Next; the step reports readiness up).
   const [spaceReady, setSpaceReady] = useState(false)
   const [programReady, setProgramReady] = useState(false)
+
+  // The active project (wizard or editor route) — its real identity brands the
+  // exports (workflow.md §2). Loaded here and threaded into EditorView so the
+  // ExportMenu drops the 'Untitled Plan' placeholder.
+  const activePid =
+    route.name === 'wizard' || route.name === 'editor' ? route.projectId : undefined
+  const [activeProject, setActiveProject] = useState<ProjectRecord | null>(null)
+  useEffect(() => {
+    let alive = true
+    if (!activePid) {
+      setActiveProject(null)
+      return
+    }
+    void getProject(activePid).then((r) => {
+      if (alive) setActiveProject(r ?? null)
+    })
+    return () => {
+      alive = false
+    }
+  }, [activePid])
 
   return (
     <>
@@ -100,21 +123,10 @@ export function AppShell() {
           title="State the program"
           subtitle="Say what to build — how many of each room type, the desk type and size, and where offices should sit. Start from a template or a headcount, then tune every count in Detailed."
           onBack={() => navigate({ name: 'wizard', projectId: route.projectId, step: 'space' })}
-          onNext={async () => {
-            // Resolve the persisted ProgramSpec into the core Program and set it
-            // on the (mounted-behind) editor, then advance to Generate.
-            const rec = await getProject(route.projectId)
-            const spec = rec?.draft?.spec ?? defaultSpec(rec?.draft?.readouts?.usableAreaM2 ?? null)
-            // Re-run the test-fit so the anchor pins placed in THIS step land in
-            // the document (workflow.md §3.5), then set the resolved program. Order
-            // matters: testFit rebuilds the doc, setProgram then arms generate.
-            editorRef.current?.testFit({
-              areaPolygon: rec?.draft?.areaPolygon,
-              markers: rec?.draft?.markers,
-              anchors: rec?.draft?.anchors,
-              silent: true,
-            })
-            editorRef.current?.setProgram(programSpecToProgram(spec))
+          onNext={() => {
+            // Advance to Generate — the GenerateStep authoritatively re-arms the
+            // editor (test-fit with area/markers/anchors + the resolved Program)
+            // on entry, so there's nothing to prime here.
             navigate({ name: 'wizard', projectId: route.projectId, step: 'generate' })
           }}
           nextLabel="Next: Generate"
@@ -128,11 +140,22 @@ export function AppShell() {
           />
         </WizardChrome>
       )}
+      {onGenerate && (
+        <WizardChrome
+          current="generate"
+          title="Pick a test-fit"
+          subtitle="The engine generated alternatives against your program. Compare their metrics and category winners, then open one to edit — or head back to adjust the brief."
+          onBack={() => navigate({ name: 'wizard', projectId: route.projectId, step: 'program' })}
+          hideNext
+        >
+          <GenerateStep key={route.projectId} projectId={route.projectId} controller={editorRef} />
+        </WizardChrome>
+      )}
       {editorMounted && (
         // display:contents keeps the wrapper out of layout so `.app` fills
         // #root; display:none hides the whole subtree when inactive.
         <div style={{ display: editorVisible ? 'contents' : 'none' }}>
-          <EditorView ref={editorRef} />
+          <EditorView ref={editorRef} project={activeProject} />
         </div>
       )}
     </>

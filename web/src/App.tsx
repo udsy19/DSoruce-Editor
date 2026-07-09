@@ -58,6 +58,7 @@ import {
   assignToProject,
   type SavedPlan,
 } from './persist/plans'
+import type { ProjectRecord } from './persist/projects'
 import { noteChange, listHistory, restoreEntry, type HistoryEntry } from './persist/history'
 import { comparePlans, snapshotThumb, type PlanComparison } from './plans/compare'
 import { commitCadToPlan } from './cad/commit'
@@ -145,6 +146,13 @@ export interface EditorController {
    *  re-syncs the mounted GenerateCard so its form + a Generate click use it. */
   setProgram(p: Program): void
   runGenerate(p: Program, o?: { maxIter?: number; target?: number; keepConfirmed?: boolean }): GenResult | null
+  /** Make a chosen Generate-step candidate the live document AND persist it as a
+   *  library floor (linked to the project when given). Returns the saved plan id
+   *  so the wizard can deep-link the editor at #/p/:pid/f/:planId. */
+  openCandidate(
+    c: Candidate,
+    project?: { id: string; name: string; floor: string },
+  ): Promise<string | null>
   setMode(m: '2d' | '3d' | 'import'): void
   ec(): EditorCanvas | null
   drawingCanvas(): DrawingCanvas | null
@@ -153,7 +161,16 @@ export interface EditorController {
   roomRefs(): Map<number, string>
 }
 
-export const EditorView = forwardRef<EditorController>(function EditorView(_props, ref) {
+/** The active project (from the wizard/editor route) — threads real identity
+ *  (name/address/logo/floor) into the exports. Null on the dev #/editor route. */
+export interface EditorViewProps {
+  project?: ProjectRecord | null
+}
+
+export const EditorView = forwardRef<EditorController, EditorViewProps>(function EditorView(
+  { project = null },
+  ref,
+) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const coordRef = useRef<HTMLSpanElement>(null)
   const scaleRef = useRef<HTMLSpanElement>(null)
@@ -369,6 +386,36 @@ export const EditorView = forwardRef<EditorController>(function EditorView(_prop
     await refreshLibrary()
   }
 
+  /** Carry a chosen Generate-step candidate into the editor: make it live and
+   *  save it as a project floor so it deep-links + persists. Mirrors
+   *  saveCandidateToLibrary but sets the project link (workflow.md §2) and
+   *  returns the id. Kept in render scope (fresh drawing/bindings/planView) and
+   *  reached from the memoized controller via a ref, like onSaveRef. */
+  const openCandidateInEditor = async (
+    c: Candidate,
+    proj?: { id: string; name: string; floor: string },
+  ): Promise<string | null> => {
+    const ec = ecRef.current
+    if (!ec) return null
+    ec.applyCandidate(c.snap)
+    const saved = buildSavedPlan(ec, proj ? `${proj.name} · ${proj.floor}` : `Option · seed ${c.seed}`, {
+      drawing,
+      bindings,
+      ui: { mode: '2d', planView },
+      snapshot: c.snap as string,
+      thumb: c.thumb,
+      project: proj ? { projectId: proj.id, projectName: proj.name, floor: { label: proj.floor, index: 0 } } : undefined,
+    })
+    await putPlan(saved)
+    setCurrentPlanId(saved.id)
+    setSelItem(null)
+    setMode('2d')
+    if (panelTab === 'library') await refreshLibrary()
+    return saved.id
+  }
+  const openCandidateRef = useRef(openCandidateInEditor)
+  openCandidateRef.current = openCandidateInEditor
+
   const openSavedPlan = (p: SavedPlan) => {
     const ec = ecRef.current
     if (!ec) return
@@ -542,6 +589,7 @@ export const EditorView = forwardRef<EditorController>(function EditorView(_prop
               keepConfirmed: o?.keepConfirmed ?? false,
             })
           : null,
+      openCandidate: (c, proj) => openCandidateRef.current(c, proj),
       setMode,
       ec: () => ecRef.current,
       drawingCanvas: () => drawCanvasRef.current,
@@ -556,7 +604,7 @@ export const EditorView = forwardRef<EditorController>(function EditorView(_prop
         <div className="brand">
           <span className="brand-mark" aria-hidden />
           <span className="brand-name">DSOURCE</span>
-          <span className="brand-doc">/ Untitled Plan</span>
+          <span className="brand-doc">/ {project?.name ?? 'Untitled Plan'}</span>
         </div>
         <div className="topbar-right">
           <div className="mode-toggle" role="group" aria-label="View mode">
@@ -651,7 +699,7 @@ export const EditorView = forwardRef<EditorController>(function EditorView(_prop
               </>
             )}
           </button>
-          <ExportMenu ec={ec} mode={mode} drawing={drawing} bindings={bindings} candidates={candidates} roomMarkers={roomMarkersRef} />
+          <ExportMenu ec={ec} mode={mode} drawing={drawing} bindings={bindings} candidates={candidates} roomMarkers={roomMarkersRef} project={project} />
           <button
             className="icon-btn"
             onClick={() => setHelpOpen(true)}
@@ -999,6 +1047,7 @@ function ExportMenu({
   bindings,
   candidates,
   roomMarkers,
+  project,
 }: {
   ec: EditorCanvas | null
   mode: '2d' | '3d' | 'import'
@@ -1007,9 +1056,16 @@ function ExportMenu({
   candidates: Candidate[]
   /** Editor-coord room markers captured at test-fit (ref → Room ID resolution). */
   roomMarkers: React.RefObject<EditorMarker[]>
+  /** Active project — its identity brands the report + takeoff (workflow.md §2/§6). */
+  project: ProjectRecord | null
 }) {
   const [open, setOpen] = useState(false)
   const importMode = mode === 'import' && !!drawing
+  // Real project identity → exporter meta; falls back to the legacy placeholder
+  // on the dev #/editor route (no project). (workflow.md §2 replaces App.tsx's
+  // hard-coded 'Untitled Plan'/'1'.)
+  const projectName = project?.name ?? 'Untitled Plan'
+  const floorLabel = project?.floor ?? '1'
 
   const exportCSV = () => {
     if (!ec) return
@@ -1069,14 +1125,14 @@ function ExportMenu({
         specTotalInr: importSpecTotal(buildCategoryGroups(drawing, bindings)),
       })
     } else if (ec) {
-      void exportPlanPDF(ec.getState(), ec.getMetrics(), { project: 'Untitled Plan' })
+      void exportPlanPDF(ec.getState(), ec.getMetrics(), { project: projectName })
     }
     setOpen(false)
   }
 
   const exportIfc = () => {
     if (!ec) return
-    downloadIFC(ec.getState(), 'dsource-plan.ifc', { project: 'Untitled Plan' })
+    downloadIFC(ec.getState(), 'dsource-plan.ifc', { project: projectName })
     setOpen(false)
   }
 
@@ -1095,7 +1151,14 @@ function ExportMenu({
       : ec
         ? [{ name: 'Alternative A', snapshot: ec.snapshot() }]
         : []
-    if (alts.length) void exportSpacePlanningReport(alts, { project: 'Untitled Plan' })
+    if (alts.length)
+      void exportSpacePlanningReport(alts, {
+        project: projectName,
+        client: project?.propertyName,
+        address: project?.address,
+        floor: project?.floor,
+        logo: project?.logo,
+      })
     setOpen(false)
   }
 
@@ -1105,7 +1168,7 @@ function ExportMenu({
     // Room markers dropped in the Space step win the Room ID where they sit
     // inside a generated zone (workflow.md §3.2); re-resolved against live zones.
     const roomRefs = buildRoomRefs(state.zones ?? [], roomMarkers.current ?? [])
-    exportQuantityTakeoff(state, { bindings, floor: '1', project: 'Untitled Plan', roomRefs })
+    exportQuantityTakeoff(state, { bindings, floor: floorLabel, project: projectName, roomRefs })
     setOpen(false)
   }
 

@@ -29,6 +29,7 @@ export function WizardChrome({
   nextLabel = 'Next',
   nextDisabled = false,
   nextTestId = 'wizard-next',
+  hideNext = false,
   children,
 }: {
   current: WizardStepId
@@ -41,6 +42,9 @@ export function WizardChrome({
   nextDisabled?: boolean
   /** testid of the Next button — per-step so E2E can target e.g. `program-next`. */
   nextTestId?: string
+  /** The terminal step (Generate) exits by picking a candidate, not by a Next
+   *  button — hide it so no dead "Next" dangles at the end of the wizard. */
+  hideNext?: boolean
   children: ReactNode
 }) {
   const idx = STEPS.findIndex((s) => s.id === current)
@@ -92,15 +96,17 @@ export function WizardChrome({
         >
           <Icon name="caret" size={13} /> {backLabel}
         </button>
-        <button
-          type="button"
-          className="empty-btn primary"
-          data-testid={nextTestId}
-          onClick={onNext}
-          disabled={nextDisabled || !onNext}
-        >
-          {nextLabel} <Icon name="caret" size={13} />
-        </button>
+        {!hideNext && (
+          <button
+            type="button"
+            className="empty-btn primary"
+            data-testid={nextTestId}
+            onClick={onNext}
+            disabled={nextDisabled || !onNext}
+          >
+            {nextLabel} <Icon name="caret" size={13} />
+          </button>
+        )}
       </footer>
     </div>
   )
