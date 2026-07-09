@@ -15,6 +15,7 @@ import { CATALOG, catByCategory } from './editor/catalog'
 import { searchBank } from './materialBank/mock'
 import { searchBankLive, bankQueryFor, formatINR, type BankProduct } from './materialBank/client'
 import { Icon } from './ui/icons'
+import { ToolDock, type DockTool } from './ui/ToolDock'
 import { StatsPanel } from './ui/StatsPanel'
 import { LayersPanel } from './ui/LayersPanel'
 import { AgentPanel } from './ai/AgentPanel'
@@ -632,6 +633,30 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
+  // The grouped tool dock's data — assembled from the SAME sources the flat rail
+  // used (select/wall + CATALOG + CAD_RAIL), so there is still one tool list.
+  // `shortcut` mirrors the letters the old rail badges showed; M2 owns the real
+  // key map, so when it exports one, source these from there instead. `meta` is
+  // the non-shortcut hint the rail already surfaced (place size, 'CAD', radius).
+  const TOOL_SHORTCUT: Record<string, string> = { select: 'V', wall: 'W' }
+  const dockTools: DockTool[] = [
+    { id: 'select', icon: 'select', label: 'Select', shortcut: TOOL_SHORTCUT.select },
+    { id: 'wall', icon: 'wall', label: 'Wall', shortcut: TOOL_SHORTCUT.wall },
+    ...CATALOG.map((it) => ({
+      id: `place:${it.category}`,
+      icon: it.icon,
+      label: it.label,
+      meta: `${it.w} × ${it.h} m`,
+      swatch: it.color,
+    })),
+    ...CAD_RAIL.map((t) => ({
+      id: `cad:${t.id}`,
+      icon: t.icon,
+      label: t.label,
+      meta: t.hint,
+    })),
+  ]
+
   /** The qbiq loop: extract the imported floor plate → seed the document with
    *  its boundary walls → jump to 2D where the autonomous generator runs
    *  inside the real building shell. */
@@ -888,33 +913,7 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
         <nav className="rail" aria-label="Tools">
           <span className="rail-avatar" aria-hidden />
           <div className="rail-sep" />
-          <RailButton id="select" tool={tool} onClick={pickTool} icon="select" tip="Select" hint="V" />
-          <RailButton id="wall" tool={tool} onClick={pickTool} icon="wall" tip="Wall" hint="W" />
-          <div className="rail-sep" />
-          {CATALOG.map((it) => (
-            <RailButton
-              key={it.category}
-              id={`place:${it.category}`}
-              tool={tool}
-              onClick={pickTool}
-              icon={it.icon}
-              tip={it.label}
-              hint={`${it.w} × ${it.h} m`}
-              swatch={it.color}
-            />
-          ))}
-          <div className="rail-sep" />
-          {CAD_RAIL.map((t) => (
-            <RailButton
-              key={t.id}
-              id={`cad:${t.id}`}
-              tool={tool}
-              onClick={pickTool}
-              icon={t.icon}
-              tip={t.label}
-              hint={t.hint}
-            />
-          ))}
+          <ToolDock tools={dockTools} active={tool} onPick={pickTool} />
           <span className="rail-spring" />
           <button
             className={aiOpen ? 'rail-fab on' : 'rail-fab'}
@@ -1452,42 +1451,6 @@ function ExportMenu({
         </div>
       )}
     </div>
-  )
-}
-
-function RailButton({
-  id,
-  tool,
-  onClick,
-  icon,
-  tip,
-  hint,
-  swatch,
-}: {
-  id: string
-  tool: string
-  onClick: (t: string) => void
-  icon: string
-  tip: string
-  hint?: string
-  swatch?: string
-}) {
-  const active = tool === id
-  return (
-    <button
-      className={active ? 'rail-btn on' : 'rail-btn'}
-      onClick={() => onClick(id)}
-      aria-pressed={active}
-      aria-label={hint ? `${tip} (${hint})` : tip}
-      data-testid={id}
-    >
-      <Icon name={icon} />
-      {swatch && <span className="rail-swatch" style={{ background: swatch }} />}
-      <span className="rail-tip">
-        <span className="rail-tip-name">{tip}</span>
-        {hint && <span className="rail-tip-hint num">{hint}</span>}
-      </span>
-    </button>
   )
 }
 
