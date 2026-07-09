@@ -15,8 +15,11 @@ import { bankCategoryForItem } from '../materialBank/office'
 const DESK_CATEGORIES = new Set(['desk', 'workstation-bench'])
 /** BCO 2023 / NBC 2016 design occupancy for general workspace (m²/person). */
 const M2_PER_PERSON = 10
-/** Open-plan share of headcount seated at open workstations (desks ≈ 0.85·N). */
-const OPEN_SHARE = 0.85
+/** Open-plan share of headcount seated at open workstations. 0.90 mirrors the
+ *  Rust `OPEN_SHARE` (raised from 0.85 in the lean qbiq-dominant recalibration:
+ *  the reference floor runs ~0.95 open) so the desks the panel suggests match
+ *  the desk target the generator fills to. */
+const OPEN_SHARE = 0.9
 /** People per meeting room — the realistic office ratio (~1 per 15–20), NOT the
  * old ~1 per detected furniture cluster which doubled the room count. */
 const PEOPLE_PER_MEETING = 17

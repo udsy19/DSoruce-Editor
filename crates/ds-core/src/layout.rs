@@ -347,15 +347,29 @@ impl SpaceProgram {
     /// | Meeting 4P  | N/24             | 2.7×3.3       |
     /// | Meeting 6–8P| N/40             | 3.6×4.2       |
     /// | Boardroom   | 1 if N≥60        | 4.5×6.5       |
-    /// | Phone booth | N/12             | 1.3×1.1       |
-    /// | Focus       | N/30             | 1.8×2.4       |
-    /// | Collab      | ceil(desks/8)/8 settings | 4.8×4.2 |
+    /// | Phone booth | N/25             | 1.3×1.1       |
+    /// | Focus       | N/60             | 1.8×2.4       |
+    /// | Collab      | ceil(desks/8)/12 settings | 4.8×4.2 |
     /// | Reception   | 1 if N≥20        | 4.0×3.2       |
     /// | Pantry      | 1, max(9, 0.35N) m² | depth 3.0/3.6 |
     /// | Print       | N/50 (open)      | 2.0×1.5       |
     /// | IT/server   | 1                | 3.0×2.4       |
     /// | Storage     | 1                | 3.0×2.0       |
     /// | Wellness    | 1 if N≥50        | 3.0×2.4       |
+    ///
+    /// LEAN, qbiq-DOMINANT recalibration (spec §1 / docs/reference/qbiq): the
+    /// reference Crystal Tower floor is **141 open desks : 7 offices : 12
+    /// meeting rooms** on ~1,427 m² — enclosed support is a SMALL minority and
+    /// the open field dominates. The pre-lean ratios (booth N/12, focus N/30)
+    /// over-roomed a large floor (28 support rooms ate ~40% of the plate, seating
+    /// only ~52 desks). Rebalanced toward the reference: **phone booths N/25**
+    /// (qbiq shows ~0 dedicated booths; 1/25 keeps a lean call-privacy provision
+    /// vs. the old booth sprawl), **focus N/60** (qbiq's mix is offices+meeting,
+    /// negligible quiet-rooms — halve), and **collab ÷12** (one open breakout per
+    /// ~90 people, not one per 64). Cabins/pantry/reception/IT/storage stay —
+    /// they are the essentials qbiq still shows. A hard `SUPPORT_AREA_CAP`
+    /// (below) then guarantees the derived support program can never crowd out
+    /// the open desk field, whatever the headcount.
     ///
     /// Meeting-seat mix ≈ 50/30/20 small/medium/large by count. The plate cap
     /// (`N ≤ area/7.0`) bounds absurd inputs while still letting a modest
@@ -368,7 +382,7 @@ impl SpaceProgram {
         };
         let n = headcount.min(cap).max(1) as u32;
         let ceil_div = |num: u32, den: u32| num.div_ceil(den);
-        let desks = ((n as f64) * 0.85).ceil() as u32;
+        let desks = ((n as f64) * OPEN_SHARE).ceil() as u32;
 
         let mut reqs = vec![
             SpaceReq { kind: SpaceKind::Cabin, count: ceil_div(n, 25), w: 3.0, d: 3.3 },
@@ -378,13 +392,19 @@ impl SpaceProgram {
         if n >= 60 {
             reqs.push(SpaceReq { kind: SpaceKind::Boardroom, count: 1, w: 4.5, d: 6.5 });
         }
-        reqs.push(SpaceReq { kind: SpaceKind::PhoneBooth, count: ceil_div(n, 12), w: 1.3, d: 1.1 });
-        reqs.push(SpaceReq { kind: SpaceKind::Focus, count: ceil_div(n, 30), w: 1.8, d: 2.4 });
-        // Collab: 1 seat per 8 desks, ~8 seats per open setting.
+        // Phone booths: LEAN 1/25 (was 1/12). qbiq's reference floor carries no
+        // dedicated booth band; 1/25 keeps a token call-privacy provision without
+        // the ~8-booth sprawl that ate the real 882 m² floor.
+        reqs.push(SpaceReq { kind: SpaceKind::PhoneBooth, count: ceil_div(n, 25), w: 1.3, d: 1.1 });
+        // Focus rooms: LEAN 1/60 (was 1/30). The reference mix is offices +
+        // meeting with negligible quiet-rooms; halve toward it.
+        reqs.push(SpaceReq { kind: SpaceKind::Focus, count: ceil_div(n, 60), w: 1.8, d: 2.4 });
+        // Collab: 1 seat per 8 desks, ~12 seats per open breakout (was 8) — one
+        // lean setting per ~90 people rather than a large room per 64.
         let collab_seats = ceil_div(desks, 8);
         reqs.push(SpaceReq {
             kind: SpaceKind::Collab,
-            count: ceil_div(collab_seats, 8).max(1),
+            count: ceil_div(collab_seats, 12).max(1),
             w: 4.8,
             d: 4.2,
         });
@@ -401,6 +421,34 @@ impl SpaceProgram {
         reqs.push(SpaceReq { kind: SpaceKind::Storage, count: 1, w: 3.0, d: 2.0 });
         if n >= 50 {
             reqs.push(SpaceReq { kind: SpaceKind::Wellness, count: 1, w: 3.0, d: 2.4 });
+        }
+
+        // --- Lean cap: the open desk field ALWAYS keeps the majority ----------
+        // qbiq open-plan dominance (spec §1): the DERIVED support program must
+        // never claim more than SUPPORT_AREA_CAP of the plate, so the open field
+        // stays the majority of usable area on ANY headcount. When an over-set
+        // headcount on a modest plate would exceed the cap, trim the most
+        // DISCRETIONARY rooms first — phone booths, then focus, then collab, then
+        // print — never the essentials (cabins/reception/pantry/IT/storage).
+        // Meeting-family rooms are excluded from the sum: they are placed via the
+        // `meeting_rooms` override, not the support path (see `support_jobs`).
+        let is_support = |k: SpaceKind| {
+            !matches!(k, SpaceKind::Meeting | SpaceKind::Meeting4P | SpaceKind::Meeting6P | SpaceKind::Boardroom)
+        };
+        let support_area = |reqs: &[SpaceReq]| -> f64 {
+            reqs.iter().filter(|r| is_support(r.kind)).map(|r| r.area()).sum()
+        };
+        if plate_area_m2 > 0.0 {
+            let cap_area = SUPPORT_AREA_CAP * plate_area_m2;
+            for trim in [SpaceKind::PhoneBooth, SpaceKind::Focus, SpaceKind::Collab, SpaceKind::Print] {
+                while support_area(&reqs) > cap_area {
+                    match reqs.iter_mut().find(|r| r.kind == trim && r.count > 0) {
+                        Some(r) => r.count -= 1,
+                        None => break,
+                    }
+                }
+            }
+            reqs.retain(|r| r.count > 0);
         }
 
         SpaceProgram { headcount: n, desks, reqs }
@@ -424,9 +472,23 @@ impl SpaceProgram {
 /// happened to carry (the field bug: 24 fixed desks on any plate → ~20 m²/person
 /// on the real 843 m² building).
 const TARGET_M2_PER_PERSON: f64 = 10.0;
-/// Open-plan share of the headcount seated at open workstations (spec §1.1):
-/// desks ≈ 0.85·N, the rest in meeting/collab seats.
-const OPEN_SHARE: f64 = 0.85;
+/// Open-plan share of the headcount seated at open workstations. Raised to
+/// **0.90** (spec default was 0.85) as part of the lean, qbiq-dominant
+/// recalibration: the reference Crystal Tower floor runs 141 open / 149 seats ≈
+/// **0.95** open share — an office where open desks, not enclosed rooms, are the
+/// overwhelming majority. 0.90 moves the derived desk target toward that
+/// dominance (so a large plate reaches ~80+ workstations instead of ~52) while
+/// still leaving a real 10% of headcount for meeting/collab seats. Drives both
+/// `SpaceProgram::derive`'s `desks` and `desk_target` so rooms and desks scale
+/// from the SAME headcount (M5 invariant).
+const OPEN_SHARE: f64 = 0.90;
+/// Ceiling on the DERIVED support program's net area as a fraction of the plate
+/// (spec §1 / qbiq open-plan dominance). `SpaceProgram::derive` trims its most
+/// discretionary rooms until the enclosed+open support program fits under this,
+/// guaranteeing the open desk field keeps the MAJORITY of usable area on any
+/// headcount. 0.22 leaves the normal fill (~0.17 at N = area/10) untouched and
+/// bites only on an over-set headcount squeezed onto a modest plate.
+const SUPPORT_AREA_CAP: f64 = 0.22;
 
 /// The design headcount for a program: explicit `program.headcount`, else the
 /// plate filled to the professional density (`plate_area / TARGET_M2_PER_PERSON`)
@@ -3429,35 +3491,43 @@ mod tests {
         room_from_corners(&REAL_PLATE)
     }
 
-    /// FIELD-FIRST rebalance (docs/design/testfit-pro-quality.md §1): with the
-    /// FULL professional program (support_spaces on) on the user's real ~843 m²
-    /// multi-wing plate, the open workstation field is the MAJORITY use — the
-    /// dominant wing is reserved for desks, and the support rooms fit around it.
+    /// LEAN, qbiq-DOMINANT rebalance (docs/design/testfit-pro-quality.md §1 +
+    /// docs/reference/qbiq): with the FULL professional program (support_spaces
+    /// on) on the user's real ~843 m² multi-wing plate, the open workstation field
+    /// is the CLEAR majority — by seat count, by room count, AND by usable area.
     ///
-    /// Regression bar for the two field-theft bugs this change fixed:
-    ///  1. the pocket pass dropped deep support rooms (pantry/collab/storage)
-    ///     into the middle of the dominant wing's daylit desk field, and
-    ///  2. one deep room deepened that wing's whole long band,
-    /// which together cratered the field to ~14–23 desks against ~34 rooms
-    /// (rooms outnumbering workstations — the opposite of a real office).
+    /// This is the test the lean recalibration is measured by. Before it, the
+    /// derived program over-roomed the floor (booth N/12, focus N/30, 0.85 open
+    /// share → ~28 support rooms eating ~40% of the plate, seating only ~52
+    /// desks). After (booth N/25, focus N/60, collab ÷12, `SUPPORT_AREA_CAP`,
+    /// 0.90 open share): the support set drops to ~23 rooms, the open field grows
+    /// to ~62–64% of usable area, and the best candidate seats ~67 workstations —
+    /// materially denser while staying inside the professional band.
+    ///
+    /// Also the regression bar for the two field-theft bugs this pipeline fixed:
+    /// deep support rooms landing in the dominant wing's desk field, and one deep
+    /// room deepening a whole band — which used to crater the field below the room
+    /// count (rooms outnumbering workstations, the opposite of a real office).
     #[test]
     fn real_plate_open_field_dominates_the_program() {
         let area = geometry::polygon_area(&poly_of(&real_plate_doc()));
         // The program a fresh professional fit derives for this plate (mirrors
         // the app's headcount-driven `suggestProgram`): headcount at 10 m²/person,
-        // desks at the 0.85 open share, a MODEST meeting count (~1 per 17 people).
+        // desks at the 0.90 open share, a MODEST meeting count (~1 per 17 people).
         let headcount = (area / 10.0).round() as u32;
         let mut program = Program::default();
         program.headcount = Some(headcount);
-        program.desks = ((headcount as f64) * 0.85).round() as u32;
+        program.desks = ((headcount as f64) * OPEN_SHARE).round() as u32;
         program.meeting_rooms = 5;
         program.meeting_w = 3.0;
         program.meeting_h = 3.0;
 
+        let mut best_desks = 0usize;
         for seed in 1..=4u64 {
             let mut doc = real_plate_doc();
             generate(&mut doc, &program, seed, false);
             let desks = doc.components.iter().filter(|c| c.category == "Desk").count();
+            best_desks = best_desks.max(desks);
             let rooms = doc
                 .zones
                 .iter()
@@ -3475,37 +3545,59 @@ mod tests {
                 .map(|z| z.capacity() as f64)
                 .sum();
             let seats = desks as f64 + meeting_seats;
+            // Open desk field vs the rest of the PROGRAMMED (non-circulation,
+            // non-core) floor — the qbiq "open dominates usable area" check.
+            let ws_area: f64 = doc.zones.iter().filter(|z| z.zone_type == ZoneType::Workspace).map(|z| z.area()).sum();
+            let usable: f64 = doc.zones.iter().filter(|z| !matches!(z.zone_type, ZoneType::Circulation | ZoneType::Core)).map(|z| z.area()).sum();
 
-            // (a) OPEN-DESK DOMINANT: workstations are the majority of all seats.
+            // (a) OPEN-DESK DOMINANT by SEATS: workstations are the majority.
             assert!(
                 desks as f64 > 0.6 * seats,
                 "seed {seed}: workstations {desks} are not the majority of {seats:.0} seats"
             );
-            // (b) The field fills to a professional headcount: at least the open
-            // share of a 45-person floor (this 843 m² plate derives ~84).
-            assert!(desks >= 45, "seed {seed}: only {desks} workstations on an 843 m² plate");
-            // (c) Density in the professional band (seat-based m²/person, 8–12).
+            // (b) OPEN-DESK DOMINANT by AREA: the open field keeps the majority of
+            // usable floor (target ≥55% on a large plate; measured ~0.62 here).
+            assert!(
+                ws_area > 0.55 * usable,
+                "seed {seed}: open field {ws_area:.0} m² is only {:.0}% of {usable:.0} m² usable (< 55%)",
+                100.0 * ws_area / usable
+            );
+            // (c) OPEN-DESK DOMINANT by COUNT: far more workstations than rooms —
+            // a lean support set, never the ~34-room field-eater (rooms < desks).
+            assert!(
+                (rooms as f64) < 0.6 * (desks as f64),
+                "seed {seed}: {rooms} rooms is not a lean minority against {desks} workstations"
+            );
+            // (d) Every seed fills materially past the ~52-desk heavy-room floor.
+            assert!(desks >= 52, "seed {seed}: only {desks} workstations on an 843 m² plate");
+            // (e) Density in the professional band (seat-based m²/person, 8–12).
             let m2pp = area / seats;
             assert!(
                 (8.0..=12.0).contains(&m2pp),
                 "seed {seed}: {m2pp:.1} m²/seat outside the professional 8–12 band"
             );
-            // (d) Rooms still placed AND sane — a real support set, never the
-            // 34-room field-eater. The derived program is ~28 rooms; most fit.
+            // (f) Rooms still placed AND sane — a real, lean support set.
             assert!(
-                (12..=30).contains(&rooms),
-                "seed {seed}: {rooms} rooms is not a sane professional support set"
+                (12..=26).contains(&rooms),
+                "seed {seed}: {rooms} rooms is not a sane lean professional support set"
             );
-            // (e) Walkable.
+            // (g) Walkable.
             let circ = circulation::evaluate(&doc, &CirculationConfig::default());
             assert!(circ.score >= 54.0, "seed {seed}: circulation {:.1} < 54", circ.score);
-            // (f) No overlaps, everything on the plate.
+            // (h) No overlaps, everything on the plate.
             assert_no_overlaps(&doc, "real plate full program");
             let poly = poly_of(&doc);
             for c in &doc.components {
                 assert!(footprint_in_plate(c, &poly), "seed {seed}: {} escapes the plate", c.label);
             }
         }
+        // (i) The candidate the app SHOWS (best of the seed gallery) seats a
+        // materially higher count than the ~52 the pre-lean program managed —
+        // the headline win of the lean recalibration.
+        assert!(
+            best_desks >= 64,
+            "best seed seated only {best_desks} workstations (< 64: lean rebalance regressed)"
+        );
     }
 
     fn poly_of(doc: &Document) -> Vec<Point> {
@@ -4270,10 +4362,11 @@ mod tests {
             // A huge plate so the area cap never bites (pure headcount derivation).
             let sp = SpaceProgram::derive(n, 100_000.0);
             assert_eq!(sp.headcount, n as u32, "headcount preserved on a large plate");
-            assert_eq!(sp.desks, ((n as f64) * 0.85).ceil() as u32, "desks = ceil(0.85 N)");
+            assert_eq!(sp.desks, ((n as f64) * OPEN_SHARE).ceil() as u32, "desks = ceil(OPEN_SHARE N)");
             // Density lands in the BCO/NBC 8-12 band (spec: ~8-12 m2/person NIA;
-            // measured 10.78 / 8.97 / 7.60 at N=20/60/150 - the 7.5 floor gives
-            // the densest large-N case a sliver of headroom).
+            // measured 10.96 / 9.08 / 7.69 at N=20/60/150 under the lean, qbiq-
+            // dominant recalibration (0.90 open share + leaner booth/focus/collab)
+            // - the 7.5 floor gives the densest large-N case a sliver of headroom).
             let m2pp = sp.area_per_person();
             assert!((7.5..=12.0).contains(&m2pp), "N={n}: {m2pp:.2} m2/person out of the 7.5-12 band");
             // Palette gates (spec 1.1 thresholds).
@@ -4622,6 +4715,45 @@ mod tests {
             .map(|z| z.capacity() as f64)
             .sum();
         (desks + mseats, geometry::polygon_area(&poly_of(doc)))
+    }
+
+    /// Lean-cap SMALL-plate sanity (docs/design/testfit-pro-quality.md §1): the
+    /// `SUPPORT_AREA_CAP` must lean a small floor's program without STRIPPING it —
+    /// an 18×12 m (216 m²) plate keeps its essential rooms (a real office still
+    /// has reception/pantry/IT/storage/a cabin), just not the booth/focus/collab
+    /// sprawl a big floor gets. The open desk field stays the dominant use and the
+    /// density stays professional. Guards the cap from over-trimming to a bare
+    /// desk grid on modest plates.
+    #[test]
+    fn small_plate_keeps_a_sane_lean_program() {
+        // App-representative fresh fit (mirrors `suggestProgram`): headcount at
+        // 10 m²/person, desks at the 0.90 open share, a modest meeting count and
+        // the app's 3×3 meeting footprint.
+        let area = 18.0_f64 * 12.0;
+        let headcount = (area / 10.0).round() as u32;
+        let mut program = Program::default();
+        program.headcount = Some(headcount);
+        program.desks = ((headcount as f64) * OPEN_SHARE).round() as u32;
+        program.meeting_rooms = 2;
+        program.meeting_w = 3.0;
+        program.meeting_h = 3.0;
+        let mut doc = room(18.0, 12.0);
+        generate(&mut doc, &program, 1, false);
+        let desks = doc.components.iter().filter(|c| c.category == "Desk").count();
+        let rooms = doc
+            .zones
+            .iter()
+            .filter(|z| matches!(z.zone_type,
+                ZoneType::Meeting | ZoneType::ClosedOffice | ZoneType::Amenity | ZoneType::Collaboration))
+            .count();
+        // Not stripped to a bare grid: the essentials still derive + place.
+        assert!(rooms >= 3, "small plate stripped its program to {rooms} rooms");
+        // But lean: fewer rooms than workstations, open field dominant.
+        assert!(desks > rooms, "small plate seated {desks} desks vs {rooms} rooms — not open-dominant");
+        // And still in the professional density band (with irregular slack).
+        let (seats, area) = seats_and_area(&doc);
+        let m2pp = area / seats;
+        assert!((8.0..=13.0).contains(&m2pp), "small plate {m2pp:.1} m²/person out of the 8–13 band");
     }
 
     /// M5 / field-bug regression: a BARE plate (rectangular sizes + the real
