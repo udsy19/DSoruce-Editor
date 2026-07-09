@@ -120,6 +120,21 @@ Make generated plans read like a senior architect's work, not a diagram.
 - [x] OSNAP engine, CAD ⌘Z, commit-sketch-to-plan (CAD → document walls).
 - [ ] Deferred CAD: array tool (thin), spline, DXF layer-name export for CAD entities.
 
+### Editor UX — Rayon parity (`docs/design/editor-ux-rayon-parity.md`)
+User: "our editor doesn't feel as intuitive/detailed as Rayon… most of it is through the cursor."
+- [x] **M1 Dynamic input** — cursor-first, type-as-you-draw: floating Distance/Angle widget (Tab
+  switches, Enter commits, Esc clears), live per-segment dimension chips, ortho/polar snap (Shift=ortho,
+  Alt=45°), OSNAP wins. Additive on Line + Wall (click-to-place unchanged). Verified: type 5→5.0m wall.
+  `cad/dynamicInput.ts`.
+- [ ] M2 Command palette (⌘K) + real letter shortcuts · M3 context object inspector · M4 live dims on
+  selection + click-to-edit · M5 grouped tool dock · M6 sheets/publish.
+
+### Drawing-set output (`docs/design/drawing-set-generator.md`)
+User showed Rayon drawing-set PDFs as the output bar (`docs/reference/rayon-output/`).
+- 🔄 **First slice** — title block + key plan + cover + TOC + demolition & construction plans + door/
+  window schedule (leverages our unique existing-vs-`generated` wall split). Then: furniture cards +
+  moodboard (reuse takeoff/bank) → sections from 3D → RCP/lighting/electrical layers.
+
 ## Track E — Import & plate
 - [x] DWG/DXF parse (LibreDWG `/api/dwg`), plate extraction (furniture-coverage), keepouts (cores),
   entries, interior-wall extraction, editable imported furniture, palette-place new catalog items.
