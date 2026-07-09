@@ -165,9 +165,13 @@ User showed Rayon drawing-set PDFs as the output bar (`docs/reference/rayon-outp
   fragments → 4 real windows), deterministic label/tag de-collision (shared occupancy + leaders), true
   circle/hex tag glyphs (polyline fans, no arc op), overall perimeter dimension strings. Auto A.NN
   renumbering keeps contents+title blocks in sync. report byte-identical (43/43).
-- [ ] Sections from 3D (agent in flight — orthographic cuts, poché, datums; wire into `sheetSet.ts` at
-  the reserved `sections` slot + flip the manifest flag). Then: RCP/lighting/electrical layers,
-  per-room dimension runs.
+- [x] **Sections from 3D** — `three/sectionRender.ts` (reused Viewer3D meshes + `buildFurniture3D` via
+  shared `WALL_HEIGHT`/`CEILING_HEIGHT`/`furnitureHeight`, OrthographicCamera + clip plane; Canvas2D
+  fallback when no WebGL) + `export/section.ts` (`sectionSheets` → A3 pages: cut-wall poché, beyond in
+  depth-faded elevation, floor/ceiling datum + 2.60 m height dim + F.F.L/C.L tags, scale figures,
+  longitudinal + cross cut). Wired into `buildDrawingSetPdf` at the `sections` slot (auto-numbered,
+  include-filtered, try-wrapped). Verified live: full set 8 pp, both cuts WebGL; Viewer3D unaffected.
+- [ ] Remaining drawing-set: RCP/lighting/electrical layers, per-room dimension runs.
 
 ## Track E — Import & plate
 - [x] DWG/DXF parse (LibreDWG `/api/dwg`), plate extraction (furniture-coverage), keepouts (cores),
