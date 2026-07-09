@@ -32,6 +32,7 @@ import { exportPlanPDF, exportDrawingPDF } from './export/pdf'
 import { downloadIFC } from './export/ifc'
 import { downloadOBJ } from './export/obj'
 import { exportSpacePlanningReport } from './export/report'
+import { exportDrawingSet } from './export/sheetSet'
 import { exportQuantityTakeoff, zoneAtPoint } from './export/takeoff'
 import { restrictDrawing } from './import/area'
 import { healWalls } from './import/heal'
@@ -1265,6 +1266,27 @@ function ExportMenu({
     setOpen(false)
   }
 
+  // Multi-sheet architectural drawing set (cover · contents · demolition ·
+  // construction + door/window schedule). Threads the ProjectRecord into the
+  // title block and the imported `drawing` (when in an import session) so the
+  // demolition plan can show existing-vs-demolished walls.
+  const exportDrawingSetPdf = () => {
+    if (!ec) return
+    void exportDrawingSet(ec.getState(), {
+      meta: {
+        project: projectName,
+        client: project?.propertyName,
+        address: project?.address,
+        floor: project?.floor,
+        logo: project?.logo,
+        studio: 'DSOURCE',
+      },
+      drawing,
+      bindings,
+    })
+    setOpen(false)
+  }
+
   const exportTakeoff = () => {
     if (!ec) return
     const state = ec.getState()
@@ -1314,6 +1336,14 @@ function ExportMenu({
                 data-testid="export-report"
               >
                 Space planning report <span className="hint">multi-page PDF</span>
+              </div>
+              <div
+                className="export-item"
+                role="menuitem"
+                onClick={exportDrawingSetPdf}
+                data-testid="export-drawing-set"
+              >
+                Drawing set <span className="hint">multi-sheet PDF</span>
               </div>
               <div
                 className="export-item"

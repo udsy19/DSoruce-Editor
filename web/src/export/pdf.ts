@@ -312,27 +312,140 @@ function stateBbox(
   return minX === Infinity ? null : { minX, minY, maxX, maxY }
 }
 
+/** New (generated) partition highlight + demolition hatch colors, keyed to the
+ *  drawing-set plan family (docs/design/drawing-set-generator.md §1.3). */
+const PRINT_NEW_WALL = '#3b6fd4' // generated:true partitions (construction plan)
+const PRINT_DEMOLISH = '#d6336c' // removed/existing-to-demolish cross-hatch
+
+/** A wall segment in editor (m) coords — used to pass a caller-derived
+ *  "demolished" set (imported originals no longer in the doc) to the renderer. */
+export interface WallSeg {
+  ax: number
+  ay: number
+  bx: number
+  by: number
+  thickness: number
+}
+
+/**
+ * Which layers of the plan draw. Every flag defaults to the historical
+ * behaviour (all zones/furniture/labels/walls on, no highlight, no hatch) so
+ * `renderPrintCanvas(state, w, h)` with no opts is byte-identical to before —
+ * the report and single-sheet PDF exports are unchanged. The drawing-set
+ * generator flips these to render ONE plan as demolition vs construction vs the
+ * default colored view (the core "one plan, many sheets" win).
+ */
+export interface PlanLayers {
+  zoneFill?: boolean
+  furniture?: boolean
+  roomLabels?: boolean
+  /** existing (generated:false) walls in grey poché */
+  existingWalls?: boolean
+  /** generated (generated:true) partitions drawn at all */
+  generatedWalls?: boolean
+  /** over-stroke generated:true walls in blue (construction plan) */
+  newWallHighlight?: boolean
+  /** red cross-hatch on the caller-supplied `demolished` set (demolition plan) */
+  demolishHatch?: boolean
+}
+
+export interface RenderPlanOpts {
+  layers?: PlanLayers
+  /** Demolished wall segments (editor coords) drawn as red cross-hatch. */
+  demolished?: WallSeg[]
+}
+
+/** Fill a wall-thickness rect along a→b with a diagonal cross-hatch + outline. */
+function crossHatchSeg(
+  ctx: CanvasRenderingContext2D,
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+  halfW: number,
+  color: string,
+): void {
+  const dx = bx - ax
+  const dy = by - ay
+  const len = Math.hypot(dx, dy) || 1
+  const ux = dx / len
+  const uy = dy / len
+  const nx = -uy * halfW
+  const ny = ux * halfW
+  const c = [
+    [ax + nx, ay + ny],
+    [bx + nx, by + ny],
+    [bx - nx, by - ny],
+    [ax - nx, ay - ny],
+  ]
+  ctx.save()
+  ctx.beginPath()
+  ctx.moveTo(c[0][0], c[0][1])
+  for (let i = 1; i < 4; i++) ctx.lineTo(c[i][0], c[i][1])
+  ctx.closePath()
+  ctx.clip()
+  // Diagonal hatch across the segment's bbox, both directions.
+  const minX = Math.min(...c.map((p) => p[0]))
+  const maxX = Math.max(...c.map((p) => p[0]))
+  const minY = Math.min(...c.map((p) => p[1]))
+  const maxY = Math.max(...c.map((p) => p[1]))
+  const span = maxX - minX + maxY - minY
+  const step = 6
+  ctx.strokeStyle = color
+  ctx.lineWidth = 1
+  ctx.beginPath()
+  for (let d = -span; d <= span; d += step) {
+    ctx.moveTo(minX + d, minY)
+    ctx.lineTo(minX + d + (maxY - minY), maxY)
+    ctx.moveTo(minX + d, maxY)
+    ctx.lineTo(minX + d + (maxY - minY), minY)
+  }
+  ctx.stroke()
+  ctx.restore()
+  // Solid red outline of the wall footprint.
+  ctx.strokeStyle = color
+  ctx.lineWidth = 1.4
+  ctx.beginPath()
+  ctx.moveTo(c[0][0], c[0][1])
+  for (let i = 1; i < 4; i++) ctx.lineTo(c[i][0], c[i][1])
+  ctx.closePath()
+  ctx.stroke()
+}
+
 /**
  * Render a clean print view of the plan to an offscreen canvas: white
  * background, light zone tints, CAD furniture symbols, walls on top. Returns
- * `metersPerPx` so the caller can state the true plot scale (0 = empty plan).
+ * `metersPerPx` (for the true plot scale, 0 = empty plan) plus the world→canvas
+ * transform (`k`, `ox`, `oy`; canvasPx = m·k + o) so callers can overlay crisp
+ * vector tags/labels on the embedded raster. The optional `opts` toggles which
+ * layers draw — default = all on, byte-identical to the legacy signature.
  */
 export function renderPrintCanvas(
   state: DocState,
   wPx: number,
   hPx: number,
-): { canvas: HTMLCanvasElement; metersPerPx: number } {
+  opts?: RenderPlanOpts,
+): { canvas: HTMLCanvasElement; metersPerPx: number; k: number; ox: number; oy: number } {
+  const L = opts?.layers
+  const zoneFill = L?.zoneFill ?? true
+  const furniture = L?.furniture ?? true
+  const roomLabels = L?.roomLabels ?? true
+  const existingWalls = L?.existingWalls ?? true
+  const generatedWalls = L?.generatedWalls ?? true
+  const newWallHighlight = L?.newWallHighlight ?? false
+  const demolishHatch = L?.demolishHatch ?? false
+
   const canvas = document.createElement('canvas')
   canvas.width = wPx
   canvas.height = hPx
   const ctx = canvas.getContext('2d')
-  if (!ctx) return { canvas, metersPerPx: 0 }
+  if (!ctx) return { canvas, metersPerPx: 0, k: 0, ox: 0, oy: 0 }
 
   ctx.fillStyle = '#ffffff'
   ctx.fillRect(0, 0, wPx, hPx) // JPEG has no alpha — must paint the background.
 
   const bb = stateBbox(state)
-  if (!bb) return { canvas, metersPerPx: 0 }
+  if (!bb) return { canvas, metersPerPx: 0, k: 0, ox: 0, oy: 0 }
 
   const pad = 48
   const spanX = Math.max(bb.maxX - bb.minX, 0.001)
@@ -344,65 +457,77 @@ export function renderPrintCanvas(
   const Y = (m: number) => m * k + oy
 
   // Zone tints (+ labels on rect zones large enough to carry one).
-  ctx.globalAlpha = 0.55
-  for (const z of state.zones ?? []) {
-    ctx.fillStyle = PRINT_ZONE_FILL[z.zone_type] ?? PRINT_ZONE_FILL.Core
-    const s = z.shape
-    if (s.kind === 'RectRing') {
-      ctx.beginPath()
-      ctx.rect(X(s.x - s.w / 2), Y(s.y - s.h / 2), s.w * k, s.h * k)
-      ctx.rect(X(s.x - s.in_w / 2), Y(s.y - s.in_h / 2), s.in_w * k, s.in_h * k)
-      ctx.fill('evenodd')
-    } else {
-      ctx.fillRect(X(s.x - s.w / 2), Y(s.y - s.h / 2), s.w * k, s.h * k)
+  if (zoneFill) {
+    ctx.globalAlpha = 0.55
+    for (const z of state.zones ?? []) {
+      ctx.fillStyle = PRINT_ZONE_FILL[z.zone_type] ?? PRINT_ZONE_FILL.Core
+      const s = z.shape
+      if (s.kind === 'RectRing') {
+        ctx.beginPath()
+        ctx.rect(X(s.x - s.w / 2), Y(s.y - s.h / 2), s.w * k, s.h * k)
+        ctx.rect(X(s.x - s.in_w / 2), Y(s.y - s.in_h / 2), s.in_w * k, s.in_h * k)
+        ctx.fill('evenodd')
+      } else {
+        ctx.fillRect(X(s.x - s.w / 2), Y(s.y - s.h / 2), s.w * k, s.h * k)
+      }
     }
+    ctx.globalAlpha = 1
   }
-  ctx.globalAlpha = 1
-  ctx.font = '600 13px Helvetica, Arial, sans-serif'
-  ctx.textAlign = 'left'
-  ctx.textBaseline = 'alphabetic'
-  ctx.fillStyle = PRINT_ZONE_LABEL
-  for (const z of state.zones ?? []) {
-    const s = z.shape
-    if (s.kind === 'Rect' && z.label && s.w * k > 140 && s.h * k > 50) {
-      ctx.fillText(z.label.toUpperCase(), X(s.x - s.w / 2) + 10, Y(s.y - s.h / 2) + 22)
+  if (roomLabels) {
+    ctx.font = '600 13px Helvetica, Arial, sans-serif'
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'alphabetic'
+    ctx.fillStyle = PRINT_ZONE_LABEL
+    for (const z of state.zones ?? []) {
+      const s = z.shape
+      if (s.kind === 'Rect' && z.label && s.w * k > 140 && s.h * k > 50) {
+        ctx.fillText(z.label.toUpperCase(), X(s.x - s.w / 2) + 10, Y(s.y - s.h / 2) + 22)
+      }
     }
   }
 
   // Components as CAD line symbols (same renderer the live canvas uses).
-  for (const c of state.components) {
-    drawFurnitureSymbol(ctx, {
-      category: c.category,
-      cx: X(c.x),
-      cy: Y(c.y),
-      w: c.w * k,
-      h: c.h * k,
-      rotation: c.rotation,
-      stroke: PRINT_STROKE,
-      detail: PRINT_DETAIL,
-      accent: PRINT_STROKE,
-      selected: false,
-    })
+  if (furniture) {
+    for (const c of state.components) {
+      drawFurnitureSymbol(ctx, {
+        category: c.category,
+        cx: X(c.x),
+        cy: Y(c.y),
+        w: c.w * k,
+        h: c.h * k,
+        rotation: c.rotation,
+        stroke: PRINT_STROKE,
+        detail: PRINT_DETAIL,
+        accent: PRINT_STROKE,
+        selected: false,
+      })
+    }
+
+    // Labels on components large enough to read one (rooms, not chairs); kept
+    // horizontal for legibility, with a white halo over the line-work.
+    ctx.font = '600 14px Helvetica, Arial, sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    for (const c of state.components) {
+      if (!c.label || Math.min(c.w, c.h) * k < 70) continue
+      ctx.strokeStyle = '#ffffff'
+      ctx.lineWidth = 4
+      ctx.strokeText(c.label, X(c.x), Y(c.y))
+      ctx.fillStyle = PRINT_LABEL
+      ctx.fillText(c.label, X(c.x), Y(c.y))
+    }
   }
 
-  // Labels on components large enough to read one (rooms, not chairs); kept
-  // horizontal for legibility, with a white halo over the line-work.
-  ctx.font = '600 14px Helvetica, Arial, sans-serif'
-  ctx.textAlign = 'center'
-  ctx.textBaseline = 'middle'
-  for (const c of state.components) {
-    if (!c.label || Math.min(c.w, c.h) * k < 70) continue
-    ctx.strokeStyle = '#ffffff'
-    ctx.lineWidth = 4
-    ctx.strokeText(c.label, X(c.x), Y(c.y))
-    ctx.fillStyle = PRINT_LABEL
-    ctx.fillText(c.label, X(c.x), Y(c.y))
-  }
-
-  // Walls on top, at true scaled thickness.
+  // Walls on top, at true scaled thickness. `existingWalls`/`generatedWalls`
+  // gate which of the two poché classes draw (demolition hides the new
+  // partitions; construction shows both + highlights the new).
   ctx.strokeStyle = PRINT_WALL
   ctx.lineCap = 'round'
   for (const w of state.walls) {
+    const gen = w.generated === true
+    if (gen && !generatedWalls) continue
+    if (!gen && !existingWalls) continue
+    ctx.strokeStyle = PRINT_WALL
     ctx.lineWidth = Math.max(1.5, w.thickness * k)
     ctx.beginPath()
     ctx.moveTo(X(w.a.x), Y(w.a.y))
@@ -410,7 +535,27 @@ export function renderPrintCanvas(
     ctx.stroke()
   }
 
-  return { canvas, metersPerPx: k > 0 ? 1 / k : 0 }
+  // New-wall highlight — over-stroke generated partitions in blue.
+  if (newWallHighlight) {
+    ctx.strokeStyle = PRINT_NEW_WALL
+    for (const w of state.walls) {
+      if (w.generated !== true) continue
+      ctx.lineWidth = Math.max(2, w.thickness * k)
+      ctx.beginPath()
+      ctx.moveTo(X(w.a.x), Y(w.a.y))
+      ctx.lineTo(X(w.b.x), Y(w.b.y))
+      ctx.stroke()
+    }
+  }
+
+  // Demolition cross-hatch — red over the caller-supplied removed segments.
+  if (demolishHatch && opts?.demolished) {
+    for (const d of opts.demolished) {
+      crossHatchSeg(ctx, X(d.ax), Y(d.ay), X(d.bx), Y(d.by), Math.max(3, (d.thickness * k) / 2), PRINT_DEMOLISH)
+    }
+  }
+
+  return { canvas, metersPerPx: k > 0 ? 1 / k : 0, k, ox, oy }
 }
 
 // ---------------------------------------------------------------------------
@@ -452,12 +597,20 @@ function planImageRect() {
   return { img, wPx: Math.round(img.w * RES), hPx: Math.round(img.h * RES) }
 }
 
-/** True plot scale "1 : N @ A3" — meters per point on paper vs. meters per mm real. */
-function scaleNote(metersPerPx: number, wPx: number, imgW: number): string {
-  if (metersPerPx <= 0) return 'N.T.S.'
+/** Plot-scale denominator N (as in 1:N) for a raster placed `imgW` pt wide from
+ *  a `wPx`-px canvas at `metersPerPx`; rounded to a tidy multiple of 5. 0 when
+ *  the plan is degenerate. Shared by the single sheet + the drawing set. */
+export function planScaleN(metersPerPx: number, wPx: number, imgW: number): number {
+  if (metersPerPx <= 0) return 0
   const metersPerPt = metersPerPx * (wPx / imgW)
   const scaleN = metersPerPt * 1000 * (72 / 25.4)
-  return `1 : ${Math.max(1, Math.round(scaleN / 5) * 5)} @ A3`
+  return Math.max(1, Math.round(scaleN / 5) * 5)
+}
+
+/** True plot scale "1 : N @ A3" — meters per point on paper vs. meters per mm real. */
+function scaleNote(metersPerPx: number, wPx: number, imgW: number): string {
+  const n = planScaleN(metersPerPx, wPx, imgW)
+  return n === 0 ? 'N.T.S.' : `1 : ${n} @ A3`
 }
 
 /** Encode an offscreen canvas as raw JPEG bytes for the /DCTDecode image XObject. */

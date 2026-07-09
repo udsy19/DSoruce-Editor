@@ -46,6 +46,7 @@ import {
   textWidth,
   pdfSafeText,
 } from './pdf'
+import { Page, MARGIN, RES, ACCENT, hex2rgb, pageHeader, logoJpeg } from './sheet'
 import { triggerDownload } from './png'
 
 // ---------------------------------------------------------------------------
@@ -344,81 +345,7 @@ export function normalizeRadar(model: ReportModel): number[][] {
 
 /** Per-alternative accent (radar polygon, table dot, space-mix, header). */
 const ALT_COLORS = ['#7b74d4', '#E8A13C', '#3f9c95', '#c4607a', '#5b8def']
-/** Warm-amber brand accent (CLAUDE.md) — KPI bars, headings. */
-const ACCENT: Rgb = hex2rgb('#E8A13C')
-const INK: Rgb = hex2rgb('#2e343b')
 const MUTED = 0.5
-
-function hex2rgb(hex: string): Rgb {
-  const h = hex.replace('#', '')
-  return [
-    parseInt(h.slice(0, 2), 16) / 255,
-    parseInt(h.slice(2, 4), 16) / 255,
-    parseInt(h.slice(4, 6), 16) / 255,
-  ]
-}
-
-/** RES px per pt for embedded plan rasters — ~187 dpi, crisp line-work. */
-const RES = 2.6
-
-/**
- * A single report page: accumulates content ops (top-down y, converted to PDF
- * space here) and image XObjects. `default A/B/C letter` names the alternative
- * when a caller passes an empty name.
- */
-class Page {
-  ops: ContentOp[] = []
-  images: PdfJpeg[] = []
-
-  /** Convert a top-down y to PDF (bottom-left origin) space. */
-  private y(yTop: number): number {
-    return PAGE_H - yTop
-  }
-
-  text(
-    x: number,
-    yTop: number,
-    size: number,
-    s: string,
-    o?: { bold?: boolean; gray?: number; rgb?: Rgb; align?: 'left' | 'center' | 'right' },
-  ): void {
-    const w = textWidth(pdfSafeText(s), size, o?.bold)
-    const x0 = o?.align === 'right' ? x - w : o?.align === 'center' ? x - w / 2 : x
-    this.ops.push({ op: 'text', x: x0, y: this.y(yTop), size, text: s, bold: o?.bold, gray: o?.gray, rgb: o?.rgb })
-  }
-
-  /** Filled/stroked box given a TOP-DOWN top-left corner. */
-  box(
-    xLeft: number,
-    yTop: number,
-    w: number,
-    h: number,
-    o: { fill?: boolean; gray?: number; rgb?: Rgb; width?: number },
-  ): void {
-    this.ops.push({
-      op: 'rect',
-      x: xLeft,
-      y: this.y(yTop + h),
-      w,
-      h,
-      fill: o.fill ?? true,
-      gray: o.gray,
-      rgb: o.rgb,
-      width: o.width,
-    })
-  }
-
-  line(x1: number, y1Top: number, x2: number, y2Top: number, o?: { gray?: number; rgb?: Rgb; width?: number }): void {
-    this.ops.push({ op: 'line', x1, y1: this.y(y1Top), x2, y2: this.y(y2Top), gray: o?.gray, rgb: o?.rgb, width: o?.width })
-  }
-
-  /** Place a JPEG given a TOP-DOWN top-left corner; returns its /Im index. */
-  image(jpeg: PdfJpeg, xLeft: number, yTop: number, w: number, h: number): void {
-    const img = this.images.length
-    this.images.push(jpeg)
-    this.ops.push({ op: 'image', x: xLeft, y: this.y(yTop + h), w, h, img })
-  }
-}
 
 /** Render a plan raster for an alternative into a box of the given PT size. */
 function planJpeg(
@@ -441,51 +368,12 @@ function stateOf(snapshot: string): DocState {
   }
 }
 
-/** Client logo (data URL) → JPEG for the cover; null on any failure/absence. */
-async function logoJpeg(dataUrl: string | undefined, maxW: number): Promise<PdfJpeg | null> {
-  if (!dataUrl || typeof Image === 'undefined') return null
-  return new Promise<PdfJpeg | null>((resolve) => {
-    const img = new Image()
-    img.onload = () => {
-      try {
-        const scale = Math.min(1, maxW / img.width)
-        const w = Math.max(1, Math.round(img.width * scale))
-        const h = Math.max(1, Math.round(img.height * scale))
-        const cv = document.createElement('canvas')
-        cv.width = w
-        cv.height = h
-        const ctx = cv.getContext('2d')
-        if (!ctx) return resolve(null)
-        ctx.fillStyle = '#ffffff' // JPEG has no alpha
-        ctx.fillRect(0, 0, w, h)
-        ctx.drawImage(img, 0, 0, w, h)
-        resolve({ bytes: canvasToJpeg(cv), width: w, height: h })
-      } catch {
-        resolve(null)
-      }
-    }
-    img.onerror = () => resolve(null)
-    img.src = dataUrl
-  })
-}
-
 const LETTERS = 'ABCDEFGH'
 function altName(a: AltKpis, i: number): string {
   return a.name?.trim() ? a.name : `Alternative ${LETTERS[i] ?? i + 1}`
 }
 function projectTitle(meta: ReportMeta): string {
   return meta.style ? `${meta.project} | ${meta.style}` : meta.project
-}
-
-// Shared page furniture ------------------------------------------------------
-
-const MARGIN = 40
-
-/** Brand mark (qbiq → dsource) top-left, client name top-right. */
-function pageHeader(p: Page, center: string, meta: ReportMeta): void {
-  p.text(MARGIN, MARGIN + 6, 15, 'dsource', { bold: true, rgb: ACCENT })
-  p.text(PAGE_W / 2, MARGIN + 4, 11, center, { align: 'center', gray: 0.35 })
-  if (meta.client) p.text(PAGE_W - MARGIN, MARGIN + 4, 11, meta.client, { align: 'right', gray: 0.2, bold: true })
 }
 
 // ---------------------------------------------------------------------------
@@ -577,7 +465,7 @@ function coverPage(model: ReportModel, hero: PdfJpeg | null, logo: PdfJpeg | nul
 function tourPage(model: ReportModel): Page {
   const p = new Page()
   const first = model.alternatives[0]
-  pageHeader(p, projectTitle(model.meta), model.meta)
+  pageHeader(p, projectTitle(model.meta), model.meta.client)
 
   p.text(MARGIN, 130, 40, '3D virtual tour', { bold: true, gray: 0.08 })
   p.text(MARGIN, 175, 15, altName(first, 0), { gray: 0.4 })
@@ -608,7 +496,7 @@ const WHITE: Rgb = [1, 1, 1]
 function altPage(a: AltKpis, i: number, meta: ReportMeta, wins: string[]): Page {
   const p = new Page()
   const accent = hex2rgb(ALT_COLORS[i % ALT_COLORS.length])
-  pageHeader(p, `${altName(a, i)}: ${projectTitle(meta)}`, meta)
+  pageHeader(p, `${altName(a, i)}: ${projectTitle(meta)}`, meta.client)
 
   // --- left KPI rail ------------------------------------------------------
   const railX = MARGIN
@@ -798,7 +686,7 @@ function radarJpeg(model: ReportModel, wPt: number, hPt: number): PdfJpeg {
 function summaryPage(model: ReportModel): Page {
   const p = new Page()
   const alts = model.alternatives
-  pageHeader(p, `Summary: ${projectTitle(model.meta)}`, model.meta)
+  pageHeader(p, `Summary: ${projectTitle(model.meta)}`, model.meta.client)
 
   // --- comparison table ---------------------------------------------------
   const tx = MARGIN
