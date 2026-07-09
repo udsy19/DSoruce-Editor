@@ -98,6 +98,7 @@ interface Room {
   hh: number // half-height (outer)
   ring?: { ihw: number; ihh: number } // RectRing hole half-extents
   area: number
+  label?: string // zone name (for circuit numbering); absent on the plate fallback
 }
 
 function shapeArea(s: ZoneShape): number {
@@ -132,6 +133,7 @@ function rooms(state: DocState): Room[] {
         hh: s.h / 2,
         ring: s.kind === 'RectRing' ? { ihw: s.in_w / 2, ihh: s.in_h / 2 } : undefined,
         area: shapeArea(s),
+        label: z.label || undefined,
       }
     })
   }
@@ -193,6 +195,16 @@ function ringPoints(room: Room, spacing: number): { x: number; y: number }[] {
   return out
 }
 
+/** The recessed-luminaire centres for one room — a tiled grid for a normal
+ *  room, or a corridor run for a ring zone. Shared by {@link ceilingLayout}
+ *  (glyph placement) and {@link lightingCircuits} (switch-leg routing) so the
+ *  two views always agree on where the luminaires are. */
+function roomLuminaires(room: Room): { x: number; y: number }[] {
+  return room.ring
+    ? ringPoints(room, RING_LUM_SPACING)
+    : gridPoints(room.cx, room.cy, room.hw, room.hh, LUM_SPACING, CEIL_INSET)
+}
+
 /** Grid centre-lines through a room's cells — the reflected ceiling module. */
 function roomGrid(room: Room, spacing: number): CeilingGridLine[] {
   if (room.ring) return [] // rings read as corridor runs, not a tiled field
@@ -235,13 +247,11 @@ export function ceilingLayout(state: DocState): CeilingLayout {
 
   for (const room of rs) {
     grid.push(...roomGrid(room, LUM_SPACING))
+    for (const p of roomLuminaires(room)) fixtures.push({ type: 'luminaire', x: p.x, y: p.y, rot: 0 })
     if (room.ring) {
-      for (const p of ringPoints(room, RING_LUM_SPACING)) fixtures.push({ type: 'luminaire', x: p.x, y: p.y, rot: 0 })
       for (const p of ringPoints(room, RING_DIFFUSER_SPACING)) fixtures.push({ type: 'diffuser', x: p.x, y: p.y })
       for (const p of ringPoints(room, RING_SMOKE_SPACING)) fixtures.push({ type: 'smoke', x: p.x, y: p.y })
     } else {
-      for (const p of gridPoints(room.cx, room.cy, room.hw, room.hh, LUM_SPACING, CEIL_INSET))
-        fixtures.push({ type: 'luminaire', x: p.x, y: p.y, rot: 0 })
       for (const p of gridPoints(room.cx, room.cy, room.hw, room.hh, DIFFUSER_SPACING, CEIL_INSET + 0.4))
         fixtures.push({ type: 'diffuser', x: p.x, y: p.y })
       for (const p of gridPoints(room.cx, room.cy, room.hw, room.hh, SMOKE_SPACING, CEIL_INSET + 0.6))
@@ -368,4 +378,81 @@ export function powerLayout(state: DocState): PowerLayout {
     { code: 'DB', label: 'Distribution board', count: count('db') },
   ]
   return { points, schedule }
+}
+
+// ---------------------------------------------------------------------------
+// Lighting circuits — which switch controls which luminaires (RCP switch legs)
+// ---------------------------------------------------------------------------
+
+/** One switching circuit: a switch and the luminaires it controls, as an
+ *  already-ordered run (switch → nearest luminaire → next, greedy) so the RCP
+ *  can draw one clean polyline per room instead of a fan of crossings. */
+export interface LightingCircuit {
+  /** 1-based circuit number within the plan. */
+  no: number
+  /** Circuit tag, e.g. `LC-01` (numbered per room; matches `no`). */
+  label: string
+  /** The controlling switch (a `switch` point reused from {@link powerLayout}). */
+  sw: { x: number; y: number }
+  /** Luminaires on this circuit, ordered as a nearest-neighbour run. */
+  luminaires: { x: number; y: number }[]
+}
+
+/** Greedy nearest-neighbour ordering of `pts` starting from `start` — turns a
+ *  bag of luminaires into a single non-crossing run so the switch leg reads as
+ *  one loop rather than a star. */
+function orderChain(start: { x: number; y: number }, pts: { x: number; y: number }[]): { x: number; y: number }[] {
+  const remaining = pts.slice()
+  const out: { x: number; y: number }[] = []
+  let cur = start
+  while (remaining.length > 0) {
+    let bi = 0
+    let bd = Infinity
+    for (let i = 0; i < remaining.length; i++) {
+      const d = Math.hypot(remaining[i].x - cur.x, remaining[i].y - cur.y)
+      if (d < bd) {
+        bd = d
+        bi = i
+      }
+    }
+    cur = remaining[bi]
+    out.push(cur)
+    remaining.splice(bi, 1)
+  }
+  return out
+}
+
+/**
+ * Derive the lighting-control circuits: for every room that has luminaires,
+ * bind the nearest lighting switch (each sits beside a door in
+ * {@link powerLayout}) to that room's luminaires, ordered into a single run.
+ * A switch too far from the room to plausibly serve it (open-plan areas with no
+ * adjacent door) is left unbound rather than dragged across the plan, keeping
+ * the RCP readable. Deterministic — a pure function of the geometry. Returns
+ * `[]` when the plan has no switches or no luminaires.
+ */
+export function lightingCircuits(state: DocState): LightingCircuit[] {
+  const switches = powerLayout(state).points.filter((p) => p.type === 'switch')
+  if (switches.length === 0) return []
+  const out: LightingCircuit[] = []
+  let n = 0
+  for (const room of rooms(state)) {
+    const lums = roomLuminaires(room)
+    if (lums.length === 0) continue
+    const sw = switches.reduce((best, s) =>
+      Math.hypot(s.x - room.cx, s.y - room.cy) < Math.hypot(best.x - room.cx, best.y - room.cy) ? s : best,
+    )
+    // Only bind a switch that actually flanks this room — beyond the room's own
+    // reach it belongs to a neighbour, so leave the luminaires un-run.
+    const reach = Math.hypot(room.hw, room.hh) + 2.5
+    if (Math.hypot(sw.x - room.cx, sw.y - room.cy) > reach) continue
+    n++
+    out.push({
+      no: n,
+      label: `LC-${String(n).padStart(2, '0')}`,
+      sw: { x: sw.x, y: sw.y },
+      luminaires: orderChain({ x: sw.x, y: sw.y }, lums),
+    })
+  }
+  return out
 }

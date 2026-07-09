@@ -24,7 +24,7 @@
 // (servicesSheets self-numbers as A.(startNo+i+1); pass startNo=numbered.length
 // so the sheets take the next free slots and the contents list stays in sync.)
 
-import { canvasToJpeg, planScaleN, renderPrintCanvas } from './pdf'
+import { canvasToJpeg, planScaleN, renderPrintCanvas, textWidth } from './pdf'
 import type { Rgb, PdfJpeg } from './pdf'
 import {
   Page,
@@ -42,6 +42,7 @@ import type { DocState } from '../editor/EditorCanvas'
 import {
   ceilingLayout,
   powerLayout,
+  lightingCircuits,
   CEILING_HEIGHT,
   type CeilingFixtureType,
   type PowerPointType,
@@ -54,6 +55,9 @@ const PANEL_W = 316 // right-hand legend/schedule column (pt), matches sheetSet.
 
 const INK: Rgb = hex2rgb('#2e343b')
 const BLUE: Rgb = hex2rgb('#3b6fd4')
+/** Switch-leg / lighting-circuit runs on the RCP — a muted green so the thin
+ *  polyline reads as switching wiring, distinct from the grey ceiling grid. */
+const CIRCUIT: Rgb = hex2rgb('#4f8a72')
 
 export interface ServicesSheetsOpts {
   meta: SheetSetMeta
@@ -252,12 +256,75 @@ function legendSchedule(
   p.text(b.panelX + PANEL_W - 12, ly, 9.5, `${total}`, { align: 'right', bold: true, gray: 0.05 })
 }
 
-/** Faint room-name labels at each zone centre (orientation on the muted base). */
-function roomNames(p: Page, state: DocState, map: (x: number, y: number) => { x: number; y: number }): void {
+// ---------------------------------------------------------------------------
+// Glyph / label de-collision — fixture glyphs must not sit on room-name labels.
+// We compute each room label's screen box up front, nudge any overlapping glyph
+// to the nearest clear offset (deterministic candidate stack, mirroring
+// sheetSet.placeNear), then paint the labels LAST with a white knockout halo so
+// they stay legible over the faint grid and any close glyph. (screen pt, top-down)
+// ---------------------------------------------------------------------------
+
+interface LabelBox {
+  x: number // top-left
+  y: number
+  w: number
+  h: number
+  cx: number // text centre
+  cy: number
+  text: string
+}
+
+function boxesOverlap(ax: number, ay: number, aw: number, ah: number, b: LabelBox): boolean {
+  return ax < b.x + b.w && ax + aw > b.x && ay < b.y + b.h && ay + ah > b.y
+}
+
+/** Screen boxes for every non-circulation room label (same transform the plan
+ *  uses). Label text baseline sits at `cy`; the box brackets the cap height. */
+function roomLabelBoxes(state: DocState, map: (x: number, y: number) => { x: number; y: number }): LabelBox[] {
+  const out: LabelBox[] = []
   for (const z of state.zones ?? []) {
     if (z.zone_type === 'Circulation' || !z.label) continue
     const c = map(z.shape.x, z.shape.y)
-    p.text(c.x, c.y, 7.5, z.label.toUpperCase(), { align: 'center', gray: 0.5 })
+    const text = z.label.toUpperCase()
+    const w = textWidth(text, 7.5, false) + 6
+    const h = 12
+    out.push({ x: c.x - w / 2, y: c.y - 8, w, h, cx: c.x, cy: c.y, text })
+  }
+  return out
+}
+
+/** Nudge a glyph of radius `s` off any room label — try the true spot first,
+ *  then a fixed ring of small offsets. Deterministic, so the same plan lays out
+ *  identically. Only clears labels (glyph-on-glyph is unchanged / acceptable). */
+function clearOfLabels(cx: number, cy: number, s: number, labels: LabelBox[]): { x: number; y: number } {
+  const step = s * 2 + 2
+  const cands: [number, number][] = [
+    [0, 0],
+    [step, 0],
+    [-step, 0],
+    [0, step],
+    [0, -step],
+    [step, step],
+    [-step, step],
+    [step, -step],
+    [-step, -step],
+    [2 * step, 0],
+    [-2 * step, 0],
+  ]
+  for (const [dx, dy] of cands) {
+    if (!labels.some((l) => boxesOverlap(cx + dx - s, cy + dy - s, s * 2, s * 2, l))) {
+      return { x: cx + dx, y: cy + dy }
+    }
+  }
+  return { x: cx, y: cy }
+}
+
+/** Paint the room-name labels on top with a white knockout halo so they stay
+ *  legible over the faint ceiling grid and any nearby glyph. */
+function drawRoomLabels(p: Page, labels: LabelBox[]): void {
+  for (const l of labels) {
+    p.box(l.x, l.y, l.w, l.h, { fill: true, gray: 1 })
+    p.text(l.cx, l.cy, 7.5, l.text, { align: 'center', gray: 0.45 })
   }
 }
 
@@ -290,18 +357,31 @@ function rcpSheet(state: DocState, no: string, opts: ServicesSheetsOpts): Servic
     const map = worldMapper(b, wPx, hPx, k, ox, oy)
 
     const layout = ceilingLayout(state)
+    const labels = roomLabelBoxes(state, map)
     // Ceiling grid first, so glyphs mask over it cleanly.
     for (const g of layout.grid) {
       const a = map(g.x1, g.y1)
       const c = map(g.x2, g.y2)
       p.line(a.x, a.y, c.x, c.y, { gray: 0.86, width: 0.35 })
     }
-    roomNames(p, state, map)
+    // Lighting-circuit switch legs under the glyphs (thin green runs).
+    for (const cc of lightingCircuits(state)) {
+      let prev = map(cc.sw.x, cc.sw.y)
+      for (const lum of cc.luminaires) {
+        const q = map(lum.x, lum.y)
+        p.line(prev.x, prev.y, q.x, q.y, { rgb: CIRCUIT, width: 0.5 })
+        prev = q
+      }
+      const sw = map(cc.sw.x, cc.sw.y)
+      p.text(sw.x + 4, sw.y - 3, 6, cc.label, { rgb: CIRCUIT, bold: true })
+    }
     for (const f of layout.fixtures) {
       const pt = map(f.x, f.y)
       const size = f.type === 'luminaire' ? 6 : f.type === 'exit' ? 5 : 5.5
-      ceilGlyph(p, f.type, pt.x, pt.y, size, true)
+      const q = clearOfLabels(pt.x, pt.y, size, labels)
+      ceilGlyph(p, f.type, q.x, q.y, size, true)
     }
+    drawRoomLabels(p, labels)
 
     // Ceiling-height note bottom-left of the plan.
     p.text(b.planX + 12, b.planY + b.planH - 12, 9, `FINISHED CEILING HEIGHT  ${CEILING_HEIGHT.toFixed(2)} m`, {
@@ -345,12 +425,14 @@ function powerSheet(state: DocState, no: string, opts: ServicesSheetsOpts): Serv
     const map = worldMapper(b, wPx, hPx, k, ox, oy)
 
     const layout = powerLayout(state)
-    roomNames(p, state, map)
+    const labels = roomLabelBoxes(state, map)
     for (const pt of layout.points) {
-      const q = map(pt.x, pt.y)
+      const m = map(pt.x, pt.y)
       const size = pt.type === 'db' ? 6 : pt.type === 'floorbox' ? 5.5 : 4.5
+      const q = clearOfLabels(m.x, m.y, size, labels)
       powerGlyph(p, pt.type, q.x, q.y, size, true)
     }
+    drawRoomLabels(p, labels)
 
     const scaleN = planScaleN(metersPerPx, wPx, b.planW)
     scale = scaleN ? `1:${scaleN}` : 'NTS'
