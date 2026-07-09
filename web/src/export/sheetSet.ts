@@ -44,6 +44,7 @@ import type { BindingInfo } from '../persist/file'
 import { extractPlate, extractInteriorWalls } from '../import/testfit'
 import { healWalls } from '../import/heal'
 import { triggerDownload } from './png'
+import { sectionSheets } from './section'
 
 // ---------------------------------------------------------------------------
 // Meta + options
@@ -998,9 +999,20 @@ export async function buildDrawingSetPdf(state: DocState, opts: DrawingSetOpts):
   }
   add('demolition', 'Demolition Plan', (no) => demolitionSheet(state, opts, no))
   add('construction', 'Construction & Furnishing Plan', (no) => constructionSheet(state, opts, no))
-  // ── SECTION SHEETS INSERTION POINT ── the sections agent (export/section.ts)
-  // slots section/elevation sheets here, keyed off id 'sections':
-  //   add('sections', 'Sections', (no) => sectionSheet(state, opts, no)).
+  // ── Section sheets (orthographic cuts from the 3D model, export/section.ts) ──
+  // section.ts self-numbers as A.(startNo+i+1); passing startNo=numbered.length
+  // gives the first cut the next free slot (A.03 after the two plans) and keeps
+  // the contents list + title blocks in sync. Wrapped so a WebGL/section-render
+  // failure can never sink the plan/furniture sheets that already succeeded.
+  if (want('sections')) {
+    try {
+      for (const s of sectionSheets(state, { meta: opts.meta, startNo: numbered.length })) {
+        numbered.push({ title: s.title, no: s.no, page: s.page })
+      }
+    } catch (err) {
+      console.warn('drawing-set: section sheets skipped —', err)
+    }
+  }
   cardPages.forEach((rows, i) =>
     add('furniture', `Furniture & Fixtures${i > 0 ? ' (cont.)' : ''}`, (no) =>
       furnitureSheet(opts, no, rows, i > 0 ? ' (CONT.)' : '', keyPlan()),

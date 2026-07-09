@@ -79,14 +79,13 @@ export const SHEET_MANIFEST: SheetDescriptor[] = [
     blurb: 'Bound-product tiles grouped by room type',
     available: true,
   },
-  // ---- Coming online (docs/design/drawing-set-generator.md §4) ----
   {
     id: 'sections',
     no: 'A.05',
     title: 'Sections & Elevations',
     kind: 'section',
     blurb: 'Orthographic cuts · scale figures · height dims',
-    available: false,
+    available: true,
   },
 ]
 
