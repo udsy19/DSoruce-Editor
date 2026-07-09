@@ -36,3 +36,4 @@ docs/reference/qbiq/*.zip
 docs/reference/qbiq/extracted/Rendered Images Samples from Qbiq/
 docs/reference/qbiq/extracted/**/__MACOSX/
 **/.DS_Store
+docs/reference/rayon-output/*.pdf
