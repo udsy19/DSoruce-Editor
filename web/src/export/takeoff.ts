@@ -35,8 +35,9 @@ import { triggerDownload } from './png'
 // ---------------------------------------------------------------------------
 
 export interface TakeoffOptions {
-  /** product_id -> price (₹). Same shape as App's `bindings` (extra keys ok). */
-  bindings?: Map<string, { price: number | null }>
+  /** product_id -> binding. Same shape as App's `bindings` (extra keys ok);
+   *  `supplier`/`brand` feed the Supplier column, `price` the cost columns. */
+  bindings?: Map<string, { price: number | null; supplier?: string | null; brand?: string | null }>
   /** Floor label/number shown in the BOM (default 1). */
   floor?: string | number
   /** Project name for docProps. */
@@ -194,6 +195,14 @@ export function buildTakeoffModel(state: DocState, opts: TakeoffOptions = {}): T
     return p != null && Number.isFinite(p) ? p : 0
   }
 
+  // Supplier per component: the bound product's real supplier, else its brand,
+  // else the sample's fallback. Empty/whitespace values are treated as absent.
+  const supplierOf = (c: DocComponent): string => {
+    const b = c.product_id ? bindings?.get(c.product_id) : undefined
+    const s = b?.supplier?.trim() || b?.brand?.trim()
+    return s || supplierFallback
+  }
+
   // --- Furniture BOM: aggregate identical items within a room -------------
   // Key by room + description + supplier + unit price so genuinely identical
   // lines merge (e.g. 10 conference chairs) but differently-priced ones don't.
@@ -205,7 +214,8 @@ export function buildTakeoffModel(state: DocState, opts: TakeoffOptions = {}): T
     const roomType = zone ? ROOM_TYPE[zone.zone_type] : 'Open Space'
     const desc = itemDescription(c)
     const unitPrice = priceOf(c)
-    const key = `${roomId}|${desc}|${supplierFallback}|${unitPrice}`
+    const supplier = supplierOf(c)
+    const key = `${roomId}|${desc}|${supplier}|${unitPrice}`
     const existing = groups.get(key)
     if (existing) {
       existing.quantity += 1
@@ -217,7 +227,7 @@ export function buildTakeoffModel(state: DocState, opts: TakeoffOptions = {}): T
         roomId,
         roomType,
         itemDescription: desc,
-        supplier: supplierFallback,
+        supplier,
         quantity: 1,
         unitPrice,
         totalPrice: unitPrice,
@@ -233,7 +243,7 @@ export function buildTakeoffModel(state: DocState, opts: TakeoffOptions = {}): T
   // --- Item summary: aggregate across all rooms by description ------------
   const summaryMap = new Map<string, TakeoffSummaryRow>()
   for (const r of furniture) {
-    const key = `${r.itemDescription}|${r.unitPrice}`
+    const key = `${r.itemDescription}|${r.supplier}|${r.unitPrice}`
     const s = summaryMap.get(key)
     if (s) {
       s.quantity += r.quantity

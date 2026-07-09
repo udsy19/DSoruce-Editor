@@ -26,10 +26,15 @@ export interface DSourceUi {
   planView?: string
 }
 
-/** Price/thumbnail of a bound bank product — keyed by productId in `bindings`. */
+/** Price/thumbnail of a bound bank product — keyed by productId in `bindings`.
+ *  `supplier`/`brand` carry the live bank's `supplier_domain`/brand so the
+ *  Quantity Takeoff's Supplier column shows the real source (not a fallback);
+ *  both are optional/additive — older bindings without them still load. */
 export interface BindingInfo {
   price: number | null
   image: string | null
+  supplier?: string | null
+  brand?: string | null
 }
 
 /** The on-disk `.dsource` format (v1). See header comment for evolution rules. */
@@ -134,9 +139,10 @@ function isDrawingShaped(v: unknown): v is Drawing {
 
 /**
  * Loose validation of the `bindings` map: a record of records. Each entry's
- * price/image are coerced field-wise (bad values → null); malformed entries —
- * or a malformed map — are dropped rather than failing the whole open, since
- * bindings are decoration over the drawing, not document state.
+ * price/image/supplier/brand are coerced field-wise (bad values → null);
+ * malformed entries — or a malformed map — are dropped rather than failing the
+ * whole open, since bindings are decoration over the drawing, not document
+ * state. `supplier`/`brand` are additive: absent in old files → null.
  */
 function sanitizeBindings(raw: unknown): Record<string, BindingInfo> | undefined {
   if (!isRecord(raw)) return undefined
@@ -146,6 +152,8 @@ function sanitizeBindings(raw: unknown): Record<string, BindingInfo> | undefined
     out[id] = {
       price: typeof v.price === 'number' && Number.isFinite(v.price) ? v.price : null,
       image: typeof v.image === 'string' ? v.image : null,
+      supplier: typeof v.supplier === 'string' ? v.supplier : null,
+      brand: typeof v.brand === 'string' ? v.brand : null,
     }
   }
   return Object.keys(out).length > 0 ? out : undefined

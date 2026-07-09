@@ -62,6 +62,7 @@ export function FurnitureInspector({
     price: p.price ?? 0,
     swatch: '#dfe3e8',
     image: p.image,
+    supplier: p.supplier,
   })
 
   return (

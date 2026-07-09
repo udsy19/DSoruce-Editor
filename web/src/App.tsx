@@ -241,10 +241,29 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
       new Map(prev).set(product.id, {
         price: Number.isFinite(product.price) && product.price > 0 ? product.price : null,
         image: product.image ?? null,
+        // Real supplier (live bank supplier_domain) → Takeoff Supplier column;
+        // `vendor` is the brand, used as a fallback when there's no supplier.
+        supplier: product.supplier ?? null,
+        brand: product.vendor ?? null,
       }),
     )
     drawCanvasRef.current?.refresh()
     setDrawVer((v) => v + 1)
+  }
+
+  /** A generated component was re-imagined to a bank/mock product: mirror the
+   *  binding into the takeoff `bindings` map (price/image/supplier/brand) so the
+   *  Quantity Takeoff resolves it — `ec.assignProduct` only stores it in core.
+   *  Additive/idempotent per product id; safe on repeated clicks. */
+  const assignPanelProduct = (p: PanelProduct) => {
+    setBindings((prev) =>
+      new Map(prev).set(p.id, {
+        price: p.price != null && Number.isFinite(p.price) && p.price > 0 ? p.price : null,
+        image: p.image ?? null,
+        supplier: p.supplier ?? null,
+        brand: p.vendor ?? null,
+      }),
+    )
   }
 
   const onImportFile = async (file: File): Promise<Drawing | null> => {
@@ -894,7 +913,7 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
               }}
             />
           ) : selected && ec ? (
-            <ReimaginePanel ec={ec} c={selected} />
+            <ReimaginePanel ec={ec} c={selected} onAssign={assignPanelProduct} />
           ) : ec ? (
             <>
               <div className="stat-tabs" role="tablist">
@@ -1715,7 +1734,26 @@ const DECISIONS: { key: string; label: string }[] = [
   { key: 'Confirmed', label: 'Confirmed' },
 ]
 
-function ReimaginePanel({ ec, c }: { ec: EditorCanvas; c: DocComponent }) {
+/** The subset of a bank/mock product ReimaginePanel binds — structural so both
+ *  the live `BankProduct` (brand + supplier + image) and the mock `Product`
+ *  (brand only) satisfy it without a conversion. */
+type PanelProduct = {
+  id: string
+  vendor: string
+  price: number | null
+  image?: string | null
+  supplier?: string | null
+}
+
+function ReimaginePanel({
+  ec,
+  c,
+  onAssign,
+}: {
+  ec: EditorCanvas
+  c: DocComponent
+  onAssign: (p: PanelProduct) => void
+}) {
   const [q, setQ] = useState('')
   const [live, setLive] = useState<BankProduct[] | null>(null)
   const [bankUp, setBankUp] = useState(true)
@@ -1798,7 +1836,10 @@ function ReimaginePanel({ ec, c }: { ec: EditorCanvas; c: DocComponent }) {
           <button
             key={p.id}
             className={c.product_id === p.id ? 'product on' : 'product'}
-            onClick={() => ec.assignProduct(c.id, p.id, p.name, p.price)}
+            onClick={() => {
+              ec.assignProduct(c.id, p.id, p.name, p.price)
+              onAssign(p)
+            }}
             title={p.supplier}
           >
             {p.image ? (
@@ -1824,7 +1865,10 @@ function ReimaginePanel({ ec, c }: { ec: EditorCanvas; c: DocComponent }) {
             <button
               key={p.id}
               className={c.product_id === p.id ? 'product on' : 'product'}
-              onClick={() => ec.assignProduct(c.id, p.id, p.name)}
+              onClick={() => {
+                ec.assignProduct(c.id, p.id, p.name)
+                onAssign(p)
+              }}
             >
               <span className="swatch" style={{ background: p.swatch }} />
               <span className="p-main">
