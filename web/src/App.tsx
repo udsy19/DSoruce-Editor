@@ -2,6 +2,7 @@ import { forwardRef, useEffect, useImperativeHandle, useReducer, useRef, useStat
 import {
   EditorCanvas,
   DocComponent,
+  DocZone,
   Metrics,
   Program,
   GenResult,
@@ -29,7 +30,9 @@ import { exportPlanPDF, exportDrawingPDF } from './export/pdf'
 import { downloadIFC } from './export/ifc'
 import { downloadOBJ } from './export/obj'
 import { exportSpacePlanningReport } from './export/report'
-import { exportQuantityTakeoff } from './export/takeoff'
+import { exportQuantityTakeoff, zoneAtPoint } from './export/takeoff'
+import { restrictDrawing } from './import/area'
+import type { RoomMarker } from './import/markers'
 import { downloadDXF, downloadDrawingDXF } from './export/dxf'
 import { CandidateGallery } from './ui/CandidateGallery'
 import { CategoryPlan, type CategoryPlanGroup } from './ui/CategoryPlan'
@@ -41,6 +44,7 @@ import {
   extractEntries,
   pushEntriesToEditor,
   type PlateResult,
+  type Pt,
 } from './import/testfit'
 import { saveProject, openProject, applyProject, type BindingInfo, type DSourceFile } from './persist/file'
 import {
@@ -92,17 +96,50 @@ const CAD_RAIL: { id: string; icon: string; label: string; hint?: string }[] = [
  * existing closure — no new editor logic. Later slices call these; S0 only
  * needs the shell to mount EditorView and keep it alive.
  */
+/** A room marker projected into EDITOR coords (plate offset applied), stored at
+ *  test-fit time. Stable across regenerates (the plate is fixed), so the ref →
+ *  zone association can be re-resolved against the current zones on demand. */
+interface EditorMarker {
+  ref: string
+  x: number
+  y: number
+}
+
+/** Resolve editor-coord markers to { zone.id → ref } against the current zones.
+ *  Re-run per read (export/AI), because zones are regenerated wholesale while
+ *  markers stay pinned to points (workflow.md §3.2). First marker in a zone wins. */
+function buildRoomRefs(zones: DocZone[], markers: EditorMarker[]): Map<number, string> {
+  const out = new Map<number, string>()
+  for (const m of markers) {
+    const z = zoneAtPoint(m.x, m.y, zones)
+    if (z && !out.has(z.id)) out.set(z.id, m.ref)
+  }
+  return out
+}
+
+/** Options carried into a wizard-driven test-fit (workflow.md §3.1/§3.2). */
+export interface TestFitOpts {
+  /** Restrict the plate/keepouts/entries to this sub-area (drawing coords). */
+  areaPolygon?: Pt[]
+  /** Seed the document with room markers (drawing coords) so a marker's ref
+   *  becomes the Room ID/label of the zone it falls in. */
+  markers?: RoomMarker[]
+}
+
 export interface EditorController {
   /** Runs the exact DWG/DXF import path; resolves to the parsed Drawing (or
    *  null on failure) so a wizard step can render/persist it without re-parsing. */
   importFile(f: File): Promise<Drawing | null>
   /** Push a previously-parsed Drawing into the editor (wizard reload / resume). */
   loadDrawing(d: Drawing | null): void
-  testFit(): void
+  testFit(opts?: TestFitOpts): void
   runGenerate(p: Program, o?: { maxIter?: number; target?: number; keepConfirmed?: boolean }): GenResult | null
   setMode(m: '2d' | '3d' | 'import'): void
   ec(): EditorCanvas | null
   drawingCanvas(): DrawingCanvas | null
+  /** Current room refs: { zone.id → user ref } resolved against live zones —
+   *  the AI/engine + takeoff read this to reference "room 502". */
+  roomRefs(): Map<number, string>
 }
 
 export const EditorView = forwardRef<EditorController>(function EditorView(_props, ref) {
@@ -116,6 +153,10 @@ export const EditorView = forwardRef<EditorController>(function EditorView(_prop
   const [mode, setMode] = useState<'2d' | '3d' | 'import'>('2d')
   const [aiOpen, setAiOpen] = useState(false)
   const [drawing, setDrawing] = useState<Drawing | null>(null)
+  // Live mirror of `drawing` for the controller's testFit — the controller is
+  // memoized once (deps []), so its closures must read refs, not render values.
+  const drawingRef = useRef<Drawing | null>(null)
+  drawingRef.current = drawing
   const [selItem, setSelItem] = useState<FurnitureItem | null>(null)
   const [importing, setImporting] = useState(false)
   const [importErr, setImportErr] = useState<string | null>(null)
@@ -142,6 +183,9 @@ export const EditorView = forwardRef<EditorController>(function EditorView(_prop
   const fileRef = useRef<HTMLInputElement>(null)
   const drawCanvasRef = useRef<DrawingCanvas | null>(null)
   const [, setDrawVer] = useState(0)
+  /** Room markers in EDITOR coords, captured at the last test-fit — resolved to
+   *  zones on demand for the takeoff Room ID + AI room refs (workflow.md §3.2). */
+  const roomMarkersRef = useRef<EditorMarker[]>([])
 
   /** Full product data per binding (price ₹, thumbnail) — the item itself only
    *  carries id/name; the selection card + category plan need the rest. */
@@ -374,13 +418,30 @@ export const EditorView = forwardRef<EditorController>(function EditorView(_prop
   /** The qbiq loop: extract the imported floor plate → seed the document with
    *  its boundary walls → jump to 2D where the autonomous generator runs
    *  inside the real building shell. */
-  const testFitPlan = () => {
+  const testFitPlan = (opts?: TestFitOpts) => {
+    // Read live via refs — the controller memoizes this closure once (deps []),
+    // so the render-scoped `ec`/`drawing` would be stale when called from Next.
+    const ec = ecRef.current
+    const drawing = drawingRef.current
     if (!ec || !drawing) return
-    const plate = extractPlate(drawing)
+    // Area-select (workflow.md §3.1): restrict the plate/keepouts/entries to the
+    // selected sub-area. Non-destructive — the full `drawing` stays as-is.
+    const working =
+      opts?.areaPolygon && opts.areaPolygon.length >= 3
+        ? restrictDrawing(drawing, opts.areaPolygon)
+        : drawing
+    const plate = extractPlate(working)
     if (!plate) {
       setImportErr('No wall geometry found in this drawing to derive a floor plate from.')
       return
     }
+    // Room markers (workflow.md §3.2): project into editor coords (plate offset
+    // applied, like entries) and stash so the takeoff Room ID + AI resolve refs.
+    roomMarkersRef.current = (opts?.markers ?? []).map((m) => ({
+      ref: m.ref,
+      x: m.x - plate.offset.x,
+      y: m.y - plate.offset.y,
+    }))
     const m = ec.getMetrics()
     if (
       (m.wall_count > 0 || m.component_count > 0) &&
@@ -393,7 +454,7 @@ export const EditorView = forwardRef<EditorController>(function EditorView(_prop
     // Interior cores (stairs/shafts/service rooms = enclosed furniture-free
     // rooms) become keep-outs so the generator never furnishes them.
     // Guarded no-op until the wasm add_keepout binding is present.
-    pushKeepoutsToEditor(ec, extractKeepouts(drawing, plate))
+    pushKeepoutsToEditor(ec, extractKeepouts(working, plate))
     // A fresh test-fit generates into the BASE SHELL (perimeter + cores +
     // entries), NOT around the existing tenant fit-out — the imported interior
     // partitions ARE the old layout we're replacing, and treating them as hard
@@ -405,7 +466,7 @@ export const EditorView = forwardRef<EditorController>(function EditorView(_prop
     // Deliberately drafted CAD walls still block packing via commitCadToPlan.
     // Entry points (boundary doors, else the longest-edge midpoint) anchor the
     // generator's circulation spine and reception placement.
-    pushEntriesToEditor(ec, extractEntries(drawing, plate))
+    pushEntriesToEditor(ec, extractEntries(working, plate))
     ec.sync()
     // Plate-quality feedback. `coverage`/`areaM2` are additive optional fields
     // on PlateResult — guard so this works whether or not they're present.
@@ -416,7 +477,7 @@ export const EditorView = forwardRef<EditorController>(function EditorView(_prop
     // customized desks.
     let suggested: string | null = null
     if (areaM2 && areaM2 > 100 && ec.program.desks === DEFAULT_PROGRAM.desks) {
-      ec.program = suggestProgram(drawing, areaM2, ec.program)
+      ec.program = suggestProgram(working, areaM2, ec.program)
       suggested = suggestProgramSummary(ec.program)
     }
     if (coverage !== undefined || areaM2 !== undefined) {
@@ -459,6 +520,7 @@ export const EditorView = forwardRef<EditorController>(function EditorView(_prop
       setMode,
       ec: () => ecRef.current,
       drawingCanvas: () => drawCanvasRef.current,
+      roomRefs: () => buildRoomRefs(ecRef.current?.getState().zones ?? [], roomMarkersRef.current),
     }),
     [],
   )
@@ -509,7 +571,7 @@ export const EditorView = forwardRef<EditorController>(function EditorView(_prop
             </div>
           )}
           {mode === 'import' && drawing && (
-            <button className="export-btn" onClick={testFitPlan} data-testid="testfit-plan">
+            <button className="export-btn" onClick={() => testFitPlan()} data-testid="testfit-plan">
               Test-fit this plan
             </button>
           )}
@@ -564,7 +626,7 @@ export const EditorView = forwardRef<EditorController>(function EditorView(_prop
               </>
             )}
           </button>
-          <ExportMenu ec={ec} mode={mode} drawing={drawing} bindings={bindings} candidates={candidates} />
+          <ExportMenu ec={ec} mode={mode} drawing={drawing} bindings={bindings} candidates={candidates} roomMarkers={roomMarkersRef} />
           <button
             className="icon-btn"
             onClick={() => setHelpOpen(true)}
@@ -654,7 +716,7 @@ export const EditorView = forwardRef<EditorController>(function EditorView(_prop
               <EmptyState
                 kind="imported"
                 onGoToPlan={() => setMode('import')}
-                onTestFit={testFitPlan}
+                onTestFit={() => testFitPlan()}
               />
             )}
             {mode === '2d' && ready && docEmpty && !drawing && (
@@ -910,12 +972,15 @@ function ExportMenu({
   drawing,
   bindings,
   candidates,
+  roomMarkers,
 }: {
   ec: EditorCanvas | null
   mode: '2d' | '3d' | 'import'
   drawing: Drawing | null
   bindings: Map<string, BindingInfo>
   candidates: Candidate[]
+  /** Editor-coord room markers captured at test-fit (ref → Room ID resolution). */
+  roomMarkers: React.RefObject<EditorMarker[]>
 }) {
   const [open, setOpen] = useState(false)
   const importMode = mode === 'import' && !!drawing
@@ -1010,7 +1075,11 @@ function ExportMenu({
 
   const exportTakeoff = () => {
     if (!ec) return
-    exportQuantityTakeoff(ec.getState(), { bindings, floor: '1', project: 'Untitled Plan' })
+    const state = ec.getState()
+    // Room markers dropped in the Space step win the Room ID where they sit
+    // inside a generated zone (workflow.md §3.2); re-resolved against live zones.
+    const roomRefs = buildRoomRefs(state.zones ?? [], roomMarkers.current ?? [])
+    exportQuantityTakeoff(state, { bindings, floor: '1', project: 'Untitled Plan', roomRefs })
     setOpen(false)
   }
 

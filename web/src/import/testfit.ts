@@ -773,8 +773,10 @@ function ringCoverage(ring: Pt[], centers: Pt[]): number {
   return inside / centers.length
 }
 
-/** Plain ray-cast point-in-polygon (ring: first vertex not repeated). */
-function pointInRing(x: number, y: number, ring: Pt[]): boolean {
+/** Plain ray-cast point-in-polygon (ring: first vertex not repeated). Exported
+ *  so the area-select filter (`import/area.ts`) reuses the one point-in-polygon
+ *  implementation rather than forking it (no-bloat). */
+export function pointInRing(x: number, y: number, ring: Pt[]): boolean {
   let inside = false
   for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
     const [xi, yi] = ring[i]

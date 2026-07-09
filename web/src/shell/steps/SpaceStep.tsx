@@ -20,10 +20,13 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { DrawingView } from '../../import/DrawingView'
 import { CategoryPlan, type CategoryPlanGroup } from '../../ui/CategoryPlan'
 import { buildCategoryGroups, type EditorController } from '../../App'
-import { extractPlate, extractKeepouts } from '../../import/testfit'
+import { extractPlate, extractKeepouts, type Pt } from '../../import/testfit'
+import { restrictDrawing } from '../../import/area'
+import { ROOM_TYPES, nextRoomRef, type RoomMarker, type RoomType } from '../../import/markers'
 import { bankCategoryForItem } from '../../materialBank/office'
 import { getProject, updateDraft, type SpaceReadoutsSummary } from '../../persist/projects'
 import { Icon } from '../../ui/icons'
+import type { DrawingCanvas } from '../../import/DrawingCanvas'
 import type { Drawing } from '../../import/types'
 
 const SF_PER_M2 = 10.7639
@@ -138,6 +141,20 @@ export function SpaceStep({
   const [dragOver, setDragOver] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
+  // S2 area-select + S3 room markers (workflow.md §3.1/§3.2), on the preview canvas.
+  const dcRef = useRef<DrawingCanvas | null>(null)
+  const [areaPolygon, setAreaPolygon] = useState<Pt[] | null>(null)
+  const [markers, setMarkers] = useState<RoomMarker[]>([])
+  const [activeTool, setActiveTool] = useState<'none' | 'area' | 'marker'>('none')
+  const [markerType, setMarkerType] = useState<RoomType>('IT-Storage')
+  const [markerRef, setMarkerRef] = useState('501')
+  // Live mirrors so the (once-bound) canvas drop callback reads current values.
+  const markerTypeLive = useRef(markerType)
+  markerTypeLive.current = markerType
+  const markerRefLive = useRef(markerRef)
+  markerRefLive.current = markerRef
+  const hydratedRef = useRef(false)
+
   const readyRef = useRef(onReadyChange)
   readyRef.current = onReadyChange
 
@@ -152,6 +169,9 @@ export function SpaceStep({
         controller.current?.loadDrawing(d)
         readyRef.current?.(true)
       }
+      if (rec?.draft?.areaPolygon) setAreaPolygon(rec.draft.areaPolygon)
+      if (rec?.draft?.markers) setMarkers(rec.draft.markers)
+      hydratedRef.current = true
     })
     return () => {
       alive = false
@@ -159,7 +179,91 @@ export function SpaceStep({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId])
 
-  const readouts = useMemo(() => (drawing ? computeReadouts(drawing) : null), [drawing])
+  // Readouts recompute over the RESTRICTED drawing when an area is selected —
+  // furniture/entities outside the polygon drop out (usable m² falls).
+  const restricted = useMemo(
+    () => (drawing && areaPolygon ? restrictDrawing(drawing, areaPolygon) : drawing),
+    [drawing, areaPolygon],
+  )
+  const readouts = useMemo(() => (restricted ? computeReadouts(restricted) : null), [restricted])
+
+  // Persist area + markers (and the recomputed readouts) once hydrated.
+  useEffect(() => {
+    if (!hydratedRef.current || !drawing) return
+    void updateDraft(projectId, {
+      areaPolygon: areaPolygon ?? undefined,
+      markers,
+      ...(readouts ? { readouts: toSummary(readouts) } : {}),
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [areaPolygon, markers])
+
+  // Keep the "next ref" suggestion ahead of the placed markers.
+  useEffect(() => {
+    setMarkerRef(nextRoomRef(markers))
+  }, [markers])
+
+  // Push persisted area/markers onto the preview canvas whenever they change.
+  useEffect(() => {
+    dcRef.current?.setArea(areaPolygon)
+  }, [areaPolygon])
+  useEffect(() => {
+    dcRef.current?.setMarkers(markers)
+  }, [markers])
+
+  // Re-arm the marker tool when its type/ref changes (ghost shows the next ref).
+  useEffect(() => {
+    if (activeTool === 'marker') dcRef.current?.beginMarkerPlace(markerType, markerRef)
+  }, [activeTool, markerType, markerRef])
+
+  // Grab the preview canvas + wire the tool callbacks (once, at mount).
+  const handleCanvas = (c: DrawingCanvas | null) => {
+    dcRef.current = c
+    // Dev/E2E seam for the Space-step preview canvas (mirrors App's __dc/__ec).
+    if (import.meta.env.DEV) (window as unknown as { __spacedc: DrawingCanvas | null }).__spacedc = c
+    if (!c) return
+    c.onAreaChange = (poly) => {
+      setAreaPolygon(poly)
+      setActiveTool('none') // committing/clearing disarms the tool
+    }
+    c.onMarkerDrop = (x, y) => {
+      setMarkers((prev) => [
+        ...prev,
+        { id: crypto.randomUUID(), ref: markerRefLive.current, type: markerTypeLive.current, x, y },
+      ])
+    }
+    c.setArea(areaPolygon)
+    c.setMarkers(markers)
+  }
+
+  const toggleAreaTool = () => {
+    if (activeTool === 'area') {
+      dcRef.current?.cancelTool()
+      setActiveTool('none')
+      return
+    }
+    setActiveTool('area')
+    dcRef.current?.beginArea()
+  }
+  const clearArea = () => {
+    dcRef.current?.clearArea()
+    setAreaPolygon(null)
+    setActiveTool('none')
+  }
+  const toggleMarkerTool = () => {
+    if (activeTool === 'marker') {
+      dcRef.current?.cancelTool()
+      setActiveTool('none')
+      return
+    }
+    setActiveTool('marker')
+    dcRef.current?.beginMarkerPlace(markerType, markerRef)
+  }
+  const deleteMarker = (id: string) => setMarkers((prev) => prev.filter((m) => m.id !== id))
+  const editMarkerRef = (id: string, ref: string) =>
+    setMarkers((prev) => prev.map((m) => (m.id === id ? { ...m, ref } : m)))
+  const editMarkerType = (id: string, type: RoomType) =>
+    setMarkers((prev) => prev.map((m) => (m.id === id ? { ...m, type } : m)))
 
   const accept = (file: File | undefined) => {
     if (!file || busy) return
@@ -178,8 +282,15 @@ export function SpaceStep({
         return
       }
       setDrawing(d)
+      // A fresh upload supersedes any prior sub-area / markers. Use identity-
+      // preserving resets: emitting a NEW [] here would fire the persist effect
+      // concurrently with the awaited drawing write below and clobber it.
+      setAreaPolygon((cur) => (cur === null ? cur : null))
+      setMarkers((cur) => (cur.length === 0 ? cur : []))
+      setActiveTool('none')
       const r = computeReadouts(d)
-      await updateDraft(projectId, { drawing: d, readouts: toSummary(r) })
+      await updateDraft(projectId, { drawing: d, readouts: toSummary(r), areaPolygon: undefined, markers: [] })
+      hydratedRef.current = true
       readyRef.current?.(true)
       setBusy(false)
     })()
@@ -229,10 +340,82 @@ export function SpaceStep({
       {drawing && readouts && (
         <div className="space-readouts" data-testid="space-readouts">
           <div className="space-preview">
-            <DrawingView drawing={drawing} />
+            <div className="space-tools" role="toolbar" aria-label="Plan tools">
+              <button
+                type="button"
+                className={`space-tool${activeTool === 'area' ? ' on' : ''}`}
+                data-testid="space-area-tool"
+                aria-pressed={activeTool === 'area'}
+                onClick={toggleAreaTool}
+              >
+                <Icon name="marquee" size={13} /> {areaPolygon ? 'Edit area' : 'Select area'}
+              </button>
+              {areaPolygon && (
+                <button
+                  type="button"
+                  className="space-tool ghost"
+                  data-testid="space-area-clear"
+                  onClick={clearArea}
+                >
+                  <Icon name="close" size={12} /> Clear
+                </button>
+              )}
+              <span className="space-tool-sep" aria-hidden />
+              <button
+                type="button"
+                className={`space-tool${activeTool === 'marker' ? ' on' : ''}`}
+                data-testid="space-marker-tool"
+                aria-pressed={activeTool === 'marker'}
+                onClick={toggleMarkerTool}
+              >
+                <Icon name="pin" size={13} /> Drop marker
+              </button>
+              {activeTool === 'marker' && (
+                <>
+                  <select
+                    className="space-marker-select num"
+                    data-testid="space-marker-type"
+                    value={markerType}
+                    onChange={(e) => setMarkerType(e.target.value as RoomType)}
+                  >
+                    {ROOM_TYPES.map((t) => (
+                      <option key={t.value} value={t.value}>
+                        {t.label}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    className="space-marker-ref num"
+                    data-testid="space-marker-ref"
+                    value={markerRef}
+                    onChange={(e) => setMarkerRef(e.target.value)}
+                    aria-label="Room reference number"
+                    size={5}
+                  />
+                </>
+              )}
+            </div>
+            {activeTool === 'area' && (
+              <p className="space-tool-hint" data-testid="space-area-hint">
+                Click to lay the boundary — snaps to nearby walls. Click the first point (or
+                double-click / Enter) to close, Esc to cancel.
+              </p>
+            )}
+            {activeTool === 'marker' && (
+              <p className="space-tool-hint">
+                Pick a room type + number, then click the plan to drop a labelled pin.
+              </p>
+            )}
+            <DrawingView drawing={drawing} onCanvas={handleCanvas} />
           </div>
 
           <div className="space-detail">
+            {areaPolygon && (
+              <div className="area-restricted-note" data-testid="area-restricted-note" role="status">
+                <Icon name="marquee" size={13} /> Restricted to the selected area — readouts below cover
+                the sub-area only.
+              </div>
+            )}
             <div className="space-metrics">
               <div className="space-metric">
                 <span className="space-metric-label">Usable area</span>
@@ -289,6 +472,57 @@ export function SpaceStep({
                   <span className="num">{readouts.program.amenities}</span>
                 </li>
               </ul>
+            </section>
+
+            <section className="space-section" data-testid="space-markers">
+              <div className="panel-eyebrow">
+                Room markers{markers.length > 0 ? ` · ${markers.length}` : ''}
+              </div>
+              {markers.length === 0 ? (
+                <p className="space-empty-note">
+                  Drop markers where detection lacks context (IT room, pantry, mother's room) and give
+                  each a reference number to carry into the AI + takeoff.
+                </p>
+              ) : (
+                <ul className="space-markers-list" data-testid="space-markers-list">
+                  {markers.map((m) => (
+                    <li key={m.id} className="space-marker-row" data-testid="marker-pin">
+                      <span className="space-marker-pin num" aria-hidden>
+                        {m.ref.slice(0, 4)}
+                      </span>
+                      <input
+                        className="space-marker-row-ref num"
+                        data-testid="marker-pin-ref"
+                        value={m.ref}
+                        onChange={(e) => editMarkerRef(m.id, e.target.value)}
+                        aria-label="Room reference"
+                        size={5}
+                      />
+                      <select
+                        className="space-marker-row-type"
+                        data-testid="marker-pin-type"
+                        value={m.type}
+                        onChange={(e) => editMarkerType(m.id, e.target.value as RoomType)}
+                      >
+                        {ROOM_TYPES.map((t) => (
+                          <option key={t.value} value={t.value}>
+                            {t.label}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        className="space-marker-del"
+                        data-testid="marker-pin-del"
+                        aria-label={`Delete marker ${m.ref}`}
+                        onClick={() => deleteMarker(m.id)}
+                      >
+                        <Icon name="close" size={12} />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </section>
 
             <section className="space-section" data-testid="space-rooms">

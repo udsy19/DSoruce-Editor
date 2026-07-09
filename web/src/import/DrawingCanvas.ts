@@ -1,5 +1,7 @@
 import type { Drawing, DrawEntity, FurnitureItem, Category } from './types'
 import { CATEGORY_COLOR } from './types'
+import { collectWallSegments, type Pt, type Segment } from './testfit'
+import type { RoomMarker, RoomType } from './markers'
 
 /**
  * Framework-agnostic CAD renderer for an imported {@link Drawing}. Renders
@@ -51,6 +53,12 @@ const HANDLE_PX = 3 // half-size of selection corner handles, screen px
 const UNDO_CAP = 50 // max snapshots kept
 const PLACE_SNAP = 0.05 // meters — placement-ghost grid snap
 const PLACE_FILL = 'rgba(232,161,60,0.10)' // ghost footprint wash
+const SNAP_PX = 12 // screen-px radius for the area tool's adaptive wall snap
+const AREA_MASK = 'rgba(20,24,33,0.42)' // dims everything OUTSIDE the selected area
+const AREA_FILL = 'rgba(232,161,60,0.08)' // faint wash inside the selected area
+const AREA_VERTEX_PX = 4 // half-size of an area-polygon vertex handle, screen px
+const AREA_CLOSE_PX = 10 // click within this of the first vertex closes the ring
+const MARKER_R_PX = 11 // marker pin radius, screen px
 
 /** Per-category screen lineweight (CSS px), independent of zoom. */
 const LINE_WEIGHT: Record<Category, number> = {
@@ -119,6 +127,23 @@ export class DrawingCanvas {
   // undo: snapshots of drawing.furniture taken before each mutation.
   private undoStack: FurnitureItem[][] = []
 
+  // area-select tool (workflow.md §3.1): a polygon in drawing/source coords.
+  // `area` holds either the in-progress vertices or the committed ring; while
+  // the tool is armed vertices are editable (drag handles, adaptive wall snap).
+  private areaTool = false
+  private area: Pt[] = []
+  private areaClosed = false
+  private areaDragVertex: number | null = null
+  private toolCursor: Pt | null = null // snapped preview point (area vertex / marker ghost)
+  private toolSnapped = false // did `toolCursor` land on a wall feature
+  private snapPoints: Pt[] = [] // wall/glazing endpoints — adaptive snap targets
+  private snapSegs: Segment[] = [] // wall/glazing segments — projection snap targets
+
+  // marker tool (workflow.md §3.2): `markerArm` is the type+ref waiting to be
+  // dropped; `markers` are the placed pins (drawing/source coords) to render.
+  private markerArm: { type: RoomType; ref: string } | null = null
+  private markers: RoomMarker[] = []
+
   private ro: ResizeObserver | null = null
 
   /** Fired on click: the furniture item under the cursor, or null on empty space. */
@@ -130,6 +155,13 @@ export class DrawingCanvas {
   /** Fired after every re-render (pan/zoom/resize/refresh/edit) so overlays
    *  anchored in screen space (e.g. the selection card) can re-position. */
   onViewChange: (() => void) | null = null
+  /** Fired when the area polygon is committed (closed), edited, or cleared —
+   *  the committed ring (drawing coords) or null. In-progress vertices do NOT
+   *  fire this, so React never rewrites a half-drawn polygon. */
+  onAreaChange: ((polygon: Pt[] | null) => void) | null = null
+  /** Fired when a marker is dropped, at the click point (drawing coords). The
+   *  owner assigns the id/ref and re-arms the tool for the next drop. */
+  onMarkerDrop: ((x: number, y: number) => void) | null = null
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas
@@ -151,6 +183,19 @@ export class DrawingCanvas {
     this.undoStack = []
     this.placing = null
     this.placeCursor = null
+    // A fresh drawing clears any prior area/markers; the owner re-applies the
+    // persisted ones via setArea/setMarkers after this returns.
+    this.areaTool = false
+    this.area = []
+    this.areaClosed = false
+    this.areaDragVertex = null
+    this.markerArm = null
+    this.markers = []
+    this.toolCursor = null
+    // Precompute adaptive-snap targets: wall/glazing endpoints and segments.
+    this.snapSegs = collectWallSegments(d)
+    this.snapPoints = []
+    for (const [a, b] of this.snapSegs) this.snapPoints.push(a, b)
     this.buildBuckets(d)
     this.fitToView() // also renders
   }
@@ -201,6 +246,10 @@ export class DrawingCanvas {
    */
   beginPlace(spec: PlaceSpec): void {
     if (!this.drawing || !(spec.w > 0) || !(spec.h > 0)) return
+    // Disarm the area/marker tools (a committed polygon + markers are kept).
+    this.areaTool = false
+    this.markerArm = null
+    this.areaDragVertex = null
     this.placing = spec
     this.placeCursor = null
     this.placeRotation = 0
@@ -224,6 +273,88 @@ export class DrawingCanvas {
 
   isPlacing(): boolean {
     return this.placing !== null
+  }
+
+  // ---- area-select tool (workflow.md §3.1) ----
+
+  /** Arm the area tool. If a committed polygon exists it becomes editable
+   *  (drag vertices); otherwise a fresh ring is started. Click to add vertices,
+   *  click the first vertex (or double-click / Enter) to close, Backspace drops
+   *  the last, Esc cancels. Disarms placement + marker modes. */
+  beginArea(): void {
+    this.cancelPlace()
+    this.markerArm = null
+    this.areaTool = true
+    if (!this.areaClosed) this.area = []
+    this.areaDragVertex = null
+    this.toolCursor = null
+    if (this.selected) {
+      this.selected = null
+      this.onSelect?.(null)
+    }
+    this.canvas.style.cursor = 'crosshair'
+    this.render()
+  }
+
+  /** Clear the committed/in-progress polygon and notify (restores full plan). */
+  clearArea(): void {
+    this.area = []
+    this.areaClosed = false
+    this.areaDragVertex = null
+    this.toolCursor = null
+    this.render()
+    this.onAreaChange?.(null)
+  }
+
+  /** Load a persisted polygon (committed) without firing onAreaChange. */
+  setArea(polygon: Pt[] | null): void {
+    if (polygon && polygon.length >= 3) {
+      this.area = polygon.map((p): Pt => [p[0], p[1]])
+      this.areaClosed = true
+    } else {
+      this.area = []
+      this.areaClosed = false
+    }
+    this.areaDragVertex = null
+    this.render()
+  }
+
+  isAreaTool(): boolean {
+    return this.areaTool
+  }
+
+  // ---- room-marker tool (workflow.md §3.2) ----
+
+  /** Arm the marker tool: the next click drops a pin of `type`/`ref`. Stays
+   *  disarmed after — the owner re-arms with the next ref in onMarkerDrop. */
+  beginMarkerPlace(type: RoomType, ref: string): void {
+    this.cancelPlace()
+    this.areaTool = false
+    this.areaDragVertex = null
+    this.markerArm = { type, ref }
+    this.toolCursor = null
+    if (this.selected) {
+      this.selected = null
+      this.onSelect?.(null)
+    }
+    this.canvas.style.cursor = 'crosshair'
+    this.render()
+  }
+
+  /** Load the persisted markers to render as pins. */
+  setMarkers(markers: RoomMarker[]): void {
+    this.markers = markers.map((m) => ({ ...m }))
+    this.render()
+  }
+
+  /** Disarm the area and marker tools (keeps a committed polygon + markers). */
+  cancelTool(): void {
+    this.areaTool = false
+    this.markerArm = null
+    this.areaDragVertex = null
+    this.toolCursor = null
+    this.canvas.style.cursor = 'default'
+    this.render()
   }
 
   /** Restore the last pre-edit snapshot of the furniture. No-op if nothing to undo. */
@@ -270,6 +401,7 @@ export class DrawingCanvas {
     this.canvas.removeEventListener('mousedown', this.onDown)
     window.removeEventListener('mousemove', this.onMove)
     window.removeEventListener('mouseup', this.onUp)
+    this.canvas.removeEventListener('dblclick', this.onDblClick)
     this.canvas.removeEventListener('wheel', this.onWheel)
     this.canvas.removeEventListener('mouseleave', this.onLeave)
     window.removeEventListener('resize', this.onResize)
@@ -286,6 +418,90 @@ export class DrawingCanvas {
 
   private cssSize() {
     return { w: this.canvas.width / this.dpr, h: this.canvas.height / this.dpr }
+  }
+
+  // ---- area tool geometry helpers ----
+
+  /** Snap a screen point to the nearest wall endpoint (priority) or wall-line
+   *  projection within `SNAP_PX`, giving the area tool its "adaptive" feel.
+   *  Returns the world point + whether it snapped to a feature. */
+  private snapWorld(sx: number, sy: number): { p: Pt; snapped: boolean } {
+    const w = this.toWorld(sx, sy)
+    const tol = SNAP_PX / this.scale // px → world meters
+    let best: Pt | null = null
+    let bestD = tol
+    for (const [ex, ey] of this.snapPoints) {
+      const d = Math.hypot(ex - w.x, ey - w.y)
+      if (d < bestD) {
+        bestD = d
+        best = [ex, ey]
+      }
+    }
+    if (best) return { p: best, snapped: true }
+    // Fall back to the closest point on any wall segment.
+    let projD = tol
+    let proj: Pt | null = null
+    for (const [a, b] of this.snapSegs) {
+      const dx = b[0] - a[0]
+      const dy = b[1] - a[1]
+      const len2 = dx * dx + dy * dy
+      const t = len2 < 1e-12 ? 0 : Math.max(0, Math.min(1, ((w.x - a[0]) * dx + (w.y - a[1]) * dy) / len2))
+      const px = a[0] + t * dx
+      const py = a[1] + t * dy
+      const d = Math.hypot(px - w.x, py - w.y)
+      if (d < projD) {
+        projD = d
+        proj = [px, py]
+      }
+    }
+    if (proj) return { p: proj, snapped: true }
+    return { p: [w.x, w.y], snapped: false }
+  }
+
+  /** Index of the area vertex whose handle is under (sx,sy), or null. */
+  private hitAreaVertex(sx: number, sy: number): number | null {
+    for (let i = 0; i < this.area.length; i++) {
+      const p = this.toScreen(this.area[i][0], this.area[i][1])
+      if (Math.hypot(p.x - sx, p.y - sy) <= AREA_VERTEX_PX + 4) return i
+    }
+    return null
+  }
+
+  /** True when (sx,sy) is within closing distance of the first vertex. */
+  private nearFirstVertex(sx: number, sy: number): boolean {
+    if (this.area.length < 3) return false
+    const p = this.toScreen(this.area[0][0], this.area[0][1])
+    return Math.hypot(p.x - sx, p.y - sy) <= AREA_CLOSE_PX
+  }
+
+  /** Notify the owner of the committed ring (or null while not yet closed). */
+  private emitArea(): void {
+    const closed = this.areaClosed && this.area.length >= 3
+    this.onAreaChange?.(closed ? this.area.map((p): Pt => [p[0], p[1]]) : null)
+  }
+
+  /** Close the in-progress ring: commit it, disarm the tool (so the committed
+   *  polygon renders without edit handles), and notify. Re-editing is a fresh
+   *  beginArea() away — it keeps the committed ring and re-arms the handles. */
+  private closeArea(): void {
+    this.areaClosed = true
+    this.areaTool = false
+    this.areaDragVertex = null
+    this.toolCursor = null
+    this.canvas.style.cursor = 'default'
+    this.render()
+    this.emitArea()
+  }
+
+  /** Esc while the area tool is armed: cancel an in-progress ring (clear +
+   *  disarm), or just disarm when a ring is already committed. */
+  private escapeArea(): void {
+    if (!this.areaClosed) this.area = []
+    this.areaTool = false
+    this.areaDragVertex = null
+    this.toolCursor = null
+    this.canvas.style.cursor = 'default'
+    this.render()
   }
 
   // ---- setup: precompute style buckets so pan/zoom stay cheap ----
@@ -315,6 +531,7 @@ export class DrawingCanvas {
     this.canvas.addEventListener('mousedown', this.onDown)
     window.addEventListener('mousemove', this.onMove)
     window.addEventListener('mouseup', this.onUp)
+    this.canvas.addEventListener('dblclick', this.onDblClick)
     this.canvas.addEventListener('wheel', this.onWheel, { passive: false })
     this.canvas.addEventListener('mouseleave', this.onLeave)
     window.addEventListener('resize', this.onResize)
@@ -347,6 +564,18 @@ export class DrawingCanvas {
       this.moveCandidate = null
       return
     }
+    // Area tool: grabbing a vertex handle arms a drag; empty space stays a pan
+    // (a plain click adds a vertex in onUp).
+    if (this.areaTool) {
+      this.areaDragVertex = this.hitAreaVertex(s.x, s.y)
+      this.moveCandidate = null
+      return
+    }
+    // Marker tool: a plain click drops a pin (handled in onUp so panning works).
+    if (this.markerArm) {
+      this.moveCandidate = null
+      return
+    }
     // Hitting a furniture item selects it and arms a MOVE (started once we drag
     // past the threshold). Empty space stays a pan.
     const hit = this.pickFurniture(s.x, s.y)
@@ -364,6 +593,15 @@ export class DrawingCanvas {
   private onMove = (e: MouseEvent) => {
     const s = this.screenFromEvent(e)
     if (this.pointerDown) {
+      // Area vertex drag: snap-follow the cursor, live-update the ring.
+      if (this.areaTool && this.areaDragVertex != null) {
+        const { p } = this.snapWorld(s.x, s.y)
+        this.area[this.areaDragVertex] = p
+        this.lastScreen = s
+        this.render()
+        if (this.areaClosed) this.emitArea()
+        return
+      }
       if (
         !this.didPan &&
         !this.movingActive &&
@@ -399,6 +637,29 @@ export class DrawingCanvas {
       this.render()
       return
     }
+    const withinCanvas = s.x >= 0 && s.y >= 0 && s.x <= this.cssSize().w && s.y <= this.cssSize().h
+    // Area tool: the next-vertex preview snaps to wall features; hovering a
+    // vertex handle shows a grab cursor.
+    if (this.areaTool) {
+      if (withinCanvas) {
+        const { p, snapped } = this.snapWorld(s.x, s.y)
+        this.toolCursor = p
+        this.toolSnapped = snapped
+      } else {
+        this.toolCursor = null
+      }
+      this.canvas.style.cursor = this.hitAreaVertex(s.x, s.y) != null ? 'grab' : 'crosshair'
+      this.render()
+      return
+    }
+    // Marker tool: a pin ghost tracks the cursor (markers are not wall-snapped).
+    if (this.markerArm) {
+      const w = this.toWorld(s.x, s.y)
+      this.toolCursor = withinCanvas ? [w.x, w.y] : null
+      this.canvas.style.cursor = 'crosshair'
+      this.render()
+      return
+    }
     // Hover hit-test only when not dragging.
     const within = s.x >= 0 && s.y >= 0 && s.x <= this.cssSize().w && s.y <= this.cssSize().h
     const hit = within ? this.pickFurniture(s.x, s.y) : null
@@ -422,7 +683,35 @@ export class DrawingCanvas {
       this.emitChange() // a drag-move committed
       return
     }
+    // Area vertex drag committed (a click on a handle that didn't pan).
+    if (this.areaTool && this.areaDragVertex != null) {
+      this.areaDragVertex = null
+      if (this.areaClosed) this.emitArea()
+      this.render()
+      return
+    }
     if (wasPan) return // was a pan, not a click
+    // Area tool: add a vertex, or close the ring by clicking the first vertex.
+    if (this.areaTool) {
+      const s = this.screenFromEvent(e)
+      if (!this.areaClosed && this.nearFirstVertex(s.x, s.y)) {
+        this.closeArea()
+        return
+      }
+      if (!this.areaClosed) {
+        const { p } = this.snapWorld(s.x, s.y)
+        this.area.push(p)
+        this.render()
+      }
+      return
+    }
+    // Marker tool: drop a pin at the click point; the owner assigns id/ref.
+    if (this.markerArm) {
+      const s = this.screenFromEvent(e)
+      const w = this.toWorld(s.x, s.y)
+      this.onMarkerDrop?.(w.x, w.y)
+      return
+    }
     // Placement mode: a plain click stamps the armed spec at the snapped point.
     if (this.placing) {
       const s = this.screenFromEvent(e)
@@ -445,11 +734,25 @@ export class DrawingCanvas {
       this.placeCursor = null
       this.render()
     }
+    if ((this.areaTool || this.markerArm) && this.toolCursor) {
+      this.toolCursor = null
+      this.render()
+    }
     if (this.hovered) {
       this.hovered = null
       this.onHover?.(null)
       this.render()
     }
+  }
+
+  /** Double-click closes the in-progress area ring (dropping the redundant
+   *  vertex the two constituent clicks added). */
+  private onDblClick = (e: MouseEvent) => {
+    if (!this.areaTool || this.areaClosed) return
+    e.preventDefault()
+    if (this.area.length > 3) this.area.pop() // the dblclick's second click
+    if (this.area.length >= 3) this.closeArea()
+    else this.render()
   }
 
   // ---- keyboard: rotate / delete / duplicate / undo ----
@@ -459,6 +762,31 @@ export class DrawingCanvas {
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
     const mod = e.metaKey || e.ctrlKey
     const key = e.key.toLowerCase()
+    // Area tool: Enter/Escape close/cancel the ring, Backspace drops the last
+    // vertex. Handled before the furniture shortcuts so they don't clash.
+    if (this.areaTool && !mod) {
+      if (key === 'escape') {
+        e.preventDefault()
+        this.escapeArea()
+        return
+      }
+      if (key === 'enter') {
+        e.preventDefault()
+        if (!this.areaClosed && this.area.length >= 3) this.closeArea()
+        return
+      }
+      if ((key === 'backspace' || key === 'delete') && !this.areaClosed && this.area.length > 0) {
+        e.preventDefault()
+        this.area.pop()
+        this.render()
+        return
+      }
+    }
+    if (this.markerArm && !mod && key === 'escape') {
+      e.preventDefault()
+      this.cancelTool()
+      return
+    }
     // Placement mode: Escape exits, R spins the ghost (Shift+R reverses —
     // the same convention as rotating a selected item). ⌘Z etc. fall through.
     if (this.placing && !mod) {
@@ -760,7 +1088,123 @@ export class DrawingCanvas {
     this.drawTexts(d)
     this.drawHighlights()
     this.drawPlaceGhost()
+    this.drawArea()
+    this.drawMarkers()
     this.onViewChange?.()
+  }
+
+  /** Area-select overlay: a committed ring dims everything outside it (even-odd
+   *  mask) and draws its outline + editable vertex handles; an in-progress ring
+   *  draws the dashed partial polyline with a live preview segment to the
+   *  snapped cursor. */
+  private drawArea() {
+    const ctx = this.ctx
+    const pts = this.area
+    if (pts.length === 0 && !(this.areaTool && this.toolCursor)) return
+    const scr = pts.map((p) => this.toScreen(p[0], p[1]))
+
+    if (this.areaClosed && scr.length >= 3) {
+      const { w, h } = this.cssSize()
+      // Dim OUTSIDE the ring: full-canvas rect with the polygon as an even-odd hole.
+      ctx.save()
+      ctx.beginPath()
+      ctx.rect(0, 0, w, h)
+      ctx.moveTo(scr[0].x, scr[0].y)
+      for (let i = 1; i < scr.length; i++) ctx.lineTo(scr[i].x, scr[i].y)
+      ctx.closePath()
+      ctx.fillStyle = AREA_MASK
+      ctx.fill('evenodd')
+      ctx.restore()
+      // Ring outline + faint inside wash.
+      ctx.beginPath()
+      ctx.moveTo(scr[0].x, scr[0].y)
+      for (let i = 1; i < scr.length; i++) ctx.lineTo(scr[i].x, scr[i].y)
+      ctx.closePath()
+      ctx.fillStyle = AREA_FILL
+      ctx.fill()
+      ctx.strokeStyle = ACCENT
+      ctx.lineWidth = 1.6
+      ctx.stroke()
+      if (this.areaTool) this.drawAreaHandles(scr)
+      return
+    }
+
+    if (this.areaTool && scr.length > 0) {
+      ctx.beginPath()
+      ctx.moveTo(scr[0].x, scr[0].y)
+      for (let i = 1; i < scr.length; i++) ctx.lineTo(scr[i].x, scr[i].y)
+      if (this.toolCursor) {
+        const c = this.toScreen(this.toolCursor[0], this.toolCursor[1])
+        ctx.lineTo(c.x, c.y)
+      }
+      ctx.strokeStyle = ACCENT
+      ctx.lineWidth = 1.6
+      ctx.setLineDash([6, 4])
+      ctx.stroke()
+      ctx.setLineDash([])
+      this.drawAreaHandles(scr)
+    } else if (this.areaTool && this.toolCursor) {
+      // No vertices yet — just show the snapped crosshair dot.
+      const c = this.toScreen(this.toolCursor[0], this.toolCursor[1])
+      ctx.fillStyle = this.toolSnapped ? ACCENT : HOVER
+      ctx.beginPath()
+      ctx.arc(c.x, c.y, 3, 0, Math.PI * 2)
+      ctx.fill()
+    }
+  }
+
+  /** Draw the area vertex handles; the first vertex gets a ring (close target). */
+  private drawAreaHandles(scr: { x: number; y: number }[]) {
+    const ctx = this.ctx
+    ctx.fillStyle = ACCENT
+    for (let i = 0; i < scr.length; i++) {
+      ctx.fillRect(
+        Math.round(scr[i].x) - AREA_VERTEX_PX,
+        Math.round(scr[i].y) - AREA_VERTEX_PX,
+        AREA_VERTEX_PX * 2,
+        AREA_VERTEX_PX * 2,
+      )
+    }
+    if (!this.areaClosed && scr.length >= 3) {
+      ctx.strokeStyle = ACCENT
+      ctx.lineWidth = 1.4
+      ctx.beginPath()
+      ctx.arc(scr[0].x, scr[0].y, AREA_CLOSE_PX, 0, Math.PI * 2)
+      ctx.stroke()
+    }
+  }
+
+  /** Room markers: a numbered pin per marker, plus a ghost pin for the armed
+   *  (not-yet-dropped) marker under the cursor. */
+  private drawMarkers() {
+    if (this.markerArm && this.toolCursor) {
+      this.drawPin(this.toScreen(this.toolCursor[0], this.toolCursor[1]), this.markerArm.ref, true)
+    }
+    for (const m of this.markers) {
+      this.drawPin(this.toScreen(m.x, m.y), m.ref, false)
+    }
+  }
+
+  /** One pin: an amber disc with the ref number, optionally translucent (ghost). */
+  private drawPin(p: { x: number; y: number }, ref: string, ghost: boolean) {
+    const ctx = this.ctx
+    ctx.save()
+    ctx.globalAlpha = ghost ? 0.55 : 1
+    ctx.beginPath()
+    ctx.arc(p.x, p.y, MARKER_R_PX, 0, Math.PI * 2)
+    ctx.fillStyle = ACCENT
+    ctx.fill()
+    ctx.lineWidth = 1.5
+    ctx.strokeStyle = '#ffffff'
+    ctx.stroke()
+    ctx.fillStyle = '#1a1d21'
+    ctx.font = '600 10px "IBM Plex Mono", ui-monospace, monospace'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(ref.slice(0, 4), p.x, p.y + 0.5)
+    ctx.restore()
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'alphabetic'
   }
 
   /** Placement ghost: dashed amber footprint (rotated), soft wash, center

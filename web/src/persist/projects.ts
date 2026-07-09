@@ -16,6 +16,8 @@
 
 import { dbDel, dbGet, dbGetAll, dbPut } from './db'
 import type { Drawing } from '../import/types'
+import type { Pt } from '../import/testfit'
+import type { RoomMarker } from '../import/markers'
 
 /**
  * Pre-generation working state carried across the wizard steps. Reserved for
@@ -50,6 +52,11 @@ export interface ProjectDraft {
   drawing?: Drawing
   /** Space-step detected readouts (numbers exact, boundaries best-effort). */
   readouts?: SpaceReadoutsSummary
+  /** §3.1 area-select polygon (drawing/source coords). When set, the readouts
+   *  and the test-fit plate are restricted to this sub-area. */
+  areaPolygon?: Pt[]
+  /** §3.2 room markers + reference numbers (drawing/source coords). */
+  markers?: RoomMarker[]
   /** Reproduces the chosen candidate — generate is deterministic per seed. */
   winningSeed?: number
 }

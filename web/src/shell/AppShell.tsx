@@ -22,6 +22,7 @@ import { ProjectLibrary } from './ProjectLibrary'
 import { CreateProject } from './CreateProject'
 import { WizardChrome } from './WizardChrome'
 import { SpaceStep } from './steps/SpaceStep'
+import { getProject } from '../persist/projects'
 
 export function AppShell() {
   const route = useRoute()
@@ -64,7 +65,17 @@ export function AppShell() {
           title="Drop the floor plate"
           subtitle="Upload a CAD floor plan (DXF or DWG). We trace its usable plate, tally its components, and detect the rooms and program before you set the brief."
           onBack={() => navigate({ name: 'projects' })}
-          onNext={() => navigate({ name: 'wizard', projectId: route.projectId, step: 'program' })}
+          onNext={async () => {
+            // Seed the editor's test-fit with the Space step's sub-area + room
+            // markers (workflow.md §3.1/§3.2), read fresh off the persisted
+            // draft, then advance. testFit is a no-op until a drawing is loaded.
+            const rec = await getProject(route.projectId)
+            editorRef.current?.testFit({
+              areaPolygon: rec?.draft?.areaPolygon,
+              markers: rec?.draft?.markers,
+            })
+            navigate({ name: 'wizard', projectId: route.projectId, step: 'program' })
+          }}
           nextLabel="Next: Program"
           nextDisabled={!spaceReady}
         >

@@ -43,6 +43,11 @@ export interface TakeoffOptions {
   project?: string
   /** Supplier shown when a component has no bound supplier (matches sample). */
   supplierFallback?: string
+  /** zone.id → user room reference (from a Space-step room marker sitting in
+   *  that zone). When present, the Room ID column shows the human ref (e.g.
+   *  "502") instead of the generated zone id. Re-resolved per export against
+   *  the current zones (workflow.md §3.2). */
+  roomRefs?: Map<number, string>
 }
 
 /** One aggregated line in the per-component furniture BOM. */
@@ -142,20 +147,27 @@ function pointInRect(px: number, py: number, x: number, y: number, w: number, h:
   return px >= x - w / 2 && px <= x + w / 2 && py >= y - h / 2 && py <= y + h / 2
 }
 
-/** The zone whose rect contains a component's center, or null (→ catch-all). */
-function zoneFor(c: DocComponent, zones: DocZone[]): DocZone | null {
+/** The zone whose rect contains point (px,py) in EDITOR coords, or null.
+ *  Exported so the room-marker → zone association (App.tsx) reuses the one
+ *  point-in-zone test rather than forking it (no-bloat). */
+export function zoneAtPoint(px: number, py: number, zones: DocZone[]): DocZone | null {
   for (const z of zones) {
     const s = z.shape
     if (s.kind === 'Rect') {
-      if (pointInRect(c.x, c.y, s.x, s.y, s.w, s.h)) return z
+      if (pointInRect(px, py, s.x, s.y, s.w, s.h)) return z
     } else {
       // RectRing: inside the outer rect but outside the inner hole.
-      const inOuter = pointInRect(c.x, c.y, s.x, s.y, s.w, s.h)
-      const inHole = pointInRect(c.x, c.y, s.x, s.y, s.in_w, s.in_h)
+      const inOuter = pointInRect(px, py, s.x, s.y, s.w, s.h)
+      const inHole = pointInRect(px, py, s.x, s.y, s.in_w, s.in_h)
       if (inOuter && !inHole) return z
     }
   }
   return null
+}
+
+/** The zone whose rect contains a component's center, or null (→ catch-all). */
+function zoneFor(c: DocComponent, zones: DocZone[]): DocZone | null {
+  return zoneAtPoint(c.x, c.y, zones)
 }
 
 /** Perimeter (m) of a zone's shape — for costing Core walls. */
@@ -173,6 +185,7 @@ export function buildTakeoffModel(state: DocState, opts: TakeoffOptions = {}): T
   const floor = opts.floor ?? 1
   const supplierFallback = opts.supplierFallback ?? DEFAULT_SUPPLIER
   const bindings = opts.bindings
+  const roomRefs = opts.roomRefs
   const zones = state.zones ?? []
 
   const priceOf = (c: DocComponent): number => {
@@ -188,7 +201,7 @@ export function buildTakeoffModel(state: DocState, opts: TakeoffOptions = {}): T
   for (const c of state.components) {
     if (NON_FURNITURE.has(c.category)) continue
     const zone = zoneFor(c, zones)
-    const roomId = zone ? zone.id : 'OS'
+    const roomId = zone ? (roomRefs?.get(zone.id) ?? zone.id) : 'OS'
     const roomType = zone ? ROOM_TYPE[zone.zone_type] : 'Open Space'
     const desc = itemDescription(c)
     const unitPrice = priceOf(c)

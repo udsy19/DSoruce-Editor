@@ -307,6 +307,13 @@ export function Icon({ name, size = 19 }: Props) {
           <path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4" />
         </svg>
       )
+    case 'pin':
+      return (
+        <svg {...p}>
+          <path d="M12 21s6-5.3 6-10a6 6 0 1 0-12 0c0 4.7 6 10 6 10z" />
+          <circle cx="12" cy="11" r="2.2" />
+        </svg>
+      )
     default:
       return (
         <svg {...p}>
