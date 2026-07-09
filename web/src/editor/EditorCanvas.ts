@@ -356,6 +356,8 @@ export class EditorCanvas {
   private hasCursor = false
   private dragging = false
   private panning = false
+  /** Space held → left-drag pans (universal design-tool convention). */
+  private spaceDown = false
   private lastScreen = { x: 0, y: 0 }
 
   onChange: (() => void) | null = null
@@ -723,6 +725,7 @@ export class EditorCanvas {
     this.canvas.addEventListener('wheel', this.onWheel, { passive: false })
     this.canvas.addEventListener('contextmenu', this.onCtx)
     window.addEventListener('keydown', this.onKey)
+    window.addEventListener('keyup', this.onKeyUp)
     window.addEventListener('resize', this.onResize)
   }
   dispose() {
@@ -733,7 +736,15 @@ export class EditorCanvas {
     this.canvas.removeEventListener('wheel', this.onWheel)
     this.canvas.removeEventListener('contextmenu', this.onCtx)
     window.removeEventListener('keydown', this.onKey)
+    window.removeEventListener('keyup', this.onKeyUp)
     window.removeEventListener('resize', this.onResize)
+  }
+
+  private onKeyUp = (e: KeyboardEvent) => {
+    if (e.code === 'Space') {
+      this.spaceDown = false
+      if (!this.panning) this.canvas.style.cursor = ''
+    }
   }
 
   private screenFromEvent(e: MouseEvent) {
@@ -746,8 +757,11 @@ export class EditorCanvas {
   private onDown = (e: MouseEvent) => {
     const s = this.screenFromEvent(e)
     this.lastScreen = s
-    if (e.button === 1 || e.button === 2) {
+    // Pan on middle/right button, or left-drag while Space is held (so a laptop
+    // trackpad user without a middle button can always pan).
+    if (e.button === 1 || e.button === 2 || (e.button === 0 && this.spaceDown)) {
       this.panning = true
+      this.canvas.style.cursor = 'grabbing'
       return
     }
     if (this.cad.active) {
@@ -822,21 +836,50 @@ export class EditorCanvas {
     }
     this.panning = false
     this.dragging = false
+    this.canvas.style.cursor = this.spaceDown ? 'grab' : ''
   }
 
+  /** Wheel: pinch-zoom (trackpad emits ctrlKey) and true mouse wheels zoom to
+   *  the cursor; a two-finger trackpad scroll pans. This makes the plan
+   *  navigable on a laptop trackpad, where there is no middle button and a
+   *  plain two-finger scroll should move the map, not zoom it. */
   private onWheel = (e: WheelEvent) => {
     e.preventDefault()
-    const s = this.screenFromEvent(e)
-    const before = this.toWorld(s.x, s.y)
-    const factor = Math.exp(-e.deltaY * 0.0015)
-    this.scale = Math.min(300, Math.max(8, this.scale * factor))
-    this.offset.x = s.x - before.x * this.scale
-    this.offset.y = s.y - before.y * this.scale
-    this.updateScaleReadout()
-    this.render()
+    const pinch = e.ctrlKey || e.metaKey
+    // A real mouse wheel reports line-mode deltas, or a chunky integer,
+    // vertical-only step; a trackpad reports smaller/fractional pixel deltas
+    // (often with a horizontal component).
+    const mouseWheel =
+      e.deltaMode !== 0 || (e.deltaX === 0 && Number.isInteger(e.deltaY) && Math.abs(e.deltaY) >= 40)
+    if (pinch || mouseWheel) {
+      const s = this.screenFromEvent(e)
+      const before = this.toWorld(s.x, s.y)
+      const factor = Math.exp(-e.deltaY * (pinch ? 0.01 : 0.0015))
+      this.scale = Math.min(300, Math.max(8, this.scale * factor))
+      this.offset.x = s.x - before.x * this.scale
+      this.offset.y = s.y - before.y * this.scale
+      this.updateScaleReadout()
+      this.render()
+    } else {
+      this.offset.x -= e.deltaX
+      this.offset.y -= e.deltaY
+      this.render()
+    }
   }
 
   private onKey = (e: KeyboardEvent) => {
+    // Space (when not typing) arms hold-to-pan in every tool, incl. CAD.
+    const tgt = e.target as HTMLElement | null
+    const typingNow =
+      !!tgt && (tgt.tagName === 'INPUT' || tgt.tagName === 'TEXTAREA' || tgt.isContentEditable)
+    if (e.code === 'Space' && !typingNow) {
+      if (!this.spaceDown) {
+        this.spaceDown = true
+        if (!this.panning) this.canvas.style.cursor = 'grab'
+      }
+      e.preventDefault() // don't scroll the page
+      return
+    }
     if (this.cad.active) {
       // ⌘Z / Ctrl+Z pops the CAD undo stack (grip drags, trims, fillets, …).
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {

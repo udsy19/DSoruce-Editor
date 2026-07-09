@@ -639,7 +639,9 @@ export class Viewer3D {
     el.addEventListener('pointerup', this.onPointerUp)
     el.addEventListener('pointercancel', this.onPointerUp)
     el.addEventListener('dblclick', this.onDblClick)
-    el.addEventListener('wheel', this.onWheel, { passive: false })
+    // Capture phase so a trackpad two-finger scroll can PAN the orbit before
+    // OrbitControls' own (bubble-phase) wheel handler dollies it.
+    el.addEventListener('wheel', this.onWheel, { passive: false, capture: true })
     this.walk.addEventListener('lock', this.onWalkLock)
     this.walk.addEventListener('unlock', this.onWalkUnlock)
 
@@ -994,7 +996,7 @@ export class Viewer3D {
     el.removeEventListener('pointerup', this.onPointerUp)
     el.removeEventListener('pointercancel', this.onPointerUp)
     el.removeEventListener('dblclick', this.onDblClick)
-    el.removeEventListener('wheel', this.onWheel)
+    el.removeEventListener('wheel', this.onWheel, { capture: true })
     this.walk.removeEventListener('lock', this.onWalkLock)
     this.walk.removeEventListener('unlock', this.onWalkUnlock)
 
@@ -1894,9 +1896,30 @@ export class Viewer3D {
       const px = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaY // lines → px
       const notches = THREE.MathUtils.clamp(px / 100, -3, 3)
       this.scrollMove = THREE.MathUtils.clamp(this.scrollMove - notches * SCROLL_STEP, -10, 10)
-    } else {
-      this.cancelTween()
+      return
     }
+    this.cancelTween()
+    // Orbit: a two-finger trackpad scroll PANS the view; pinch (ctrl/⌘) and a
+    // real mouse wheel fall through to OrbitControls to dolly/zoom. This lets a
+    // laptop user move around the plan without a middle/right button.
+    const pinch = e.ctrlKey || e.metaKey
+    const mouseWheel =
+      e.deltaMode !== 0 || (e.deltaX === 0 && Number.isInteger(e.deltaY) && Math.abs(e.deltaY) >= 40)
+    if (pinch || mouseWheel || this.isTransitioning()) return // let OrbitControls handle it
+    e.preventDefault()
+    e.stopImmediatePropagation() // block OrbitControls' dolly this event
+    const el = this.renderer.domElement
+    const dist = this.camera.position.distanceTo(this.orbit.target)
+    const vFov = (this.camera.fov * Math.PI) / 180
+    const perPx = (2 * dist * Math.tan(vFov / 2)) / Math.max(el.clientHeight, 1)
+    const right = new THREE.Vector3().setFromMatrixColumn(this.camera.matrix, 0)
+    const up = new THREE.Vector3().setFromMatrixColumn(this.camera.matrix, 1)
+    const move = new THREE.Vector3()
+      .addScaledVector(right, -e.deltaX * perPx)
+      .addScaledVector(up, e.deltaY * perPx)
+    this.camera.position.add(move)
+    this.orbit.target.add(move)
+    this.orbit.update()
   }
 
   // ── Click picking (orbit mode) ───────────────────────────────────────────
