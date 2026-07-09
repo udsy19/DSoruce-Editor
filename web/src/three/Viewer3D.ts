@@ -84,8 +84,12 @@ import {
  *  - Disposal: https://discourse.threejs.org/t/dispose-things-correctly-in-three-js/6534
  */
 
-const WALL_HEIGHT = 2.6
-const CEILING_HEIGHT = 2.6
+// Floor-to-ceiling heights (m). Exported so the orthographic section renderer
+// (three/sectionRender.ts) extrudes walls/ceiling to the SAME datum the 3D
+// viewer does — one source of truth, no drift between the walkthrough and the
+// section sheets.
+export const WALL_HEIGHT = 2.6
+export const CEILING_HEIGHT = 2.6
 const SKY_TOP = '#cfd8e3' // soft blue-grey zenith
 const SKY_HORIZON = '#f3f1ec' // warm off-white horizon (fog matches)
 const FOG_COLOR = 0xf3f1ec

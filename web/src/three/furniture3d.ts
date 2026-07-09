@@ -359,6 +359,17 @@ const INTRINSIC_H: Partial<Record<FurnitureKind, number>> = {
   planter: 0.95,
 }
 
+/**
+ * Elevation height (m) a category extrudes to — the SAME per-kind default
+ * {@link buildFurniture3D} uses (KIND_H, then the intrinsic proportion), without
+ * building the mesh. Single source of truth for the orthographic section
+ * renderer's silhouette heights, so 2D sections and 3D massing never drift.
+ */
+export function furnitureHeight(category: string): number {
+  const kind = normalizeFurnitureCategory(category)
+  return KIND_H[kind] ?? INTRINSIC_H[kind] ?? 0.75
+}
+
 // ── Builders ─────────────────────────────────────────────────────────────────
 function buildDesk(g: THREE.Object3D, w: number, d: number, h: number, acc: THREE.Material) {
   const top = h
