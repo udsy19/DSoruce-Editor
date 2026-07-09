@@ -131,8 +131,11 @@ Make generated plans read like a senior architect's work, not a diagram.
 ## Track H — 3D / visualization
 - [x] Three.js 2D↔3D viewer, walkthrough, Enscape-like render tier (sky/GTAO/bloom), glass/PBR,
   click-to-pick, glazing walls translucent.
-- 🔄 **Material differentiation + customizable themes** (user: 3D was an all-white void). Zone-tinted
-  floors, distinct wall tones, grounded exterior, + Studio/Warm/Mono/Blueprint theme presets.
+- [x] **Material differentiation + customizable themes** (user: 3D was an all-white void). Root cause:
+  zone floors were at 0.16 opacity (invisible) + single near-white wall + exterior blended into sky.
+  Fixed: opaque zone-tinted carpet floors (matched to the 2D legend), wall hierarchy (exterior vs
+  generated), grounded exterior + visible grid, and **Studio/Warm/Mono/Blueprint** theme presets
+  (`three/theme.ts`, live re-material + localStorage). ViewerToolbar Theme popover.
 - [x] 2D grid legibility bump (was 3.5% opacity → read as white).
 - [ ] Better real-time furniture models ("good-enough" for walkthrough — chosen over photoreal). Visual
   tuning needs a real GPU (untestable headless).
