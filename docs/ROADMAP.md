@@ -19,8 +19,10 @@ The qbiq-style flow: Project → Upload → Program → Generate → Editor → 
 - [x] **S0 — App shell + project library + create-project.** AppShell view-state machine (no router),
   hash routes, editor kept mounted; ProjectRecord (property/address/logo/floor) in IndexedDB `projects`
   store; DSOURCE STUDIO landing + create form. `web/src/shell/*`, `persist/projects.ts`.
-- [ ] **S1 — Space step chrome.** Wizard chrome + Space step: upload → detected readouts
-  (seats/open/enclosed/usable-sf/density, detected program, bill of components, labelled rooms list).
+- [x] **S1 — Space step chrome.** WizardChrome (Property/Space/Program/Generate) + Space step: DXF/DWG
+  upload (reuses the editor import path) → detected readouts (usable m²+sf, bill of components via
+  buildCategoryGroups, detected program, best-effort labelled rooms incl. CAD text labels); persists to
+  the draft, resumes on reload. `shell/WizardChrome.tsx`, `shell/steps/SpaceStep.tsx`. E2E 7/7.
 - [ ] **S2 — Area selection.** Draw/adjust a polygon to restrict analysis to a sub-area (snap to walls,
   editable handles); geometry outside is dropped downstream.
 - [ ] **S3 — Room markers + reference numbers.** Drop typed markers (Office/Meeting/Collab/IT/Pantry/
