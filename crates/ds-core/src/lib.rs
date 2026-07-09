@@ -213,6 +213,24 @@ impl Editor {
         }
     }
 
+    /// Set a component's footprint (meters). Used by the object inspector's
+    /// editable W/H fields; clamped to a small positive minimum so a degenerate
+    /// zero-size box can't be created.
+    pub fn set_component_size(&mut self, id: u32, w: f64, h: f64) {
+        if let Some(c) = self.doc.component_mut(id) {
+            c.w = w.max(0.05);
+            c.h = h.max(0.05);
+        }
+    }
+
+    /// Change a component's category (which slice of the material bank + which
+    /// top-view symbol it uses). The object inspector's category picker.
+    pub fn set_component_category(&mut self, id: u32, category: String) {
+        if let Some(c) = self.doc.component_mut(id) {
+            c.category = category;
+        }
+    }
+
     /// Delete a component **by id** (complements `delete_selected`). Clears the
     /// selection if it pointed at the deleted component.
     pub fn delete_component(&mut self, id: u32) {

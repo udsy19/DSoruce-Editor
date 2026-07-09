@@ -17,6 +17,7 @@ import { searchBankLive, bankQueryFor, formatINR, type BankProduct } from './mat
 import { Icon } from './ui/icons'
 import { ToolDock, type DockTool } from './ui/ToolDock'
 import { StatsPanel } from './ui/StatsPanel'
+import { ObjectInspector } from './ui/ObjectInspector'
 import { LayersPanel } from './ui/LayersPanel'
 import { AgentPanel } from './ai/AgentPanel'
 import { suggestProgram, suggestProgramSummary } from './ai/suggestProgram'
@@ -1031,7 +1032,10 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
               }}
             />
           ) : selected && ec ? (
-            <ReimaginePanel ec={ec} c={selected} onAssign={assignPanelProduct} />
+            <>
+              <ObjectInspector ec={ec} />
+              <ReimaginePanel ec={ec} c={selected} onAssign={assignPanelProduct} />
+            </>
           ) : ec ? (
             <>
               <div className="stat-tabs" role="tablist">
@@ -1094,6 +1098,7 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
                 />
               ) : (
                 <>
+                  <ObjectInspector ec={ec} />
                   {tool.startsWith('cad:') && (
                     <>
                       {ec.cad.store.entities.length > 0 && (

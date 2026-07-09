@@ -40,6 +40,41 @@ export interface DocComponent {
   product_id: string | null
   decision: 'Open' | 'InReview' | 'Confirmed'
 }
+/** Read-only geometry facet of a selection, surfaced to the object inspector. */
+export type SelectedInfo =
+  | {
+      kind: 'component'
+      id: number
+      category: string
+      x: number
+      y: number
+      w: number
+      h: number
+      rotation: number
+      label: string
+      product_id: string | null
+      decision: 'Open' | 'InReview' | 'Confirmed'
+    }
+  | {
+      kind: 'wall'
+      id: number
+      length: number
+      thickness: number
+      a: { x: number; y: number }
+      b: { x: number; y: number }
+    }
+/** Partial edit applied by `updateSelected` (rotation in radians). */
+export interface SelectedPatch {
+  x?: number
+  y?: number
+  w?: number
+  h?: number
+  rotation?: number
+  category?: string
+  decision?: string
+  product_id?: string
+  product_name?: string
+}
 export type ZoneType =
   | 'Circulation'
   | 'Workspace'
@@ -753,6 +788,69 @@ export class EditorCanvas {
     const s = this.getState()
     if (s.selection == null) return null
     return s.components.find((c) => c.id === s.selection) ?? null
+  }
+  /**
+   * Read-only geometry facet of the current selection, for the object inspector.
+   * Returns the selected document component (category + x/y/w/h/rotation +
+   * binding/decision) or, if the selection points at a wall, its length /
+   * thickness / endpoints — else null. Purely derived from `getState()`.
+   */
+  selectedInfo(): SelectedInfo | null {
+    const s = this.getState()
+    if (s.selection == null) return null
+    const c = s.components.find((x) => x.id === s.selection)
+    if (c) {
+      return {
+        kind: 'component',
+        id: c.id,
+        category: c.category,
+        x: c.x,
+        y: c.y,
+        w: c.w,
+        h: c.h,
+        rotation: c.rotation,
+        label: c.label,
+        product_id: c.product_id,
+        decision: c.decision,
+      }
+    }
+    const wl = s.walls.find((x) => x.id === s.selection)
+    if (wl) {
+      return {
+        kind: 'wall',
+        id: wl.id,
+        length: Math.hypot(wl.b.x - wl.a.x, wl.b.y - wl.a.y),
+        thickness: wl.thickness,
+        a: { x: wl.a.x, y: wl.a.y },
+        b: { x: wl.b.x, y: wl.b.y },
+      }
+    }
+    return null
+  }
+  /**
+   * Apply an edit to the current selection from the object inspector. Maps a
+   * partial patch to the matching `Editor` primitive(s) and commits once. Only
+   * component geometry/binding is editable today (walls are not select-hit).
+   */
+  updateSelected(patch: SelectedPatch) {
+    const s = this.getState()
+    const id = s.selection
+    if (id == null) return
+    const c = s.components.find((x) => x.id === id)
+    if (!c) return
+    if (patch.x !== undefined || patch.y !== undefined) {
+      this.ed.move_component(id, patch.x ?? c.x, patch.y ?? c.y)
+    }
+    if (patch.w !== undefined || patch.h !== undefined) {
+      this.ed.set_component_size(id, patch.w ?? c.w, patch.h ?? c.h)
+    }
+    if (patch.rotation !== undefined) this.ed.set_component_rotation(id, patch.rotation)
+    if (patch.category !== undefined) this.ed.set_component_category(id, patch.category)
+    if (patch.decision !== undefined) this.ed.set_decision(id, patch.decision)
+    if (patch.product_id !== undefined) {
+      this.ed.assign_product(id, patch.product_id, patch.product_name ?? c.label, undefined)
+    }
+    this.commit()
   }
   /** Enter/leave presentation ("paper") mode; repaints and notifies React so
    *  any toggle button can reflect the state. */
