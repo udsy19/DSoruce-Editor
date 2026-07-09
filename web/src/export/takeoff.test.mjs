@@ -94,7 +94,8 @@ for (const c of state.components) {
   } else if (c.category === 'Chair' && chairPid == null) {
     chairPid = `chair-${c.id}`
     c.product_id = chairPid
-    bindings.set(chairPid, { price: 4500 })
+    // a real supplier/brand → exercises the takeoff Supplier column
+    bindings.set(chairPid, { price: 4500, supplier: 'steelcase.com', brand: 'Steelcase' })
   }
 }
 
@@ -127,6 +128,8 @@ const doorComps = state.components.filter((c) => c.category === 'Door')
 
 check('generated components (> 0)', state.components.length > 0)
 check('furniture rows present', model.furniture.length > 0)
+// supplier resolution: a bound product carries its real supplier into the column
+check('bound row shows real supplier (not fallback)', model.furniture.some((r) => r.supplier === 'steelcase.com'))
 check(
   'every furniture unit accounted for (Σ qty === non-door component count)',
   model.totals.itemCount === furnitureComps.length,
