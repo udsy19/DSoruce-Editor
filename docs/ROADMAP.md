@@ -126,8 +126,13 @@ User: "our editor doesn't feel as intuitive/detailed as Rayon… most of it is t
   switches, Enter commits, Esc clears), live per-segment dimension chips, ortho/polar snap (Shift=ortho,
   Alt=45°), OSNAP wins. Additive on Line + Wall (click-to-place unchanged). Verified: type 5→5.0m wall.
   `cad/dynamicInput.ts`.
-- [ ] M2 Command palette (⌘K) + real letter shortcuts · M3 context object inspector · M4 live dims on
-  selection + click-to-edit · M5 grouped tool dock · M6 sheets/publish.
+- [x] **M2 Command palette (⌘K) + real letter shortcuts** — `editor/commands.ts` single registry
+  (derived from CAD_RAIL+CATALOG, no duplicated tool list) · `ui/CommandPalette.tsx` fuzzy modal ·
+  App-level window keydown with typing-guard: V/W/L/R/C/A/D/T/M fire tools, ⌘K toggles palette. Rail
+  badges now reflect real bindings. Verified: ⌘K→"wall"→Enter sets wall tool; typing-guard blocks
+  shortcuts in inputs.
+- [ ] M3 context object inspector · M4 live dims on selection + click-to-edit · M5 grouped tool dock ·
+  M6 sheets/publish.
 
 ### Drawing-set output (`docs/design/drawing-set-generator.md`)
 User showed Rayon drawing-set PDFs as the output bar (`docs/reference/rayon-output/`).
