@@ -93,7 +93,11 @@ const CAD_RAIL: { id: string; icon: string; label: string; hint?: string }[] = [
  * needs the shell to mount EditorView and keep it alive.
  */
 export interface EditorController {
-  importFile(f: File): Promise<void>
+  /** Runs the exact DWG/DXF import path; resolves to the parsed Drawing (or
+   *  null on failure) so a wizard step can render/persist it without re-parsing. */
+  importFile(f: File): Promise<Drawing | null>
+  /** Push a previously-parsed Drawing into the editor (wizard reload / resume). */
+  loadDrawing(d: Drawing | null): void
   testFit(): void
   runGenerate(p: Program, o?: { maxIter?: number; target?: number; keepConfirmed?: boolean }): GenResult | null
   setMode(m: '2d' | '3d' | 'import'): void
@@ -156,7 +160,7 @@ export const EditorView = forwardRef<EditorController>(function EditorView(_prop
     setDrawVer((v) => v + 1)
   }
 
-  const onImportFile = async (file: File) => {
+  const onImportFile = async (file: File): Promise<Drawing | null> => {
     setImporting(true)
     setImportErr(null)
     try {
@@ -173,11 +177,22 @@ export const EditorView = forwardRef<EditorController>(function EditorView(_prop
       setDrawing(d)
       setSelItem(null)
       setMode('import')
+      return d
     } catch (e) {
       setImportErr(e instanceof Error ? e.message : String(e))
+      return null
     } finally {
       setImporting(false)
     }
+  }
+
+  /** Push an already-parsed Drawing into the editor — the wizard's resume path
+   *  (a project reopened from its persisted draft). Mirrors the tail of
+   *  onImportFile without re-running the DWG→DXF→parse pipeline. */
+  const loadDrawing = (d: Drawing | null) => {
+    setDrawing(d)
+    setSelItem(null)
+    setMode(d ? 'import' : '2d')
   }
 
   useEffect(() => {
@@ -431,6 +446,7 @@ export const EditorView = forwardRef<EditorController>(function EditorView(_prop
     ref,
     (): EditorController => ({
       importFile: onImportFile,
+      loadDrawing,
       testFit: testFitPlan,
       runGenerate: (program, o) =>
         ecRef.current
@@ -1392,7 +1408,7 @@ function GenerateCard({
  * the ImportPanel sidebar and the imported-plan PDF sheet (single source of
  * the ₹ aggregation math).
  */
-function buildCategoryGroups(
+export function buildCategoryGroups(
   drawing: Drawing,
   bindings: Map<string, BindingInfo>,
 ): CategoryPlanGroup[] {

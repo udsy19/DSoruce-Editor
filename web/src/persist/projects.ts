@@ -23,9 +23,33 @@ import type { Drawing } from '../import/types'
  * it was left and the Space step stays re-editable after generate (raw inputs
  * live here). Kept minimal in S0.
  */
+/**
+ * Compact numeric snapshot of the Space step's detected readouts. Numbers are
+ * EXACT (furniture tallies, plate area); the plate boundary itself is
+ * best-effort (traced from linework that may not fully close) — hence
+ * `plateMethod`/`plateCoverage` are carried so a reader can judge confidence.
+ * The full bill-of-components rows are recomputed from `drawing` on demand
+ * (buildCategoryGroups, App.tsx) rather than duplicated here.
+ */
+export interface SpaceReadoutsSummary {
+  usableAreaM2: number | null
+  usableAreaSf: number | null
+  plateMethod?: 'loop' | 'hull' | 'wrap'
+  plateCoverage?: number
+  /** Distinct furniture blocks in the drawing (bill-of-components grand total). */
+  componentCount: number
+  /** Labelled rooms detected (enclosed service cores + the plate). Best-effort. */
+  roomCount: number
+  /** Best-effort program buckets derived from furniture categories. */
+  program: { offices: number; conference: number; collab: number; amenities: number }
+  computedAt: string // ISO
+}
+
 export interface ProjectDraft {
   /** Parsed upload (same shape as DSourceFile.drawing). */
   drawing?: Drawing
+  /** Space-step detected readouts (numbers exact, boundaries best-effort). */
+  readouts?: SpaceReadoutsSummary
   /** Reproduces the chosen candidate — generate is deterministic per seed. */
   winningSeed?: number
 }
@@ -98,4 +122,12 @@ export async function updateProject(
 
 export function deleteProject(id: string): Promise<void> {
   return dbDel('projects', id)
+}
+
+/** Merge a patch into a project's draft (shallow), preserving the rest of the
+ *  record. The wizard steps write their working state through this. */
+export async function updateDraft(id: string, patch: Partial<ProjectDraft>): Promise<ProjectRecord> {
+  const cur = await getProject(id)
+  if (!cur) throw new Error(`No project with id ${id}`)
+  return updateProject(id, { draft: { ...cur.draft, ...patch } })
 }
