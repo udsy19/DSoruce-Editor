@@ -171,7 +171,19 @@ User showed Rayon drawing-set PDFs as the output bar (`docs/reference/rayon-outp
   depth-faded elevation, floor/ceiling datum + 2.60 m height dim + F.F.L/C.L tags, scale figures,
   longitudinal + cross cut). Wired into `buildDrawingSetPdf` at the `sections` slot (auto-numbered,
   include-filtered, try-wrapped). Verified live: full set 8 pp, both cuts WebGL; Viewer3D unaffected.
-- [ ] Remaining drawing-set: RCP/lighting/electrical layers, per-room dimension runs.
+- [x] **Per-room dimension runs** — `constructionSheet` dimensions every room's internal width/depth
+  (bottom + left edges, inset), via one factored `dimString` helper shared with the perimeter dims;
+  dim labels seed the de-collision occupancy first so room names/tags place around them. Spot-checked
+  exact (Reception 4.00 m, Cabin 2.80 m). Overall perimeter dims retained.
+- [x] **RCP + Power/Data services sheets** — `export/services.ts` (deterministic derivation: luminaire
+  grid ~2.7 m centres, HVAC/smoke per area, exit lights at doors; power+data per workstation, floor
+  boxes per cluster, switches at doors, one DB) + `export/servicesSheets.ts` (RCP + Power & Data A3
+  sheets with glyph legends + count schedules), wired into `buildDrawingSetPdf` (ids `rcp`/`power`,
+  M6-toggleable). **The drawing set is now a complete 10-sheet architectural set** (cover · contents ·
+  demolition · construction · RCP · power · 2× sections · furniture · moodboard). Verified live +
+  rasterized both services sheets.
+- [ ] Nice-to-have polish: services-plan glyph/label de-collision (fixtures overlap some room labels),
+  true lighting-circuit/switching lines, per-room finish schedule.
 
 ## Track E — Import & plate
 - [x] DWG/DXF parse (LibreDWG `/api/dwg`), plate extraction (furniture-coverage), keepouts (cores),
