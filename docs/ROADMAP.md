@@ -75,10 +75,16 @@ Make generated plans read like a senior architect's work, not a diagram.
   (meetings ~1/17 ppl clamped 2–6, not inherited from old clusters); layout.rs reserves the dominant
   wing for the open field (rooms band the edges/small wings). Rust 74 tests.
 - [x] Fresh-fit generates into the **base shell** (not around old tenant partitions).
-- [~] **Reach ~80–110 workstations on 882m².** Currently caps at 52 because the full support program
-  for 88 people (28 rooms incl. 8 phone booths) legitimately eats ~40% of the floor. A leaner, more
-  qbiq-like support ratio in `SpaceProgram::derive` (fewer booths/focus) would lift the field — density
-  is already professional (10 m²/person), so this is refinement, not a blocker.
+- [x] **Leaner support ratio (qbiq-dominant open field).** Booths N/12→N/25, focus N/30→N/60, collab
+  /8→/12, open-share 0.85→0.90, + a SUPPORT_AREA_CAP (0.22) that trims discretionary rooms so the open
+  field always keeps the majority. Real DWG: rooms 28→20, open field now 62% of area (was a minority),
+  54 workstations @ 13 m²/ws, density in band. Explicit S5 counts still win; only derived defaults got
+  leaner. 84 Rust tests. `layout.rs`, `suggestProgram.ts`.
+- [~] **Reach ~80–110 workstations on 882m².** Still caps ~54 — a GEOMETRY limit, not a ratio one: the
+  plate's dominant wing is a narrow 7×29m strip (~54 desks); the bare plate holds 127 but the per-wing
+  band+spine overhead costs ~3 desks/room. Needs an `allocate_rooms`/M4 room-concentration rework (rooms
+  hug fewer wings), not more ratio tuning. Plan is already professional + open-dominant, so this is
+  upside, not a blocker.
 - [ ] **Keep-existing / respect-partitions mode** (workflow-gated) — re-enable pushing imported walls
   when the user wants to work *around* their existing fit-out (via S2/S4 controls).
 
@@ -89,7 +95,9 @@ Make generated plans read like a senior architect's work, not a diagram.
 - [x] DXF · [x] PDF sheet · [x] IFC (BIM) · [x] OBJ+MTL · [x] PNG · [x] CSV.
 - ⏸ **Photoreal renders** — deprioritized (needs 3D-asset library + path tracer / cloud render).
 - [ ] **RVT** — native Revit is proprietary; we export IFC (imports to Revit). Revit sample = web viewer.
-- [ ] **Report polish** — building photo on cover, richer A/B/C differentiation, real client branding.
+- [x] **Report cover branding + A/B/C differentiation** — client logo focal on the cover, project/address/
+  floor laid out qbiq-style; per-alt accent chips + winner ribbons (shared `computeWinners` w/ the S7
+  gallery); summary highlights each metric's leading alternative. (Building *photo* still N/A — no source.)
 
 ## Track D — CAD editing (Rayon-grade)
 - [x] Draw: line/polyline/rect/circle/arc/ellipse/dimension/text/door/window/column/hatch.
@@ -106,8 +114,10 @@ Make generated plans read like a senior architect's work, not a diagram.
 ## Track F — Material bank / Materio
 - [x] Live bank (VPS, ~159k products) via `/api/bank`; ₹ pricing; bind products; decision lifecycle;
   selection cards; by-category plan; specified-cost metric.
-- [ ] Per-element material assignment surfaced in the takeoff Supplier column (binding has price, no
-  supplier field yet) — add supplier to BindingInfo.
+- [x] **Supplier in the takeoff.** BindingInfo gains supplier/brand (from bank vendor/supplier_domain);
+  takeoff Supplier = supplier ?? brand ?? fallback. Also fixed a real bug: the re-imagine panel's binds
+  never reached the App bindings map, so generated-plan binds surfaced neither price NOR supplier in the
+  takeoff — now mirrored via `onAssign`.
 
 ## Track G — AI backbone
 - [x] Drivers: Local intent parser · Cerebras LLM · Claude (`/api/claude`); 3-way toggle; preview→approve
@@ -158,5 +168,7 @@ Make generated plans read like a senior architect's work, not a diagram.
 1. [x] Real-plate density — verified on the user's DWG (52 ws @ 10 m²/person).
 2. [x] Track A S1–S3, S5–S7 — **full guided flow verified end-to-end (10/10) on the real DWG.**
 3. [x] S4 wall-heal + cold-reload floor-open — **Track A finished (S0–S7 shipped).**
-4. Cloud sync (Track I) + deploy (Track J) when 1Password/SSH is unblocked.
-5. Track B refinement (leaner support ratio → 80+ workstations); Track F (supplier in takeoff).
+4. [x] Leaner support ratio (open-dominant); supplier column; report cover branding.
+5. 🔄 Cloud sync (Track I) — client sync loop against `/api/plans` (build + local-verify; live on deploy).
+6. Deploy (Track J) + signed commits — both gated on the **1Password unlock** (SSH denied).
+7. Upside: 80+ ws (room-concentration rework); keep-existing-partitions mode.
