@@ -91,8 +91,9 @@ Make generated plans read like a senior architect's work, not a diagram.
   program counts still win. Adjacency model: meetings↔entry cluster, focus↔facade, pantry central, IT↔
   core, desk-cluster coherence (soft score + placement bias). `autoGenerate` runs one search per
   strategy. 89 Rust tests. `layout.rs`, `editor/strategy.ts`.
-- [ ] **Keep-existing / respect-partitions mode** (workflow-gated) — re-enable pushing imported walls
-  when the user wants to work *around* their existing fit-out (via S2/S4 controls).
+- [x] **Keep-existing / respect-partitions mode** — Space-step "Layout · Fresh fit / Keep existing walls"
+  toggle (default fresh); keep-existing pushes the imported partitions so generate() fits around them
+  (verified: 337 walls retained, 0 component straddles; fresh = 31-wall shell, 67 ws). `draft.keepExisting`.
 
 ## Track C — Qbiq-grade deliverables (`docs/reference/qbiq/`)
 - [x] **Space-planning report PDF** — cover, 3D-tour page, A/B/C KPI-rail + colored plan + legend,
