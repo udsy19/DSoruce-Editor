@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import type { ViewerMode, Viewer3D } from './Viewer3D'
+import { THEMES, THEME_ORDER, type ThemeId } from './theme'
 
 /** Camera framing presets offered by the upgraded viewer engine. */
 export type ViewPreset = 'persp' | 'top'
@@ -33,6 +34,9 @@ export interface ViewerExtras {
   onQualityChange?(q: Quality): void
   setSun(elevationDeg: number, azimuthDeg: number): void
   getSun(): SunPosition
+  /** Switch the viewer material theme (studio/warm/mono/blueprint); persists. */
+  setTheme(id: ThemeId): void
+  getTheme(): ThemeId
 }
 
 /** Typed facade over the current engine plus the (optional) upgraded API. */
@@ -49,6 +53,9 @@ export interface ViewerToolbarProps {
   onSun: (elevationDeg: number, azimuthDeg: number) => void
   /** Current engine sun, read when the popover opens. */
   getSun: () => SunPosition
+  /** Active material theme + setter (from the Theme popover). */
+  theme: ThemeId
+  onTheme: (id: ThemeId) => void
 }
 
 // Local 16px viewer glyphs. Deliberately not added to ui/icons.tsx: that file
@@ -66,7 +73,7 @@ const glyph = {
   'aria-hidden': true,
 }
 
-const glyphs: Record<'orbit' | 'walk' | 'top' | 'cube' | 'frame' | 'sparkle' | 'sun', ReactNode> = {
+const glyphs: Record<'orbit' | 'walk' | 'top' | 'cube' | 'frame' | 'sparkle' | 'sun' | 'palette', ReactNode> = {
   orbit: (
     <svg {...glyph}>
       <circle cx="8" cy="8" r="3.1" />
@@ -106,6 +113,14 @@ const glyphs: Record<'orbit' | 'walk' | 'top' | 'cube' | 'frame' | 'sparkle' | '
     <svg {...glyph}>
       <circle cx="8" cy="8" r="2.7" />
       <path d="M8 1.4v1.8M8 12.8v1.8M1.4 8h1.8M12.8 8h1.8M3.3 3.3l1.3 1.3M11.4 11.4l1.3 1.3M12.7 3.3l-1.3 1.3M4.6 11.4l-1.3 1.3" />
+    </svg>
+  ),
+  palette: (
+    <svg {...glyph}>
+      <path d="M8 1.7a6.3 6.3 0 100 12.6c1 0 1.5-.8 1.5-1.5 0-.4-.2-.7-.4-1-.2-.3-.4-.6-.4-1 0-.7.6-1.3 1.3-1.3H11a3.3 3.3 0 003.3-3.3C14.3 4.3 11.5 1.7 8 1.7z" />
+      <circle cx="5" cy="7" r="0.85" fill="currentColor" stroke="none" />
+      <circle cx="7.5" cy="4.7" r="0.85" fill="currentColor" stroke="none" />
+      <circle cx="10.5" cy="5.4" r="0.85" fill="currentColor" stroke="none" />
     </svg>
   ),
 }
@@ -224,28 +239,69 @@ function SunSlider({
   )
 }
 
+/** One theme option in the Theme popover: a swatch strip of its key tones
+ *  (a few zone floors + the heavier wall + ground) and the theme label. */
+function ThemeRow({ id, active, onSelect }: { id: ThemeId; active: boolean; onSelect: () => void }) {
+  const t = THEMES[id]
+  const hex = (n: number) => `#${n.toString(16).padStart(6, '0')}`
+  const swatches = [t.floorByZone.Workspace, t.floorByZone.Meeting, t.floorByZone.Circulation, t.wallExt, t.ground]
+  return (
+    <button
+      onClick={onSelect}
+      data-testid={`v3d-theme-${id}`}
+      aria-pressed={active}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10,
+        width: '100%',
+        padding: '7px 8px',
+        border: active ? '1px solid #E8A13C' : '1px solid transparent',
+        borderRadius: 7,
+        background: active ? 'rgba(232,161,60,0.10)' : 'transparent',
+        cursor: 'pointer',
+      }}
+    >
+      <span style={{ display: 'flex', borderRadius: 4, overflow: 'hidden', boxShadow: '0 0 0 1px rgba(0,0,0,0.08)' }}>
+        {swatches.map((c, i) => (
+          <span key={i} style={{ width: 13, height: 18, background: hex(c) }} />
+        ))}
+      </span>
+      <span style={{ font: '500 12px/1 "Space Grotesk", system-ui, sans-serif', color: active ? '#1b1d21' : '#3f444c' }}>
+        {t.label}
+      </span>
+    </button>
+  )
+}
+
 /**
  * Shared floating toolbar for the 3D views: orbit/walk camera mode, view
- * presets (top / perspective), frame-all, and a three-tier quality segment
- * (Lo / Hi / Render). Wrappers own mode/quality state and talk to the viewer
- * engine; the render-tier sun popover (open flag + slider values) is view-local
- * UI state kept here so both wrappers share it. View presets and Frame only
- * apply to the orbit camera, so they render disabled while walking.
+ * presets (top / perspective), frame-all, a three-tier quality segment
+ * (Lo / Hi / Render), and a material Theme popover. Wrappers own mode/quality/
+ * theme state and talk to the viewer engine; the render-tier sun popover and
+ * the theme popover (open flags) are view-local UI state kept here so both
+ * wrappers share them. View presets and Frame only apply to the orbit camera,
+ * so they render disabled while walking.
  */
-export function ViewerToolbar({ mode, quality, onMode, onView, onFrame, onQuality, onSun, getSun }: ViewerToolbarProps) {
+export function ViewerToolbar({ mode, quality, onMode, onView, onFrame, onQuality, onSun, getSun, theme, onTheme }: ViewerToolbarProps) {
   const walking = mode === 'walk'
   const rootRef = useRef<HTMLDivElement>(null)
   const [sunOpen, setSunOpen] = useState(false)
+  const [themeOpen, setThemeOpen] = useState(false)
   const [sun, setSun] = useState<SunPosition>(DEFAULT_SUN)
 
-  // Close the popover on outside click or Escape while it is open.
+  // Close whichever popover is open on outside click or Escape.
   useEffect(() => {
-    if (!sunOpen) return
+    if (!sunOpen && !themeOpen) return
+    const closeAll = () => {
+      setSunOpen(false)
+      setThemeOpen(false)
+    }
     const onDown = (e: PointerEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setSunOpen(false)
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) closeAll()
     }
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setSunOpen(false)
+      if (e.key === 'Escape') closeAll()
     }
     document.addEventListener('pointerdown', onDown)
     document.addEventListener('keydown', onKey)
@@ -253,7 +309,7 @@ export function ViewerToolbar({ mode, quality, onMode, onView, onFrame, onQualit
       document.removeEventListener('pointerdown', onDown)
       document.removeEventListener('keydown', onKey)
     }
-  }, [sunOpen])
+  }, [sunOpen, themeOpen])
 
   // The popover never survives a walk switch or leaving the render tier
   // (auto-degrade included — quality flows back in via props).
@@ -263,7 +319,13 @@ export function ViewerToolbar({ mode, quality, onMode, onView, onFrame, onQualit
 
   const toggleSun = () => {
     if (!sunOpen) setSun(getSun()) // seed sliders from the engine on open
+    setThemeOpen(false)
     setSunOpen(!sunOpen)
+  }
+
+  const toggleTheme = () => {
+    setSunOpen(false)
+    setThemeOpen((v) => !v)
   }
 
   const changeSun = (next: SunPosition) => {
@@ -367,6 +429,25 @@ export function ViewerToolbar({ mode, quality, onMode, onView, onFrame, onQualit
             {glyphs.sun}
           </button>
         </>
+      )}
+      <span style={divider} />
+      <button
+        style={seg(themeOpen, false)}
+        onClick={toggleTheme}
+        title="Material theme"
+        aria-pressed={themeOpen}
+        aria-expanded={themeOpen}
+        data-testid="v3d-theme"
+      >
+        {glyphs.palette}
+        Theme
+      </button>
+      {themeOpen && (
+        <div style={{ ...popover, gap: 4 }} role="group" aria-label="Material theme">
+          {THEME_ORDER.map((id) => (
+            <ThemeRow key={id} id={id} active={theme === id} onSelect={() => onTheme(id)} />
+          ))}
+        </div>
       )}
       {sunOpen && (
         <div style={popover} role="group" aria-label="Sun position">

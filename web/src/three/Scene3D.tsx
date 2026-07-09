@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { Viewer3D, type ViewerMode, type PickHit } from './Viewer3D'
 import { Minimap, type MinimapHandle, type MinimapProps } from './Minimap'
 import { ViewerToolbar, DEFAULT_SUN, type Quality, type ViewerWithExtras } from './ViewerToolbar'
+import { DEFAULT_THEME, type ThemeId } from './theme'
 import type { DocState } from '../editor/EditorCanvas'
 
 /**
@@ -123,6 +124,7 @@ export function Scene3D({ state }: { state: DocState }) {
   const minimapRef = useRef<MinimapHandle>(null)
   const [mode, setMode] = useState<ViewerMode>('orbit')
   const [quality, setQuality] = useState<Quality>('high')
+  const [theme, setThemeId] = useState<ThemeId>(DEFAULT_THEME)
   const [hint, setHint] = useState<string | null>(null)
   // Static minimap geometry in world space, recomputed only when the plan does.
   const [map, setMap] = useState<MinimapProps | null>(null)
@@ -137,6 +139,7 @@ export function Scene3D({ state }: { state: DocState }) {
     const viewer: ViewerWithExtras = new Viewer3D(host)
     viewer.onModeHint = setHint
     setQuality(viewer.getQuality?.() ?? 'high')
+    setThemeId(viewer.getTheme?.() ?? DEFAULT_THEME)
     viewer.onQualityChange = setQuality
     viewer.onPick = (h) => setPicked(h && h.kind !== 'shell' ? h : null)
     viewerRef.current = viewer
@@ -232,6 +235,11 @@ export function Scene3D({ state }: { state: DocState }) {
         }}
         onSun={(elev, azim) => viewerRef.current?.setSun?.(elev, azim)}
         getSun={() => viewerRef.current?.getSun?.() ?? DEFAULT_SUN}
+        theme={theme}
+        onTheme={(id) => {
+          viewerRef.current?.setTheme?.(id)
+          setThemeId(id)
+        }}
       />
       {mode === 'orbit' && picked && card && (
         <PickCard3D

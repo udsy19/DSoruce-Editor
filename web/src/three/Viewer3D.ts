@@ -14,8 +14,15 @@ import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js'
 import { Sky } from 'three/addons/objects/Sky.js'
 import type { DocState, DocComponent, DocWall, DocZone, ZoneType } from '../editor/EditorCanvas'
 import { catByCategory } from '../editor/catalog'
-import { buildFurniture3D } from './furniture3d'
+import { buildFurniture3D, TEXTURES } from './furniture3d'
 import { clipPolyToRect, platePolygonFromWalls, type Pt } from '../util/clip'
+import {
+  THEMES,
+  loadThemeId,
+  saveThemeId,
+  type ThemeId,
+  type ViewerTheme,
+} from './theme'
 
 /**
  * Framework-agnostic Three.js viewer that renders a 2D office plan (DocState,
@@ -199,17 +206,6 @@ interface CamTween {
   onDone?: () => void
 }
 
-/** Subtle per-zone floor tints (Laiout-style zoning cue). */
-const ZONE_TINT: Record<ZoneType, number> = {
-  Circulation: 0xe8a13c,
-  Workspace: 0x5b8def,
-  Meeting: 0x5fa8c4,
-  Collaboration: 0x46b3a6,
-  Core: 0x8a93a6,
-  ClosedOffice: 0x9b7ede,
-  Amenity: 0xd98da8,
-}
-
 export class Viewer3D {
   /** Optional overlay callback for the current walkthrough hint (or null). */
   onModeHint?: (text: string | null) => void
@@ -280,7 +276,22 @@ export class Viewer3D {
   // by buildFurniture3D owns fresh geometry/material each call; those ARE
   // disposed when content is cleared (tracked via `shared` exclusion).
   private unitBox = new THREE.BoxGeometry(1, 1, 1)
-  private wallMat = new THREE.MeshStandardMaterial({ color: 0xd9dce1, roughness: 0.9, metalness: 0 })
+  // Two wall tones mirror the 2D lineweight hierarchy: `wallMat` for generated
+  // interior partitions (lighter), `wallExtMat` for the exterior/plate walls
+  // (heavier & darker). Both colors are (re)set from the active theme; a plaster
+  // roughness map gives them tooth so they don't read as flat white. See setTheme.
+  private wallMat = new THREE.MeshStandardMaterial({
+    color: 0xe0e2e6,
+    roughness: 0.92,
+    roughnessMap: TEXTURES.plasterRough,
+    metalness: 0,
+  })
+  private wallExtMat = new THREE.MeshStandardMaterial({
+    color: 0xc3c6cd,
+    roughness: 0.88,
+    roughnessMap: TEXTURES.plasterRough,
+    metalness: 0,
+  })
   // Glazed partitions (glass fronts of generated rooms). Cheap transparency,
   // not physical transmission: a test-fit can carry one glass front per room,
   // and each transmissive material would multiply full-scene render passes
@@ -335,6 +346,17 @@ export class Viewer3D {
    *  forever (until the next fresh framing) — auto-reframe never fights the
    *  user's camera. */
   private userMoved = false
+
+  /** Active material theme (persisted). Drives zone floors, wall tones, ground,
+   *  and grid. Applied live by {@link setTheme} without a content rebuild. */
+  private theme: ViewerTheme = THEMES[loadThemeId()]
+  /** One floor material per zone-type (never per plate), rebuilt on theme
+   *  change. Opaque, carpet-textured, tinted to the zone's theme color so the
+   *  plan reads by room in 3D. */
+  private zoneFloorMats = new Map<ZoneType, THREE.MeshStandardMaterial>()
+  private floorBaseMat!: THREE.MeshStandardMaterial
+  /** Shared carpet map (cloned so its repeat is independent of furniture floors). */
+  private floorTex = TEXTURES.carpet.clone()
 
   private ground: THREE.Mesh
   private grid: THREE.GridHelper
@@ -489,19 +511,24 @@ export class Viewer3D {
     this.scene.add(this.sun)
     this.scene.add(this.sun.target)
 
-    // Ground (slightly darker than the horizon so the plan reads grounded) + grid.
+    // Carpet map for the zone floors — cloned so its repeat is independent of
+    // the furniture floors buildFromDrawing clones. UVs on the plates are in
+    // plan meters, so a sub-unit repeat tiles the fine speckle every ~2 m.
+    this.floorTex.repeat.set(0.5, 0.5)
+    this.floorTex.needsUpdate = true
+
+    // Ground (theme-toned so the plan reads grounded, not a white void) + grid.
+    // Colors are set from the active theme by applyTheme() below.
     this.ground = new THREE.Mesh(
       new THREE.PlaneGeometry(400, 400),
-      new THREE.MeshStandardMaterial({ color: 0xe3e0d8, roughness: 0.7, metalness: 0.05 }),
+      new THREE.MeshStandardMaterial({ color: 0xd8d2c4, roughness: 0.85, metalness: 0.02 }),
     )
     this.ground.rotation.x = -Math.PI / 2
     this.ground.position.y = -0.001
     this.ground.receiveShadow = true
     this.scene.add(this.ground)
 
-    this.grid = new THREE.GridHelper(200, 200, 0xc9cdd3, 0xdee1e6)
-    ;(this.grid.material as THREE.Material).transparent = true
-    ;(this.grid.material as THREE.Material).opacity = 0.3
+    this.grid = this.makeGrid()
     this.scene.add(this.grid)
 
     // Radial ground vignette under the plan (sized in syncGroundDressing()).
@@ -531,11 +558,13 @@ export class Viewer3D {
     this.shared = new Set<THREE.BufferGeometry | THREE.Material>([
       this.unitBox,
       this.wallMat,
+      this.wallExtMat,
       this.glassWallMat,
       this.meetingMat,
       this.fallCeilingMat,
       this.highlightMat,
     ])
+    // Zone floor materials are added to `shared` as applyTheme() creates them.
 
     // Pick highlight: lives in `scene` (NOT `content`) so pick raycasts and
     // walk collision never hit it, and clearContent() can't dispose it.
@@ -613,6 +642,8 @@ export class Viewer3D {
     el.addEventListener('wheel', this.onWheel, { passive: false })
     this.walk.addEventListener('lock', this.onWalkLock)
     this.walk.addEventListener('unlock', this.onWalkUnlock)
+
+    this.applyTheme() // tint walls/ground/grid + build the per-zone floor mats
 
     this.resize()
     this.animate()
@@ -779,6 +810,21 @@ export class Viewer3D {
 
   getQuality(): Quality {
     return this.quality
+  }
+
+  /** Switch the material theme (studio / warm / mono / blueprint) and re-tint
+   *  the live scene — zone floors, wall tones, ground, and grid — without a
+   *  content rebuild (materials are shared, so recoloring updates every mesh).
+   *  Persists the choice to localStorage. */
+  setTheme(id: ThemeId): void {
+    if (id === this.theme.id) return
+    this.theme = THEMES[id]
+    this.applyTheme()
+    saveThemeId(id)
+  }
+
+  getTheme(): ThemeId {
+    return this.theme.id
   }
 
   /** Reposition the sun by spherical angles: `elevationDeg` above the horizon
@@ -959,10 +1005,15 @@ export class Viewer3D {
     this.clearContent()
     this.unitBox.dispose()
     this.wallMat.dispose()
+    this.wallExtMat.dispose()
     this.glassWallMat.dispose()
     this.meetingMat.dispose()
     this.fallCeilingMat.dispose()
     this.highlightMat.dispose()
+    for (const m of this.zoneFloorMats.values()) m.dispose()
+    this.zoneFloorMats.clear()
+    this.floorBaseMat?.dispose()
+    this.floorTex.dispose()
 
     this.scene.remove(this.pickOutline)
     this.pickOutline.geometry.dispose() // EdgesGeometry owned by the outline
@@ -1018,7 +1069,10 @@ export class Viewer3D {
     const dz = w.b.y - w.a.y // plan Y → world Z
     const len = Math.hypot(dx, dz) || 0.01
     const glass = !!w.glazing
-    const mesh = new THREE.Mesh(this.unitBox, glass ? this.glassWallMat : this.wallMat)
+    // Lineweight hierarchy in 3D: generated partitions get the lighter tone,
+    // the exterior/plate (non-generated) walls the heavier one.
+    const wallMat = w.generated ? this.wallMat : this.wallExtMat
+    const mesh = new THREE.Mesh(this.unitBox, glass ? this.glassWallMat : wallMat)
     mesh.scale.set(len, WALL_HEIGHT, Math.max(w.thickness, 0.05))
     mesh.position.set((w.a.x + w.b.x) / 2, WALL_HEIGHT / 2, (w.a.y + w.b.y) / 2)
     mesh.rotation.y = -Math.atan2(dz, dx) // see coordinate-mapping note above
@@ -1082,17 +1136,10 @@ export class Viewer3D {
    *  to it so zone tint never spills past an L-shaped building edge; with open
    *  walls (`plate` null) the original full-rect plates are kept. */
   private buildZonePlate(z: DocZone, plate: Pt[] | null): void {
-    const tint = ZONE_TINT[z.zone_type] ?? 0x9aa2b1
-    // Lazy: a zone fully outside the plate would otherwise orphan the material.
-    let mat: THREE.MeshStandardMaterial | null = null
-    const materialFor = () =>
-      (mat ??= new THREE.MeshStandardMaterial({
-        color: tint,
-        roughness: 0.85,
-        metalness: 0,
-        transparent: true,
-        opacity: 0.16,
-      }))
+    // Opaque, carpet-textured floor tinted per zone-type — shared across all
+    // plates of a type (built by applyTheme), so the plan reads by room in 3D
+    // and matches the 2D zone legend. No per-plate material allocation.
+    const mat = this.zoneFloorMats.get(z.zone_type) ?? this.floorBaseMat
     const add = (x: number, y: number, w: number, h: number) => {
       let mesh: THREE.Mesh
       if (plate) {
@@ -1104,12 +1151,12 @@ export class Viewer3D {
         // (px, −py, 0) → (px, 0, py) ✓, and the shape normal local +Z →
         // world +Y (faces up, so the single-sided material is visible).
         const shape = new THREE.Shape(clipped.map(([px, py]) => new THREE.Vector2(px, -py)))
-        mesh = new THREE.Mesh(new THREE.ShapeGeometry(shape), materialFor())
+        mesh = new THREE.Mesh(new THREE.ShapeGeometry(shape), mat)
         mesh.rotation.x = -Math.PI / 2
         mesh.position.y = 0.006 // no centering: the shape carries absolute plan coords
       } else {
         const geo = new THREE.PlaneGeometry(Math.max(w, 0.05), Math.max(h, 0.05))
-        mesh = new THREE.Mesh(geo, materialFor())
+        mesh = new THREE.Mesh(geo, mat)
         mesh.rotation.x = -Math.PI / 2
         mesh.position.set(x + w / 2, 0.006, y + h / 2)
       }
@@ -1352,6 +1399,66 @@ export class Viewer3D {
     mesh.visible = this.ceiling.visible
     this.scene.add(mesh)
     this.fixtures = mesh
+  }
+
+  // ── Material theme ─────────────────────────────────────────────────────────
+
+  /** A 1 m ground grid whose lines read against the themed ground: minor lines
+   *  in the theme's grid color, the two center lines in the accent. */
+  private makeGrid(): THREE.GridHelper {
+    const g = new THREE.GridHelper(200, 200, this.theme.accent, this.theme.grid)
+    const m = g.material as THREE.Material
+    m.transparent = true
+    m.opacity = 0.5
+    return g
+  }
+
+  /** Opaque, carpet-textured floor material tinted to `color`. Shared per
+   *  zone-type (see {@link zoneFloorMats}); never allocated per plate. */
+  private makeFloorMat(color: number): THREE.MeshStandardMaterial {
+    return new THREE.MeshStandardMaterial({
+      color,
+      map: this.floorTex,
+      roughness: 0.95,
+      metalness: 0,
+    })
+  }
+
+  /** Push the active theme onto the live scene: recolor the two wall tones and
+   *  the ground in place, rebuild the grid (its colors are baked into vertex
+   *  colors, so it can't be recolored in place), and (re)build the per-zone
+   *  floor materials. Walls and zone plates SHARE these materials, so a recolor
+   *  updates every mesh with no content rebuild. */
+  private applyTheme(): void {
+    const t = this.theme
+    this.wallMat.color.setHex(t.wall)
+    this.wallExtMat.color.setHex(t.wallExt)
+    ;(this.ground.material as THREE.MeshStandardMaterial).color.setHex(t.ground)
+
+    const oldGrid = this.grid
+    this.scene.remove(oldGrid)
+    oldGrid.geometry.dispose()
+    ;(oldGrid.material as THREE.Material).dispose()
+    this.grid = this.makeGrid()
+    this.scene.add(this.grid)
+
+    // Per-zone floor materials: recolor in place if they exist (plates keep
+    // their reference), else create + protect from clearContent's disposal.
+    for (const zt of Object.keys(t.floorByZone) as ZoneType[]) {
+      const color = t.floorByZone[zt]
+      const mat = this.zoneFloorMats.get(zt)
+      if (mat) mat.color.setHex(color)
+      else {
+        const created = this.makeFloorMat(color)
+        this.zoneFloorMats.set(zt, created)
+        this.shared.add(created)
+      }
+    }
+    if (this.floorBaseMat) this.floorBaseMat.color.setHex(t.floorBase)
+    else {
+      this.floorBaseMat = this.makeFloorMat(t.floorBase)
+      this.shared.add(this.floorBaseMat)
+    }
   }
 
   // ── World dressing textures ──────────────────────────────────────────────

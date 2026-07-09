@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Viewer3D, type ViewerMode, type PickHit } from './Viewer3D'
 import { Minimap, type MinimapHandle, type MinimapProps } from './Minimap'
 import { ViewerToolbar, DEFAULT_SUN, type Quality, type ViewerWithExtras } from './ViewerToolbar'
+import { DEFAULT_THEME, type ThemeId } from './theme'
 import { buildFromDrawing } from './buildFromDrawing'
 // PickCard3D is the shared minimal 3D selection card (see its note about
 // merging with ui/SelectionCard once that component stabilizes).
@@ -24,6 +25,7 @@ export function DrawingScene3D({ drawing }: { drawing: Drawing }) {
   const minimapRef = useRef<MinimapHandle>(null)
   const [mode, setMode] = useState<ViewerMode>('orbit')
   const [quality, setQuality] = useState<Quality>('high')
+  const [theme, setThemeId] = useState<ThemeId>(DEFAULT_THEME)
   const [hint, setHint] = useState<string | null>(null)
   // Static minimap geometry in world space, recomputed only when the plan does.
   const [map, setMap] = useState<MinimapProps | null>(null)
@@ -38,6 +40,7 @@ export function DrawingScene3D({ drawing }: { drawing: Drawing }) {
     const viewer: ViewerWithExtras = new Viewer3D(host)
     viewer.onModeHint = setHint
     setQuality(viewer.getQuality?.() ?? 'high')
+    setThemeId(viewer.getTheme?.() ?? DEFAULT_THEME)
     viewer.onQualityChange = setQuality
     viewer.onPick = (h) => setPicked(h && h.kind !== 'shell' ? h : null)
     viewerRef.current = viewer
@@ -124,6 +127,11 @@ export function DrawingScene3D({ drawing }: { drawing: Drawing }) {
         }}
         onSun={(elev, azim) => viewerRef.current?.setSun?.(elev, azim)}
         getSun={() => viewerRef.current?.getSun?.() ?? DEFAULT_SUN}
+        theme={theme}
+        onTheme={(id) => {
+          viewerRef.current?.setTheme?.(id)
+          setThemeId(id)
+        }}
       />
       {mode === 'orbit' && picked && picked.kind === 'furniture' && (
         <PickCard3D
