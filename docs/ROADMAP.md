@@ -139,7 +139,13 @@ User: "our editor doesn't feel as intuitive/detailed as Rayon… most of it is t
 - [x] **M5 grouped tool dock** — `ui/ToolDock.tsx` replaces the flat left rail with 6 Rayon-style
   clusters (Select/Draw/Place/Measure/Build/Modify) derived from the existing CAD_RAIL+CATALOG (one
   tool list); hover/click flyouts, active-tool lit, ≤2 clicks to any tool; per-tool testids preserved.
-- [ ] M4 live dims on selection + click-to-edit · M6 sheets/publish.
+- [x] **M4 live dims on selection + click-to-edit** — `cad/dimEdit.ts` + EditorCanvas
+  `drawSelectionDims`: selected component shows W/H size labels + editable X/Y position chips (rotated
+  local frame, zoom-independent); selected CAD line shows an editable length chip. Click a chip →
+  inline `<input>` → Enter commits (`move_component` for X/Y; anchored re-length for the line), Esc
+  cancels. Scoped to position + line-length (no wasm resize/wall mutator exists — documented). Reuses
+  M1 chip styling; does not touch dyn*/pan.
+- [ ] M6 sheets/publish (overlaps the drawing-set track).
 
 ### Drawing-set output (`docs/design/drawing-set-generator.md`)
 User showed Rayon drawing-set PDFs as the output bar (`docs/reference/rayon-output/`).
