@@ -63,23 +63,23 @@ export const SHEET_MANIFEST: SheetDescriptor[] = [
     blurb: 'New walls blue · furniture · door/window schedule',
     available: true,
   },
-  // ---- Coming online (docs/design/drawing-set-generator.md §4, M3–M4) ----
   {
     id: 'furniture',
     no: 'A.03',
     title: 'Furniture & Fixtures',
     kind: 'furniture',
     blurb: 'Product cards · specs · pricing (from the takeoff + bank)',
-    available: false,
+    available: true,
   },
   {
     id: 'moodboard',
     no: 'A.04',
     title: 'Materials / Moodboard',
     kind: 'moodboard',
-    blurb: 'Interior render · material swatch palette',
-    available: false,
+    blurb: 'Bound-product tiles grouped by room type',
+    available: true,
   },
+  // ---- Coming online (docs/design/drawing-set-generator.md §4) ----
   {
     id: 'sections',
     no: 'A.05',
