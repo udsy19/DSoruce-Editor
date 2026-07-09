@@ -63,6 +63,11 @@ export interface ProjectDraft {
    *  before the plate/keepout extraction and the detected-rooms readout, and
    *  again at test-fit (the plate traces the healed drawing). Default on. */
   heal?: { on: boolean; gapM: number }
+  /** Layout mode. When true, the test-fit KEEPS the imported interior
+   *  partitions (generate fits new furniture/rooms AROUND the existing walls);
+   *  when false/absent it clears them and lays out the base shell (the default,
+   *  and the deliberate inverse of keep-existing). See App.tsx#testFitPlan. */
+  keepExisting?: boolean
   /** §3.4 Program-builder state (Concept/Detailed) → the resolved `Program`. */
   spec?: ProgramSpec
   /** §3.5 anchor pins (drawing/source coords) — forced room placements pushed

@@ -46,6 +46,8 @@ import {
   pushKeepoutsToEditor,
   extractEntries,
   pushEntriesToEditor,
+  extractInteriorWalls,
+  pushInteriorWallsToEditor,
   pushAnchorsToEditor,
   type PlateResult,
   type Pt,
@@ -138,6 +140,11 @@ export interface TestFitOpts {
    *  plate/keepout/entry extraction so the traced plate closes cleanly. Default
    *  on (the Space step persists the draft's `heal.on`). */
   heal?: boolean
+  /** Layout mode (Space step "Keep existing walls" toggle). When true, the
+   *  imported interior partitions are pushed into the document so generate()
+   *  fits AROUND them (work with the existing fit-out); when false/absent the
+   *  base shell is laid out fresh — the deliberate inverse of the default. */
+  keepExisting?: boolean
   /** The wizard owns the document, so it replaces the plate without a confirm
    *  prompt (a user-driven import into a hand-built doc still asks). */
   silent?: boolean
@@ -597,15 +604,26 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
     // rooms) become keep-outs so the generator never furnishes them.
     // Guarded no-op until the wasm add_keepout binding is present.
     pushKeepoutsToEditor(ec, extractKeepouts(working, plate))
-    // A fresh test-fit generates into the BASE SHELL (perimeter + cores +
-    // entries), NOT around the existing tenant fit-out — the imported interior
+    // Layout mode (Space step "Fresh fit / Keep existing walls").
+    //
+    // DEFAULT — Fresh fit: generate into the BASE SHELL (perimeter + cores +
+    // entries), NOT around the existing tenant fit-out. The imported interior
     // partitions ARE the old layout we're replacing, and treating them as hard
-    // obstacles starves the new room program into the wall-free gaps (sparse,
-    // unprofessional plans). This mirrors qbiq/Laiout, which fit the shell.
-    // The partitions stay in `drawing` for the as-drawn reference view;
-    // `extractInteriorWalls`/`pushInteriorWallsToEditor` remain wired for the
-    // workflow's forthcoming "keep existing partitions" / area-select control.
+    // obstacles would starve the new room program into the wall-free gaps
+    // (sparse, unprofessional plans). This mirrors qbiq/Laiout, which fit the
+    // shell. The partitions stay in `drawing` for the as-drawn reference view.
+    //
+    // OPT-IN — Keep existing walls (opts.keepExisting): push the imported
+    // interior partitions so generate() fits the new furniture/rooms AROUND the
+    // current fit-out. This is the DELIBERATE INVERSE of the fresh-fit default;
+    // the generator already treats non-boundary walls as packing obstacles, so
+    // pushing them is the whole mechanism. Use the same `working` drawing the
+    // plate was traced from so heal/area settings are honored consistently.
+    //
     // Deliberately drafted CAD walls still block packing via commitCadToPlan.
+    if (opts?.keepExisting) {
+      pushInteriorWallsToEditor(ec, extractInteriorWalls(working, plate))
+    }
     // Entry points (boundary doors, else the longest-edge midpoint) anchor the
     // generator's circulation spine and reception placement.
     pushEntriesToEditor(ec, extractEntries(working, plate))

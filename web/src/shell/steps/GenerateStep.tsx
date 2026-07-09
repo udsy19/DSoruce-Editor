@@ -72,6 +72,7 @@ export function GenerateStep({
       markers: rec?.draft?.markers,
       anchors: rec?.draft?.anchors,
       heal: rec?.draft?.heal?.on ?? true,
+      keepExisting: rec?.draft?.keepExisting ?? false,
       silent: true,
     })
     controller.current?.setProgram(program)

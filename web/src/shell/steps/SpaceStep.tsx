@@ -152,6 +152,11 @@ export function SpaceStep({
   // S4 wall-heal (workflow.md §3.3): default ON (matches the reference). When on,
   // near-miss partition gaps are bridged before readouts + test-fit.
   const [healOn, setHealOn] = useState(true)
+  // Layout mode: Fresh fit (default) clears the old fit-out and lays out the
+  // base shell; Keep existing walls fits new furniture around the imported
+  // partitions (test-fit pushes them as packing obstacles). Persisted to
+  // draft.keepExisting; threaded into testFit like heal.
+  const [keepExisting, setKeepExisting] = useState(false)
   const [activeTool, setActiveTool] = useState<'none' | 'area' | 'marker'>('none')
   const [markerType, setMarkerType] = useState<RoomType>('IT-Storage')
   const [markerRef, setMarkerRef] = useState('501')
@@ -179,6 +184,7 @@ export function SpaceStep({
       if (rec?.draft?.areaPolygon) setAreaPolygon(rec.draft.areaPolygon)
       if (rec?.draft?.markers) setMarkers(rec.draft.markers)
       if (rec?.draft?.heal) setHealOn(rec.draft.heal.on)
+      if (rec?.draft?.keepExisting != null) setKeepExisting(rec.draft.keepExisting)
       hydratedRef.current = true
     })
     return () => {
@@ -208,10 +214,11 @@ export function SpaceStep({
       areaPolygon: areaPolygon ?? undefined,
       markers,
       heal: { on: healOn, gapM: HEAL_GAP_M },
+      keepExisting,
       ...(readouts ? { readouts: toSummary(readouts) } : {}),
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [areaPolygon, markers, healOn])
+  }, [areaPolygon, markers, healOn, keepExisting])
 
   // Keep the "next ref" suggestion ahead of the placed markers.
   useEffect(() => {
@@ -448,7 +455,46 @@ export function SpaceStep({
                   As drawn
                 </button>
               </div>
+              <span className="space-tool-sep" aria-hidden />
+              {/* Layout mode: Fresh fit (default) clears the old fit-out and
+                  lays out the base shell; Keep existing walls fits the new
+                  furniture AROUND the imported partitions (test-fit pushes them
+                  as generator obstacles). The deliberate inverse of the fresh
+                  shell-fit default. */}
+              <div
+                className="space-heal"
+                role="group"
+                aria-label="Layout"
+                data-testid="space-keep-toggle"
+              >
+                <span className="space-heal-label">Layout</span>
+                <button
+                  type="button"
+                  className={`space-tool${!keepExisting ? ' on' : ''}`}
+                  data-testid="space-keep-fresh"
+                  aria-pressed={!keepExisting}
+                  onClick={() => setKeepExisting(false)}
+                  title="Clear the old fit-out and lay out the base shell"
+                >
+                  <Icon name="check" size={12} /> Fresh fit
+                </button>
+                <button
+                  type="button"
+                  className={`space-tool${keepExisting ? ' on' : ''}`}
+                  data-testid="space-keep-existing"
+                  aria-pressed={keepExisting}
+                  onClick={() => setKeepExisting(true)}
+                  title="Fit new furniture around your current partitions"
+                >
+                  Keep existing walls
+                </button>
+              </div>
             </div>
+            <p className="space-tool-hint" data-testid="space-keep-hint">
+              {keepExisting
+                ? 'Keep existing walls fits new furniture around your current partitions.'
+                : 'Fresh fit clears the old fit-out and lays out the base shell; Keep existing walls fits new furniture around your current partitions.'}
+            </p>
             {activeTool === 'area' && (
               <p className="space-tool-hint" data-testid="space-area-hint">
                 Click to lay the boundary — snaps to nearby walls. Click the first point (or

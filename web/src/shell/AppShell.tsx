@@ -103,6 +103,7 @@ export function AppShell() {
               markers: rec?.draft?.markers,
               anchors: rec?.draft?.anchors,
               heal: rec?.draft?.heal?.on ?? true,
+              keepExisting: rec?.draft?.keepExisting ?? false,
               silent: true,
             })
             navigate({ name: 'wizard', projectId: route.projectId, step: 'program' })
