@@ -23,10 +23,12 @@ The qbiq-style flow: Project → Upload → Program → Generate → Editor → 
   upload (reuses the editor import path) → detected readouts (usable m²+sf, bill of components via
   buildCategoryGroups, detected program, best-effort labelled rooms incl. CAD text labels); persists to
   the draft, resumes on reload. `shell/WizardChrome.tsx`, `shell/steps/SpaceStep.tsx`. E2E 7/7.
-- [ ] **S2 — Area selection.** Draw/adjust a polygon to restrict analysis to a sub-area (snap to walls,
-  editable handles); geometry outside is dropped downstream.
-- [ ] **S3 — Room markers + reference numbers.** Drop typed markers (Office/Meeting/Collab/IT/Pantry/
-  Reception/…) with a room ref # (e.g. "502"); refs flow into zone labels → takeoff Room ID + AI context.
+- [x] **S2 — Area selection.** DrawingCanvas `area` tool: wall-snapping editable polygon, masks outside;
+  `restrictDrawing()` scopes readouts + test-fit plate to the sub-area (real DWG 882→287 m²).
+  `import/area.ts`. Persists to draft.
+- [x] **S3 — Room markers + reference numbers.** DrawingCanvas `marker` tool: typed room pins with ref #s;
+  `buildRoomRefs/zoneAtPoint` make a marker's ref win as the takeoff **Room ID** (openpyxl-confirmed "502"/
+  "503") and expose them via `controller.roomRefs()` for the AI. `import/markers.ts`. Persists to draft.
 - [ ] **S4 — Wall healing.** Bridge near-miss partition gaps so rooms close cleanly (heal / as-drawn toggle).
 - [ ] **S5 — Program builder.** Concept/Detailed; templates (Small/Mid/Large) or headcount; room-by-room
   counts (offices/team/conference/collab/amenities) with Window/Core/Flexible placement (**soft bias**,
