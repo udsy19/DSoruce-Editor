@@ -59,6 +59,8 @@ const AREA_FILL = 'rgba(232,161,60,0.08)' // faint wash inside the selected area
 const AREA_VERTEX_PX = 4 // half-size of an area-polygon vertex handle, screen px
 const AREA_CLOSE_PX = 10 // click within this of the first vertex closes the ring
 const MARKER_R_PX = 11 // marker pin radius, screen px
+const ANCHOR_COLOR = '#4a8fc7' // anchor pins: cool blue, distinct from amber markers
+const ANCHOR_R_PX = 12 // anchor pin (diamond) half-diagonal, screen px
 
 /** Per-category screen lineweight (CSS px), independent of zoom. */
 const LINE_WEIGHT: Record<Category, number> = {
@@ -144,6 +146,12 @@ export class DrawingCanvas {
   private markerArm: { type: RoomType; ref: string } | null = null
   private markers: RoomMarker[] = []
 
+  // anchor tool (workflow.md §3.5): `anchorArm` is the room kind waiting to be
+  // dropped; `anchors` are the placed pins (drawing/source coords) to render as
+  // diamonds — visually distinct from the round §3.2 markers.
+  private anchorArm: { label: string } | null = null
+  private anchors: { x: number; y: number; label: string }[] = []
+
   private ro: ResizeObserver | null = null
 
   /** Fired on click: the furniture item under the cursor, or null on empty space. */
@@ -162,6 +170,9 @@ export class DrawingCanvas {
   /** Fired when a marker is dropped, at the click point (drawing coords). The
    *  owner assigns the id/ref and re-arms the tool for the next drop. */
   onMarkerDrop: ((x: number, y: number) => void) | null = null
+  /** Fired when an anchor pin is dropped, at the click point (drawing coords).
+   *  The owner assigns the id/kind and re-arms the tool for the next drop. */
+  onAnchorDrop: ((x: number, y: number) => void) | null = null
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas
@@ -191,6 +202,8 @@ export class DrawingCanvas {
     this.areaDragVertex = null
     this.markerArm = null
     this.markers = []
+    this.anchorArm = null
+    this.anchors = []
     this.toolCursor = null
     // Precompute adaptive-snap targets: wall/glazing endpoints and segments.
     this.snapSegs = collectWallSegments(d)
@@ -246,9 +259,10 @@ export class DrawingCanvas {
    */
   beginPlace(spec: PlaceSpec): void {
     if (!this.drawing || !(spec.w > 0) || !(spec.h > 0)) return
-    // Disarm the area/marker tools (a committed polygon + markers are kept).
+    // Disarm the area/marker/anchor tools (committed polygon + pins are kept).
     this.areaTool = false
     this.markerArm = null
+    this.anchorArm = null
     this.areaDragVertex = null
     this.placing = spec
     this.placeCursor = null
@@ -284,6 +298,7 @@ export class DrawingCanvas {
   beginArea(): void {
     this.cancelPlace()
     this.markerArm = null
+    this.anchorArm = null
     this.areaTool = true
     if (!this.areaClosed) this.area = []
     this.areaDragVertex = null
@@ -331,6 +346,7 @@ export class DrawingCanvas {
     this.cancelPlace()
     this.areaTool = false
     this.areaDragVertex = null
+    this.anchorArm = null
     this.markerArm = { type, ref }
     this.toolCursor = null
     if (this.selected) {
@@ -347,10 +363,37 @@ export class DrawingCanvas {
     this.render()
   }
 
-  /** Disarm the area and marker tools (keeps a committed polygon + markers). */
+  // ---- anchor-pin tool (workflow.md §3.5) ----
+
+  /** Arm the anchor tool: the next click drops a pin forcing a room of `label`'s
+   *  kind onto the plan. Stays disarmed after — the owner re-arms in onAnchorDrop
+   *  (same one-shot pattern as the marker tool). */
+  beginAnchorPlace(label: string): void {
+    this.cancelPlace()
+    this.areaTool = false
+    this.areaDragVertex = null
+    this.markerArm = null
+    this.anchorArm = { label }
+    this.toolCursor = null
+    if (this.selected) {
+      this.selected = null
+      this.onSelect?.(null)
+    }
+    this.canvas.style.cursor = 'crosshair'
+    this.render()
+  }
+
+  /** Load the persisted anchor pins to render as diamonds. */
+  setAnchors(anchors: { x: number; y: number; label: string }[]): void {
+    this.anchors = anchors.map((a) => ({ ...a }))
+    this.render()
+  }
+
+  /** Disarm the area, marker and anchor tools (keeps committed pins/polygon). */
   cancelTool(): void {
     this.areaTool = false
     this.markerArm = null
+    this.anchorArm = null
     this.areaDragVertex = null
     this.toolCursor = null
     this.canvas.style.cursor = 'default'
@@ -571,8 +614,8 @@ export class DrawingCanvas {
       this.moveCandidate = null
       return
     }
-    // Marker tool: a plain click drops a pin (handled in onUp so panning works).
-    if (this.markerArm) {
+    // Marker/anchor tool: a plain click drops a pin (in onUp so panning works).
+    if (this.markerArm || this.anchorArm) {
       this.moveCandidate = null
       return
     }
@@ -652,8 +695,8 @@ export class DrawingCanvas {
       this.render()
       return
     }
-    // Marker tool: a pin ghost tracks the cursor (markers are not wall-snapped).
-    if (this.markerArm) {
+    // Marker/anchor tool: a pin ghost tracks the cursor (not wall-snapped).
+    if (this.markerArm || this.anchorArm) {
       const w = this.toWorld(s.x, s.y)
       this.toolCursor = withinCanvas ? [w.x, w.y] : null
       this.canvas.style.cursor = 'crosshair'
@@ -710,6 +753,13 @@ export class DrawingCanvas {
       const s = this.screenFromEvent(e)
       const w = this.toWorld(s.x, s.y)
       this.onMarkerDrop?.(w.x, w.y)
+      return
+    }
+    // Anchor tool: drop a pin at the click point; the owner assigns id/kind.
+    if (this.anchorArm) {
+      const s = this.screenFromEvent(e)
+      const w = this.toWorld(s.x, s.y)
+      this.onAnchorDrop?.(w.x, w.y)
       return
     }
     // Placement mode: a plain click stamps the armed spec at the snapped point.
@@ -782,7 +832,7 @@ export class DrawingCanvas {
         return
       }
     }
-    if (this.markerArm && !mod && key === 'escape') {
+    if ((this.markerArm || this.anchorArm) && !mod && key === 'escape') {
       e.preventDefault()
       this.cancelTool()
       return
@@ -1090,6 +1140,7 @@ export class DrawingCanvas {
     this.drawPlaceGhost()
     this.drawArea()
     this.drawMarkers()
+    this.drawAnchors()
     this.onViewChange?.()
   }
 
@@ -1183,6 +1234,45 @@ export class DrawingCanvas {
     for (const m of this.markers) {
       this.drawPin(this.toScreen(m.x, m.y), m.ref, false)
     }
+  }
+
+  /** Anchor pins: a blue diamond per pin, plus a ghost diamond under the cursor
+   *  while the tool is armed — visually distinct from the round §3.2 markers. */
+  private drawAnchors() {
+    if (this.anchorArm && this.toolCursor) {
+      this.drawAnchorPin(this.toScreen(this.toolCursor[0], this.toolCursor[1]), this.anchorArm.label, true)
+    }
+    for (const a of this.anchors) {
+      this.drawAnchorPin(this.toScreen(a.x, a.y), a.label, false)
+    }
+  }
+
+  /** One anchor pin: a blue diamond + a short room-kind label to its right. */
+  private drawAnchorPin(p: { x: number; y: number }, label: string, ghost: boolean) {
+    const ctx = this.ctx
+    const r = ANCHOR_R_PX
+    ctx.save()
+    ctx.globalAlpha = ghost ? 0.55 : 1
+    ctx.beginPath()
+    ctx.moveTo(p.x, p.y - r)
+    ctx.lineTo(p.x + r, p.y)
+    ctx.lineTo(p.x, p.y + r)
+    ctx.lineTo(p.x - r, p.y)
+    ctx.closePath()
+    ctx.fillStyle = ANCHOR_COLOR
+    ctx.fill()
+    ctx.lineWidth = 1.5
+    ctx.strokeStyle = '#ffffff'
+    ctx.stroke()
+    // A short label beside the pin so the plan reads which room is forced where.
+    ctx.fillStyle = '#e8edf2'
+    ctx.font = '600 10px "Space Grotesk", system-ui, sans-serif'
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(label, p.x + r + 3, p.y)
+    ctx.restore()
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'alphabetic'
   }
 
   /** One pin: an amber disc with the ref number, optionally translucent (ghost). */

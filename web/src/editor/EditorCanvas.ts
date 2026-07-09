@@ -45,10 +45,19 @@ export interface DocZone {
   label: string
   component_ids: number[]
 }
+/** A position-pinned room request (mirrors Rust `document::Anchor`). Rides
+ *  `state()`; pushed via `Editor.add_anchor` (workflow.md §3.5). */
+export interface DocAnchor {
+  kind: SpaceKind
+  x: number
+  y: number
+}
 export interface DocState {
   walls: DocWall[]
   components: DocComponent[]
   zones?: DocZone[]
+  /** Doc-level anchor pins (optional; empty/absent on pre-S6 docs). */
+  anchors?: DocAnchor[]
   selection: number | null
 }
 export interface Metrics {

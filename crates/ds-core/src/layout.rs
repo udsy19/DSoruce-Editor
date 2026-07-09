@@ -237,6 +237,32 @@ pub enum SpaceKind {
     Wellness,
 }
 
+impl SpaceKind {
+    /// Parse a wire name (the serde variant identifier the TS side sends for an
+    /// anchor's `kind`) into a `SpaceKind`. Unknown → `None`, so `add_anchor`
+    /// silently ignores a bad kind rather than panicking at the wasm boundary.
+    pub fn from_wire(s: &str) -> Option<SpaceKind> {
+        use SpaceKind::*;
+        Some(match s {
+            "Meeting" => Meeting,
+            "Cabin" => Cabin,
+            "Meeting4P" => Meeting4P,
+            "Meeting6P" => Meeting6P,
+            "Boardroom" => Boardroom,
+            "PhoneBooth" => PhoneBooth,
+            "Focus" => Focus,
+            "Collab" => Collab,
+            "Reception" => Reception,
+            "Pantry" => Pantry,
+            "Print" => Print,
+            "ItServer" => ItServer,
+            "Storage" => Storage,
+            "Wellness" => Wellness,
+            _ => return None,
+        })
+    }
+}
+
 /// A derived space requirement: `count` rooms of `w` (front run along the
 /// corridor) × `d` (depth away from it) meters.
 #[derive(Clone, Debug, Serialize)]
@@ -1236,7 +1262,7 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
     // Detailed builder: `program.rooms` REPLACES the derived room program +
     // meeting override (workflow.md §3.4). Desks still scale to the plate.
     // Empty → today's derive path, byte-identical.
-    let jobs: Vec<RoomJob> = if !program.rooms.is_empty() {
+    let mut jobs: Vec<RoomJob> = if !program.rooms.is_empty() {
         explicit_jobs(program)
     } else {
         let mut jobs: Vec<RoomJob> = Vec::new();
@@ -1273,6 +1299,19 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
         }
         jobs
     };
+
+    // --- Anchored rooms (workflow.md §3.5): each pinned room is placed FIRST at
+    // (near) its point and CONSUMES one of its kind's count. Removing one free
+    // job per anchor makes the effective total `max(requested, anchored)`: an
+    // anchor beyond the free supply nets a new room ("bumps the count"); an
+    // anchor within it re-pins an already-requested room (no net change). Cloned
+    // up front so Pass 0 can mutate `doc` freely.
+    let anchored: Vec<(RoomJob, f64, f64)> = anchor_jobs(program, &doc.anchors);
+    for (aj, _, _) in &anchored {
+        if let Some(pos) = jobs.iter().position(|j| j.kind == aj.kind) {
+            jobs.remove(pos);
+        }
+    }
 
     let entry_idx = entry_region_idx(&regions, entry);
     // A band may only claim depth that still leaves one desk row in front.
@@ -1315,6 +1354,19 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
                 (r.height() - 2.0 * shrink).max(0.05),
             ));
         }
+    }
+
+    // --- Pass 0: anchored rooms land FIRST at (near) their pinned point ------
+    // Placed before the free band/pocket program so every later placement packs
+    // AROUND them (each becomes an obstacle). The exact pin wins when it fits;
+    // otherwise the nearest feasible slot on the plate is taken and the room is
+    // still emitted — a truly infeasible pin (tiny plate) drops and surfaces as
+    // a `program_fit` shortfall, never silently.
+    for (job, tx, ty) in &anchored {
+        place_anchor(
+            doc, job, *tx, *ty, (min_x, min_y, max_x, max_y), plate.as_deref(),
+            &iwalls, &mut obstacles, keepout_len, frozen_len, &circ_rects, clear,
+        );
     }
 
     // --- Pass A: rooms slide into each region's band ------------------------
@@ -1546,6 +1598,28 @@ fn explicit_jobs(program: &Program) -> Vec<RoomJob> {
         key(a).partial_cmp(&key(b)).unwrap_or(std::cmp::Ordering::Equal)
     });
     jobs
+}
+
+/// One pinned `RoomJob` per anchor (workflow.md §3.5), carrying its target point.
+/// Each uses the kind's DEFAULT footprint from `job_template` (an anchor picks a
+/// kind, not a size) and a distinct `(pinned N)` label so `score()` counts it as
+/// a delivered room. Placement-neutral (`Flexible`): the pin *is* the placement.
+fn anchor_jobs(program: &Program, anchors: &[crate::document::Anchor]) -> Vec<(RoomJob, f64, f64)> {
+    anchors
+        .iter()
+        .enumerate()
+        .map(|(i, a)| {
+            let t = job_template(a.kind, program);
+            let job = t.to_job(
+                a.kind,
+                format!("{} (pinned {})", t.name, i + 1),
+                snap_module(t.w.max(0.5)),
+                snap_module(t.d.max(0.5)),
+                Placement::Flexible,
+            );
+            (job, a.x, a.y)
+        })
+        .collect()
 }
 
 /// The region an entry point anchors: nearest region rect (0 with no entry —
@@ -2243,8 +2317,17 @@ fn place_in_pocket(
         }
     }
     let Some((_, cx, cy, ww, hh)) = best else { return false };
-    // The door faces the nearest drawn circulation rect (dominant axis).
-    let side = circ_rects
+    let side = door_side_toward_circ(cx, cy, ww, hh, circ_rects);
+    emit_job(doc, job, cx, cy, ww, hh, side);
+    obstacles.push((cx, cy, ww, hh));
+    true
+}
+
+/// Which wall a free-standing room's door/front faces: toward the NEAREST drawn
+/// circulation rect, on its dominant axis. Shared by the pocket fallback and the
+/// anchor placement (both drop rooms off the band, so both need a door side).
+fn door_side_toward_circ(cx: f64, cy: f64, ww: f64, hh: f64, circ_rects: &[geometry::Rect]) -> CorridorSide {
+    circ_rects
         .iter()
         .min_by(|a, b| {
             rect_gap(cx, cy, ww, hh, a)
@@ -2262,7 +2345,71 @@ fn place_in_pocket(
                 CorridorSide::Bottom
             }
         })
-        .unwrap_or(CorridorSide::Top);
+        .unwrap_or(CorridorSide::Top)
+}
+
+/// Place one ANCHORED room (workflow.md §3.5) at (near) its pinned point.
+///
+/// Scans candidate centers — the exact pin first, then a fixed `ANCHOR_STEP`
+/// grid over the plate bbox, in BOTH orientations — and keeps the feasible slot
+/// whose center is NEAREST the pin (`room_slot_ok` enforces plate containment,
+/// wall clearance, keep-out/obstacle avoidance, and no circulation intrusion —
+/// the SAME test the band/pocket passes use, so an anchor never overlaps them).
+/// The room is emitted with its door toward the nearest corridor and registered
+/// as an obstacle so later placement packs around it. Deterministic (no rng).
+/// Returns whether it placed (false only when nothing fits anywhere — a shortfall
+/// `program_fit` reports).
+#[allow(clippy::too_many_arguments)]
+fn place_anchor(
+    doc: &mut Document,
+    job: &RoomJob,
+    tx: f64,
+    ty: f64,
+    bbox: (f64, f64, f64, f64),
+    plate: Option<&[Point]>,
+    iwalls: &[(Point, Point, f64)],
+    obstacles: &mut Vec<(f64, f64, f64, f64)>,
+    keepout_len: usize,
+    frozen_len: usize,
+    circ_rects: &[geometry::Rect],
+    clear: f64,
+) -> bool {
+    /// Nearest-slot scan step (m): fine enough to snuggle a pin against real
+    /// interior walls, coarse enough to stay cheap on a big plate.
+    const ANCHOR_STEP: f64 = 0.3;
+    let (min_x, min_y, max_x, max_y) = bbox;
+    // (dist², cx, cy, ww, hh) of the feasible candidate nearest the pin so far.
+    let mut best: Option<(f64, f64, f64, f64, f64)> = None;
+    let consider = |cx: f64, cy: f64, ww: f64, hh: f64, best: &mut Option<(f64, f64, f64, f64, f64)>| {
+        if room_slot_ok(
+            plate, iwalls, obstacles, keepout_len, frozen_len, circ_rects, clear, cx, cy, ww, hh,
+        ) {
+            let dist2 = (cx - tx).powi(2) + (cy - ty).powi(2);
+            if best.is_none_or(|b| dist2 < b.0) {
+                *best = Some((dist2, cx, cy, ww, hh));
+            }
+        }
+    };
+    for (w, d) in [(job.w, job.d), (job.d, job.w)] {
+        let ww = snap_room_floor(w);
+        let hh = snap_room_floor(d);
+        if ww < 0.5 || hh < 0.5 {
+            continue;
+        }
+        // The exact pin first (dist 0 wins outright when it fits).
+        consider(snap_module(tx), snap_module(ty), ww, hh, &mut best);
+        let nx = (((max_x - min_x) / ANCHOR_STEP).floor() as i64).max(0);
+        let ny = (((max_y - min_y) / ANCHOR_STEP).floor() as i64).max(0);
+        for iy in 0..=ny {
+            for ix in 0..=nx {
+                let cx = snap_module(min_x + ix as f64 * ANCHOR_STEP);
+                let cy = snap_module(min_y + iy as f64 * ANCHOR_STEP);
+                consider(cx, cy, ww, hh, &mut best);
+            }
+        }
+    }
+    let Some((_, cx, cy, ww, hh)) = best else { return false };
+    let side = door_side_toward_circ(cx, cy, ww, hh, circ_rects);
     emit_job(doc, job, cx, cy, ww, hh, side);
     obstacles.push((cx, cy, ww, hh));
     true
@@ -2598,7 +2745,26 @@ pub fn score(doc: &Document, program: &Program) -> LayoutScore {
             )
         })
         .count() as u32;
-    let derived_rooms = program.meeting_rooms + support_jobs(program, floor).len() as u32;
+    // Derived target + the anchor "bump": for each anchored kind, the rooms its
+    // pins ADD beyond the free supply (anchored − supply, floored at 0). Folding
+    // it into the denominator keeps `program_fit` honest — a bumped pin that fits
+    // nowhere shows as a shortfall instead of vanishing (workflow.md §3.5).
+    let support = support_jobs(program, floor);
+    let free_of = |k: SpaceKind| -> u32 {
+        let s = support.iter().filter(|j| j.kind == k).count() as u32;
+        if k == SpaceKind::Meeting { s + program.meeting_rooms } else { s }
+    };
+    let mut anchor_bump = 0u32;
+    let mut seen: Vec<SpaceKind> = Vec::new();
+    for a in &doc.anchors {
+        if seen.contains(&a.kind) {
+            continue;
+        }
+        seen.push(a.kind);
+        let anchored_k = doc.anchors.iter().filter(|b| b.kind == a.kind).count() as u32;
+        anchor_bump += anchored_k.saturating_sub(free_of(a.kind));
+    }
+    let derived_rooms = program.meeting_rooms + support.len() as u32 + anchor_bump;
     let program_fit = if derived_rooms == 0 {
         100.0
     } else {
@@ -4550,5 +4716,92 @@ mod tests {
         // And it carries the blended total (density is a weighted term).
         assert!(sp.total > ss.total, "professional total {:.0} must beat sparse {:.0}", sp.total, ss.total);
         assert!(sp.total > cs.total, "professional total {:.0} must beat crammed {:.0}", sp.total, cs.total);
+    }
+
+    // ---- S6: anchor pins (workflow.md §3.5) --------------------------------
+
+    /// Center of the zone whose label carries `needle`, if any.
+    fn zone_center(doc: &Document, needle: &str) -> Option<(f64, f64)> {
+        doc.zones.iter().find(|z| z.label.contains(needle)).map(|z| {
+            let (x0, y0, x1, y1) = z.shape.bbox();
+            ((x0 + x1) / 2.0, (y0 + y1) / 2.0)
+        })
+    }
+
+    /// An anchored room lands AT/near its pin: the pinned Reception's zone center
+    /// sits within a slot-step of the requested point on a roomy plate.
+    #[test]
+    fn anchored_room_lands_at_its_pin() {
+        let mut doc = room(24.0, 16.0);
+        doc.anchors.push(crate::document::Anchor { kind: SpaceKind::Reception, x: 6.0, y: 5.0 });
+        generate(&mut doc, &Program::default(), 3, false);
+        let (cx, cy) = zone_center(&doc, "Reception (pinned").expect("pinned reception zone emitted");
+        let dist = ((cx - 6.0).powi(2) + (cy - 5.0).powi(2)).sqrt();
+        assert!(dist <= 1.0, "pinned reception center ({cx:.2},{cy:.2}) is {dist:.2} m from the pin (6,5)");
+    }
+
+    /// Anchoring a kind the program never asked for BUMPS the count: with the
+    /// support program off and no meetings, a bare plate would place zero rooms —
+    /// a single Reception pin still yields a Reception room.
+    #[test]
+    fn anchor_bumps_count_when_kind_absent() {
+        let mut program = Program::default();
+        program.support_spaces = false;
+        program.meeting_rooms = 0;
+        // Baseline: nothing anchored → no Reception.
+        let mut base = room(20.0, 14.0);
+        generate(&mut base, &program, 2, false);
+        assert!(zone_center(&base, "Reception").is_none(), "no reception without a pin");
+        // Pinned → exactly the bumped room appears near the pin.
+        let mut doc = room(20.0, 14.0);
+        doc.anchors.push(crate::document::Anchor { kind: SpaceKind::Reception, x: 5.0, y: 5.0 });
+        generate(&mut doc, &program, 2, false);
+        let (cx, cy) = zone_center(&doc, "Reception (pinned").expect("bumped reception zone");
+        assert!(((cx - 5.0).powi(2) + (cy - 5.0).powi(2)).sqrt() <= 1.5, "bumped reception near its pin");
+    }
+
+    /// An anchor of a REQUESTED kind consumes one of that kind's count rather than
+    /// adding: an explicit 2-cabin program + 1 cabin pin yields 2 cabins total
+    /// (one pinned near the point, one free), not 3.
+    #[test]
+    fn anchor_consumes_one_of_a_requested_kind() {
+        let mut program = Program::default();
+        program.support_spaces = false;
+        program.meeting_rooms = 0;
+        program.rooms = vec![RoomReq { kind: SpaceKind::Cabin, count: 2, w: None, d: None, placement: Placement::Flexible }];
+        let mut doc = room(26.0, 18.0);
+        doc.anchors.push(crate::document::Anchor { kind: SpaceKind::Cabin, x: 6.0, y: 5.0 });
+        generate(&mut doc, &program, 4, false);
+        let cabins = doc.zones.iter().filter(|z| z.zone_type == ZoneType::ClosedOffice && z.label.contains("Cabin")).count();
+        assert_eq!(cabins, 2, "2 requested + 1 pinned (consumed) = 2 cabins, got {cabins}");
+        let (cx, cy) = zone_center(&doc, "Cabin (pinned").expect("one cabin is the pinned instance");
+        // "Near", not exact: a pin landing on the drawn spine is nudged just clear
+        // of it (rooms may never intrude on circulation), so allow one room-depth.
+        let dist = ((cx - 6.0).powi(2) + (cy - 5.0).powi(2)).sqrt();
+        assert!(dist <= 2.5, "pinned cabin at ({cx:.2},{cy:.2}) is {dist:.2} m from its point (6,5)");
+    }
+
+    /// Anchors are a deterministic input: same seed + same pins → byte-identical
+    /// document. Also: `generate()` never clears the anchors (they persist like
+    /// entries, so a regenerate re-honours them).
+    #[test]
+    fn anchored_generate_is_deterministic_and_keeps_anchors() {
+        let pins = [
+            crate::document::Anchor { kind: SpaceKind::Reception, x: 5.0, y: 5.0 },
+            crate::document::Anchor { kind: SpaceKind::Meeting, x: 18.0, y: 11.0 },
+        ];
+        let mut a = room(24.0, 16.0);
+        a.anchors.extend_from_slice(&pins);
+        let mut b = room(24.0, 16.0);
+        b.anchors.extend_from_slice(&pins);
+        generate(&mut a, &Program::default(), 7, false);
+        generate(&mut b, &Program::default(), 7, false);
+        assert_eq!(
+            serde_json::to_value(&a.components).unwrap(),
+            serde_json::to_value(&b.components).unwrap(),
+            "same seed + pins → identical components"
+        );
+        assert_eq!(a.zones.len(), b.zones.len(), "identical zone count");
+        assert_eq!(a.anchors.len(), 2, "generate preserves the anchors (like entries)");
     }
 }

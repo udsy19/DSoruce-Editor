@@ -1,9 +1,23 @@
 //! The editable document: walls + placed components + current selection.
 //! Pure Rust, serializable, UI-agnostic (the frontend reads it to render).
 
+use crate::layout::SpaceKind;
 use crate::model::{Component, KeepOut, Wall};
 use crate::zone::{Axis, Zone, ZoneError, ZoneShape, ZoneType};
 use serde::{Deserialize, Serialize};
+
+/// A position-pinned room request (workflow.md §3.5 — qbiq's "Place on Plan").
+/// The user picks a room `kind` and clicks a spot; `generate()` places that room
+/// FIRST at (near) `(x, y)` and bumps the kind's count. A doc-level placement
+/// hint that mirrors `entries`/`keepouts`: it rides `state()`/`snapshot()` and is
+/// never cleared by a regenerate (only re-uploading the plate clears it, TS-side).
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
+pub struct Anchor {
+    pub kind: SpaceKind,
+    /// pinned center, world meters
+    pub x: f64,
+    pub y: f64,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct Document {
@@ -23,6 +37,12 @@ pub struct Document {
     /// an empty vec means "no entry" and the generator falls back to geometry.
     #[serde(default)]
     pub entries: Vec<crate::geometry::Point>,
+    /// Position-pinned room requests (workflow.md §3.5). `generate()` places each
+    /// anchor's room FIRST at (near) its point and bumps that kind's count.
+    /// `default` keeps old snapshots deserializable; empty = no pins (unchanged
+    /// generation). Same additive-hint pattern as `entries`/`keepouts`.
+    #[serde(default)]
+    pub anchors: Vec<Anchor>,
     pub selection: Option<u32>,
     /// Monotonic id counter. **Serialized** (no `skip`) so a snapshot round-trip
     /// is lossless — otherwise restored ids would collide (Conflict §5). `default`
@@ -511,6 +531,23 @@ mod tests {
         let old = r#"{"walls":[],"components":[],"zones":[],"selection":null,"next_id":0}"#;
         let r2: Document = serde_json::from_str(old).unwrap();
         assert!(r2.entries.is_empty(), "missing entries field defaults to empty");
+    }
+
+    #[test]
+    fn anchors_round_trip_through_snapshot() {
+        let mut doc = Document::new();
+        doc.anchors.push(Anchor { kind: SpaceKind::Reception, x: 3.5, y: 2.0 });
+        doc.anchors.push(Anchor { kind: SpaceKind::Cabin, x: 9.0, y: 6.25 });
+        let snap = serde_json::to_string(&doc).unwrap();
+        let restored: Document = serde_json::from_str(&snap).unwrap();
+        assert_eq!(restored.anchors.len(), 2, "anchors survive the snapshot round-trip");
+        assert_eq!(restored.anchors[0].kind, SpaceKind::Reception);
+        assert!((restored.anchors[0].x - 3.5).abs() < 1e-12);
+        assert!((restored.anchors[1].y - 6.25).abs() < 1e-12);
+        // A pre-S6 snapshot without the field restores to an empty anchors vec.
+        let old = r#"{"walls":[],"components":[],"zones":[],"selection":null,"next_id":0}"#;
+        let r2: Document = serde_json::from_str(old).unwrap();
+        assert!(r2.anchors.is_empty(), "missing anchors field defaults to empty");
     }
 
     #[test]

@@ -78,6 +78,8 @@ export function AppShell() {
             editorRef.current?.testFit({
               areaPolygon: rec?.draft?.areaPolygon,
               markers: rec?.draft?.markers,
+              anchors: rec?.draft?.anchors,
+              silent: true,
             })
             navigate({ name: 'wizard', projectId: route.projectId, step: 'program' })
           }}
@@ -103,6 +105,15 @@ export function AppShell() {
             // on the (mounted-behind) editor, then advance to Generate.
             const rec = await getProject(route.projectId)
             const spec = rec?.draft?.spec ?? defaultSpec(rec?.draft?.readouts?.usableAreaM2 ?? null)
+            // Re-run the test-fit so the anchor pins placed in THIS step land in
+            // the document (workflow.md §3.5), then set the resolved program. Order
+            // matters: testFit rebuilds the doc, setProgram then arms generate.
+            editorRef.current?.testFit({
+              areaPolygon: rec?.draft?.areaPolygon,
+              markers: rec?.draft?.markers,
+              anchors: rec?.draft?.anchors,
+              silent: true,
+            })
             editorRef.current?.setProgram(programSpecToProgram(spec))
             navigate({ name: 'wizard', projectId: route.projectId, step: 'generate' })
           }}

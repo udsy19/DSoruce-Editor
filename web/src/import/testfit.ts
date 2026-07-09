@@ -34,6 +34,7 @@
 
 import type { Drawing, DrawEntity } from './types'
 import type { EditorCanvas } from '../editor/EditorCanvas'
+import type { AnchorPin } from '../program/anchors'
 
 export type Pt = [number, number]
 export type Segment = [Pt, Pt]
@@ -282,6 +283,24 @@ export function extractEntries(drawing: Drawing, plate: PlateResult): Pt[] {
 export function pushEntriesToEditor(ec: EditorCanvas, entries: Pt[]): void {
   ec.ed.clear_entries()
   for (const [x, y] of entries) ec.ed.add_entry(x, y)
+}
+
+/** Push anchor pins into the editor (workflow.md §3.5), clearing any previous
+ *  ones first — mirrors {@link pushEntriesToEditor}. Pins are stored in
+ *  drawing/source coords; project them into EDITOR coords with the same plate
+ *  offset the plate/keepouts/entries use, then `Editor.add_anchor` records each
+ *  so the next `generate()` places its room FIRST at (near) the point. Unknown
+ *  kinds are ignored core-side. Guarded no-op on a stale wasm without the
+ *  binding (fresh clones must `make wasm`). */
+export function pushAnchorsToEditor(ec: EditorCanvas, anchors: AnchorPin[], plate: PlateResult): void {
+  const ed = ec.ed as unknown as {
+    clear_anchors?: () => void
+    add_anchor?: (kind: string, x: number, y: number) => void
+  }
+  if (!ed.add_anchor || !ed.clear_anchors) return
+  ed.clear_anchors()
+  const { x: ox, y: oy } = plate.offset
+  for (const a of anchors) ed.add_anchor(a.kind, a.x - ox, a.y - oy)
 }
 
 // ---- interior partition walls ----------------------------------------------

@@ -289,7 +289,14 @@ export function SpaceStep({
       setMarkers((cur) => (cur.length === 0 ? cur : []))
       setActiveTool('none')
       const r = computeReadouts(d)
-      await updateDraft(projectId, { drawing: d, readouts: toSummary(r), areaPolygon: undefined, markers: [] })
+      // Also drop any §3.5 anchor pins — they were pinned to the OLD plate.
+      await updateDraft(projectId, {
+        drawing: d,
+        readouts: toSummary(r),
+        areaPolygon: undefined,
+        markers: [],
+        anchors: [],
+      })
       hydratedRef.current = true
       readyRef.current?.(true)
       setBusy(false)

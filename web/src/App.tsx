@@ -33,6 +33,7 @@ import { exportSpacePlanningReport } from './export/report'
 import { exportQuantityTakeoff, zoneAtPoint } from './export/takeoff'
 import { restrictDrawing } from './import/area'
 import type { RoomMarker } from './import/markers'
+import type { AnchorPin } from './program/anchors'
 import { downloadDXF, downloadDrawingDXF } from './export/dxf'
 import { CandidateGallery } from './ui/CandidateGallery'
 import { CategoryPlan, type CategoryPlanGroup } from './ui/CategoryPlan'
@@ -43,6 +44,7 @@ import {
   pushKeepoutsToEditor,
   extractEntries,
   pushEntriesToEditor,
+  pushAnchorsToEditor,
   type PlateResult,
   type Pt,
 } from './import/testfit'
@@ -124,6 +126,12 @@ export interface TestFitOpts {
   /** Seed the document with room markers (drawing coords) so a marker's ref
    *  becomes the Room ID/label of the zone it falls in. */
   markers?: RoomMarker[]
+  /** Anchor pins (drawing coords, workflow.md §3.5): forced room placements —
+   *  each is pushed into the document so generate() places it FIRST at its pin. */
+  anchors?: AnchorPin[]
+  /** The wizard owns the document, so it replaces the plate without a confirm
+   *  prompt (a user-driven import into a hand-built doc still asks). */
+  silent?: boolean
 }
 
 export interface EditorController {
@@ -449,7 +457,10 @@ export const EditorView = forwardRef<EditorController>(function EditorView(_prop
       y: m.y - plate.offset.y,
     }))
     const m = ec.getMetrics()
+    // The wizard OWNS this document (it built the plate), so it replaces silently.
+    // Only a user-driven import into a hand-built doc asks to confirm the replace.
     if (
+      !opts?.silent &&
       (m.wall_count > 0 || m.component_count > 0) &&
       !window.confirm('Replace the current document with the imported floor plate?')
     ) {
@@ -473,6 +484,10 @@ export const EditorView = forwardRef<EditorController>(function EditorView(_prop
     // Entry points (boundary doors, else the longest-edge midpoint) anchor the
     // generator's circulation spine and reception placement.
     pushEntriesToEditor(ec, extractEntries(working, plate))
+    // Anchor pins (workflow.md §3.5): forced room placements, projected into
+    // editor coords with the plate offset (like markers), pushed so the next
+    // generate() places each pinned room FIRST at (near) its point.
+    pushAnchorsToEditor(ec, opts?.anchors ?? [], plate)
     ec.sync()
     // Plate-quality feedback. `coverage`/`areaM2` are additive optional fields
     // on PlateResult — guard so this works whether or not they're present.

@@ -18,6 +18,7 @@ import { dbDel, dbGet, dbGetAll, dbPut } from './db'
 import type { Drawing } from '../import/types'
 import type { Pt } from '../import/testfit'
 import type { RoomMarker } from '../import/markers'
+import type { AnchorPin } from '../program/anchors'
 import type { ProgramSpec } from '../program/spec'
 
 /**
@@ -60,6 +61,9 @@ export interface ProjectDraft {
   markers?: RoomMarker[]
   /** §3.4 Program-builder state (Concept/Detailed) → the resolved `Program`. */
   spec?: ProgramSpec
+  /** §3.5 anchor pins (drawing/source coords) — forced room placements pushed
+   *  into the document at test-fit. Cleared when a new plate is uploaded. */
+  anchors?: AnchorPin[]
   /** Reproduces the chosen candidate — generate is deterministic per seed. */
   winningSeed?: number
 }

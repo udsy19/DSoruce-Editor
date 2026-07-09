@@ -14,8 +14,9 @@ mod layout;
 mod model;
 mod zone;
 
-use document::Document;
+use document::{Anchor, Document};
 use geometry::Point;
+use layout::SpaceKind;
 use model::{Component, DecisionState, KeepOut, Wall};
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
@@ -140,6 +141,22 @@ impl Editor {
     /// Remove all entry points.
     pub fn clear_entries(&mut self) {
         self.doc.entries.clear();
+    }
+
+    /// Pin a room of `kind` onto `(x, y)` (world meters) — qbiq's "Place on Plan"
+    /// (workflow.md §3.5). `generate()` places anchored rooms FIRST at (near)
+    /// their point and bumps that kind's count. `kind` is a `SpaceKind` name
+    /// ("Reception"/"Cabin"/"Meeting"/…); an unknown kind is ignored. Serializes
+    /// with the doc via `state()`/`snapshot()`, mirroring `add_entry`.
+    pub fn add_anchor(&mut self, kind: String, x: f64, y: f64) {
+        if let Some(kind) = SpaceKind::from_wire(&kind) {
+            self.doc.anchors.push(Anchor { kind, x, y });
+        }
+    }
+
+    /// Remove all anchor pins (mirrors `clear_entries`).
+    pub fn clear_anchors(&mut self) {
+        self.doc.anchors.clear();
     }
 
     /// Hit-test components at (x,y) in world coords, topmost first. Sets and
