@@ -92,6 +92,94 @@ export class Page {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Product card — one tile in the furniture-schedule grid + the moodboard.
+// ---------------------------------------------------------------------------
+
+/** One product card's content. Text comes from the takeoff BOM; `thumb` is the
+ *  bound product image (resolved to a JPEG) or null → a category-tinted tile. */
+export interface ProductCardInfo {
+  name: string
+  category?: string
+  dims?: string // "70 × 140 cm"
+  qty?: number
+  supplier?: string
+  code?: string // cost code
+  unit?: string // preformatted unit price, e.g. "Rs. 12,000" or "—"
+  total?: string // preformatted line total
+  thumb?: PdfJpeg | null
+  tint?: Rgb // category color for the fallback tile
+}
+
+/** Truncate a string with "…" to fit `maxW` pt (Helvetica advance estimate). */
+function clip(s: string, size: number, bold: boolean, maxW: number): string {
+  if (textWidth(pdfSafeText(s), size, bold) <= maxW) return s
+  let t = s
+  while (t.length > 1 && textWidth(pdfSafeText(t + '...'), size, bold) > maxW) t = t.slice(0, -1)
+  return t + '...'
+}
+
+/** Blend an rgb toward white by `t` (0 = colour, 1 = white) — pale tint fills. */
+function pale(rgb: Rgb, t: number): Rgb {
+  return [rgb[0] + (1 - rgb[0]) * t, rgb[1] + (1 - rgb[1]) * t, rgb[2] + (1 - rgb[2]) * t]
+}
+
+/**
+ * Draw one product card at a top-down top-left corner: a thumbnail (bound
+ * product image or a category-tinted tile with the item initials) over the
+ * item name, category · dims, supplier, quantity and ₹ unit/line price. Reused
+ * by the Furniture Schedule grid and the Moodboard (bigger tiles). Pure Page
+ * drawing — no new PDF engine, composes only Page/ACCENT primitives.
+ */
+export function productCard(p: Page, x: number, yTop: number, w: number, h: number, o: ProductCardInfo): void {
+  const pad = 10
+  p.box(x, yTop, w, h, { fill: true, gray: 1 })
+  p.box(x, yTop, w, h, { fill: false, gray: 0.8, width: 0.8 })
+
+  // Thumbnail band.
+  const th = Math.min(h * 0.5, w * 0.66)
+  const tx = x + pad
+  const ty = yTop + pad
+  const tw = w - pad * 2
+  if (o.thumb) {
+    p.box(tx, ty, tw, th, { fill: true, gray: 0.96 })
+    const s = Math.min(tw / o.thumb.width, th / o.thumb.height)
+    const iw = o.thumb.width * s
+    const ih = o.thumb.height * s
+    p.image(o.thumb, tx + (tw - iw) / 2, ty + (th - ih) / 2, iw, ih)
+  } else {
+    const tint = o.tint ?? hex2rgb('#8b939e')
+    p.box(tx, ty, tw, th, { fill: true, rgb: pale(tint, 0.82) })
+    const initials = (o.category ?? o.name).replace(/[^A-Za-z]/g, '').slice(0, 3).toUpperCase() || '—'
+    p.text(tx + tw / 2, ty + th / 2 + 7, 20, initials, { align: 'center', bold: true, rgb: tint })
+  }
+  p.box(tx, ty, tw, th, { fill: false, gray: 0.85, width: 0.5 })
+
+  // Text block.
+  let cy = ty + th + 15
+  p.text(x + pad, cy, 10, clip(o.name, 10, true, tw), { bold: true, gray: 0.12 })
+  cy += 12
+  const sub = [o.category, o.dims].filter(Boolean).join('  ·  ')
+  if (sub) {
+    p.text(x + pad, cy, 7.5, clip(sub, 7.5, false, tw), { gray: 0.45 })
+    cy += 12
+  }
+  p.line(x + pad, cy, x + w - pad, cy, { gray: 0.88, width: 0.4 })
+  cy += 12
+  if (o.supplier) {
+    p.text(x + pad, cy, 7.5, clip(o.supplier, 7.5, false, tw * 0.62), { gray: 0.35 })
+  }
+  if (o.code) p.text(x + w - pad, cy, 7, o.code, { align: 'right', gray: 0.5 })
+  cy += 13
+  p.text(x + pad, cy, 8, `QTY ${o.qty ?? '-'}`, { gray: 0.3 })
+  if (o.unit) p.text(x + w - pad, cy, 7.5, `${o.unit} ea`, { align: 'right', gray: 0.45 })
+  cy += 12
+  if (o.total) {
+    p.text(x + pad, cy, 8, 'LINE TOTAL', { gray: 0.4 })
+    p.text(x + w - pad, cy, 9.5, o.total, { align: 'right', bold: true, gray: 0.08 })
+  }
+}
+
 /** Brand mark (dsource) top-left, centered caption, client name top-right. */
 export function pageHeader(p: Page, center: string, client?: string): void {
   p.text(MARGIN, MARGIN + 6, 15, 'dsource', { bold: true, rgb: ACCENT })

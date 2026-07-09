@@ -19,6 +19,7 @@ import {
   renderPrintCanvas,
   canvasToJpeg,
   planScaleN,
+  textWidth,
   WallSeg,
 } from './pdf'
 import {
@@ -30,8 +31,13 @@ import {
   keyPlanJpeg,
   titleBlock,
   TITLE_BLOCK_H,
+  productCard,
+  logoJpeg,
 } from './sheet'
+import type { ProductCardInfo } from './sheet'
 import type { ReportMeta } from './report'
+import { buildTakeoffModel } from './takeoff'
+import type { TakeoffFurnitureRow, TakeoffSummaryRow } from './takeoff'
 import type { DocState, DocComponent, ZoneShape } from '../editor/EditorCanvas'
 import type { Drawing } from '../import/types'
 import type { BindingInfo } from '../persist/file'
@@ -54,12 +60,18 @@ export interface DrawingSetOpts {
   meta: SheetSetMeta
   /** Imported original drawing — its interior walls seed the demolition plan. */
   drawing?: Drawing | null
-  /** Product bindings (reserved for the furniture-card slice, M3). */
+  /** Product bindings — drive the furniture cards + moodboard (M3). */
   bindings?: Map<string, BindingInfo>
+  /**
+   * Optional sheet whitelist (M6 sheets-manager toggles). When present, ONLY
+   * sheets whose id is listed are emitted; when absent, ALL sheets emit
+   * (backward compatible). Ids: 'cover' | 'contents' | 'demolition' |
+   * 'construction' | 'sections' | 'furniture' | 'moodboard'.
+   */
+  include?: string[]
 }
 
 const INK = hex2rgb('#2e343b')
-const GREY_WALL: Rgb = hex2rgb('#14181d')
 const BLUE_WALL: Rgb = hex2rgb('#3b6fd4')
 const RED_DEMO: Rgb = hex2rgb('#d6336c')
 const FURN: Rgb = hex2rgb('#5c6670')
@@ -131,6 +143,85 @@ export interface Opening {
 }
 
 /**
+ * Merge collinear + contiguous glazed wall segments into real window runs. The
+ * generator emits a glazed front as many short segments (e.g. sixteen 0.15 m
+ * pieces); left un-merged the schedule lists 0.15 m fragments instead of one
+ * 2.4 m window. We bucket segments by their infinite line (canonical angle +
+ * signed perpendicular offset), sort each bucket along the line, and union
+ * intervals that touch (gap ≤ GAP). Each union → one window {center, length}.
+ * Deterministic: purely a function of the wall geometry.
+ */
+function mergeGlazedRuns(walls: DocState['walls']): { x: number; y: number; len: number }[] {
+  const ANG_TOL = 0.02 // rad — same line direction
+  const OFF_TOL = 0.06 // m — same perpendicular offset (collinear)
+  const GAP = 0.1 // m — fragments this close along the line are one run
+
+  interface Bucket {
+    ang: number
+    cux: number
+    cuy: number
+    nx: number
+    ny: number
+    off: number
+    spans: { lo: number; hi: number }[]
+  }
+  const buckets: Bucket[] = []
+
+  for (const w of walls) {
+    if (w.glazing !== true) continue
+    const dx = w.b.x - w.a.x
+    const dy = w.b.y - w.a.y
+    const len = Math.hypot(dx, dy)
+    if (len < 1e-6) continue
+    // Canonical direction angle in [0, π) so a→b and b→a share a line.
+    let ang = Math.atan2(dy, dx)
+    if (ang < 0) ang += Math.PI
+    if (ang >= Math.PI) ang -= Math.PI
+    const cux = Math.cos(ang)
+    const cuy = Math.sin(ang)
+    const nx = -cuy
+    const ny = cux
+    const off = w.a.x * nx + w.a.y * ny
+    const ta = w.a.x * cux + w.a.y * cuy
+    const tb = w.b.x * cux + w.b.y * cuy
+    const lo = Math.min(ta, tb)
+    const hi = Math.max(ta, tb)
+    let b = buckets.find(
+      (g) => Math.abs(g.ang - ang) < ANG_TOL && Math.abs(g.off - off) < OFF_TOL,
+    )
+    if (!b) {
+      b = { ang, cux, cuy, nx, ny, off, spans: [] }
+      buckets.push(b)
+    }
+    b.spans.push({ lo, hi })
+  }
+
+  const out: { x: number; y: number; len: number }[] = []
+  for (const b of buckets) {
+    b.spans.sort((a, c) => a.lo - c.lo)
+    let cur = { ...b.spans[0] }
+    const flush = () => {
+      const mid = (cur.lo + cur.hi) / 2
+      out.push({
+        x: mid * b.cux + b.off * b.nx,
+        y: mid * b.cuy + b.off * b.ny,
+        len: cur.hi - cur.lo,
+      })
+    }
+    for (let i = 1; i < b.spans.length; i++) {
+      const s = b.spans[i]
+      if (s.lo <= cur.hi + GAP) cur.hi = Math.max(cur.hi, s.hi)
+      else {
+        flush()
+        cur = { ...s }
+      }
+    }
+    flush()
+  }
+  return out
+}
+
+/**
  * Deterministic opening tags + schedule rows: doors are placed components
  * (category 'Door'); windows are glazed wall segments (DocWall.glazing). Stable
  * order (top-to-bottom, left-to-right) → D01/D02…, W1/W2…, so each tag appears
@@ -153,14 +244,7 @@ export function openingSchedule(state: DocState): Opening[] {
       material: 'Painted wood frame',
     })
   })
-  const windows = state.walls
-    .filter((w) => w.glazing === true)
-    .map((w) => ({
-      x: (w.a.x + w.b.x) / 2,
-      y: (w.a.y + w.b.y) / 2,
-      len: Math.hypot(w.b.x - w.a.x, w.b.y - w.a.y),
-    }))
-    .sort((a, b) => a.y - b.y || a.x - b.x)
+  const windows = mergeGlazedRuns(state.walls).sort((a, b) => a.y - b.y || a.x - b.x)
   windows.forEach((w, i) => {
     out.push({
       tag: `W${i + 1}`,
@@ -238,8 +322,63 @@ function legendRow(p: Page, x: number, yTop: number, sw: (px: number, py: number
   p.text(x + 30, yTop, 8.5, label, { gray: 0.25 })
 }
 
-/** Draw a room label + area at each non-circulation zone center. */
-function roomLabels(p: Page, state: DocState, map: (x: number, y: number) => { x: number; y: number }): void {
+// ---------------------------------------------------------------------------
+// Label / tag de-collision (deterministic nudge + stack, leader when far)
+// ---------------------------------------------------------------------------
+
+interface OccBox {
+  x: number // top-left, top-down pt
+  y: number
+  w: number
+  h: number
+}
+
+function boxesOverlap(a: OccBox, b: OccBox): boolean {
+  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y
+}
+
+/**
+ * Find a non-overlapping center for a `w×h` label near (cx,cy): try the true
+ * spot first, then a fixed stack of vertical/horizontal offsets. The candidate
+ * order is deterministic, so the same plan always lays out identically. Records
+ * the chosen box in `occ` and returns the center actually used.
+ */
+function placeNear(occ: OccBox[], cx: number, cy: number, w: number, h: number): { x: number; y: number } {
+  const dv = h + 3
+  const dh = w * 0.55 + 6
+  const cands: [number, number][] = [
+    [0, 0],
+    [0, dv],
+    [0, -dv],
+    [dh, 0],
+    [-dh, 0],
+    [0, 2 * dv],
+    [0, -2 * dv],
+    [dh, dv],
+    [-dh, dv],
+    [dh, -dv],
+    [-dh, -dv],
+    [0, 3 * dv],
+    [0, -3 * dv],
+  ]
+  for (const [ox, oy] of cands) {
+    const box: OccBox = { x: cx + ox - w / 2, y: cy + oy - h / 2, w, h }
+    if (!occ.some((b) => boxesOverlap(box, b))) {
+      occ.push(box)
+      return { x: cx + ox, y: cy + oy }
+    }
+  }
+  occ.push({ x: cx - w / 2, y: cy - h / 2, w, h })
+  return { x: cx, y: cy }
+}
+
+/** Draw a room label + area at each non-circulation zone center, de-collided. */
+function roomLabels(
+  p: Page,
+  state: DocState,
+  map: (x: number, y: number) => { x: number; y: number },
+  occ: OccBox[],
+): void {
   let n = 0
   for (const z of state.zones ?? []) {
     if (z.zone_type === 'Circulation') continue
@@ -247,8 +386,11 @@ function roomLabels(p: Page, state: DocState, map: (x: number, y: number) => { x
     const c = zoneCenter(z.shape)
     const pt = map(c.x, c.y)
     const name = (z.label || `ROOM ${String(n).padStart(2, '0')}`).toUpperCase()
-    p.text(pt.x, pt.y, 8, name, { align: 'center', bold: true, gray: 0.2 })
-    p.text(pt.x, pt.y + 11, 7.5, `${zoneArea(z.shape).toFixed(1)} m²`, { align: 'center', gray: 0.4 })
+    const area = `${zoneArea(z.shape).toFixed(1)} m²`
+    const w = Math.max(textWidth(name, 8, true), textWidth(area, 7.5)) + 4
+    const pos = placeNear(occ, pt.x, pt.y + 4, w, 26)
+    p.text(pos.x, pos.y - 4, 8, name, { align: 'center', bold: true, gray: 0.2 })
+    p.text(pos.x, pos.y + 7, 7.5, area, { align: 'center', gray: 0.4 })
   }
 }
 
@@ -256,7 +398,7 @@ function roomLabels(p: Page, state: DocState, map: (x: number, y: number) => { x
 // Demolition plan (A.01)
 // ---------------------------------------------------------------------------
 
-function demolitionSheet(state: DocState, opts: DrawingSetOpts): Page {
+function demolitionSheet(state: DocState, opts: DrawingSetOpts, no: string): Page {
   const p = new Page()
   const b = planBox()
   const wPx = Math.round(b.planW * RES)
@@ -278,7 +420,7 @@ function demolitionSheet(state: DocState, opts: DrawingSetOpts): Page {
   const map = worldMapper(b, wPx, hPx, k, ox, oy)
 
   p.text(MARGIN + 6, 42, 15, 'DEMOLITION PLAN', { bold: true, gray: 0.1 })
-  roomLabels(p, state, map)
+  roomLabels(p, state, map, [])
   if (demolished.length === 0) {
     p.text(b.planX + 12, b.planY + b.planH - 14, 9, 'NO DEMOLITION (NEW BUILD)', { gray: 0.4, bold: true })
   }
@@ -309,7 +451,7 @@ function demolitionSheet(state: DocState, opts: DrawingSetOpts): Page {
   }
 
   const scaleN = planScaleN(metersPerPx, wPx, b.planW)
-  titleBlock(p, tb(opts, 'A.01', 'Demolition Plan', scaleN ? `1:${scaleN}` : 'NTS', keyPlanJpeg(state, 'all', 340, 190)))
+  titleBlock(p, tb(opts, no, 'Demolition Plan', scaleN ? `1:${scaleN}` : 'NTS', keyPlanJpeg(state, 'all', 340, 190)))
   return p
 }
 
@@ -317,7 +459,7 @@ function demolitionSheet(state: DocState, opts: DrawingSetOpts): Page {
 // Construction & furnishing plan (A.02)
 // ---------------------------------------------------------------------------
 
-function constructionSheet(state: DocState, opts: DrawingSetOpts): Page {
+function constructionSheet(state: DocState, opts: DrawingSetOpts, no: string): Page {
   const p = new Page()
   const b = planBox()
   const wPx = Math.round(b.planW * RES)
@@ -337,13 +479,22 @@ function constructionSheet(state: DocState, opts: DrawingSetOpts): Page {
   const map = worldMapper(b, wPx, hPx, k, ox, oy)
 
   p.text(MARGIN + 6, 42, 15, 'CONSTRUCTION & FURNISHING PLAN', { bold: true, gray: 0.1 })
-  roomLabels(p, state, map)
 
-  // Opening tags on the plan (D01 circle, W1 hexagon).
+  // Overall perimeter dimension strings first (they don't compete for label space).
+  dimStrings(p, state, map)
+
+  // Room labels + opening tags share one occupancy list so tags never land on a
+  // room label; each nudges deterministically and drops a leader when moved.
+  const occ: OccBox[] = []
+  roomLabels(p, state, map, occ)
   const openings = openingSchedule(state)
   for (const o of openings) {
     const pt = map(o.x, o.y)
-    drawTagGlyph(p, pt.x, pt.y, o.tag, o.kind)
+    const pos = placeNear(occ, pt.x, pt.y, 24, 24)
+    if (Math.hypot(pos.x - pt.x, pos.y - pt.y) > 14) {
+      p.line(pt.x, pt.y, pos.x, pos.y, { gray: 0.5, width: 0.4 })
+    }
+    drawTagGlyph(p, pos.x, pos.y, o.tag, o.kind)
   }
 
   // Legend + schedule (right panel).
@@ -391,24 +542,317 @@ function constructionSheet(state: DocState, opts: DrawingSetOpts): Page {
   const scaleN = planScaleN(metersPerPx, wPx, b.planW)
   titleBlock(
     p,
-    tb(opts, 'A.02', 'Construction & Furnishing Plan', scaleN ? `1:${scaleN}` : 'NTS', keyPlanJpeg(state, 'all', 340, 190)),
+    tb(opts, no, 'Construction & Furnishing Plan', scaleN ? `1:${scaleN}` : 'NTS', keyPlanJpeg(state, 'all', 340, 190)),
   )
   return p
 }
 
-/** Tag glyph: circle for a door (D), hexagon for a window (W). */
+/** Regular-polygon outline as a line fan — the hand-written PDF engine has no
+ *  arc op, so a circle is a 16-gon and a hexagon its 6-gon sibling. */
+function polyOutline(
+  p: Page,
+  cx: number,
+  cy: number,
+  r: number,
+  sides: number,
+  rot: number,
+  o: { rgb?: Rgb; gray?: number; width?: number },
+): void {
+  for (let i = 0; i < sides; i++) {
+    const a0 = rot + (i / sides) * Math.PI * 2
+    const a1 = rot + ((i + 1) / sides) * Math.PI * 2
+    p.line(cx + r * Math.cos(a0), cy + r * Math.sin(a0), cx + r * Math.cos(a1), cy + r * Math.sin(a1), o)
+  }
+}
+
+/** Tag glyph: circle for a door (D), hexagon for a window (W) — true polygon
+ *  outlines over a white mask so the plan raster doesn't bleed through. */
 function drawTagGlyph(p: Page, cx: number, cy: number, tag: string, kind: 'Door' | 'Window', size = 11): void {
   const r = size
+  p.box(cx - r, cy - r, r * 2, r * 2, { fill: true, gray: 1 }) // white backdrop mask
   if (kind === 'Door') {
-    p.box(cx - r, cy - r, r * 2, r * 2, { fill: true, gray: 1 })
-    // Circle approximated by a rounded square token — the engine has no arc op;
-    // a filled white box + border reads as the door bubble on the sheet.
-    p.box(cx - r, cy - r, r * 2, r * 2, { fill: false, rgb: INK, width: 0.8 })
+    polyOutline(p, cx, cy, r, 16, 0, { rgb: INK, width: 0.9 })
   } else {
-    p.box(cx - r, cy - r * 0.86, r * 2, r * 1.72, { fill: true, gray: 1 })
-    p.box(cx - r, cy - r * 0.86, r * 2, r * 1.72, { fill: false, rgb: BLUE_WALL, width: 0.8 })
+    polyOutline(p, cx, cy, r, 6, Math.PI / 6, { rgb: BLUE_WALL, width: 1 })
   }
-  p.text(cx, cy + size * 0.32, size * 0.72, tag, { align: 'center', bold: true, gray: 0.12 })
+  p.text(cx, cy + size * 0.32, size * 0.68, tag, { align: 'center', bold: true, gray: 0.12 })
+}
+
+/** Overall width + height dimension strings around the plate (construction). */
+function dimStrings(
+  p: Page,
+  state: DocState,
+  map: (x: number, y: number) => { x: number; y: number },
+): void {
+  let minX = Infinity
+  let minY = Infinity
+  let maxX = -Infinity
+  let maxY = -Infinity
+  for (const w of state.walls) {
+    minX = Math.min(minX, w.a.x, w.b.x)
+    minY = Math.min(minY, w.a.y, w.b.y)
+    maxX = Math.max(maxX, w.a.x, w.b.x)
+    maxY = Math.max(maxY, w.a.y, w.b.y)
+  }
+  if (minX === Infinity) return
+
+  const tick = (x: number, y: number, dx: number, dy: number) =>
+    p.line(x - dx, y - dy, x + dx, y + dy, { gray: 0.4, width: 0.5 })
+
+  // Bottom edge — overall width.
+  const bl = map(minX, maxY)
+  const br = map(maxX, maxY)
+  const by = bl.y + 16
+  p.line(bl.x, by, br.x, by, { gray: 0.4, width: 0.5 })
+  tick(bl.x, by, 0, 3)
+  tick(br.x, by, 0, 3)
+  p.text((bl.x + br.x) / 2, by + 11, 7.5, `${(maxX - minX).toFixed(2)} m`, { align: 'center', gray: 0.3 })
+
+  // Left edge — overall height.
+  const tl = map(minX, minY)
+  const lx = tl.x - 16
+  p.line(lx, tl.y, lx, bl.y, { gray: 0.4, width: 0.5 })
+  tick(lx, tl.y, 3, 0)
+  tick(lx, bl.y, 3, 0)
+  p.text(lx - 4, (tl.y + bl.y) / 2, 7.5, `${(maxY - minY).toFixed(2)} m`, { align: 'right', gray: 0.3 })
+}
+
+// ---------------------------------------------------------------------------
+// Furniture cards + moodboard (driven by buildTakeoffModel — no re-derivation)
+// ---------------------------------------------------------------------------
+
+const INR = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 })
+
+/** ₹ price label; em-dash when unpriced (mirrors takeoff's spec-only fallback). */
+function priceLabel(n: number): string {
+  return n > 0 ? `₹${INR.format(n)}` : '—'
+}
+
+// Category tint for the fallback tile (bank image absent). Named families first,
+// then a stable hash so every distinct item still gets a consistent colour.
+const NAME_TINT: Record<string, string> = {
+  Desk: '#3b6fd4',
+  Chair: '#3f9c95',
+  Table: '#7a6a55',
+  'Meeting Room': '#7d5ba6',
+  Sofa: '#c26d4e',
+  Storage: '#5c6670',
+  Planter: '#4f9d5d',
+  'Fall Ceiling': '#8b939e',
+}
+const TINT_POOL = ['#3b6fd4', '#3f9c95', '#7a6a55', '#7d5ba6', '#c26d4e', '#4f9d5d', '#b0663b', '#5c6670']
+function tintFor(name: string): Rgb {
+  if (NAME_TINT[name]) return hex2rgb(NAME_TINT[name])
+  let h = 0
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0
+  return hex2rgb(TINT_POOL[h % TINT_POOL.length])
+}
+
+/** Split takeoff's "Desk W70 X L140" into a display name + "70 × 140 cm" dims. */
+function parseItem(desc: string): { name: string; dims?: string } {
+  const m = desc.match(/^(.+?)\s+W(\d+)\s+X\s+L(\d+)$/)
+  return m ? { name: m[1], dims: `${m[2]} × ${m[3]} cm` } : { name: desc }
+}
+
+/**
+ * Resolve one product thumbnail per (supplier|price) — the same key a bound
+ * takeoff row carries — so a card finds its bank image without re-deriving the
+ * furniture list. Bound products drop their real photo; the rest fall back to a
+ * tinted tile. Async because logoJpeg decodes the data-URI off-DOM.
+ */
+async function resolveThumbs(bindings?: Map<string, BindingInfo>): Promise<Map<string, PdfJpeg>> {
+  const out = new Map<string, PdfJpeg>()
+  if (!bindings) return out
+  for (const [, b] of bindings) {
+    if (!b.image) continue
+    const key = `${b.supplier?.trim() || b.brand?.trim() || ''}|${b.price ?? 0}`
+    if (out.has(key)) continue
+    const jpeg = await logoJpeg(b.image, 480)
+    if (jpeg) out.set(key, jpeg)
+  }
+  return out
+}
+function thumbFor(supplier: string, unitPrice: number, thumbs: Map<string, PdfJpeg>): PdfJpeg | null {
+  return thumbs.get(`${supplier}|${unitPrice}`) ?? null
+}
+
+/** One card's content from an item-summary row (aggregated across rooms). */
+function cardFromSummary(r: TakeoffSummaryRow, thumbs: Map<string, PdfJpeg>): ProductCardInfo {
+  const { name, dims } = parseItem(r.itemDescription)
+  return {
+    name,
+    dims,
+    qty: r.quantity,
+    supplier: r.supplier,
+    code: r.costCode,
+    unit: priceLabel(r.unitPrice),
+    total: r.totalPrice > 0 ? `₹${INR.format(r.totalPrice)}` : '—',
+    thumb: thumbFor(r.supplier, r.unitPrice, thumbs),
+    tint: tintFor(name),
+  }
+}
+
+/** Moodboard groups: bound products (priced or with a photo), grouped by room
+ *  type, aggregated across rooms so each distinct item shows once per room type. */
+function buildMoodGroups(
+  furniture: TakeoffFurnitureRow[],
+  thumbs: Map<string, PdfJpeg>,
+): { label: string; cards: ProductCardInfo[] }[] {
+  const byRoom = new Map<string, Map<string, ProductCardInfo & { _qty: number }>>()
+  for (const r of furniture) {
+    const bound = r.unitPrice > 0 || thumbFor(r.supplier, r.unitPrice, thumbs)
+    if (!bound) continue
+    const g = byRoom.get(r.roomType) ?? new Map()
+    byRoom.set(r.roomType, g)
+    const existing = g.get(r.itemDescription)
+    if (existing) {
+      existing._qty += r.quantity
+      existing.qty = existing._qty
+      existing.total = `₹${INR.format(existing._qty * r.unitPrice)}`
+    } else {
+      const { name, dims } = parseItem(r.itemDescription)
+      g.set(r.itemDescription, {
+        _qty: r.quantity,
+        name,
+        dims,
+        category: r.roomType,
+        qty: r.quantity,
+        supplier: r.supplier,
+        code: r.costCode,
+        unit: priceLabel(r.unitPrice),
+        total: r.totalPrice > 0 ? `₹${INR.format(r.quantity * r.unitPrice)}` : '—',
+        thumb: thumbFor(r.supplier, r.unitPrice, thumbs),
+        tint: tintFor(name),
+      })
+    }
+  }
+  return [...byRoom.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([label, m]) => ({ label, cards: [...m.values()] }))
+}
+
+// ---------------------------------------------------------------------------
+// Furniture & Fixtures schedule sheet (grid of cards)
+// ---------------------------------------------------------------------------
+
+function furnitureSheet(
+  opts: DrawingSetOpts,
+  no: string,
+  cards: ProductCardInfo[],
+  titleSuffix: string,
+  keyPlan: PdfJpeg | null,
+): Page {
+  const p = new Page()
+  p.text(MARGIN + 6, 42, 15, `FURNITURE & FIXTURES${titleSuffix}`, { bold: true, gray: 0.1 })
+
+  const cols = 4
+  const rows = 3
+  const gap = 16
+  const gridX = MARGIN + 6
+  const gridTop = 62
+  const gridW = PAGE_W - MARGIN - gridX
+  const gridBottom = PAGE_H - MARGIN - TITLE_BLOCK_H - 8
+  const cardW = (gridW - gap * (cols - 1)) / cols
+  const cardH = (gridBottom - gridTop - gap * (rows - 1)) / rows
+
+  if (cards.length === 0) {
+    p.box(gridX, gridTop, gridW, 120, { fill: true, gray: 0.97 })
+    p.text(PAGE_W / 2, gridTop + 62, 12, 'NO FURNITURE SPECIFIED YET', { align: 'center', gray: 0.45, bold: true })
+    p.text(PAGE_W / 2, gridTop + 82, 9, 'Generate a test-fit and bind products from the material bank.', {
+      align: 'center',
+      gray: 0.5,
+    })
+  } else {
+    cards.forEach((c, i) => {
+      const col = i % cols
+      const row = Math.floor(i / cols)
+      const x = gridX + col * (cardW + gap)
+      const y = gridTop + row * (cardH + gap)
+      productCard(p, x, y, cardW, cardH, c)
+    })
+  }
+
+  titleBlock(p, tb(opts, no, 'Furniture & Fixtures', 'NTS', keyPlan))
+  return p
+}
+
+// ---------------------------------------------------------------------------
+// Moodboard sheet (larger tiles for bound products, grouped by room)
+// ---------------------------------------------------------------------------
+
+function moodboardSheet(
+  opts: DrawingSetOpts,
+  no: string,
+  groups: { label: string; cards: ProductCardInfo[] }[],
+  keyPlan: PdfJpeg | null,
+): Page {
+  const p = new Page()
+  p.text(MARGIN + 6, 42, 15, 'MOODBOARD', { bold: true, gray: 0.1 })
+
+  const gridX = MARGIN + 6
+  const gridW = PAGE_W - MARGIN - gridX
+  const bottom = PAGE_H - MARGIN - TITLE_BLOCK_H - 8
+
+  if (groups.length === 0) {
+    p.box(gridX, 62, gridW, 130, { fill: true, gray: 0.97 })
+    p.text(PAGE_W / 2, 128, 13, 'NO PRODUCTS SPECIFIED YET', { align: 'center', gray: 0.45, bold: true })
+    p.text(PAGE_W / 2, 150, 9, 'Bind products from the material bank to populate the moodboard.', {
+      align: 'center',
+      gray: 0.5,
+    })
+    titleBlock(p, tb(opts, no, 'Moodboard', 'NTS', keyPlan))
+    return p
+  }
+
+  const cols = 3
+  const gap = 18
+  const cardW = (gridW - gap * (cols - 1)) / cols
+  const cardH = 196
+  let y = 62
+  let overflow = 0
+  let stopped = false
+
+  for (const g of groups) {
+    if (stopped) {
+      overflow += g.cards.length
+      continue
+    }
+    if (y + 20 + cardH > bottom) {
+      overflow += g.cards.length
+      stopped = true
+      continue
+    }
+    // Room/category section band.
+    p.box(gridX, y, gridW, 16, { fill: true, gray: 0.95 })
+    p.text(gridX + 8, y + 11, 9, g.label.toUpperCase(), { bold: true, gray: 0.3 })
+    p.text(PAGE_W - MARGIN - 8, y + 11, 8, `${g.cards.length} ITEM${g.cards.length > 1 ? 'S' : ''}`, {
+      align: 'right',
+      gray: 0.45,
+    })
+    y += 24
+    let col = 0
+    for (const c of g.cards) {
+      if (y + cardH > bottom) {
+        overflow++
+        stopped = true
+        continue
+      }
+      const x = gridX + col * (cardW + gap)
+      productCard(p, x, y, cardW, cardH, c)
+      col++
+      if (col >= cols) {
+        col = 0
+        y += cardH + gap
+      }
+    }
+    if (col > 0) y += cardH + gap
+  }
+  if (overflow > 0) {
+    p.text(gridX, Math.min(y, bottom) + 2, 9, `+ ${overflow} more bound product${overflow > 1 ? 's' : ''}`, { gray: 0.5 })
+  }
+
+  titleBlock(p, tb(opts, no, 'Moodboard', 'NTS', keyPlan))
+  return p
 }
 
 // ---------------------------------------------------------------------------
@@ -469,7 +913,7 @@ function coverSheet(state: DocState, opts: DrawingSetOpts): Page {
   return p
 }
 
-function contentsSheet(opts: DrawingSetOpts): Page {
+function contentsSheet(opts: DrawingSetOpts, numbered: { title: string; no: string }[]): Page {
   const p = new Page()
   p.text(MARGIN, MARGIN + 30, 34, 'Contents', { bold: true, gray: 0.08 })
   p.text(MARGIN, MARGIN + 60, 12, opts.meta.project, { gray: 0.4 })
@@ -477,8 +921,7 @@ function contentsSheet(opts: DrawingSetOpts): Page {
   const items: { title: string; no: string }[] = [
     { title: 'Cover', no: '—' },
     { title: 'Contents', no: '—' },
-    { title: 'Demolition Plan', no: 'A.01' },
-    { title: 'Construction & Furnishing Plan', no: 'A.02' },
+    ...numbered.map((n) => ({ title: n.title, no: n.no })),
   ]
   let y = 150
   const x0 = MARGIN + 10
@@ -518,15 +961,58 @@ function wrapText(s: string, maxChars: number): string[] {
 // Orchestration
 // ---------------------------------------------------------------------------
 
-/** Build the drawing-set PDF bytes: cover · contents · demolition · construction. */
-export function buildDrawingSetPdf(state: DocState, opts: DrawingSetOpts): Uint8Array<ArrayBuffer> {
+/**
+ * Build the drawing-set PDF bytes: cover · contents · A.01 demolition · A.02
+ * construction · [sections] · furniture-card sheet(s) · moodboard. A.NN numbers
+ * are auto-assigned in order, so the contents list and title blocks always
+ * agree even as furniture paginates. Async because product thumbnails decode
+ * off-DOM (logoJpeg) before the sheets compose.
+ */
+export async function buildDrawingSetPdf(state: DocState, opts: DrawingSetOpts): Promise<Uint8Array<ArrayBuffer>> {
+  const thumbs = await resolveThumbs(opts.bindings)
+  const model = buildTakeoffModel(state, {
+    bindings: opts.bindings,
+    floor: opts.meta.floor,
+    project: opts.meta.project,
+  })
+  const keyPlan = () => keyPlanJpeg(state, 'all', 340, 190)
+
+  // Furniture cards, paginated (12 per A3 sheet); one empty page → graceful state.
+  const cards = model.summary.map((r) => cardFromSummary(r, thumbs))
+  const CARDS_PER = 12
+  const cardPages: ProductCardInfo[][] = []
+  if (cards.length === 0) cardPages.push([])
+  else for (let i = 0; i < cards.length; i += CARDS_PER) cardPages.push(cards.slice(i, i + CARDS_PER))
+  const moodGroups = buildMoodGroups(model.furniture, thumbs)
+
+  // Optional sheet whitelist (M6 toggles). Absent → every sheet emits.
+  const want = (id: string) => !opts.include || opts.include.includes(id)
+
+  // Numbered sheets, in order; A.NN assigned by position. `id` keys the M6
+  // manifest; a de-selected sheet is skipped entirely (its build never runs).
+  const numbered: { title: string; no: string; page: Page }[] = []
+  const add = (id: string, title: string, build: (no: string) => Page) => {
+    if (!want(id)) return
+    const no = `A.${String(numbered.length + 1).padStart(2, '0')}`
+    numbered.push({ title, no, page: build(no) })
+  }
+  add('demolition', 'Demolition Plan', (no) => demolitionSheet(state, opts, no))
+  add('construction', 'Construction & Furnishing Plan', (no) => constructionSheet(state, opts, no))
+  // ── SECTION SHEETS INSERTION POINT ── the sections agent (export/section.ts)
+  // slots section/elevation sheets here, keyed off id 'sections':
+  //   add('sections', 'Sections', (no) => sectionSheet(state, opts, no)).
+  cardPages.forEach((rows, i) =>
+    add('furniture', `Furniture & Fixtures${i > 0 ? ' (cont.)' : ''}`, (no) =>
+      furnitureSheet(opts, no, rows, i > 0 ? ' (CONT.)' : '', keyPlan()),
+    ),
+  )
+  add('moodboard', 'Moodboard', (no) => moodboardSheet(opts, no, moodGroups, keyPlan()))
+
   const toPage = (pg: Page): PdfPage => ({ ops: pg.ops, images: pg.images })
-  const pages: PdfPage[] = [
-    toPage(coverSheet(state, opts)),
-    toPage(contentsSheet(opts)),
-    toPage(demolitionSheet(state, opts)),
-    toPage(constructionSheet(state, opts)),
-  ]
+  const pages: PdfPage[] = []
+  if (want('cover')) pages.push(toPage(coverSheet(state, opts)))
+  if (want('contents')) pages.push(toPage(contentsSheet(opts, numbered)))
+  pages.push(...numbered.map((n) => toPage(n.page)))
   return buildMultiPagePdfBytes(pages)
 }
 
@@ -536,6 +1022,6 @@ export async function exportDrawingSet(
   opts: DrawingSetOpts,
   filename = 'dsource-drawing-set.pdf',
 ): Promise<void> {
-  const bytes = buildDrawingSetPdf(state, opts)
+  const bytes = await buildDrawingSetPdf(state, opts)
   triggerDownload(new Blob([bytes], { type: 'application/pdf' }), filename)
 }
