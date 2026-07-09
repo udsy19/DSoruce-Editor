@@ -85,8 +85,14 @@ Make generated plans read like a senior architect's work, not a diagram.
   concentrate in the smaller wings. Real DWG: **Open 75→80+ desks, Balanced 67→76**, largest wing is a
   pure desk field across every strategy, density in the 8-12 band. 91 Rust tests. (Cellular stays ~61 by
   design; program_fit dips as rooms overflow the reserved desk area — the inherent trade-off.)
-- [~] **Circulation dipped to ~50** on the real plate (per-wing spines removed to free the desk field) —
-  the circulation-depth pass (Track B, in flight) restores it via a proper spine hierarchy.
+- [x] **Circulation "walking place" depth.** Root cause of the ~50 dip: a scoring artifact — the desk
+  field's legit 0.9m bench-access gaps were counted as sub-1.2m corridor failures. Split the corridor
+  *target* from a hard sub-code *pinch floor* (0.8m); new score = connectivity + entry-reachability +
+  (1−genuine-pinch) + corridor-coverage (rewards a primary/secondary hierarchy). Replaced the dead-end
+  entry stub with a full-length 1.15m secondary boulevard (no blind ends). **Real DWG: circ ~50→81**
+  (all strategies ≥79), 84 ws @ 8.3 m²/ws. `circulation.rs` + `layout.rs`.
+- [x] **Focus↔facade hard placement.** Focus rooms now Window-placed + rear-aligned to the facade wall;
+  measured avg focus-to-facade 1.3m < meetings 2.8m (the inequality M7 couldn't guarantee). 94 Rust tests.
 - [x] **Smarter test-fits** (user: "needs to be smarter"). `Strategy {Open,Balanced,Cellular}` shifts
   the derived mix + scoring weights so A/B/C are genuinely distinct (real DWG: Open 76 desks/5 offices →
   Balanced 67/10 → Cellular 61/19; gallery labels "A · Open / B · Balanced / C · Cellular"); explicit
@@ -147,6 +153,9 @@ Make generated plans read like a senior architect's work, not a diagram.
   generated), grounded exterior + visible grid, and **Studio/Warm/Mono/Blueprint** theme presets
   (`three/theme.ts`, live re-material + localStorage). ViewerToolbar Theme popover.
 - [x] 2D grid legibility bump (was 3.5% opacity → read as white).
+- [x] **Trackpad navigation fix** (user: couldn't pan/move the plan on a laptop). 2D: two-finger scroll
+  pans, pinch/mouse-wheel zoom, Space+drag pans (was pan=middle/right-button-only, wheel=zoom-only). 3D:
+  two-finger scroll pans the orbit (capture-phase wheel intercept). `EditorCanvas.ts`, `Viewer3D.ts`.
 - [ ] Better real-time furniture models ("good-enough" for walkthrough — chosen over photoreal). Visual
   tuning needs a real GPU (untestable headless).
 
