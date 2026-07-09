@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useReducer, useRef, useState } from 'react'
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useReducer, useRef, useState } from 'react'
 import {
   EditorCanvas,
   DocComponent,
@@ -75,6 +75,8 @@ import type { PlaceSpec } from './import/DrawingCanvas'
 import { renderThumb } from './editor/EditorCanvas'
 import { LibraryPanel } from './ui/LibraryPanel'
 import { CompareView } from './ui/CompareView'
+import { CommandPalette } from './ui/CommandPalette'
+import { buildCommands, letterShortcuts, type Command, type CommandCtx } from './editor/commands'
 import { evaluateCandidates, evaluatorAvailable, type SoftVerdict } from './ai/evaluator'
 
 // CAD drafting tools (map to EditorCanvas 'cad:<id>' tools).
@@ -100,6 +102,23 @@ const CAD_RAIL: { id: string; icon: string; label: string; hint?: string }[] = [
   { id: 'extend', icon: 'extend', label: 'Extend' },
   { id: 'fillet', icon: 'fillet', label: 'Fillet ( [ / ] radius )' },
 ]
+
+/** Command-palette bridge to actions owned by other components: click the live
+ *  button by its data-testid (the button IS the single source of that handler).
+ *  `export-*` items live inside the collapsed Export menu, so open it first. */
+function fireTestId(testid: string) {
+  const el = document.querySelector<HTMLElement>(`[data-testid="${testid}"]`)
+  if (el) {
+    el.click()
+    return
+  }
+  if (testid.startsWith('export-')) {
+    document.querySelector<HTMLElement>('[data-testid="export-btn"]')?.click()
+    requestAnimationFrame(() =>
+      document.querySelector<HTMLElement>(`[data-testid="${testid}"]`)?.click(),
+    )
+  }
+}
 
 /**
  * Imperative seam by which the AppShell/wizard steers the editor without
@@ -220,6 +239,8 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
     msg: string
   } | null>(null)
   const [helpOpen, setHelpOpen] = useState(false)
+  /** ⌘K command palette (M2) — one registry drives it + the letter shortcuts. */
+  const [cmdkOpen, setCmdkOpen] = useState(false)
   /** Right-inspector tab: the working plan vs the saved-plan library. */
   const [panelTab, setPanelTab] = useState<'plan' | 'library'>('plan')
   const [plans, setPlans] = useState<SavedPlan[]>([])
@@ -557,6 +578,59 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
     setTool(t)
     ec?.setTool(t)
   }
+
+  // ---- Command palette + shortcuts (M2) — ONE registry drives both --------
+  // Derived from the same CAD_RAIL/CATALOG the tool rail renders (no duplicate
+  // tool list). Rebuilt only if those arrays change (module constants → once).
+  const commands = useMemo(() => buildCommands(CAD_RAIL, CATALOG), [])
+  const letterMap = useMemo(() => letterShortcuts(commands), [commands])
+  // Host callbacks a command runs — rebuilt each render so it closes over fresh
+  // pickTool/setMode/ec; the []-dep keydown effect reaches it via a ref.
+  const cmdCtx: CommandCtx = {
+    setTool: pickTool,
+    setMode,
+    ec: () => ecRef.current,
+    save: () => onSaveRef.current(),
+    open: () => projectFileRef.current?.click(),
+    fire: fireTestId,
+  }
+  const runCommand = (c: Command) => c.run(cmdCtx)
+  const runCommandRef = useRef(runCommand)
+  runCommandRef.current = runCommand
+  // Live mirrors for the []-dep window handler (avoid re-binding on every state).
+  const cmdkOpenRef = useRef(cmdkOpen)
+  cmdkOpenRef.current = cmdkOpen
+  const modeRef = useRef(mode)
+  modeRef.current = mode
+  const letterMapRef = useRef(letterMap)
+  letterMapRef.current = letterMap
+
+  // ⌘K / Ctrl+K toggles the palette (works anywhere). Single-letter tool
+  // shortcuts fire only in 2D, with no modifier, when not typing and the palette
+  // is closed. Presentation 'P' is intentionally NOT here — EditorCanvas.onKey
+  // owns it (re-wiring would toggle twice); `letterShortcuts` already excludes it.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setCmdkOpen((o) => !o)
+        return
+      }
+      const t = e.target as HTMLElement | null
+      const typing =
+        !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)
+      if (typing || cmdkOpenRef.current) return
+      if (e.metaKey || e.ctrlKey || e.altKey) return
+      if (modeRef.current !== '2d') return
+      const cmd = letterMapRef.current.get(e.key.toLowerCase())
+      if (cmd) {
+        e.preventDefault()
+        runCommandRef.current(cmd)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   /** The qbiq loop: extract the imported floor plate → seed the document with
    *  its boundary walls → jump to 2D where the autonomous generator runs
@@ -1090,6 +1164,13 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
         </div>
       )}
 
+      {cmdkOpen && (
+        <CommandPalette
+          commands={commands}
+          onRun={runCommand}
+          onClose={() => setCmdkOpen(false)}
+        />
+      )}
       {helpOpen && <ShortcutsOverlay onClose={() => setHelpOpen(false)} />}
       {compare && (
         <CompareView
@@ -1482,6 +1563,7 @@ const SHORTCUT_GROUPS: { title: string; rows: [string, string][] }[] = [
   {
     title: 'General',
     rows: [
+      ['⌘ / Ctrl K', 'Command palette'],
       ['?', 'Toggle this help'],
       ['Esc', 'Cancel · deselect · close'],
       ['⌘ / Ctrl Z', 'Undo'],
@@ -1492,8 +1574,10 @@ const SHORTCUT_GROUPS: { title: string; rows: [string, string][] }[] = [
     rows: [
       ['V', 'Select tool'],
       ['W', 'Wall tool'],
+      ['L R C A', 'Line · Rectangle · Circle · Arc'],
+      ['D T M', 'Dimension · Text · Move'],
+      ['P', 'Presentation (paper) mode'],
       ['Scroll', 'Zoom · drag empty space to pan'],
-      ['Tool rail', 'Furniture + CAD tools (hover for keys)'],
     ],
   },
   {
