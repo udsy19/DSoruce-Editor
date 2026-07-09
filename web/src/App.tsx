@@ -38,8 +38,6 @@ import {
   pushPlateToEditor,
   extractKeepouts,
   pushKeepoutsToEditor,
-  extractInteriorWalls,
-  pushInteriorWallsToEditor,
   extractEntries,
   pushEntriesToEditor,
   type PlateResult,
@@ -381,9 +379,15 @@ export const EditorView = forwardRef<EditorController>(function EditorView(_prop
     // rooms) become keep-outs so the generator never furnishes them.
     // Guarded no-op until the wasm add_keepout binding is present.
     pushKeepoutsToEditor(ec, extractKeepouts(drawing, plate))
-    // Interior partitions from the drawing become real document walls, so the
-    // generator packs around them and circulation scores them.
-    pushInteriorWallsToEditor(ec, extractInteriorWalls(drawing, plate))
+    // A fresh test-fit generates into the BASE SHELL (perimeter + cores +
+    // entries), NOT around the existing tenant fit-out — the imported interior
+    // partitions ARE the old layout we're replacing, and treating them as hard
+    // obstacles starves the new room program into the wall-free gaps (sparse,
+    // unprofessional plans). This mirrors qbiq/Laiout, which fit the shell.
+    // The partitions stay in `drawing` for the as-drawn reference view;
+    // `extractInteriorWalls`/`pushInteriorWallsToEditor` remain wired for the
+    // workflow's forthcoming "keep existing partitions" / area-select control.
+    // Deliberately drafted CAD walls still block packing via commitCadToPlan.
     // Entry points (boundary doors, else the longest-edge midpoint) anchor the
     // generator's circulation spine and reception placement.
     pushEntriesToEditor(ec, extractEntries(drawing, plate))
