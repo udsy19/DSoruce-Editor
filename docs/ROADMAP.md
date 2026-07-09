@@ -29,7 +29,6 @@ The qbiq-style flow: Project → Upload → Program → Generate → Editor → 
 - [x] **S3 — Room markers + reference numbers.** DrawingCanvas `marker` tool: typed room pins with ref #s;
   `buildRoomRefs/zoneAtPoint` make a marker's ref win as the takeoff **Room ID** (openpyxl-confirmed "502"/
   "503") and expose them via `controller.roomRefs()` for the AI. `import/markers.ts`. Persists to draft.
-- [ ] **S4 — Wall healing.** Bridge near-miss partition gaps so rooms close cleanly (heal / as-drawn toggle).
 - [x] **S5 — Program builder.** Concept (templates Small/Mid/Large + headcount + enclosed-office %) /
   Detailed (full room-by-room tree with −/+ steppers + Window/Core/Flexible chips + desk type/size).
   Rust `Program.rooms: Vec<RoomReq>` (serde-additive); generator honors explicit counts + soft placement
@@ -39,8 +38,15 @@ The qbiq-style flow: Project → Upload → Program → Generate → Editor → 
   that room FIRST at/near the pin (nearest-feasible, surfaced via program_fit) and bumps the count.
   `Document.anchors` + add_anchor/clear_anchors; blue-diamond pins; `pushAnchorsToEditor`. 83 Rust tests.
   Pinned Reception landed 1.8m from the click. Persists; cleared on re-upload.
-- [ ] **S7 — Generate step + real export meta.** Alternatives A/B/C with category-winner badges; real
-  project name/address/logo/floor flow into the report + takeoff.
+- [x] **S7 — Generate step + real export meta.** "Pick a test-fit" A/B/C gallery (plan thumbnails,
+  KPIs from buildReportModel, winner badges Most-seats/Best-daylight/Best-density, soft-goal verdicts);
+  pick → `openCandidate` saves it as a project floor + opens live in the editor; ProjectRecord threads
+  into report+takeoff so exports are branded (verified: "Chronos HQ"/address/floor in the PDF, "Untitled
+  Plan" gone). `shell/steps/GenerateStep.tsx`. **Full-flow E2E 10/10 on the real DWG.**
+- **Track A end-to-end verified:** create → upload → area → markers → program → anchors → generate A/B/C
+  → pick → edit → branded report + costed takeoff. Only S4 (wall-heal) + two polish items remain.
+- [ ] **S4 — Wall healing.** Bridge near-miss partition gaps so detected rooms close cleanly (heal /
+  as-drawn toggle in the Space step).
 - Decisions locked: upload **CAD-only v1** (raster/PDF deferred); Window/Core/Flexible = **soft bias**;
   Space step **re-editable** after generate; DB v2 forward-only upgrade accepted.
 
@@ -132,14 +138,19 @@ Make generated plans read like a senior architect's work, not a diagram.
 ---
 
 ## Known bugs / debt
+- [ ] **Cold-reload of `#/p/:pid/f/:planId`** doesn't re-open the saved floor into the editor (in-session
+  pick→edit→export is fully live; export meta still resolves from the route). Track A polish.
+- [ ] **Regenerate** only widens the seed search (deterministic per seed) — true A/B/C variety wants a
+  seed-offset/randomized search.
+- [ ] **Commits unsigned this session** (1Password SSH signing agent locked). Re-sign or unlock when able.
 - [ ] `e2e-core-geom.mjs` (scratchpad) asserts interior walls pushed on test-fit — stale after the
   shell-fit default; update when Track A S2–S4 land.
 - [ ] Disk on dev machine ~97% full (17GB free) — occasional transient git "failed to write object".
 - [ ] `ANTHROPIC_API_KEY` not always in env → Claude-driver E2E assertion is environ(not a regression).
 
 ## Immediate next (working order)
-1. [x] Real-plate density arbitration — verified on the user's DWG (52 ws @ 10 m²/person), merged.
-2. Track A S1 (Space step + detected readouts), then S2–S4 (area-select, markers+refs, heal).
-3. Track A S5–S6 (program builder + anchor pins) — needs a `Program` room-spec (Rust, serde-additive).
-4. Track A S7 (generate step + real export meta) — closes the end-to-end flow.
-5. Cloud sync (Track I) + deploy (Track J) when SSH is unblocked.
+1. [x] Real-plate density — verified on the user's DWG (52 ws @ 10 m²/person).
+2. [x] Track A S1–S3, S5–S7 — **full guided flow verified end-to-end (10/10) on the real DWG.**
+3. S4 wall-heal + cold-reload floor-open (finish Track A).
+4. Cloud sync (Track I) + deploy (Track J) when 1Password/SSH is unblocked.
+5. Track B refinement (leaner support ratio → 80+ workstations); Track F (supplier in takeoff).
