@@ -88,6 +88,56 @@ export const OPENAI_TOOLS = [
   },
 ]
 
+/**
+ * The autonomous-refinement tool (OpenAI function-calling shape, so it converts
+ * to Anthropic with the same {@link openaiToolsToAnthropic} the driver uses —
+ * one source of truth for the tool schema). Deliberately NOT part of
+ * {@link OPENAI_TOOLS}: it is the private vocabulary of the refine LOOP
+ * (refine.ts asks Claude to SHAPE the next candidate batch), not something the
+ * conversational assistant should call. Every field is OPTIONAL — Claude returns
+ * only what it wants to change; refine.ts clamps each to a sane range and drops
+ * anything malformed. `strategy` is intentionally absent: the search runs all
+ * three strategies every pass, so the A/B/C trade-off is always surfaced and a
+ * strategy "preference" would be a no-op.
+ */
+export const ADJUST_PROGRAM_TOOL = {
+  type: 'function',
+  function: {
+    name: 'adjust_program',
+    description:
+      'Propose a bounded adjustment to the test-fit PROGRAM to improve the layout for the user’s soft goals. Return ONLY the fields you want to change; omit the rest. Values out of range are clamped; malformed values are ignored. Always include a short `rationale`.',
+    parameters: {
+      type: 'object',
+      properties: {
+        desks: { type: 'integer', description: 'new open-workstation target (0–400)' },
+        meeting_rooms: { type: 'integer', description: 'new enclosed meeting-room count (0–40)' },
+        target_corridor_m: {
+          type: 'number',
+          description: 'perimeter corridor / walking-place width in meters (0.9–3.0)',
+        },
+        cluster_cols: {
+          type: 'integer',
+          description: 'desks per cluster row — higher packs a denser open field (2–8)',
+        },
+        adjacency_emphasis: {
+          type: 'number',
+          description:
+            'how strongly to weight good room adjacency when scoring, 0–1 (maps to w_adjacency)',
+        },
+        circulation_emphasis: {
+          type: 'number',
+          description:
+            'how strongly to weight circulation / "walking place" when scoring, 0–1 (maps to w_circulation)',
+        },
+        rationale: {
+          type: 'string',
+          description: 'one sentence (≤160 chars) explaining WHY these tweaks help the soft goals',
+        },
+      },
+    },
+  },
+} as const
+
 export function buildSystem(ctx: DriverContext): string {
   const zones =
     ctx.zones.map((z) => `  - id ${z.id}: "${z.label}" (${z.zone_type})`).join('\n') ||

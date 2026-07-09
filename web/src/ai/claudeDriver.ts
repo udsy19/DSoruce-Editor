@@ -1,5 +1,5 @@
-import { AgentDriver, DriverContext, DriverResult, ToolCall } from './contract'
-import { Program } from '../editor/EditorCanvas'
+import type { AgentDriver, DriverContext, DriverResult, ToolCall } from './contract'
+import type { Program } from '../editor/EditorCanvas'
 import { OPENAI_TOOLS, buildSystem } from './llmSchema'
 import { evaluatorAvailable } from './evaluator'
 

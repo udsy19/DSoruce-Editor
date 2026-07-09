@@ -1,4 +1,4 @@
-import { Program, ZoneType } from '../editor/EditorCanvas'
+import type { Program, ZoneType } from '../editor/EditorCanvas'
 
 // The tool vocabulary the agent (local parser now, Claude later) speaks. Each
 // ToolCall maps to a wasm Editor mutation. ZoneType strings byte-match the Rust

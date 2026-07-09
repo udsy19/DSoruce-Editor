@@ -20,6 +20,19 @@ export const STRATEGIES: Strategy[] = ['Open', 'Balanced', 'Cellular']
  *  seed)` still reproduces the exact plan deterministically. */
 export const STRATEGY_SEED_STRIDE = 100_000
 
+/**
+ * Normalize a Regenerate seed cursor into a window offset WITHIN a strategy's
+ * stride band. The UI advances the cursor every Regenerate press so consecutive
+ * presses search a different seed window (real variety); this wraps it so the
+ * searched seeds (`offset+1 .. offset+maxIter`) never spill past the stride and
+ * collide with the next strategy. Deterministic: the same cursor + maxIter
+ * always yields the same window. Windows a full `maxIter` apart are disjoint, so
+ * distinct cursors (spaced ≥ maxIter) explore distinct seed sets.
+ */
+export function seedWindowOffset(seedOffset: number, maxIter: number): number {
+  return Math.max(0, Math.floor(seedOffset)) % Math.max(1, STRATEGY_SEED_STRIDE - maxIter - 1)
+}
+
 /** Human-facing label for each strategy (gallery / report). */
 export const STRATEGY_LABEL: Record<Strategy, string> = {
   Open: 'Open',

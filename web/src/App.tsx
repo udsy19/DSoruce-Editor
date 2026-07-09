@@ -7,6 +7,7 @@ import {
   Program,
   GenResult,
   Candidate,
+  RefineOutcome,
   DEFAULT_PROGRAM,
   STRATEGY_LABEL,
 } from './editor/EditorCanvas'
@@ -73,7 +74,7 @@ import type { PlaceSpec } from './import/DrawingCanvas'
 import { renderThumb } from './editor/EditorCanvas'
 import { LibraryPanel } from './ui/LibraryPanel'
 import { CompareView } from './ui/CompareView'
-import { evaluateCandidates, type SoftVerdict } from './ai/evaluator'
+import { evaluateCandidates, evaluatorAvailable, type SoftVerdict } from './ai/evaluator'
 
 // CAD drafting tools (map to EditorCanvas 'cad:<id>' tools).
 const CAD_RAIL: { id: string; icon: string; label: string; hint?: string }[] = [
@@ -1541,9 +1542,35 @@ function GenerateCard({
   const [activeSeed, setActiveSeed] = useState<number | null>(null)
   const [verdicts, setVerdicts] = useState<Record<number, SoftVerdict> | null>(null)
   const [note, setNote] = useState<string | null>(null)
+  const [refine, setRefine] = useState<RefineOutcome | null>(null)
+  const [refineBusy, setRefineBusy] = useState(false)
+  const [aiReady, setAiReady] = useState(false)
+  // Per-session (per mount) seed cursor: every Generate/Regenerate press advances
+  // it so the search explores a genuinely different seed window → real variety,
+  // while any exact (strategy, seed) stays deterministic. Window > maxIter (18).
+  const SEED_WINDOW = 64
+  const regenRef = useRef(0)
+
+  useEffect(() => {
+    let live = true
+    void evaluatorAvailable().then((ok) => live && setAiReady(ok))
+    return () => {
+      live = false
+    }
+  }, [])
 
   const set = (patch: Partial<Program>) => setProgram((p) => ({ ...p, ...patch }))
   const confirmed = metrics?.confirmed ?? 0
+
+  /** The soft-goal gallery pass (shared by Generate + Refine). */
+  const evaluateGallery = (res: GenResult, prog: Program) => {
+    setVerdicts(null)
+    const gate = Math.min(82, Math.floor(res.best.total))
+    void evaluateCandidates(res.candidates, prog, gate).then((ai) => {
+      if (!ai) return
+      setVerdicts(Object.fromEntries(ai.verdicts.map((v) => [v.seed, v])))
+    })
+  }
 
   const run = (keepConfirmed: boolean) => {
     if (ec.getState().walls.length === 0) {
@@ -1551,9 +1578,12 @@ function GenerateCard({
       return
     }
     setNote(null)
+    setRefine(null)
     setBusy(true)
+    const seedOffset = regenRef.current * SEED_WINDOW
+    regenRef.current += 1
     window.setTimeout(() => {
-      const res = ec.autoGenerate(program, { maxIter: 18, target: 82, keepConfirmed })
+      const res = ec.autoGenerate(program, { maxIter: 18, target: 82, keepConfirmed, seedOffset })
       setResult(res)
       setActiveSeed(res.seed)
       onCandidates?.(res.candidates) // lift to App for the report exporter
@@ -1564,13 +1594,37 @@ function GenerateCard({
       // the best candidates still get judged — junk never reaches the API
       // because the gallery already keeps only the top-K. Silently skipped
       // when no ANTHROPIC_API_KEY is configured.
-      setVerdicts(null)
-      const gate = Math.min(82, Math.floor(res.best.total))
-      void evaluateCandidates(res.candidates, program, gate).then((ai) => {
-        if (!ai) return
-        setVerdicts(Object.fromEntries(ai.verdicts.map((v) => [v.seed, v])))
-      })
+      evaluateGallery(res, program)
     }, 16)
+  }
+
+  /** Autonomous reasoning: Claude SHAPES the plan (adjust program → regenerate →
+   *  keep if better), iterating until it converges. No-op without a Claude key. */
+  const runRefine = async () => {
+    if (ec.getState().walls.length === 0) {
+      setNote('Draw a closed room boundary first, then refine.')
+      return
+    }
+    setNote(null)
+    setRefineBusy(true)
+    const seedOffset = regenRef.current * SEED_WINDOW
+    regenRef.current += 1
+    try {
+      const out = await ec.refineWithAI(program, {
+        maxIter: 18,
+        target: 82,
+        keepConfirmed: confirmed > 0,
+        seedOffset,
+      })
+      setRefine(out)
+      setResult(out.result)
+      setActiveSeed(out.result.seed)
+      setProgram(out.program) // reflect the AI's accepted adjustments in the form
+      onCandidates?.(out.result.candidates)
+      evaluateGallery(out.result, out.program)
+    } finally {
+      setRefineBusy(false)
+    }
   }
 
   return (
@@ -1615,17 +1669,43 @@ function GenerateCard({
         Bench desking (back-to-back pairs)
       </label>
 
-      <button className="cta" onClick={() => run(false)} disabled={busy} data-testid="generate">
+      <button
+        className="cta"
+        onClick={() => run(false)}
+        disabled={busy || refineBusy}
+        data-testid="generate"
+      >
         {busy ? 'Searching layouts…' : 'Generate test-fit'}
       </button>
-      {confirmed > 0 ? (
-        <button className="cta-ghost" onClick={() => run(true)} disabled={busy} data-testid="regenerate">
-          Regenerate · keep {confirmed} frozen
+      <button
+        className="cta-refine"
+        onClick={() => void runRefine()}
+        disabled={busy || refineBusy || !aiReady}
+        data-testid="generate-refine"
+        title={
+          aiReady
+            ? 'Let Claude adjust the program and re-generate until it converges'
+            : 'Needs an ANTHROPIC_API_KEY on the dev proxy'
+        }
+      >
+        <Icon name="sparkles" size={13} />
+        {refineBusy ? 'Refining with AI…' : 'Refine with AI'}
+      </button>
+      {result ? (
+        <button
+          className="cta-ghost"
+          onClick={() => run(confirmed > 0)}
+          disabled={busy || refineBusy}
+          data-testid="regenerate"
+        >
+          {confirmed > 0 ? `Regenerate · keep ${confirmed} frozen` : 'Regenerate · fresh variety'}
         </button>
       ) : (
         <div className="freeze-tip">Confirm a component to freeze it, then regenerate around it.</div>
       )}
       {note && <div className="inline-note">{note}</div>}
+
+      {refine && <RefineTrace out={refine} />}
 
       {result && (
         <div className="score-card">
@@ -1656,6 +1736,75 @@ function GenerateCard({
           />
         </div>
       )}
+    </div>
+  )
+}
+
+/** Compact fallback description of a program delta when Claude omits a rationale. */
+function describeDelta(d: {
+  desks?: number
+  meeting_rooms?: number
+  target_corridor_m?: number
+  cluster_cols?: number
+  w_adjacency?: number
+  w_circulation?: number
+}): string {
+  const parts: string[] = []
+  if (d.desks !== undefined) parts.push(`desks→${d.desks}`)
+  if (d.meeting_rooms !== undefined) parts.push(`meetings→${d.meeting_rooms}`)
+  if (d.target_corridor_m !== undefined) parts.push(`corridor→${d.target_corridor_m}m`)
+  if (d.cluster_cols !== undefined) parts.push(`cols→${d.cluster_cols}`)
+  if (d.w_adjacency !== undefined) parts.push(`adjacency emphasis→${d.w_adjacency}`)
+  if (d.w_circulation !== undefined) parts.push(`circulation emphasis→${d.w_circulation}`)
+  return parts.join(', ') || 'no change'
+}
+
+/** The autonomous-reasoning trace: before→after yardstick + Claude's per-round
+ *  rationale. Reuses the ConsequenceCard (cons-*) visual language. */
+function RefineTrace({ out }: { out: RefineOutcome }) {
+  if (!out.ranAI) {
+    return (
+      <div className="cons-card refine-trace" data-testid="refine-status">
+        <div className="cons-eyebrow">AI refinement — skipped</div>
+        <div className="cons-note info">
+          Set ANTHROPIC_API_KEY on the dev proxy to let Claude reshape the plan.
+        </div>
+      </div>
+    )
+  }
+  const delta = out.finalScore - out.baseScore
+  const dir = delta > 0.05 ? 'up good' : delta < -0.05 ? 'down bad' : 'same neutral'
+  const kept = out.steps.filter((s) => s.accepted).length
+  return (
+    <div className="cons-card refine-trace" data-testid="refine-status">
+      <div className="cons-eyebrow">
+        <Icon name="sparkles" size={12} /> AI refinement
+      </div>
+      <div className="refine-headline num">
+        <span className="cons-before">{out.baseScore.toFixed(1)}</span>
+        <span className={`cons-arrow ${dir}`}>{delta > 0.05 ? '↑' : delta < -0.05 ? '↓' : '='}</span>
+        <span className={`cons-after ${out.improved ? 'good' : 'neutral'}`}>{out.finalScore.toFixed(1)}</span>
+        <span className="refine-sub">
+          {out.improved ? `improved · ${kept} kept` : 'no improvement found'}
+        </span>
+      </div>
+      <div className="cons-notes">
+        {out.steps.length === 0 ? (
+          <div className="cons-note info">
+            Claude judged the initial plan already optimal — no change proposed.
+          </div>
+        ) : (
+          out.steps.map((s, i) => (
+            <div key={i} className={`cons-note ${s.accepted ? 'info' : 'warn'}`}>
+              <strong>#{s.iteration}</strong> {s.rationale || describeDelta(s.delta)}{' '}
+              <span className="num">
+                ({s.scoreBefore.toFixed(1)}→{s.scoreAfter.toFixed(1)}
+                {s.accepted ? ' ✓' : ' reverted'})
+              </span>
+            </div>
+          ))
+        )}
+      </div>
     </div>
   )
 }
