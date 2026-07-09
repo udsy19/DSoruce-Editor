@@ -145,7 +145,11 @@ User: "our editor doesn't feel as intuitive/detailed as Rayon… most of it is t
   inline `<input>` → Enter commits (`move_component` for X/Y; anchored re-length for the line), Esc
   cancels. Scoped to position + line-length (no wasm resize/wall mutator exists — documented). Reuses
   M1 chip styling; does not touch dyn*/pan.
-- [ ] M6 sheets/publish (overlaps the drawing-set track).
+- [x] **M6 sheets/publish** — `ui/SheetsPanel.tsx` + `export/sheetManifest.ts`: a sheets manager modal
+  (Export → "Sheets…") listing the drawing set with per-sheet include/exclude toggles + an editable
+  title-block/project-metadata form, publishing via `exportDrawingSet`. Toggles are load-bearing —
+  they feed `DrawingSetOpts.include` (a de-selected sheet's builder is skipped). Verified live: full
+  set 6 pp · `[cover,construction,furniture]` 3 pp · `[moodboard]` 1 pp.
 
 ### Drawing-set output (`docs/design/drawing-set-generator.md`)
 User showed Rayon drawing-set PDFs as the output bar (`docs/reference/rayon-output/`).
@@ -155,9 +159,15 @@ User showed Rayon drawing-set PDFs as the output bar (`docs/reference/rayon-outp
   (`export-drawing-set`). Demolition re-derives the imported plate → red cross-hatch of removed walls;
   retained shell grey; D01/W1 tags drive both plan glyphs and a doors-&-windows spec table. Report
   primitives (`Page`, `titleBlock`, `keyPlanJpeg`) promoted to `sheet.ts`; report byte-identical (43/43).
-- [ ] Drawing-set follow-ons: furniture cards + moodboard (reuse takeoff/bank) → sections from 3D →
-  RCP/lighting/electrical layers. Polish: label/tag de-collision, collinear glazing-run merging, true
-  circle/hex tag glyphs, perimeter dimension strings.
+- [x] **Furniture cards + moodboard + plan quality** — new `productCard` primitive + Furniture &
+  Fixtures sheet (4×3 card grid from `buildTakeoffModel`, paginated, graceful empty state) + Moodboard
+  sheet (bound-product tiles grouped by room type). Plan polish: collinear glazing-run merging (20
+  fragments → 4 real windows), deterministic label/tag de-collision (shared occupancy + leaders), true
+  circle/hex tag glyphs (polyline fans, no arc op), overall perimeter dimension strings. Auto A.NN
+  renumbering keeps contents+title blocks in sync. report byte-identical (43/43).
+- [ ] Sections from 3D (agent in flight — orthographic cuts, poché, datums; wire into `sheetSet.ts` at
+  the reserved `sections` slot + flip the manifest flag). Then: RCP/lighting/electrical layers,
+  per-room dimension runs.
 
 ## Track E — Import & plate
 - [x] DWG/DXF parse (LibreDWG `/api/dwg`), plate extraction (furniture-coverage), keepouts (cores),
