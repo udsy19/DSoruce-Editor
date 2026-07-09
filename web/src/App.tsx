@@ -19,6 +19,7 @@ import { ToolDock, type DockTool } from './ui/ToolDock'
 import { StatsPanel } from './ui/StatsPanel'
 import { ObjectInspector } from './ui/ObjectInspector'
 import { LayersPanel } from './ui/LayersPanel'
+import { SheetsPanel } from './ui/SheetsPanel' // M6 — sheets manager + publish
 import { AgentPanel } from './ai/AgentPanel'
 import { suggestProgram, suggestProgramSummary } from './ai/suggestProgram'
 import { Scene3D } from './three/Scene3D'
@@ -243,6 +244,8 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
   const [helpOpen, setHelpOpen] = useState(false)
   /** ⌘K command palette (M2) — one registry drives it + the letter shortcuts. */
   const [cmdkOpen, setCmdkOpen] = useState(false)
+  /** M6 — sheets manager + publish overlay (opened from the Export menu). */
+  const [sheetsOpen, setSheetsOpen] = useState(false)
   /** Right-inspector tab: the working plan vs the saved-plan library. */
   const [panelTab, setPanelTab] = useState<'plan' | 'library'>('plan')
   const [plans, setPlans] = useState<SavedPlan[]>([])
@@ -897,7 +900,7 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
               </>
             )}
           </button>
-          <ExportMenu ec={ec} mode={mode} drawing={drawing} bindings={bindings} candidates={candidates} roomMarkers={roomMarkersRef} project={project} />
+          <ExportMenu ec={ec} mode={mode} drawing={drawing} bindings={bindings} candidates={candidates} roomMarkers={roomMarkersRef} project={project} onOpenSheets={() => setSheetsOpen(true)} />
           <button
             className="icon-btn"
             onClick={() => setHelpOpen(true)}
@@ -1176,6 +1179,18 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
         />
       )}
       {helpOpen && <ShortcutsOverlay onClose={() => setHelpOpen(false)} />}
+      {/* M6 — sheets manager + publish. A thin controller over exportDrawingSet;
+          the same export path as the "Drawing set" menu item, with editable
+          title-block metadata + a sheet include list. */}
+      {sheetsOpen && (
+        <SheetsPanel
+          ec={ec}
+          project={project}
+          drawing={drawing}
+          bindings={bindings}
+          onClose={() => setSheetsOpen(false)}
+        />
+      )}
       {compare && (
         <CompareView
           cmp={compare.cmp}
@@ -1234,6 +1249,7 @@ function ExportMenu({
   candidates,
   roomMarkers,
   project,
+  onOpenSheets,
 }: {
   ec: EditorCanvas | null
   mode: '2d' | '3d' | 'import'
@@ -1244,6 +1260,8 @@ function ExportMenu({
   roomMarkers: React.RefObject<EditorMarker[]>
   /** Active project — its identity brands the report + takeoff (workflow.md §2/§6). */
   project: ProjectRecord | null
+  /** M6 — open the sheets manager (metadata + publish over the same set). */
+  onOpenSheets: () => void
 }) {
   const [open, setOpen] = useState(false)
   const importMode = mode === 'import' && !!drawing
@@ -1429,6 +1447,17 @@ function ExportMenu({
                 data-testid="export-drawing-set"
               >
                 Drawing set <span className="hint">multi-sheet PDF</span>
+              </div>
+              <div
+                className="export-item"
+                role="menuitem"
+                onClick={() => {
+                  onOpenSheets()
+                  setOpen(false)
+                }}
+                data-testid="open-sheets"
+              >
+                Sheets… <span className="hint">manage + publish</span>
               </div>
               <div
                 className="export-item"
