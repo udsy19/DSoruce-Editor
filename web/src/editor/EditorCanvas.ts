@@ -244,8 +244,8 @@ const RULER = 22 // px ruler gutter (top + left)
 const C = {
   surface: '#ffffff', // floor plate
   mat: '#f2f4f7', // outside the building footprint
-  gridMinor: 'rgba(23,26,30,0.035)',
-  gridMajor: 'rgba(23,26,30,0.075)',
+  gridMinor: 'rgba(23,26,30,0.06)',
+  gridMajor: 'rgba(23,26,30,0.12)',
   axis: 'rgba(45,91,214,0.20)',
   wall: '#2e343b',
   wallExt: '#1e2329',
