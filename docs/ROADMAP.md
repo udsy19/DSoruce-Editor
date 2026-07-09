@@ -51,11 +51,16 @@ Make generated plans read like a senior architect's work, not a diagram.
   m²/person; +daylight/entry sub-scores. Clean rects now professional (~9.7 m²/person).
 - [x] **M6 — Graphic polish.** Room area/pax tags, wall lineweight hierarchy, presentation/paper mode,
   summary block.
-- 🔄 **Real-plate arbitration.** On the user's real 882m² building it's still inverted (31 rooms / 14
-  desks / 57 m²/workstation). Fix in flight: open-plan-dominant program from headcount (cap meetings
-  ~1/15–20 ppl, don't inherit old conference clusters), reserve largest region for the desk field.
-  **Acceptance = the real DWG at ~80–110 workstations, 4–6 meetings, 9–11 m²/person.**
+- [x] **Real-plate arbitration.** Real 882m² building went **14→52 workstations, 31→28 rooms (5
+  meetings), 57→13.5 m²/workstation = 10.0 m²/person**, open-desk-dominant (Workspace 42% / Circ 25% /
+  office 9% / meeting 6%). Fixes: `suggestProgram` derives an open-plan program from area/headcount
+  (meetings ~1/17 ppl clamped 2–6, not inherited from old clusters); layout.rs reserves the dominant
+  wing for the open field (rooms band the edges/small wings). Rust 74 tests.
 - [x] Fresh-fit generates into the **base shell** (not around old tenant partitions).
+- [~] **Reach ~80–110 workstations on 882m².** Currently caps at 52 because the full support program
+  for 88 people (28 rooms incl. 8 phone booths) legitimately eats ~40% of the floor. A leaner, more
+  qbiq-like support ratio in `SpaceProgram::derive` (fewer booths/focus) would lift the field — density
+  is already professional (10 m²/person), so this is refinement, not a blocker.
 - [ ] **Keep-existing / respect-partitions mode** (workflow-gated) — re-enable pushing imported walls
   when the user wants to work *around* their existing fit-out (via S2/S4 controls).
 
@@ -119,14 +124,13 @@ Make generated plans read like a senior architect's work, not a diagram.
 ---
 
 ## Known bugs / debt
-- 🔄 Real-plate density inversion (Track B, in flight).
 - [ ] `e2e-core-geom.mjs` (scratchpad) asserts interior walls pushed on test-fit — stale after the
   shell-fit default; update when Track A S2–S4 land.
 - [ ] Disk on dev machine ~97% full (17GB free) — occasional transient git "failed to write object".
 - [ ] `ANTHROPIC_API_KEY` not always in env → Claude-driver E2E assertion is environ(not a regression).
 
 ## Immediate next (working order)
-1. 🔄 Land real-plate density arbitration; verify on the user's DWG; merge.
+1. [x] Real-plate density arbitration — verified on the user's DWG (52 ws @ 10 m²/person), merged.
 2. Track A S1 (Space step + detected readouts), then S2–S4 (area-select, markers+refs, heal).
 3. Track A S5–S6 (program builder + anchor pins) — needs a `Program` room-spec (Rust, serde-additive).
 4. Track A S7 (generate step + real export meta) — closes the end-to-end flow.
