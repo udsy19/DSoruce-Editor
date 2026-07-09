@@ -2,7 +2,18 @@ import init, { Editor } from '../wasm/ds_core'
 import { catByCategory } from './catalog'
 import { drawFurnitureSymbol } from './furniture'
 import { CadController } from '../cad/controller'
-import type { CadEntity, SnapContext } from '../cad/model'
+import type { CadEntity, SnapContext, Vec2, SnapResult } from '../cad/model'
+import {
+  emptyDyn,
+  dynEmpty,
+  parseTyped,
+  polarSnap,
+  resolvePoint,
+  bearingDeg,
+  norm360,
+  type DynState,
+  type PolarOpts,
+} from '../cad/dynamicInput'
 import { evaluatorAvailable } from '../ai/evaluator'
 import { applyDelta, proposeAdjustment, refScore, type ProgramDelta } from '../ai/refine'
 
@@ -283,6 +294,19 @@ export const DEFAULT_PROGRAM: Program = {
   w_entry: 0.05,
 }
 
+/** Resolved dynamic-input candidate for the current frame (see dynResolve). */
+interface DynResolved {
+  point: Vec2
+  /** osnap indicator to draw (real object snap) or a synthetic 'none'. */
+  snap: SnapResult
+  dist: number
+  angleDeg: number
+  /** a typed distance/angle constrained the point */
+  locked: boolean
+  /** the free direction was polar/ortho-snapped */
+  snapped: boolean
+}
+
 const GRID_M = 1 // 1-meter minor grid
 const MAJOR_EVERY = 5 // heavier line every 5 m
 const SNAP_M = 0.1 // 10 cm snap
@@ -360,6 +384,21 @@ export class EditorCanvas {
   private spaceDown = false
   private lastScreen = { x: 0, y: 0 }
 
+  // ---- dynamic input (cursor-first typed Distance/Angle, M1) ----
+  /** Typed Distance/Angle buffers for the in-progress Line/Wall segment. */
+  private dyn: DynState = emptyDyn()
+  /** Shift → force ortho, Alt → 45° polar (tracked off pointer/key events). */
+  private shiftDown = false
+  private altDown = false
+  /** Floating dynamic-input widget (created once, positioned each frame). */
+  private dynEl: HTMLDivElement | null = null
+  private dynDistEl: HTMLElement | null = null
+  private dynAngEl: HTMLElement | null = null
+  private dynDistField: HTMLElement | null = null
+  private dynAngField: HTMLElement | null = null
+  /** Per-frame cache of the resolved candidate point (avoids re-snapping). */
+  private dynResolved: DynResolved | null = null
+
   onChange: (() => void) | null = null
   /** Last program used to generate — shared source for the generate card + AI. */
   program: Program = { ...DEFAULT_PROGRAM }
@@ -397,6 +436,7 @@ export class EditorCanvas {
       this.onChange?.()
     }
     this.attach()
+    this.createDynWidget()
     this.resize()
     this.render()
     // Dev-only test seam: expose the live instance so E2E / debugging can drive
@@ -435,6 +475,268 @@ export class EditorCanvas {
     }
   }
 
+  // ---- dynamic input (cursor-first typed Distance/Angle + polar snap, M1) ----
+
+  /** The point the in-progress segment extends from (wall = wallStart, CAD draw
+   *  = the tool's anchor), or null when no draw chain is live. */
+  private dynAnchor(): Vec2 | null {
+    if (this.tool === 'wall') return this.wallStart
+    if (this.cad.active) return this.cad.anchor()
+    return null
+  }
+  /** A draw chain is live and can receive typed Distance/Angle. */
+  private dynArmed(): boolean {
+    return this.dynAnchor() !== null
+  }
+  /** Polar/ortho constraint for the current modifiers: Shift forces ortho,
+   *  Alt switches to 45° polar, else a subtle 90° assist. Documented in §6.5. */
+  private polarOpts(): PolarOpts {
+    if (this.shiftDown) return { stepDeg: 90, tolDeg: 45, enabled: true } // force ortho
+    if (this.altDown) return { stepDeg: 45, tolDeg: 8, enabled: true } // polar 45°
+    return { stepDeg: 90, tolDeg: 8, enabled: true } // subtle ortho assist
+  }
+
+  /**
+   * Resolve the candidate next point from the anchor + cursor, honoring OSNAP
+   * (a grabbed object point wins), then any typed Distance/Angle, then ortho/
+   * polar snap; falls back to the classic grid snap for a purely free cursor so
+   * the plain click-to-place feel is preserved. Returns null when not drawing.
+   */
+  private dynResolve(cursor: Vec2): DynResolved | null {
+    const anchor = this.dynAnchor()
+    if (!anchor) return null
+
+    // OSNAP-first (CAD tools only): a real object snap overrides polar/typed dir.
+    if (this.cad.active) {
+      const s = this.cad.snap(cursor)
+      if (s.type !== 'none' && s.type !== 'grid') {
+        return {
+          point: s.point,
+          snap: s,
+          dist: Math.hypot(s.point.x - anchor.x, s.point.y - anchor.y),
+          angleDeg: bearingDeg(anchor, s.point),
+          locked: false,
+          snapped: false,
+        }
+      }
+    }
+
+    const typed = parseTyped(this.dyn)
+    const polar = this.polarOpts()
+    const ps = polarSnap(anchor, cursor, polar)
+    // Feed the (already polar-snapped) cursor into resolvePoint; typed values win.
+    const r = resolvePoint(anchor, ps.point, typed)
+    let point = r.point
+    // Preserve the classic grid feel only when the point is purely cursor-driven.
+    if (!r.locked && !ps.snapped) point = this.snap(point)
+    return {
+      point,
+      snap: { point, type: 'none' },
+      dist: Math.hypot(point.x - anchor.x, point.y - anchor.y),
+      angleDeg: bearingDeg(anchor, point),
+      locked: r.locked,
+      snapped: ps.snapped,
+    }
+  }
+
+  private resetDyn() {
+    this.dyn = emptyDyn()
+  }
+
+  /** Route a keystroke into the dynamic-input buffer while drawing. Returns true
+   *  when consumed (digits/Tab/Enter/Backspace/first-Esc). */
+  private handleDynKey(e: KeyboardEvent): boolean {
+    const k = e.key
+    if (k === 'Tab') {
+      e.preventDefault()
+      this.dyn.active = this.dyn.active === 'distance' ? 'angle' : 'distance'
+      this.render()
+      return true
+    }
+    if (/^[0-9]$/.test(k) || k === '.' || (k === '-' && this.dyn[this.dyn.active] === '')) {
+      // Digits flow to Distance by default (fresh state starts there); an explicit
+      // Tab is respected so you can type Angle first (matches AutoCAD Dynamic Input).
+      e.preventDefault()
+      this.dyn[this.dyn.active] += k
+      this.render()
+      return true
+    }
+    if (k === 'Backspace') {
+      const f = this.dyn.active
+      if (this.dyn[f].length) {
+        e.preventDefault()
+        this.dyn[f] = this.dyn[f].slice(0, -1)
+        this.render()
+        return true
+      }
+      return false
+    }
+    if (k === 'Enter') {
+      e.preventDefault()
+      if (!dynEmpty(this.dyn)) this.commitDyn()
+      else this.finishDraw()
+      return true
+    }
+    if (k === 'Escape' && !dynEmpty(this.dyn)) {
+      // First Esc clears the typed lock; a second Esc (buffer empty) cancels the
+      // chain via the normal handlers below.
+      this.resetDyn()
+      this.render()
+      return true
+    }
+    return false
+  }
+
+  /** Commit the typed point through the tool's normal placement path. */
+  private commitDyn() {
+    const r = this.dynResolve(this.mouseWorld)
+    if (!r) {
+      this.resetDyn()
+      return
+    }
+    if (this.tool === 'wall') {
+      if (!this.wallStart) {
+        this.wallStart = r.point
+      } else {
+        this.ed.add_wall(this.wallStart.x, this.wallStart.y, r.point.x, r.point.y, 0.1)
+        this.wallStart = r.point
+        this.commit()
+      }
+    } else if (this.cad.active) {
+      this.cad.commitTypedPoint(r.point)
+    }
+    this.resetDyn()
+    this.render()
+  }
+
+  /** Empty-Enter finishes the current chain (wall = drop start, CAD = tool end). */
+  private finishDraw() {
+    if (this.tool === 'wall') this.wallStart = null
+    else if (this.cad.active) this.cad.key('Enter')
+    this.resetDyn()
+    this.render()
+  }
+
+  private createDynWidget() {
+    const parent = this.canvas.parentElement
+    if (!parent) return
+    const el = document.createElement('div')
+    el.className = 'dyn-input'
+    el.setAttribute('data-testid', 'dyn-input')
+    el.style.display = 'none'
+    const field = (label: string, unit: string, testid: string) => {
+      const f = document.createElement('div')
+      f.className = 'dyn-field'
+      const l = document.createElement('span')
+      l.className = 'dyn-label'
+      l.textContent = label
+      const v = document.createElement('span')
+      v.className = 'dyn-val'
+      v.setAttribute('data-testid', testid)
+      v.textContent = '0'
+      const u = document.createElement('span')
+      u.className = 'dyn-unit'
+      u.textContent = unit
+      f.append(l, v, u)
+      return { f, v }
+    }
+    const d = field('Dist', 'm', 'dyn-distance')
+    const a = field('Angle', '°', 'dyn-angle')
+    const prompt = document.createElement('div')
+    prompt.className = 'dyn-prompt'
+    prompt.textContent = 'Set another point or type a distance'
+    el.append(d.f, a.f, prompt)
+    parent.appendChild(el)
+    this.dynEl = el
+    this.dynDistField = d.f
+    this.dynDistEl = d.v
+    this.dynAngField = a.f
+    this.dynAngEl = a.v
+  }
+
+  /** Position + fill the floating widget from the cached resolved point. */
+  private syncDynWidget() {
+    if (!this.dynEl) return
+    const r = this.dynResolved
+    const show = !!r && this.dynArmed() && this.hasCursor && !this.presentation && !this.panning
+    if (!show || !r) {
+      this.dynEl.style.display = 'none'
+      return
+    }
+    const typed = parseTyped(this.dyn)
+    if (this.dynDistEl) {
+      this.dynDistEl.textContent = (typed.distance != null ? typed.distance : r.dist).toFixed(2)
+    }
+    if (this.dynAngEl) {
+      const ang = typed.angleDeg != null ? norm360(typed.angleDeg) : r.angleDeg
+      this.dynAngEl.textContent = String(Math.round(ang))
+    }
+    this.dynDistField?.classList.toggle('active', this.dyn.active === 'distance')
+    this.dynAngField?.classList.toggle('active', this.dyn.active === 'angle')
+    this.dynDistField?.classList.toggle('typed', this.dyn.distance !== '')
+    this.dynAngField?.classList.toggle('typed', this.dyn.angle !== '')
+    const sp = this.toScreen(r.point.x, r.point.y)
+    this.dynEl.style.inset = 'auto'
+    this.dynEl.style.left = `${Math.round(sp.x + 16)}px`
+    this.dynEl.style.top = `${Math.round(sp.y - 14)}px`
+    this.dynEl.style.display = 'flex'
+  }
+
+  /** Per-segment length chips (committed + in-progress) while a draw tool is
+   *  active — Rayon's live "helper dimensions" (doc §6.6). */
+  private drawDimChips() {
+    if (this.presentation) return
+    if (this.tool === 'wall') {
+      for (const w of this.getState().walls) this.drawDimChip(w.a, w.b)
+      const r = this.dynResolved
+      if (this.wallStart && r) this.drawDimChip(this.wallStart, r.point, r.angleDeg, true, r.snapped)
+    } else if (this.cad.active && this.cad.currentId === 'line') {
+      for (const e of this.cad.store.entities) if (e.kind === 'line') this.drawDimChip(e.a, e.b)
+      const anchor = this.cad.anchor()
+      const r = this.dynResolved
+      if (anchor && r) this.drawDimChip(anchor, r.point, r.angleDeg, true, r.snapped)
+    }
+  }
+
+  private drawDimChip(a: Vec2, b: Vec2, angleDeg?: number, live = false, snapped = false) {
+    const len = Math.hypot(b.x - a.x, b.y - a.y)
+    if (len < 0.02) return
+    const ctx = this.ctx
+    const mid = this.toScreen((a.x + b.x) / 2, (a.y + b.y) / 2)
+    const label =
+      angleDeg != null ? `${len.toFixed(2)} m  ${Math.round(angleDeg)}°` : `${len.toFixed(2)} m`
+    ctx.save()
+    ctx.font = '10px "IBM Plex Mono", ui-monospace, monospace'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    const w = ctx.measureText(label).width
+    // Live (in-progress) chip reads as a filled accent pill; committed chips are
+    // quiet accent-on-paper labels (dimension-label style from render.ts).
+    ctx.fillStyle = live ? (snapped ? '#1d47c0' : 'rgba(45,91,214,0.92)') : 'rgba(255,255,255,0.9)'
+    this.roundRect(ctx, mid.x - w / 2 - 5, mid.y - 8.5, w + 10, 17, 4)
+    ctx.fill()
+    ctx.fillStyle = live ? '#ffffff' : C.accent
+    ctx.fillText(label, mid.x, mid.y)
+    ctx.restore()
+  }
+
+  private roundRect(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    r: number,
+  ) {
+    ctx.beginPath()
+    ctx.moveTo(x + r, y)
+    ctx.arcTo(x + w, y, x + w, y + h, r)
+    ctx.arcTo(x + w, y + h, x, y + h, r)
+    ctx.arcTo(x, y + h, x, y, r)
+    ctx.arcTo(x, y, x + w, y, r)
+    ctx.closePath()
+  }
+
   // ---- API consumed by React ----
   getState(): DocState {
     return this.ed.state() as DocState
@@ -463,6 +765,7 @@ export class EditorCanvas {
   setTool(t: ToolId) {
     this.tool = t
     this.wallStart = null
+    this.resetDyn()
     this.cad.setTool(t.startsWith('cad:') ? t.slice(4) : null)
     this.render()
   }
@@ -738,13 +1041,18 @@ export class EditorCanvas {
     window.removeEventListener('keydown', this.onKey)
     window.removeEventListener('keyup', this.onKeyUp)
     window.removeEventListener('resize', this.onResize)
+    this.dynEl?.remove()
   }
 
   private onKeyUp = (e: KeyboardEvent) => {
+    this.shiftDown = e.shiftKey
+    this.altDown = e.altKey
     if (e.code === 'Space') {
       this.spaceDown = false
       if (!this.panning) this.canvas.style.cursor = ''
     }
+    // Releasing Shift/Alt changes the polar constraint → repaint the ghost.
+    if (e.key === 'Shift' || e.key === 'Alt') this.render()
   }
 
   private screenFromEvent(e: MouseEvent) {
@@ -764,17 +1072,28 @@ export class EditorCanvas {
       this.canvas.style.cursor = 'grabbing'
       return
     }
+    const w = this.toWorld(s.x, s.y)
     if (this.cad.active) {
-      this.cad.down(s.x, s.y, e)
+      // Route the click through the resolved (osnap + polar + typed) point when a
+      // chain is live, so a plain click lands where the ghost previews; the real
+      // event still flows so polyline double-click-to-commit keeps working.
+      const r = this.dynResolve(w)
+      if (r) {
+        this.cad.downAt(r.point, e)
+        this.resetDyn()
+      } else {
+        this.cad.down(s.x, s.y, e)
+      }
       return
     }
-    const w = this.toWorld(s.x, s.y)
     if (this.tool === 'select') {
       const hit = this.ed.select_at(w.x, w.y)
       this.dragging = hit !== undefined
       this.commit()
     } else if (this.tool === 'wall') {
-      const sp = this.snap(w)
+      // First point: classic grid snap. Chained points: honor typed/polar input.
+      const r = this.wallStart ? this.dynResolve(w) : null
+      const sp = r ? r.point : this.snap(w)
       if (!this.wallStart) {
         this.wallStart = sp
       } else {
@@ -782,6 +1101,7 @@ export class EditorCanvas {
         this.wallStart = sp // chain walls
         this.commit()
       }
+      this.resetDyn()
     } else if (this.tool.startsWith('place:')) {
       const cat = this.tool.slice('place:'.length)
       const item = catByCategory(cat)
@@ -797,6 +1117,8 @@ export class EditorCanvas {
     const s = this.screenFromEvent(e)
     this.mouseWorld = this.toWorld(s.x, s.y)
     this.hasCursor = true
+    this.shiftDown = e.shiftKey
+    this.altDown = e.altKey
     this.updateCoordReadout()
     if (this.panning) {
       this.offset.x += s.x - this.lastScreen.x
@@ -806,7 +1128,11 @@ export class EditorCanvas {
       return
     }
     if (this.cad.active) {
-      this.cad.move(s.x, s.y)
+      // Steer the preview through the resolved point when a chain is live; else
+      // fall back to the tool's own osnap (first-point pick, non-draw tools).
+      const r = this.dynResolve(this.mouseWorld)
+      if (r) this.cad.moveSnap(r.snap)
+      else this.cad.move(s.x, s.y)
       const hint = this.cad.hint()
       if (hint && this.coordEl) this.coordEl.textContent = hint
       return
@@ -872,6 +1198,8 @@ export class EditorCanvas {
     const tgt = e.target as HTMLElement | null
     const typingNow =
       !!tgt && (tgt.tagName === 'INPUT' || tgt.tagName === 'TEXTAREA' || tgt.isContentEditable)
+    this.shiftDown = e.shiftKey
+    this.altDown = e.altKey
     if (e.code === 'Space' && !typingNow) {
       if (!this.spaceDown) {
         this.spaceDown = true
@@ -880,6 +1208,9 @@ export class EditorCanvas {
       e.preventDefault() // don't scroll the page
       return
     }
+    // Dynamic input: while a Line/Wall chain is live, digits/Tab/Enter/Backspace
+    // and the first Esc drive the typed Distance/Angle (before tool/mode keys).
+    if (!typingNow && this.dynArmed() && this.handleDynKey(e)) return
     if (this.cad.active) {
       // ⌘Z / Ctrl+Z pops the CAD undo stack (grip drags, trims, fillets, …).
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
@@ -900,6 +1231,7 @@ export class EditorCanvas {
       this.setPresentation(!this.presentation)
     } else if (e.key === 'Escape') {
       this.wallStart = null
+      this.resetDyn()
       this.ed.clear_selection()
       this.commit()
     } else if (e.key === 'Delete' || e.key === 'Backspace') {
@@ -969,6 +1301,13 @@ export class EditorCanvas {
     this.updatePlate(st.walls)
     const tags = this.drawZones(st.zones)
 
+    // Resolve the dynamic-input candidate once per frame (wall preview + chips +
+    // widget all read it) so OSNAP/getState isn't recomputed three times.
+    this.dynResolved =
+      this.hasCursor && !this.presentation && this.dynArmed()
+        ? this.dynResolve(this.mouseWorld)
+        : null
+
     for (const wall of st.walls) {
       // Glass fronts get the triple-line convention; everything else draws in
       // the lineweight hierarchy (exterior > interior > generated partition).
@@ -982,7 +1321,7 @@ export class EditorCanvas {
     if (this.tool === 'wall' && this.wallStart) {
       this.drawSegment(
         this.wallStart,
-        this.snap(this.mouseWorld),
+        this.dynResolved?.point ?? this.snap(this.mouseWorld),
         Math.max(2, 0.1 * this.scale),
         C.preview,
       )
@@ -1001,11 +1340,17 @@ export class EditorCanvas {
       colors: { wall: C.wall, ink: C.label, accent: C.accent, dim: '#2d5bd6', faint: C.rulerText },
     })
 
+    // Live per-segment dimension chips (Rayon helper-dimensions) above linework.
+    this.drawDimChips()
+
     if (this.presentation) {
       if (st.walls.length || st.components.length) this.drawSummary(w, h)
     } else {
       this.drawRulers(w, h)
     }
+
+    // Floating typed Distance/Angle widget at the cursor.
+    this.syncDynWidget()
   }
 
   /**

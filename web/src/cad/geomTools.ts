@@ -141,6 +141,9 @@ function lineTool(): CadTool {
       if (!start || !cur) return ''
       return `L ${dist(start, cur).toFixed(2)} m  ${bearing(start, cur).toFixed(0)}°`
     },
+    anchor() {
+      return start
+    },
     cancel() {
       start = null
       cur = null
@@ -224,6 +227,9 @@ function chainTool(spec: ChainSpec): CadTool {
       if (pts.length === 0 || !cur) return ''
       const last = pts[pts.length - 1]
       return `L ${dist(last, cur).toFixed(2)} m  ${bearing(last, cur).toFixed(0)}°`
+    },
+    anchor() {
+      return pts.length ? pts[pts.length - 1] : null
     },
     cancel() {
       pts = []

@@ -241,6 +241,13 @@ export interface CadTool {
   drawPreview?(g: CanvasRenderingContext2D, ctx: ToolCtx): void
   /** live status text, e.g. "1.42 m  30°" */
   hint?(): string
+  /**
+   * The point new segments extend from (line/polyline = last committed vertex),
+   * or null before the first click. Lets the dynamic-input layer compute the
+   * candidate point without the tool knowing about the UI. Absent = no dynamic
+   * input for this tool.
+   */
+  anchor?(): Vec2 | null
   /** reset in-progress state (Esc / tool switch) */
   cancel(): void
 }

@@ -419,6 +419,63 @@ button {
   border-color: var(--wall);
 }
 
+/* Dynamic-input widget: floating typed Distance/Angle at the cursor while
+   drawing a Line/Wall (Rayon cursor-first precision, M1). Numbers use the mono
+   dimension typeface (CLAUDE.md). Positioned inline each frame by EditorCanvas. */
+.dyn-input {
+  position: absolute;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(23, 26, 30, 0.16);
+  border-radius: 7px;
+  box-shadow: var(--shadow-sm);
+  pointer-events: none;
+  white-space: nowrap;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+}
+.dyn-field {
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+  padding: 2px 6px;
+  border-radius: 5px;
+  border: 1px solid transparent;
+}
+.dyn-field.active {
+  border-color: var(--accent, #e8a13c);
+  background: rgba(232, 161, 60, 0.1);
+}
+.dyn-field .dyn-label {
+  font: 600 9px var(--font-ui, 'Space Grotesk', sans-serif);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--faint, #9aa2ad);
+}
+.dyn-field .dyn-val {
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  color: #1a1d21;
+  min-width: 2.5ch;
+  text-align: right;
+}
+.dyn-field.typed .dyn-val {
+  color: #2d5bd6;
+  font-weight: 600;
+}
+.dyn-field .dyn-unit {
+  font-size: 10px;
+  color: var(--faint, #9aa2ad);
+}
+.dyn-input .dyn-prompt {
+  padding-left: 4px;
+  font: 500 10px var(--font-ui, 'Space Grotesk', sans-serif);
+  color: var(--faint, #9aa2ad);
+}
+
 /* ------------------------------ Inspector ------------------------------- */
 .inspector {
   background: var(--surface);

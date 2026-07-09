@@ -81,6 +81,50 @@ export class CadController {
     return osnap(cursor, this.host.snapContext())
   }
 
+  /** The active tool's dynamic-input anchor (last vertex), or null. */
+  anchor(): Vec2 | null {
+    return this.tool?.anchor?.() ?? null
+  }
+
+  /**
+   * Feed a resolved (typed / polar-snapped) point to the active tool exactly as
+   * a click would, so all commit logic stays in the tools. Used by the dynamic
+   * input layer when the user presses Enter with a typed distance/angle.
+   */
+  commitTypedPoint(p: Vec2): void {
+    if (!this.tool) return
+    const synthetic: SnapResult = { point: p, type: 'none' }
+    // The line/chain tools only read ev.detail (double-click); a single-click
+    // stub keeps the typed commit behaving like a normal placement click.
+    this.tool.onDown(p, synthetic, this.ctx(), { detail: 1 } as MouseEvent)
+    this.host.requestRender()
+  }
+
+  /**
+   * Place at a host-resolved point (osnap + polar/ortho + typed already applied)
+   * while forwarding the REAL pointer event, so gestures that read it (polyline
+   * double-click-to-commit) still work. Used for clicks during dynamic input.
+   */
+  downAt(p: Vec2, ev: MouseEvent): void {
+    if (!this.tool) return
+    const synthetic: SnapResult = { point: p, type: 'none' }
+    this.lastSnap = synthetic
+    this.tool.onDown(p, synthetic, this.ctx(), ev)
+    this.host.requestRender()
+  }
+
+  /**
+   * Drive onMove with a host-resolved snap (osnap + polar/ortho + typed already
+   * applied), instead of re-snapping from screen coords. Keeps the "host owns
+   * snapping" contract while letting the dynamic-input layer steer the preview.
+   */
+  moveSnap(s: SnapResult): void {
+    if (!this.tool) return
+    this.lastSnap = s
+    this.tool.onMove(s.point, s, this.ctx())
+    this.host.requestRender()
+  }
+
   down(sx: number, sy: number, ev: MouseEvent): void {
     if (!this.tool) return
     const s = this.snap(this.host.toWorld(sx, sy))
