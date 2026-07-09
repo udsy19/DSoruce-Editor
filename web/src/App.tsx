@@ -32,6 +32,7 @@ import { downloadOBJ } from './export/obj'
 import { exportSpacePlanningReport } from './export/report'
 import { exportQuantityTakeoff, zoneAtPoint } from './export/takeoff'
 import { restrictDrawing } from './import/area'
+import { healWalls } from './import/heal'
 import type { RoomMarker } from './import/markers'
 import type { AnchorPin } from './program/anchors'
 import { downloadDXF, downloadDrawingDXF } from './export/dxf'
@@ -52,6 +53,7 @@ import { saveProject, openProject, applyProject, type BindingInfo, type DSourceF
 import {
   buildSavedPlan,
   listPlans,
+  getPlan,
   putPlan,
   deletePlan,
   resolveProject,
@@ -130,6 +132,10 @@ export interface TestFitOpts {
   /** Anchor pins (drawing coords, workflow.md §3.5): forced room placements —
    *  each is pushed into the document so generate() places it FIRST at its pin. */
   anchors?: AnchorPin[]
+  /** S4 wall-heal (workflow.md §3.3): bridge near-miss partition gaps before the
+   *  plate/keepout/entry extraction so the traced plate closes cleanly. Default
+   *  on (the Space step persists the draft's `heal.on`). */
+  heal?: boolean
   /** The wizard owns the document, so it replaces the plate without a confirm
    *  prompt (a user-driven import into a hand-built doc still asks). */
   silent?: boolean
@@ -165,10 +171,16 @@ export interface EditorController {
  *  (name/address/logo/floor) into the exports. Null on the dev #/editor route. */
 export interface EditorViewProps {
   project?: ProjectRecord | null
+  /** Cold-reload floor-open (Known bug): a saved-plan id from the
+   *  #/p/:pid/f/:planId route. When the live doc is not already this record,
+   *  EditorView loads it (getPlan → openSavedPlan) once wasm is ready, so a hard
+   *  reload lands straight on the saved floor. Guarded against double-loading the
+   *  in-session pick. */
+  openPlanId?: string
 }
 
 export const EditorView = forwardRef<EditorController, EditorViewProps>(function EditorView(
-  { project = null },
+  { project = null, openPlanId },
   ref,
 ) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -425,6 +437,23 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
     setPanelTab('plan')
   }
 
+  // Cold-reload floor-open (Known bug): a hard reload of #/p/:pid/f/:planId lands
+  // here with `openPlanId` set but an empty wasm doc (the in-session pick→edit
+  // path went through openCandidate, which set `currentPlanId`). Once the editor
+  // is ready, load the saved plan via the SAME library open path (getPlan →
+  // openSavedPlan = applyProject). The ref latch + the currentPlanId guard stop a
+  // double-load of the in-session pick.
+  const openedPlanRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!ready || !openPlanId) return
+    if (openPlanId === currentPlanId || openPlanId === openedPlanRef.current) return
+    openedPlanRef.current = openPlanId
+    void getPlan(openPlanId).then((p) => {
+      if (p) openSavedPlan(p)
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, openPlanId, currentPlanId])
+
   const restoreHistory = async (e: HistoryEntry) => {
     const ec = ecRef.current
     if (!ec) return
@@ -487,10 +516,15 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
     if (!ec || !drawing) return
     // Area-select (workflow.md §3.1): restrict the plate/keepouts/entries to the
     // selected sub-area. Non-destructive — the full `drawing` stays as-is.
-    const working =
+    const restricted =
       opts?.areaPolygon && opts.areaPolygon.length >= 3
         ? restrictDrawing(drawing, opts.areaPolygon)
         : drawing
+    // S4 wall-heal (workflow.md §3.3): bridge near-miss partition gaps so the
+    // plate/keepout/entry traces close cleanly. Default on (identity when off or
+    // nothing to heal), so every downstream extract sees the same healed linework
+    // the Space step's readouts previewed.
+    const working = opts?.heal === false ? restricted : healWalls(restricted)
     const plate = extractPlate(working)
     if (!plate) {
       setImportErr('No wall geometry found in this drawing to derive a floor plate from.')

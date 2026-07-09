@@ -102,6 +102,7 @@ export function AppShell() {
               areaPolygon: rec?.draft?.areaPolygon,
               markers: rec?.draft?.markers,
               anchors: rec?.draft?.anchors,
+              heal: rec?.draft?.heal?.on ?? true,
               silent: true,
             })
             navigate({ name: 'wizard', projectId: route.projectId, step: 'program' })
@@ -155,7 +156,11 @@ export function AppShell() {
         // display:contents keeps the wrapper out of layout so `.app` fills
         // #root; display:none hides the whole subtree when inactive.
         <div style={{ display: editorVisible ? 'contents' : 'none' }}>
-          <EditorView ref={editorRef} project={activeProject} />
+          <EditorView
+            ref={editorRef}
+            project={activeProject}
+            openPlanId={route.name === 'editor' ? route.planId : undefined}
+          />
         </div>
       )}
     </>

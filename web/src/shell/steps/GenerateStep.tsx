@@ -85,6 +85,7 @@ export function GenerateStep({
       areaPolygon: rec?.draft?.areaPolygon,
       markers: rec?.draft?.markers,
       anchors: rec?.draft?.anchors,
+      heal: rec?.draft?.heal?.on ?? true,
       silent: true,
     })
     controller.current?.setProgram(program)

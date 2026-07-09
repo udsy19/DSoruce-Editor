@@ -126,6 +126,11 @@ export async function listPlans(): Promise<SavedPlan[]> {
   return plans.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
 }
 
+/** One saved plan by id (the cold-reload floor-open path, App.tsx). */
+export function getPlan(id: string): Promise<SavedPlan | undefined> {
+  return dbGet<SavedPlan>('plans', id)
+}
+
 export function putPlan(p: SavedPlan): Promise<void> {
   return dbPut('plans', p)
 }

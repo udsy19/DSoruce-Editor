@@ -22,6 +22,7 @@ import { CategoryPlan, type CategoryPlanGroup } from '../../ui/CategoryPlan'
 import { buildCategoryGroups, type EditorController } from '../../App'
 import { extractPlate, extractKeepouts, type Pt } from '../../import/testfit'
 import { restrictDrawing } from '../../import/area'
+import { healWalls } from '../../import/heal'
 import { ROOM_TYPES, nextRoomRef, type RoomMarker, type RoomType } from '../../import/markers'
 import { bankCategoryForItem } from '../../materialBank/office'
 import { getProject, updateDraft, type SpaceReadoutsSummary } from '../../persist/projects'
@@ -30,6 +31,9 @@ import type { DrawingCanvas } from '../../import/DrawingCanvas'
 import type { Drawing } from '../../import/types'
 
 const SF_PER_M2 = 10.7639
+/** Heal gap (m) persisted with the toggle — the healWalls default (a hairline
+ *  partition break, below a door leaf). The Space step exposes on/off only. */
+const HEAL_GAP_M = 0.25
 
 interface DetectedRoom {
   label: string
@@ -145,6 +149,9 @@ export function SpaceStep({
   const dcRef = useRef<DrawingCanvas | null>(null)
   const [areaPolygon, setAreaPolygon] = useState<Pt[] | null>(null)
   const [markers, setMarkers] = useState<RoomMarker[]>([])
+  // S4 wall-heal (workflow.md §3.3): default ON (matches the reference). When on,
+  // near-miss partition gaps are bridged before readouts + test-fit.
+  const [healOn, setHealOn] = useState(true)
   const [activeTool, setActiveTool] = useState<'none' | 'area' | 'marker'>('none')
   const [markerType, setMarkerType] = useState<RoomType>('IT-Storage')
   const [markerRef, setMarkerRef] = useState('501')
@@ -171,6 +178,7 @@ export function SpaceStep({
       }
       if (rec?.draft?.areaPolygon) setAreaPolygon(rec.draft.areaPolygon)
       if (rec?.draft?.markers) setMarkers(rec.draft.markers)
+      if (rec?.draft?.heal) setHealOn(rec.draft.heal.on)
       hydratedRef.current = true
     })
     return () => {
@@ -185,18 +193,25 @@ export function SpaceStep({
     () => (drawing && areaPolygon ? restrictDrawing(drawing, areaPolygon) : drawing),
     [drawing, areaPolygon],
   )
-  const readouts = useMemo(() => (restricted ? computeReadouts(restricted) : null), [restricted])
+  // S4 heal (workflow.md §3.3): bridge near-miss gaps so more rooms close cleanly
+  // in the readouts (identity when off / nothing to heal — cheap to toggle).
+  const healed = useMemo(
+    () => (restricted && healOn ? healWalls(restricted) : restricted),
+    [restricted, healOn],
+  )
+  const readouts = useMemo(() => (healed ? computeReadouts(healed) : null), [healed])
 
-  // Persist area + markers (and the recomputed readouts) once hydrated.
+  // Persist area + markers + heal (and the recomputed readouts) once hydrated.
   useEffect(() => {
     if (!hydratedRef.current || !drawing) return
     void updateDraft(projectId, {
       areaPolygon: areaPolygon ?? undefined,
       markers,
+      heal: { on: healOn, gapM: HEAL_GAP_M },
       ...(readouts ? { readouts: toSummary(readouts) } : {}),
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [areaPolygon, markers])
+  }, [areaPolygon, markers, healOn])
 
   // Keep the "next ref" suggestion ahead of the placed markers.
   useEffect(() => {
@@ -401,6 +416,38 @@ export function SpaceStep({
                   />
                 </>
               )}
+              <span className="space-tool-sep" aria-hidden />
+              {/* S4 wall-heal (workflow.md §3.3): a heal / as-drawn segmented
+                  toggle. Heal bridges near-miss partition gaps so more rooms
+                  close cleanly in the readouts below and at test-fit. */}
+              <div
+                className="space-heal"
+                role="group"
+                aria-label="Walls"
+                data-testid="space-heal-toggle"
+              >
+                <span className="space-heal-label">Walls</span>
+                <button
+                  type="button"
+                  className={`space-tool${healOn ? ' on' : ''}`}
+                  data-testid="space-heal-on"
+                  aria-pressed={healOn}
+                  onClick={() => setHealOn(true)}
+                  title="Bridge near-miss partition gaps so rooms close cleanly"
+                >
+                  <Icon name="check" size={12} /> Heal gaps
+                </button>
+                <button
+                  type="button"
+                  className={`space-tool${!healOn ? ' on' : ''}`}
+                  data-testid="space-heal-off"
+                  aria-pressed={!healOn}
+                  onClick={() => setHealOn(false)}
+                  title="Use the linework exactly as drawn"
+                >
+                  As drawn
+                </button>
+              </div>
             </div>
             {activeTool === 'area' && (
               <p className="space-tool-hint" data-testid="space-area-hint">

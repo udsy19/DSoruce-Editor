@@ -44,9 +44,13 @@ The qbiq-style flow: Project → Upload → Program → Generate → Editor → 
   into report+takeoff so exports are branded (verified: "Chronos HQ"/address/floor in the PDF, "Untitled
   Plan" gone). `shell/steps/GenerateStep.tsx`. **Full-flow E2E 10/10 on the real DWG.**
 - **Track A end-to-end verified:** create → upload → area → markers → program → anchors → generate A/B/C
-  → pick → edit → branded report + costed takeoff. Only S4 (wall-heal) + two polish items remain.
-- [ ] **S4 — Wall healing.** Bridge near-miss partition gaps so detected rooms close cleanly (heal /
-  as-drawn toggle in the Space step).
+  → pick → edit → branded report + costed takeoff. **S0–S7 all shipped — Track A closed.**
+- [x] **S4 — Wall healing.** `healWalls(drawing)` bridges near-miss partition gaps (degree-1 wall ends
+  within 0.25 m that are near-collinear or perpendicular, + endpoint→segment T-junctions; doorway guard
+  at 0.8 m). Space-step **Heal gaps / As drawn** toggle (default heal on; testids space-heal-toggle/on/off)
+  runs before plate/keepout extraction + readouts and again at test-fit. Synthetic near-miss DXF: heal
+  flips the plate hull→**loop** (exact) in the readout; real DWG: traced faces 114→125 (+1 room-scale
+  face closed). `import/heal.ts` (+ heal.test.mjs, 10/10). E2E: toggle flips 78 m² loop ↔ 79 m² hull.
 - Decisions locked: upload **CAD-only v1** (raster/PDF deferred); Window/Core/Flexible = **soft bias**;
   Space step **re-editable** after generate; DB v2 forward-only upgrade accepted.
 
@@ -138,8 +142,10 @@ Make generated plans read like a senior architect's work, not a diagram.
 ---
 
 ## Known bugs / debt
-- [ ] **Cold-reload of `#/p/:pid/f/:planId`** doesn't re-open the saved floor into the editor (in-session
-  pick→edit→export is fully live; export meta still resolves from the route). Track A polish.
+- [x] **Cold-reload of `#/p/:pid/f/:planId`** re-opens the saved floor: EditorView takes an `openPlanId`
+  prop (from the route) and, once wasm is ready, loads the SavedPlan via the existing library path
+  (`getPlan` → `openSavedPlan` → `applyProject`), guarded by a ref latch + `currentPlanId` so the
+  in-session pick never double-loads. E2E: generate→pick→edit→hard reload → 126 items / 64 ws live.
 - [ ] **Regenerate** only widens the seed search (deterministic per seed) — true A/B/C variety wants a
   seed-offset/randomized search.
 - [ ] **Commits unsigned this session** (1Password SSH signing agent locked). Re-sign or unlock when able.
@@ -151,6 +157,6 @@ Make generated plans read like a senior architect's work, not a diagram.
 ## Immediate next (working order)
 1. [x] Real-plate density — verified on the user's DWG (52 ws @ 10 m²/person).
 2. [x] Track A S1–S3, S5–S7 — **full guided flow verified end-to-end (10/10) on the real DWG.**
-3. S4 wall-heal + cold-reload floor-open (finish Track A).
+3. [x] S4 wall-heal + cold-reload floor-open — **Track A finished (S0–S7 shipped).**
 4. Cloud sync (Track I) + deploy (Track J) when 1Password/SSH is unblocked.
 5. Track B refinement (leaner support ratio → 80+ workstations); Track F (supplier in takeoff).

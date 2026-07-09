@@ -59,6 +59,10 @@ export interface ProjectDraft {
   areaPolygon?: Pt[]
   /** §3.2 room markers + reference numbers (drawing/source coords). */
   markers?: RoomMarker[]
+  /** §3.3 wall-heal toggle. When on, near-miss partition gaps are bridged
+   *  before the plate/keepout extraction and the detected-rooms readout, and
+   *  again at test-fit (the plate traces the healed drawing). Default on. */
+  heal?: { on: boolean; gapM: number }
   /** §3.4 Program-builder state (Concept/Detailed) → the resolved `Program`. */
   spec?: ProgramSpec
   /** §3.5 anchor pins (drawing/source coords) — forced room placements pushed

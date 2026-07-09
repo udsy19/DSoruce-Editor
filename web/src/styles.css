@@ -2355,6 +2355,19 @@ kbd {
   background: var(--hairline);
   margin: 2px 2px;
 }
+/* S4 wall-heal segmented toggle (Heal gaps / As drawn). */
+.space-heal {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.space-heal-label {
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--ink-dim, #8a929c);
+  margin-right: 2px;
+}
 .space-marker-select,
 .space-marker-ref,
 .space-marker-row-ref,
