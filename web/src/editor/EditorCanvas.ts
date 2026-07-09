@@ -131,6 +131,14 @@ interface ZoneTag {
   color: string
 }
 
+// Space-planning strategies live in a dependency-free module (unit-testable in
+// node); re-exported here so existing importers keep the single `EditorCanvas`
+// entry point.
+export type { Strategy } from './strategy'
+export { STRATEGIES, STRATEGY_LABEL, STRATEGY_BLURB } from './strategy'
+import type { Strategy } from './strategy'
+import { STRATEGIES, STRATEGY_SEED_STRIDE } from './strategy'
+
 /** Test-fit program + objective weights (mirrors Rust `layout::Program`). */
 export interface Program {
   desks: number
@@ -155,6 +163,11 @@ export interface Program {
    * the derived support program + `meeting_rooms` override (today's behaviour);
    * non-empty → these rooms replace it, counts + placement bias honored. */
   rooms?: RoomReq[]
+  /** Space-planning strategy (M7). Absent → Rust `Balanced` (today's behaviour).
+   *  `autoGenerate` injects one per alternative so the gallery's A/B/C are
+   *  strategically distinct; an explicit `rooms` program pins the counts so a
+   *  strategy then only varies layout/scoring, never the counts. */
+  strategy?: Strategy
   w_capacity: number
   w_adjacency: number
   w_circulation: number
@@ -198,6 +211,9 @@ export interface CirculationScore {
 /** One retained test-fit option from the autonomous search (Laiout-style gallery). */
 export interface Candidate {
   seed: number
+  /** Which strategy produced this option — the gallery labels A/B/C by it, and
+   *  reproducing the exact plan needs the (strategy, seed) pair. */
+  strategy: Strategy
   score: LayoutScore
   /** Opaque document snapshot — pass to `applyCandidate` to make it live. */
   snap: unknown
@@ -435,56 +451,60 @@ export class EditorCanvas {
   }
 
   /**
-   * Autonomous test-fit search: generate candidates across seeds, keep the
-   * best-scoring one, early-stop once `target` total is met. Because the Rust
-   * generator is deterministic per seed, we re-generate the winning seed at the
-   * end so the document reflects the best candidate. This is the "recursive
-   * until criteria met" loop on top of the deterministic engine.
+   * Autonomous test-fit search across the three STRATEGIES (M7). Each strategy
+   * runs its OWN seed search (early-stopping once `target` total is met) and
+   * contributes its single best-scoring plan, so the gallery's A/B/C are
+   * strategically DISTINCT — Open (dense open field) · Balanced (professional
+   * mix) · Cellular (privacy-forward) — a real trade-off, not seed-noise. The
+   * Rust generator is deterministic per (strategy, seed); the live document is
+   * restored to the overall best-scoring option at the end.
    *
-   * When `keepConfirmed` is set, Confirmed components are frozen and every
-   * candidate packs around them (Freeze/Regenerate).
+   * Seeds are kept in disjoint per-strategy ranges (`strategyIndex·STRIDE + s`)
+   * so a candidate's `seed` is globally unique — the gallery keys by it — while
+   * `(strategy, seed)` still reproduces the exact plan. When `keepConfirmed` is
+   * set, Confirmed components are frozen and every candidate packs around them.
    */
   autoGenerate(
     program: Program,
-    opts: { maxIter: number; target: number; keepConfirmed?: boolean; candidates?: number },
+    opts: { maxIter: number; target: number; keepConfirmed?: boolean },
   ): GenResult {
     const keep = opts.keepConfirmed ?? false
-    const topK = Math.max(1, opts.candidates ?? 4)
     this.program = { ...program }
-    let best: LayoutScore | null = null
-    let bestSeed = 1
+    const STRIDE = STRATEGY_SEED_STRIDE
+    const candidates: Candidate[] = []
     let iterations = 0
-    const kept: Candidate[] = []
-    for (let seed = 1; seed <= opts.maxIter; seed++) {
-      iterations = seed
-      const sc = this.ed.generate(program, BigInt(seed), keep) as LayoutScore
-      if (!best || sc.total > best.total) {
-        best = sc
-        bestSeed = seed
+    STRATEGIES.forEach((strategy, si) => {
+      const sp: Program = { ...program, strategy }
+      let best: LayoutScore | null = null
+      let bestSeed = si * STRIDE + 1
+      for (let seed = 1; seed <= opts.maxIter; seed++) {
+        iterations++
+        const actual = si * STRIDE + seed
+        const sc = this.ed.generate(sp, BigInt(actual), keep) as LayoutScore
+        if (!best || sc.total > best.total) {
+          best = sc
+          bestSeed = actual
+        }
+        if (best.total >= opts.target) break
       }
-      // Cheap near-duplicate filter: same workstation count and ~equal total
-      // means the same layout family — keep only the better of the pair.
-      const dup = kept.findIndex(
-        (k) =>
-          Math.abs(k.score.total - sc.total) < 0.5 && k.score.placed_desks === sc.placed_desks,
-      )
-      if (dup >= 0 && kept[dup].score.total >= sc.total) continue
-      const cand: Candidate = {
-        seed,
-        score: sc,
+      // Re-generate the strategy's winning seed to capture its snapshot + thumb.
+      const finalSc = this.ed.generate(sp, BigInt(bestSeed), keep) as LayoutScore
+      candidates.push({
+        seed: bestSeed,
+        strategy,
+        score: finalSc,
         snap: this.ed.snapshot(),
         thumb: renderThumb(this.getState()),
-      }
-      if (dup >= 0) kept[dup] = cand
-      else kept.push(cand)
-      kept.sort((a, b) => b.score.total - a.score.total)
-      if (kept.length > topK) kept.length = topK
-      if (best.total >= opts.target) break
-    }
-    const finalScore = this.ed.generate(program, BigInt(bestSeed), keep) as LayoutScore
+      })
+    })
+    // The live document reflects the overall best-scoring option (candidates
+    // stay in strategy order so A/B/C map to Open/Balanced/Cellular).
+    const best = candidates.reduce((a, b) => (b.score.total > a.score.total ? b : a))
+    this.ed.restore(best.snap as string)
+    this.hydrateCad()
     this.ed.clear_selection()
     this.commit()
-    return { best: finalScore, iterations, seed: bestSeed, candidates: kept }
+    return { best: best.score, iterations, seed: best.seed, candidates }
   }
 
   /** Make a gallery candidate live: restore its snapshot, repaint, notify React.

@@ -29,6 +29,157 @@ use crate::model::{Component, DecisionState, Wall};
 use crate::zone::{Zone, ZoneShape, ZoneType};
 use serde::{Deserialize, Serialize};
 
+// ---- M7: strategy-distinct alternatives (the A/B/C the gallery shows) --------
+
+/// A space-planning STRATEGY the autonomous search optimises for. The three are
+/// meant to be structurally DISTINCT — not seed-noise — so the gallery's A/B/C
+/// are a real trade-off the user picks between (mirrors qbiq's A/B/C, which
+/// differ in offices/conference/seats), not three renders of one plan:
+///
+///  - **Open** — maximise open workstations, minimal enclosed rooms. The daylit
+///    floor is desks; the highest seat count / density.
+///  - **Balanced** — the professional derived mix (spec §1.1). The DEFAULT, and
+///    byte-identical to the pre-M7 behaviour (identity mix + identity weights),
+///    so every existing plan/test is unchanged.
+///  - **Cellular** — privacy-forward: more enclosed offices + focus rooms, fewer
+///    open desks.
+///
+/// A strategy shifts (a) the DERIVED program mix — open share (desks) and the
+/// cellular room families (cabins / focus / phone booths) — and (b) the SCORING
+/// weights (Open rewards capacity/density; Cellular rewards program-fit/enclosure).
+/// When the user sets an EXPLICIT room program (`Program.rooms`) the counts are
+/// honoured verbatim: the mix shift is suppressed (see `program_open_share` /
+/// `program_cellular_mult`) and the strategy then only steers scoring + the seed
+/// search, never the counts.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum Strategy {
+    Open,
+    #[default]
+    Balanced,
+    Cellular,
+}
+
+impl Strategy {
+    /// Open-plan share of the design headcount seated at open workstations.
+    /// Balanced returns the tuned baseline `OPEN_SHARE`; Open pushes toward the
+    /// qbiq reference (~0.95 open); Cellular pulls headcount into enclosed rooms.
+    fn open_share(self) -> f64 {
+        match self {
+            Strategy::Open => 0.95,
+            Strategy::Balanced => OPEN_SHARE,
+            Strategy::Cellular => 0.72,
+        }
+    }
+
+    /// Multiplier on the CELLULAR room families (cabins, focus rooms, phone
+    /// booths) in the derived program. Balanced is the identity (1.0 → the
+    /// derive table is byte-unchanged); Open thins the enclosure; Cellular
+    /// multiplies it into a privacy-forward mix.
+    fn cellular_mult(self) -> f64 {
+        match self {
+            Strategy::Open => 0.45,
+            Strategy::Balanced => 1.0,
+            Strategy::Cellular => 1.9,
+        }
+    }
+
+    /// Ceiling on the derived support program's net area as a fraction of the
+    /// plate. Balanced keeps the tuned `SUPPORT_AREA_CAP`; Open tightens it (the
+    /// open field must dominate even harder); Cellular relaxes it so the extra
+    /// enclosure it asks for is not trimmed straight back to Balanced.
+    fn support_cap(self) -> f64 {
+        match self {
+            Strategy::Open => 0.15,
+            Strategy::Balanced => SUPPORT_AREA_CAP,
+            Strategy::Cellular => 0.40,
+        }
+    }
+
+    /// Per-sub-score multipliers applied to the program's objective weights, so
+    /// the seed search WITHIN a strategy optimises for that strategy's priorities
+    /// (Open → capacity/density; Cellular → program-fit/entry). Balanced is the
+    /// identity, so the pre-M7 `total` is byte-unchanged.
+    fn weight_bias(self) -> WeightBias {
+        match self {
+            Strategy::Open => WeightBias {
+                capacity: 1.5,
+                adjacency: 1.15,
+                circulation: 1.0,
+                density: 1.35,
+                program: 0.6,
+                daylight: 1.15,
+                entry: 0.8,
+            },
+            Strategy::Balanced => WeightBias::identity(),
+            Strategy::Cellular => WeightBias {
+                capacity: 0.7,
+                adjacency: 0.9,
+                circulation: 1.1,
+                density: 0.9,
+                program: 1.9,
+                daylight: 1.0,
+                entry: 1.25,
+            },
+        }
+    }
+}
+
+/// Multiplicative adjustment to each objective weight for a `Strategy`.
+struct WeightBias {
+    capacity: f64,
+    adjacency: f64,
+    circulation: f64,
+    density: f64,
+    program: f64,
+    daylight: f64,
+    entry: f64,
+}
+
+impl WeightBias {
+    /// All-ones → the strategy leaves the program's weights untouched (Balanced).
+    fn identity() -> WeightBias {
+        WeightBias {
+            capacity: 1.0,
+            adjacency: 1.0,
+            circulation: 1.0,
+            density: 1.0,
+            program: 1.0,
+            daylight: 1.0,
+            entry: 1.0,
+        }
+    }
+}
+
+/// The DERIVED open share for a program: its strategy's, UNLESS an explicit room
+/// program is set — then the counts are the user's, so the mix is not shifted
+/// (Balanced baseline) and the strategy only steers scoring + the seed search.
+fn program_open_share(program: &Program) -> f64 {
+    if program.rooms.is_empty() {
+        program.strategy.open_share()
+    } else {
+        Strategy::Balanced.open_share()
+    }
+}
+
+/// The DERIVED cellular-family multiplier for a program (see `program_open_share`
+/// for the explicit-program gate).
+fn program_cellular_mult(program: &Program) -> f64 {
+    if program.rooms.is_empty() {
+        program.strategy.cellular_mult()
+    } else {
+        1.0
+    }
+}
+
+/// The DERIVED support-area cap for a program (see `program_open_share`).
+fn program_support_cap(program: &Program) -> f64 {
+    if program.rooms.is_empty() {
+        program.strategy.support_cap()
+    } else {
+        SUPPORT_AREA_CAP
+    }
+}
+
 /// The user-set program + criteria. `desks`/`meeting_rooms` and the footprint
 /// fields drive the generator; the `w_*` weights drive the evaluator (§1c of the
 /// design doc). Implements `Default` so partial JSON from the UI fills sensibly.
@@ -71,6 +222,12 @@ pub struct Program {
     /// old documents round-trip unchanged.
     #[serde(default)]
     pub rooms: Vec<RoomReq>,
+    /// Space-planning strategy for the autonomous search (M7). Shifts the derived
+    /// program mix + scoring weights so the gallery's A/B/C are strategically
+    /// distinct. `#[serde(default)]` → missing field deserialises to `Balanced`,
+    /// i.e. the exact pre-M7 behaviour, so old JSON round-trips unchanged.
+    #[serde(default)]
+    pub strategy: Strategy,
 
     // --- hard constraints ---
     /// perimeter circulation corridor width, meters
@@ -112,6 +269,7 @@ impl Default for Program {
             support_spaces: true,
             headcount: None,
             rooms: Vec::new(),
+            strategy: Strategy::Balanced,
             target_corridor_m: 1.2,
             desk_clearance_m: 0.9,
             w_capacity: 0.35,
@@ -374,7 +532,20 @@ impl SpaceProgram {
     /// Meeting-seat mix ≈ 50/30/20 small/medium/large by count. The plate cap
     /// (`N ≤ area/7.0`) bounds absurd inputs while still letting a modest
     /// overload surface as a `program_fit` shortfall.
-    pub fn derive(headcount: usize, plate_area_m2: f64) -> SpaceProgram {
+    ///
+    /// `open_share` / `cellular_mult` / `support_cap` are the STRATEGY knobs
+    /// (M7): Balanced passes `OPEN_SHARE` / `1.0` / `SUPPORT_AREA_CAP` and the
+    /// derivation is byte-identical to the pre-M7 table; Open thins enclosure and
+    /// grows the desk field, Cellular does the reverse. Cellular families (cabins,
+    /// phone booths, focus) scale by `cellular_mult`; the essentials
+    /// (pantry/reception/IT/storage) never do.
+    pub fn derive(
+        headcount: usize,
+        plate_area_m2: f64,
+        open_share: f64,
+        cellular_mult: f64,
+        support_cap: f64,
+    ) -> SpaceProgram {
         let cap = if plate_area_m2 > 0.0 {
             ((plate_area_m2 / 7.0).floor() as usize).max(1)
         } else {
@@ -382,10 +553,13 @@ impl SpaceProgram {
         };
         let n = headcount.min(cap).max(1) as u32;
         let ceil_div = |num: u32, den: u32| num.div_ceil(den);
-        let desks = ((n as f64) * OPEN_SHARE).ceil() as u32;
+        let desks = ((n as f64) * open_share).ceil() as u32;
+        // Scale a cellular-family count by the strategy multiplier (Balanced 1.0
+        // → identity, round-trips the base count exactly).
+        let cell = |base: u32| ((base as f64) * cellular_mult).round() as u32;
 
         let mut reqs = vec![
-            SpaceReq { kind: SpaceKind::Cabin, count: ceil_div(n, 25), w: 3.0, d: 3.3 },
+            SpaceReq { kind: SpaceKind::Cabin, count: cell(ceil_div(n, 25)), w: 3.0, d: 3.3 },
             SpaceReq { kind: SpaceKind::Meeting4P, count: ceil_div(n, 24), w: 2.7, d: 3.3 },
             SpaceReq { kind: SpaceKind::Meeting6P, count: ceil_div(n, 40), w: 3.6, d: 4.2 },
         ];
@@ -395,10 +569,10 @@ impl SpaceProgram {
         // Phone booths: LEAN 1/25 (was 1/12). qbiq's reference floor carries no
         // dedicated booth band; 1/25 keeps a token call-privacy provision without
         // the ~8-booth sprawl that ate the real 882 m² floor.
-        reqs.push(SpaceReq { kind: SpaceKind::PhoneBooth, count: ceil_div(n, 25), w: 1.3, d: 1.1 });
+        reqs.push(SpaceReq { kind: SpaceKind::PhoneBooth, count: cell(ceil_div(n, 25)), w: 1.3, d: 1.1 });
         // Focus rooms: LEAN 1/60 (was 1/30). The reference mix is offices +
         // meeting with negligible quiet-rooms; halve toward it.
-        reqs.push(SpaceReq { kind: SpaceKind::Focus, count: ceil_div(n, 60), w: 1.8, d: 2.4 });
+        reqs.push(SpaceReq { kind: SpaceKind::Focus, count: cell(ceil_div(n, 60)), w: 1.8, d: 2.4 });
         // Collab: 1 seat per 8 desks, ~12 seats per open breakout (was 8) — one
         // lean setting per ~90 people rather than a large room per 64.
         let collab_seats = ceil_div(desks, 8);
@@ -439,7 +613,7 @@ impl SpaceProgram {
             reqs.iter().filter(|r| is_support(r.kind)).map(|r| r.area()).sum()
         };
         if plate_area_m2 > 0.0 {
-            let cap_area = SUPPORT_AREA_CAP * plate_area_m2;
+            let cap_area = support_cap * plate_area_m2;
             for trim in [SpaceKind::PhoneBooth, SpaceKind::Focus, SpaceKind::Collab, SpaceKind::Print] {
                 while support_area(&reqs) > cap_area {
                     match reqs.iter_mut().find(|r| r.kind == trim && r.count > 0) {
@@ -499,7 +673,7 @@ fn program_headcount(program: &Program, plate_area: f64) -> u32 {
     match program.headcount {
         Some(n) => n.max(1),
         None if plate_area > 0.0 => ((plate_area / TARGET_M2_PER_PERSON).floor() as u32).max(1),
-        None => (((program.desks as f64) / OPEN_SHARE).ceil() as u32).max(1),
+        None => (((program.desks as f64) / program_open_share(program)).ceil() as u32).max(1),
     }
 }
 
@@ -511,7 +685,7 @@ fn program_headcount(program: &Program, plate_area: f64) -> u32 {
 /// SAME headcount (no more 13-office / 27-desk mismatch, spec §1 / M5).
 fn desk_target(program: &Program, plate_area: f64) -> u32 {
     let n = program_headcount(program, plate_area);
-    let pro = ((n as f64) * OPEN_SHARE).ceil() as u32;
+    let pro = ((n as f64) * program_open_share(program)).ceil() as u32;
     program.desks.max(pro)
 }
 
@@ -1379,7 +1553,7 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
     // A band may only claim depth that still leaves one desk row in front.
     let min_field_d = program.desk_w.min(program.desk_h) + clear;
     let (mut region_jobs, band_depths, mut overflow) =
-        allocate_rooms(jobs, &regions, &insets, entry_idx, min_field_d, &field_regions);
+        allocate_rooms(jobs, &regions, &insets, entry_idx, entry.is_some(), min_field_d, &field_regions);
 
     // --- Region plans: band + spine + connector + link geometry -----------
     let plans: Vec<RegionPlan> = (0..regions.len())
@@ -1546,7 +1720,13 @@ fn support_jobs(program: &Program, plate_area: f64) -> Vec<RoomJob> {
     if !program.support_spaces {
         return Vec::new();
     }
-    let sp = SpaceProgram::derive(program_headcount(program, plate_area) as usize, plate_area);
+    let sp = SpaceProgram::derive(
+        program_headcount(program, plate_area) as usize,
+        plate_area,
+        program_open_share(program),
+        program_cellular_mult(program),
+        program_support_cap(program),
+    );
     let mut jobs = Vec::new();
     for req in &sp.reqs {
         // Meeting-typed kinds are covered by the `meeting_rooms` override in
@@ -1738,6 +1918,7 @@ fn allocate_rooms(
     regions: &[geometry::Rect],
     insets: &[Insets],
     entry_idx: usize,
+    has_entry: bool,
     min_field_d: f64,
     field_regions: &[bool],
 ) -> (Vec<Vec<RoomJob>>, Vec<f64>, Vec<RoomJob>) {
@@ -1818,11 +1999,20 @@ fn allocate_rooms(
     // only non-Flexible jobs consult it).
     let facade_len: Vec<f64> = (0..n).map(|i| region_facade_len(&regions[i], &insets[i])).collect();
     for job in jobs {
-        // Reception hugs the entry wing, pantry the far wing; every other room
-        // takes the smallest wing that still fits, falling down the order.
+        // Adjacency placement bias (spec §3): reception + the meeting/conference
+        // family hug the ENTRY wing (client-facing), the pantry the FAR wing
+        // (social anchor); every other room takes the smallest wing that still
+        // fits. Meetings only claim the entry wing when there's a real entry AND
+        // that wing is NOT the reserved open-desk field region — so the
+        // client-facing cluster never eats the daylit desk field (spec §1).
+        let meeting_family = matches!(
+            job.kind,
+            SpaceKind::Meeting | SpaceKind::Meeting4P | SpaceKind::Meeting6P | SpaceKind::Boardroom
+        );
         let first = match job.kind {
             SpaceKind::Reception => Some(entry_idx),
             SpaceKind::Pantry => Some(far_idx),
+            _ if meeting_family && has_entry && !field_regions[entry_idx] => Some(entry_idx),
             _ => None,
         };
         // Placement bias (soft): Window rooms prefer the highest-facade wings,
@@ -2709,6 +2899,93 @@ fn density_score(m2_per_person: f64) -> f64 {
     }
 }
 
+/// Centroid of a zone (its bbox center).
+fn zone_bbox_center(z: &Zone) -> (f64, f64) {
+    let (x0, y0, x1, y1) = z.shape.bbox();
+    ((x0 + x1) / 2.0, (y0 + y1) / 2.0)
+}
+
+/// Shortest distance from a point to the plate boundary (facade). 0 when the
+/// walls don't close a loop.
+fn dist_to_facade(px: f64, py: f64, poly: Option<&[Point]>) -> f64 {
+    let Some(poly) = poly else { return 0.0 };
+    (0..poly.len())
+        .map(|i| {
+            let a = poly[i];
+            let b = poly[(i + 1) % poly.len()];
+            geometry::point_segment_dist(Point::new(px, py), a, b)
+        })
+        .fold(f64::INFINITY, f64::min)
+}
+
+/// RELATIONSHIP adjacency (0..100): how well the plan honours senior-planner
+/// space relationships beyond desk pitch (spec §3 / the "smart" adjacency model,
+/// docs/design/testfit-pro-quality.md). Averages the APPLICABLE checks:
+///   - meeting/conference rooms CLUSTER near the entry (client-facing),
+///   - focus rooms sit toward the FACADE (daylit / calm),
+///   - the pantry is a CENTRAL social node,
+///   - IT / storage sit toward the INTERIOR (near the building core).
+/// Returns `None` when the plate offers nothing to judge (no rooms, or open
+/// walls with no entry) — the caller then falls back to pure desk coherence.
+/// Deterministic; a pure read of the document geometry.
+fn relationship_adjacency(doc: &Document, poly: Option<&[Point]>, entry: Option<Point>) -> Option<f64> {
+    // Plate bbox → centroid + diagonal, the intrinsic length scale the checks
+    // normalise against (so a big plate isn't unfairly penalised).
+    let (bx0, by0, bx1, by1) = doc.wall_bbox()?;
+    let (cx, cy) = ((bx0 + bx1) / 2.0, (by0 + by1) / 2.0);
+    let diag = ((bx1 - bx0).powi(2) + (by1 - by0).powi(2)).sqrt().max(1e-6);
+
+    let centers = |pred: &dyn Fn(&Zone) -> bool| -> Vec<(f64, f64)> {
+        doc.zones.iter().filter(|z| pred(z)).map(zone_bbox_center).collect()
+    };
+    let meetings = centers(&|z| z.zone_type == ZoneType::Meeting);
+    let focus = centers(&|z| z.label.starts_with("Focus"));
+    let pantry = centers(&|z| z.label.starts_with("Pantry"));
+    let it_store = centers(&|z| z.label.starts_with("IT") || z.label.starts_with("Storage"));
+
+    let mut sum = 0.0;
+    let mut n = 0u32;
+    let avg = |v: &[(f64, f64)], f: &dyn Fn(f64, f64) -> f64| -> f64 {
+        v.iter().map(|&(x, y)| f(x, y)).sum::<f64>() / v.len() as f64
+    };
+
+    // (1) Meetings near the entry. Reference = the entry→centroid distance: a
+    // meeting AT the entry scores 100, one at 2× that reference scores 0.
+    if let Some(e) = entry {
+        if !meetings.is_empty() {
+            let d_ref = (((cx - e.x).powi(2) + (cy - e.y).powi(2)).sqrt()).max(1e-6);
+            let d_m = avg(&meetings, &|x, y| ((x - e.x).powi(2) + (y - e.y).powi(2)).sqrt());
+            sum += (100.0 * (2.0 * d_ref - d_m) / (2.0 * d_ref)).clamp(0.0, 100.0);
+            n += 1;
+        }
+    }
+    // (2) Focus rooms toward the facade (within ~DAYLIGHT_REACH_M → full marks).
+    if !focus.is_empty() && poly.is_some() {
+        let d_f = avg(&focus, &|x, y| dist_to_facade(x, y, poly));
+        sum += (100.0 * (1.5 * DAYLIGHT_REACH_M - d_f) / (1.5 * DAYLIGHT_REACH_M)).clamp(0.0, 100.0);
+        n += 1;
+    }
+    // (3) Pantry central: near the plate centroid (a social node the whole floor
+    // reaches). At the centroid → 100, at half the diagonal away → 0.
+    if !pantry.is_empty() {
+        let d_p = avg(&pantry, &|x, y| ((x - cx).powi(2) + (y - cy).powi(2)).sqrt());
+        sum += (100.0 * (1.0 - d_p / (0.5 * diag))).clamp(0.0, 100.0);
+        n += 1;
+    }
+    // (4) IT / storage toward the interior (away from the facade → near the core).
+    if !it_store.is_empty() && poly.is_some() {
+        let d_i = avg(&it_store, &|x, y| dist_to_facade(x, y, poly));
+        sum += (100.0 * (d_i / 4.0)).clamp(0.0, 100.0);
+        n += 1;
+    }
+
+    if n == 0 {
+        None
+    } else {
+        Some(sum / n as f64)
+    }
+}
+
 /// Score a layout against the program. Sub-scores are 0..100; `total` is the
 /// weight-normalised blend (design §3). This is the deterministic evaluator that
 /// drives the generate→evaluate→optimize loop.
@@ -2720,6 +2997,10 @@ pub fn score(doc: &Document, program: &Program) -> LayoutScore {
         .collect();
     let placed_desks = desks.len() as u32;
 
+    // The plate polygon (true floor loop) is traced ONCE and reused by the
+    // adjacency (facade relationships), density and daylight sub-scores.
+    let plate_poly = geometry::trace_floor_polygon(&wall_segments(doc), geometry::LOOP_SNAP_TOL);
+
     // --- capacity: fraction of requested desks actually seated ---
     let capacity = if program.desks == 0 {
         100.0
@@ -2727,11 +3008,13 @@ pub fn score(doc: &Document, program: &Program) -> LayoutScore {
         (100.0 * placed_desks as f64 / program.desks as f64).min(100.0)
     };
 
-    // --- adjacency: nearest-neighbour pitch ratio (tight benches score high) ---
+    // --- adjacency: desk-cluster coherence BLENDED with relationship adjacency ---
+    // (1) Desk coherence: nearest-neighbour pitch ratio (tight benches read as
+    // coherent clusters, not scattered desks).
     let ideal_pitch = ((program.desk_w + program.desk_clearance_m)
         .min(program.desk_h + program.desk_clearance_m))
     .max(1e-6);
-    let adjacency = if desks.len() < 2 {
+    let desk_coherence = if desks.len() < 2 {
         100.0
     } else {
         let mut sum_nn = 0.0;
@@ -2752,13 +3035,20 @@ pub fn score(doc: &Document, program: &Program) -> LayoutScore {
         // avg_nn == ideal_pitch → 100; larger spacing → lower.
         (100.0 * ideal_pitch / avg_nn.max(1e-6)).min(100.0)
     };
+    // (2) Relationship adjacency (meeting↔entry, focus↔facade, pantry central,
+    // IT↔core). Blended in when the plate offers relationships to judge; the
+    // desk-coherence term keeps the sub-score meaningful for a bare open plan.
+    let adjacency = match relationship_adjacency(doc, plate_poly.as_deref(), doc.entries.first().copied()) {
+        Some(rel) => 0.45 * desk_coherence + 0.55 * rel,
+        None => desk_coherence,
+    };
 
     // --- density: peak at the professional 8–12 m²/person band (spec §5) ---
     // Floor area is the true plate-polygon area when the walls close a loop
     // (identical to the bbox for rectangular rooms); bbox only as a fallback.
     // Otherwise an L-plate's density would be diluted by its void notch. The
-    // plate polygon is also reused by the daylight sub-score below.
-    let plate_poly = geometry::trace_floor_polygon(&wall_segments(doc), geometry::LOOP_SNAP_TOL);
+    // plate polygon (traced once at the top) is also reused by the daylight
+    // sub-score below.
     let floor = plate_poly
         .as_deref()
         .map(geometry::polygon_area)
@@ -2881,21 +3171,26 @@ pub fn score(doc: &Document, program: &Program) -> LayoutScore {
     };
 
     // --- weighted total ---
-    let wsum = (program.w_capacity
-        + program.w_adjacency
-        + program.w_circulation
-        + program.w_density
-        + program.w_program
-        + program.w_daylight
-        + program.w_entry)
-        .max(1e-6);
-    let total = (program.w_capacity * capacity
-        + program.w_adjacency * adjacency
-        + program.w_circulation * circulation
-        + program.w_density * density
-        + program.w_program * program_fit
-        + program.w_daylight * daylight
-        + program.w_entry * entry_adjacency)
+    // The strategy re-weights the objective so the seed search WITHIN a strategy
+    // optimises for its priorities (Open → capacity/density; Cellular →
+    // program-fit/entry). Balanced's bias is the identity, so `total` is
+    // byte-unchanged for every pre-M7 (Balanced) program.
+    let bias = program.strategy.weight_bias();
+    let wc = program.w_capacity * bias.capacity;
+    let wa = program.w_adjacency * bias.adjacency;
+    let wr = program.w_circulation * bias.circulation;
+    let wd = program.w_density * bias.density;
+    let wp = program.w_program * bias.program;
+    let wl = program.w_daylight * bias.daylight;
+    let we = program.w_entry * bias.entry;
+    let wsum = (wc + wa + wr + wd + wp + wl + we).max(1e-6);
+    let total = (wc * capacity
+        + wa * adjacency
+        + wr * circulation
+        + wd * density
+        + wp * program_fit
+        + wl * daylight
+        + we * entry_adjacency)
         / wsum;
 
     LayoutScore {
@@ -3598,6 +3893,196 @@ mod tests {
             best_desks >= 64,
             "best seed seated only {best_desks} workstations (< 64: lean rebalance regressed)"
         );
+    }
+
+    // ---- M7: strategy-distinct A/B/C alternatives ---------------------------
+
+    /// The best-of-seeds (desks, enclosed offices, total rooms) a strategy fits
+    /// onto the real plate — the numbers the gallery's A/B/C actually show.
+    fn strategy_fit(strat: Strategy) -> (usize, usize, usize) {
+        let area = geometry::polygon_area(&poly_of(&real_plate_doc()));
+        let headcount = (area / 10.0).round() as u32;
+        let mut best = (0usize, 0usize, 0usize);
+        for seed in 1..=6u64 {
+            let mut program = Program::default();
+            program.strategy = strat;
+            program.headcount = Some(headcount);
+            program.meeting_rooms = 5;
+            program.meeting_w = 3.0;
+            program.meeting_h = 3.0;
+            let mut doc = real_plate_doc();
+            generate(&mut doc, &program, seed, false);
+            let desks = doc.components.iter().filter(|c| c.category == "Desk").count();
+            let rooms = doc
+                .zones
+                .iter()
+                .filter(|z| matches!(z.zone_type, ZoneType::Meeting | ZoneType::ClosedOffice | ZoneType::Amenity | ZoneType::Collaboration))
+                .count();
+            let offices = doc.zones.iter().filter(|z| z.zone_type == ZoneType::ClosedOffice).count();
+            if desks > best.0 {
+                best = (desks, offices, rooms);
+            }
+        }
+        best
+    }
+
+    /// The three strategies produce STRUCTURALLY DISTINCT plans on the real plate
+    /// — not seed-noise. Open maximises the open desk field with minimal
+    /// enclosure; Cellular is privacy-forward (more enclosed offices, fewer
+    /// desks); Balanced sits between. This is the flagship "smarter test-fit"
+    /// differentiator (qbiq's A/B/C differ in offices/seats the same way).
+    /// Measured at authoring (best-of-6-seeds): Open 75 desks / 5 offices,
+    /// Balanced 67 / 10, Cellular 61 / 19.
+    #[test]
+    fn strategies_are_structurally_distinct() {
+        let (open_d, open_o, _) = strategy_fit(Strategy::Open);
+        let (bal_d, bal_o, _) = strategy_fit(Strategy::Balanced);
+        let (cell_d, cell_o, _) = strategy_fit(Strategy::Cellular);
+
+        // Open seats materially MORE workstations than Cellular (the density
+        // trade-off the user picks between).
+        assert!(
+            open_d >= cell_d + 8,
+            "Open ({open_d} desks) must seat materially more than Cellular ({cell_d})"
+        );
+        assert!(bal_d > cell_d && bal_d < open_d, "Balanced desks {bal_d} should sit between Cellular {cell_d} and Open {open_d}");
+        // Cellular is privacy-forward: MORE enclosed offices than Open.
+        assert!(
+            cell_o >= open_o + 5,
+            "Cellular ({cell_o} offices) must be materially more enclosed than Open ({open_o})"
+        );
+        assert!(bal_o > open_o && bal_o < cell_o, "Balanced offices {bal_o} should sit between Open {open_o} and Cellular {cell_o}");
+    }
+
+    /// The DERIVED program mix shifts with strategy: Open pushes the open share
+    /// up (more desks) and thins the cellular families (cabins/focus); Cellular
+    /// does the reverse. Balanced is the pre-M7 identity table.
+    #[test]
+    fn derive_mix_shifts_with_strategy() {
+        let area = 1500.0;
+        let n = 100usize;
+        let derive_for = |strat: Strategy| {
+            let mut p = Program::default();
+            p.strategy = strat;
+            let sp = SpaceProgram::derive(n, area, program_open_share(&p), program_cellular_mult(&p), program_support_cap(&p));
+            let cab = sp.reqs.iter().filter(|r| r.kind == SpaceKind::Cabin).map(|r| r.count).sum::<u32>();
+            (sp.desks, cab)
+        };
+        let (open_desks, open_cab) = derive_for(Strategy::Open);
+        let (bal_desks, bal_cab) = derive_for(Strategy::Balanced);
+        let (cell_desks, cell_cab) = derive_for(Strategy::Cellular);
+        // Balanced identity: desks = ceil(OPEN_SHARE·N), cabins = ceil(N/25).
+        assert_eq!(bal_desks, ((n as f64) * OPEN_SHARE).ceil() as u32);
+        assert_eq!(bal_cab, (n as u32).div_ceil(25));
+        // Open: more desks, fewer cabins than Balanced.
+        assert!(open_desks > bal_desks && open_cab < bal_cab, "Open should out-desk and under-cabin Balanced");
+        // Cellular: fewer desks, more cabins than Balanced.
+        assert!(cell_desks < bal_desks && cell_cab > bal_cab, "Cellular should under-desk and over-cabin Balanced");
+    }
+
+    /// An EXPLICIT room program (the Detailed builder) is honoured verbatim: the
+    /// strategy must NOT override the counts. All three strategies place the same
+    /// enclosed-room count; the strategy then only steers scoring + the search.
+    #[test]
+    fn explicit_program_overrides_strategy_counts() {
+        let rooms = vec![
+            RoomReq { kind: SpaceKind::Cabin, count: 3, w: None, d: None, placement: Placement::Flexible },
+            RoomReq { kind: SpaceKind::Meeting, count: 2, w: None, d: None, placement: Placement::Flexible },
+        ];
+        let count_offices = |strat: Strategy| {
+            let mut program = Program::default();
+            program.strategy = strat;
+            program.rooms = rooms.clone();
+            let mut doc = room(30.0, 20.0);
+            generate(&mut doc, &program, 3, false);
+            let cabins = doc.zones.iter().filter(|z| z.label.starts_with("Cabin")).count();
+            let meetings = doc.zones.iter().filter(|z| z.zone_type == ZoneType::Meeting).count();
+            (cabins, meetings)
+        };
+        let open = count_offices(Strategy::Open);
+        let bal = count_offices(Strategy::Balanced);
+        let cell = count_offices(Strategy::Cellular);
+        assert_eq!(open, bal, "explicit counts must not vary with strategy");
+        assert_eq!(bal, cell, "explicit counts must not vary with strategy");
+        assert_eq!(bal, (3, 2), "explicit program placed its exact requested rooms");
+    }
+
+    /// Determinism is per (strategy, seed): same pair → byte-identical layout;
+    /// different strategy at the same seed → a genuinely different plan.
+    #[test]
+    fn strategy_determinism_and_divergence() {
+        let gen = |strat: Strategy, seed: u64| {
+            let mut program = Program::default();
+            program.strategy = strat;
+            program.headcount = Some(80);
+            let mut doc = room(36.0, 24.0);
+            generate(&mut doc, &program, seed, false);
+            doc.components
+                .iter()
+                .filter(|c| c.category == "Desk")
+                .count()
+        };
+        // Same (strategy, seed) is reproducible.
+        assert_eq!(gen(Strategy::Cellular, 4), gen(Strategy::Cellular, 4));
+        assert_eq!(gen(Strategy::Open, 2), gen(Strategy::Open, 2));
+        // Open seats more desks than Cellular at the same seed (structural, not noise).
+        assert!(gen(Strategy::Open, 2) > gen(Strategy::Cellular, 2), "Open should out-seat Cellular at the same seed");
+    }
+
+    /// Adjacency relationship: on a plate WITH an entry, the meeting/conference
+    /// family clusters in the ENTRY wing (client-facing), the relationship a
+    /// senior planner places by (spec §3) — not scattered to the smallest wing.
+    #[test]
+    fn meetings_cluster_in_the_entry_wing() {
+        // L-plate: a dominant 28×8 bottom field wing (area 224) + a deeper 12×10
+        // upper-left wing (area 120, x<12 & y>8 — smaller, and NOT a reserved
+        // field region). The entry sits in that upper wing, so the meeting/
+        // conference family clusters THERE (client-facing) — the placement bias
+        // in `allocate_rooms` — instead of scattering to the smallest-wing default.
+        let mut doc = room_from_corners(&[
+            (0.0, 0.0),
+            (28.0, 0.0),
+            (28.0, 8.0),
+            (12.0, 8.0),
+            (12.0, 18.0),
+            (0.0, 18.0),
+        ]);
+        doc.entries.push(Point::new(2.0, 16.0));
+        let mut program = Program::default();
+        // Isolate the meeting↔entry relationship from the support program (so the
+        // small entry wing isn't also contested by reception/cabins): the meeting
+        // override honours the bias regardless of `support_spaces`.
+        program.support_spaces = false;
+        program.headcount = Some(45);
+        program.meeting_rooms = 2;
+        program.meeting_w = 3.0;
+        program.meeting_h = 3.0;
+        generate(&mut doc, &program, 3, false);
+        let e = doc.entries[0];
+        let meetings: Vec<(f64, f64)> = doc
+            .zones
+            .iter()
+            .filter(|z| z.zone_type == ZoneType::Meeting)
+            .map(zone_bbox_center)
+            .collect();
+        assert!(!meetings.is_empty(), "meetings were placed");
+        // The majority of meetings land in the entry wing (client-facing cluster).
+        let in_entry_wing = meetings.iter().filter(|&&(x, y)| x < 12.0 && y > 8.0).count();
+        assert!(
+            in_entry_wing * 2 >= meetings.len(),
+            "only {in_entry_wing}/{} meetings clustered in the entry wing",
+            meetings.len()
+        );
+        // And they sit, on average, in a tight client-facing cluster near the entry.
+        let avg_m = meetings
+            .iter()
+            .map(|&(x, y)| ((x - e.x).powi(2) + (y - e.y).powi(2)).sqrt())
+            .sum::<f64>()
+            / meetings.len() as f64;
+        assert!(avg_m < 12.0, "meetings averaged {avg_m:.1} m from the entry (expected a tight cluster)");
+        // The relationship-adjacency sub-score is well-defined and bounded here.
+        let s = score(&doc, &program);
+        assert!((0.0..=100.0).contains(&s.adjacency), "adjacency {} out of range", s.adjacency);
     }
 
     fn poly_of(doc: &Document) -> Vec<Point> {
@@ -4360,7 +4845,8 @@ mod tests {
     fn space_program_derive_is_sane() {
         for &n in &[20usize, 60, 150] {
             // A huge plate so the area cap never bites (pure headcount derivation).
-            let sp = SpaceProgram::derive(n, 100_000.0);
+            // Balanced knobs → the pre-M7 table (identity mix), which this test pins.
+            let sp = SpaceProgram::derive(n, 100_000.0, OPEN_SHARE, 1.0, SUPPORT_AREA_CAP);
             assert_eq!(sp.headcount, n as u32, "headcount preserved on a large plate");
             assert_eq!(sp.desks, ((n as f64) * OPEN_SHARE).ceil() as u32, "desks = ceil(OPEN_SHARE N)");
             // Density lands in the BCO/NBC 8-12 band (spec: ~8-12 m2/person NIA;
@@ -4377,13 +4863,13 @@ mod tests {
             assert_eq!(has(SpaceKind::Boardroom), n >= 60, "N={n}: boardroom iff N>=60");
             assert_eq!(has(SpaceKind::Wellness), n >= 50, "N={n}: wellness iff N>=50");
             // Deterministic.
-            let sp2 = SpaceProgram::derive(n, 100_000.0);
+            let sp2 = SpaceProgram::derive(n, 100_000.0, OPEN_SHARE, 1.0, SUPPORT_AREA_CAP);
             assert_eq!(sp.reqs.len(), sp2.reqs.len());
             assert_eq!(sp.desks, sp2.desks);
         }
         // The area cap bounds an absurd input: 150 people can't be programmed
         // onto a 300 m2 plate.
-        let capped = SpaceProgram::derive(150, 300.0);
+        let capped = SpaceProgram::derive(150, 300.0, OPEN_SHARE, 1.0, SUPPORT_AREA_CAP);
         assert!(capped.headcount < 150, "a tiny plate caps the effective headcount");
     }
 

@@ -115,7 +115,7 @@ function buildPrompt(
     const s = c.score
     lines.push(
       '',
-      `Option ${String.fromCharCode(65 + (i % 26))} (seed ${c.seed}): total ${s.total.toFixed(1)} — capacity ${s.capacity.toFixed(0)}, adjacency ${s.adjacency.toFixed(0)}, circulation ${s.circulation.toFixed(0)}, density ${s.density.toFixed(0)}; ${s.placed_desks} desks placed.`,
+      `Option ${String.fromCharCode(65 + (i % 26))} (${c.strategy} strategy, seed ${c.seed}): total ${s.total.toFixed(1)} — capacity ${s.capacity.toFixed(0)}, adjacency ${s.adjacency.toFixed(0)}, circulation ${s.circulation.toFixed(0)}, density ${s.density.toFixed(0)}; ${s.placed_desks} desks placed.`,
     )
     const extra = summaries?.[c.seed]
     if (extra) lines.push(extra)

@@ -18,6 +18,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { EditorController } from '../../App'
 import type { Candidate, GenResult } from '../../editor/EditorCanvas'
+import { STRATEGY_LABEL, STRATEGY_BLURB } from '../../editor/EditorCanvas'
 import { buildReportModel, computeWinners, type AltKpis } from '../../export/report'
 import { evaluateCandidates, type SoftVerdict } from '../../ai/evaluator'
 import { getProject, updateDraft, updateProject, type ProjectRecord } from '../../persist/projects'
@@ -89,7 +90,10 @@ export function GenerateStep({
     const cands = res.candidates
     // Per-candidate KPIs from the SAME helper the branded report prints.
     const model = buildReportModel(
-      cands.map((c, i) => ({ name: `Alternative ${LETTER(i)}`, snapshot: c.snap as string })),
+      cands.map((c, i) => ({
+        name: `Alternative ${LETTER(i)} — ${STRATEGY_LABEL[c.strategy]}`,
+        snapshot: c.snap as string,
+      })),
       { project: rec?.name ?? 'Untitled Plan' },
     )
     setResult(res)
@@ -210,19 +214,26 @@ export function GenerateStep({
                 className="generate-alt-thumb"
                 onClick={() => setActiveSeed(c.seed)}
                 aria-pressed={active}
-                aria-label={`Select Alternative ${LETTER(i)}`}
+                aria-label={`Select Alternative ${LETTER(i)} — ${STRATEGY_LABEL[c.strategy]}`}
               >
-                <img src={c.thumb} alt={`Alternative ${LETTER(i)} floor plan`} draggable={false} />
+                <img
+                  src={c.thumb}
+                  alt={`Alternative ${LETTER(i)} (${STRATEGY_LABEL[c.strategy]}) floor plan`}
+                  draggable={false}
+                />
                 <span className="generate-alt-letter">{LETTER(i)}</span>
               </button>
               <div className="generate-alt-body">
                 <div className="generate-alt-title">
-                  <span className="generate-alt-name">Alternative {LETTER(i)}</span>
+                  <span className="generate-alt-name">
+                    {LETTER(i)} · {STRATEGY_LABEL[c.strategy]}
+                  </span>
                   <span className="generate-alt-score num">
                     {Math.round(c.score.total)}
                     <span className="generate-alt-score-of">/100</span>
                   </span>
                 </div>
+                <p className="generate-alt-blurb">{STRATEGY_BLURB[c.strategy]}</p>
 
                 {wins.length > 0 && (
                   <div className="generate-badges">

@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react'
 import type { Candidate } from '../editor/EditorCanvas'
+import { STRATEGY_LABEL } from '../editor/EditorCanvas'
 import type { SoftVerdict } from '../ai/evaluator'
 
 /**
@@ -46,10 +47,15 @@ export function CandidateGallery({
                 boxShadow: active ? `0 0 0 1px ${ACCENT}` : 'none',
               }}
             >
-              <img src={c.thumb} alt={`Option ${LETTER(i)} plan`} style={S.thumb} draggable={false} />
+              <img
+                src={c.thumb}
+                alt={`Option ${LETTER(i)} (${STRATEGY_LABEL[c.strategy]}) plan`}
+                style={S.thumb}
+                draggable={false}
+              />
               <div style={S.row}>
                 <span style={{ ...S.name, color: active ? ACCENT : '#1a1d21' }}>
-                  Option {LETTER(i)}
+                  {LETTER(i)} · {STRATEGY_LABEL[c.strategy]}
                 </span>
                 <span style={S.total}>{Math.round(c.score.total)}</span>
               </div>

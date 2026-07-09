@@ -8,6 +8,7 @@ import {
   GenResult,
   Candidate,
   DEFAULT_PROGRAM,
+  STRATEGY_LABEL,
 } from './editor/EditorCanvas'
 import { CATALOG, catByCategory } from './editor/catalog'
 import { searchBank } from './materialBank/mock'
@@ -1227,7 +1228,10 @@ function ExportMenu({
   const exportReport = () => {
     const best = candidates.slice(0, 3)
     const alts = best.length
-      ? best.map((c, i) => ({ name: `Alternative ${'ABC'[i]}`, snapshot: c.snap as string }))
+      ? best.map((c, i) => ({
+          name: `Alternative ${'ABC'[i]} — ${STRATEGY_LABEL[c.strategy]}`,
+          snapshot: c.snap as string,
+        }))
       : ec
         ? [{ name: 'Alternative A', snapshot: ec.snapshot() }]
         : []
