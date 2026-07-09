@@ -85,6 +85,9 @@ Make generated plans read like a senior architect's work, not a diagram.
   band+spine overhead costs ~3 desks/room. Needs an `allocate_rooms`/M4 room-concentration rework (rooms
   hug fewer wings), not more ratio tuning. Plan is already professional + open-dominant, so this is
   upside, not a blocker.
+- 🔄 **Smarter test-fits** (user: "needs to be smarter"). Strategy-diverse A/B/C (Open / Balanced /
+  Cellular — genuinely distinct room mix + layout, not seed-noise) + adjacency intelligence (meetings↔
+  entry, focus↔facade, pantry central, IT↔core, coherent desk clusters). The flagship differentiator.
 - [ ] **Keep-existing / respect-partitions mode** (workflow-gated) — re-enable pushing imported walls
   when the user wants to work *around* their existing fit-out (via S2/S4 controls).
 
@@ -128,14 +131,19 @@ Make generated plans read like a senior architect's work, not a diagram.
 ## Track H — 3D / visualization
 - [x] Three.js 2D↔3D viewer, walkthrough, Enscape-like render tier (sky/GTAO/bloom), glass/PBR,
   click-to-pick, glazing walls translucent.
-- [ ] Better real-time materials/furniture models ("good-enough" for client walkthrough — chosen over
-  photoreal). Visual tuning needs a real GPU (untestable headless).
+- 🔄 **Material differentiation + customizable themes** (user: 3D was an all-white void). Zone-tinted
+  floors, distinct wall tones, grounded exterior, + Studio/Warm/Mono/Blueprint theme presets.
+- [x] 2D grid legibility bump (was 3.5% opacity → read as white).
+- [ ] Better real-time furniture models ("good-enough" for walkthrough — chosen over photoreal). Visual
+  tuning needs a real GPU (untestable headless).
 
 ## Track I — Persistence, library, projects
 - [x] `.dsource` save/open, plan library (IndexedDB), scenario compare, version history, multi-floor
   projects (grouping + floor switcher).
-- [ ] **Cloud plan sync** — `POST /api/plans` exists server-side; client `sync.ts` loop (push/pull,
-  last-write-wins) unwritten.
+- [x] **Cloud plan sync** — `persist/sync.ts` `syncPlans()`: push local `updatedAt>syncedAt`, pull remote
+  newer, last-write-wins both directions, idempotent, offline-safe; additive `syncedAt/remoteRev`; dev
+  `/api/plans` middleware (mirrors deploy/server.ts). Library sync row + auto-sync on open. Two-device
+  E2E verified. (Live once deployed; delete-tombstones deferred.)
 
 ## Track J — Deploy / infra
 - [x] Production bundle: single Node `dsource-api` (SPA + `/api/agent|claude|dwg|bank|plans`), systemd
