@@ -131,8 +131,15 @@ User: "our editor doesn't feel as intuitive/detailed as Rayon… most of it is t
   App-level window keydown with typing-guard: V/W/L/R/C/A/D/T/M fire tools, ⌘K toggles palette. Rail
   badges now reflect real bindings. Verified: ⌘K→"wall"→Enter sets wall tool; typing-guard blocks
   shortcuts in inputs.
-- [ ] M3 context object inspector · M4 live dims on selection + click-to-edit · M5 grouped tool dock ·
-  M6 sheets/publish.
+- [x] **M3 context object inspector** — `ui/ObjectInspector.tsx`: selected component → editable
+  geometry card (X/Y/W/H/rotation/category, IBM Plex Mono, commit on blur/Enter) above ReimaginePanel;
+  nothing selected → Canvas card (Presentation wired; units/grid/axis/bg display-only). Additive
+  EditorCanvas `selectedInfo()`/`updateSelected()` + additive ds-core `set_component_size`/
+  `set_component_category`. 94 Rust tests.
+- [x] **M5 grouped tool dock** — `ui/ToolDock.tsx` replaces the flat left rail with 6 Rayon-style
+  clusters (Select/Draw/Place/Measure/Build/Modify) derived from the existing CAD_RAIL+CATALOG (one
+  tool list); hover/click flyouts, active-tool lit, ≤2 clicks to any tool; per-tool testids preserved.
+- [ ] M4 live dims on selection + click-to-edit · M6 sheets/publish.
 
 ### Drawing-set output (`docs/design/drawing-set-generator.md`)
 User showed Rayon drawing-set PDFs as the output bar (`docs/reference/rayon-output/`).
