@@ -14,6 +14,7 @@ import {
   type DynState,
   type PolarOpts,
 } from '../cad/dynamicInput'
+import { fmtMeters, parseDim, endpointForLength } from '../cad/dimEdit'
 import { evaluatorAvailable } from '../ai/evaluator'
 import { applyDelta, proposeAdjustment, refScore, type ProgramDelta } from '../ai/refine'
 
@@ -434,6 +435,15 @@ export class EditorCanvas {
   /** Per-frame cache of the resolved candidate point (avoids re-snapping). */
   private dynResolved: DynResolved | null = null
 
+  // ---- selection dimensions + click-to-edit (M4) ----
+  /** Inline numeric editor (an <input> over the canvas) for a clicked dimension. */
+  private dimEditEl: HTMLInputElement | null = null
+  /** What the open inline editor is editing, or null when closed. */
+  private dimEditing: { kind: 'compX' | 'compY' | 'lineLen'; targetId: number } | null = null
+  /** Screen-space click targets for the editable selection dimensions, rebuilt
+   *  each frame in {@link drawSelectionDims}. */
+  private dimHits: { x: number; y: number; w: number; h: number; kind: 'compX' | 'compY' | 'lineLen'; targetId: number }[] = []
+
   onChange: (() => void) | null = null
   /** Last program used to generate — shared source for the generate card + AI. */
   program: Program = { ...DEFAULT_PROGRAM }
@@ -472,6 +482,7 @@ export class EditorCanvas {
     }
     this.attach()
     this.createDynWidget()
+    this.createDimEditor()
     this.resize()
     this.render()
     // Dev-only test seam: expose the live instance so E2E / debugging can drive
@@ -739,7 +750,7 @@ export class EditorCanvas {
     const ctx = this.ctx
     const mid = this.toScreen((a.x + b.x) / 2, (a.y + b.y) / 2)
     const label =
-      angleDeg != null ? `${len.toFixed(2)} m  ${Math.round(angleDeg)}°` : `${len.toFixed(2)} m`
+      angleDeg != null ? `${fmtMeters(len)}  ${Math.round(angleDeg)}°` : fmtMeters(len)
     ctx.save()
     ctx.font = '10px "IBM Plex Mono", ui-monospace, monospace'
     ctx.textAlign = 'center'
@@ -770,6 +781,225 @@ export class EditorCanvas {
     ctx.arcTo(x, y + h, x, y, r)
     ctx.arcTo(x, y, x + w, y, r)
     ctx.closePath()
+  }
+
+  // ---- selection dimensions + click-to-edit (M4, Rayon "the dimension IS the
+  //      input"). Purely additive to render/input; guarded to exactly-one
+  //      selection and disabled while drawing a chain or in presentation. ----
+
+  /** The single selected CAD line (the app's only length-editable segment
+   *  primitive — doc walls are immutable in the wasm surface), or null. */
+  private selectedLine(): (CadEntity & { kind: 'line' }) | null {
+    const ids = this.cad.selected
+    if (ids.size !== 1) return null
+    const e = this.cad.store.get([...ids][0])
+    return e && e.kind === 'line' ? (e as CadEntity & { kind: 'line' }) : null
+  }
+
+  /**
+   * Draw the measured dimensions of the current selection and register the
+   * editable labels as click targets:
+   *  - component → W (top) + H (right) informational size dims, plus editable
+   *    X / Y position chips. The wasm Editor exposes no component-resize mutator
+   *    (only move_component + set_component_rotation), so click-to-edit is scoped
+   *    to POSITION per the editor-UX plan's fallback — clicking X/Y repositions.
+   *  - CAD line → an editable length chip at its midpoint (Enter re-lengths the
+   *    segment along its current bearing, anchoring endpoint a).
+   * Nothing is drawn when nothing is selected (obviously non-destructive).
+   */
+  private drawSelectionDims() {
+    this.dimHits = []
+    if (this.presentation || this.dynArmed()) return
+
+    const c = this.getSelected()
+    if (c && this.tool === 'select') {
+      const ctr = this.toScreen(c.x, c.y)
+      const cos = Math.cos(c.rotation)
+      const sin = Math.sin(c.rotation)
+      // World point from a local (meters) offset, honoring rotation.
+      const lp = (lx: number, ly: number) =>
+        this.toScreen(c.x + lx * cos - ly * sin, c.y + lx * sin + ly * cos)
+      // Place a label just outside an edge midpoint, offset in screen px along
+      // the outward normal so the gap is zoom-independent and rotation-correct.
+      const edge = (lx: number, ly: number, gap = 15) => {
+        const p = lp(lx, ly)
+        const dx = p.x - ctr.x
+        const dy = p.y - ctr.y
+        const d = Math.hypot(dx, dy) || 1
+        return { x: p.x + (dx / d) * gap, y: p.y + (dy / d) * gap }
+      }
+      const hw = c.w / 2
+      const hh = c.h / 2
+      const wp = edge(0, -hh) // top
+      const hp = edge(hw, 0) // right
+      const xp = edge(0, hh) // bottom
+      const yp = edge(-hw, 0) // left
+      this.drawDimLabel(wp.x, wp.y, fmtMeters(c.w), false)
+      this.drawDimLabel(hp.x, hp.y, fmtMeters(c.h), false)
+      this.drawDimLabel(xp.x, xp.y, `X ${c.x.toFixed(2)}`, true, 'compX', c.id)
+      this.drawDimLabel(yp.x, yp.y, `Y ${c.y.toFixed(2)}`, true, 'compY', c.id)
+      return
+    }
+
+    const ln = this.selectedLine()
+    if (ln && this.cad.active) {
+      const len = Math.hypot(ln.b.x - ln.a.x, ln.b.y - ln.a.y)
+      const mid = this.toScreen((ln.a.x + ln.b.x) / 2, (ln.a.y + ln.b.y) / 2)
+      this.drawDimLabel(mid.x, mid.y, fmtMeters(len), true, 'lineLen', ln.id)
+    }
+  }
+
+  /** Draw one selection-dimension pill (M1 chip visual language: editable →
+   *  filled accent, informational → quiet paper). Records a hitbox when editable
+   *  so {@link tryOpenDimEditor} can route a click to the inline editor. */
+  private drawDimLabel(
+    cx: number,
+    cy: number,
+    text: string,
+    editable: boolean,
+    kind?: 'compX' | 'compY' | 'lineLen',
+    targetId?: number,
+  ) {
+    const ctx = this.ctx
+    ctx.save()
+    ctx.font = '10px "IBM Plex Mono", ui-monospace, monospace'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    const tw = ctx.measureText(text).width
+    const w = tw + 12
+    const h = 17
+    const x = cx - w / 2
+    const y = cy - h / 2
+    // Skip the pill that the inline editor is currently covering.
+    const hidden = editable && this.dimEditing?.kind === kind && this.dimEditing?.targetId === targetId
+    if (!hidden) {
+      ctx.fillStyle = editable ? C.accent : 'rgba(255,255,255,0.9)'
+      this.roundRect(ctx, x, y, w, h, 4)
+      ctx.fill()
+      if (!editable) {
+        ctx.strokeStyle = 'rgba(45,91,214,0.28)'
+        ctx.lineWidth = 1
+        this.roundRect(ctx, x + 0.5, y + 0.5, w - 1, h - 1, 4)
+        ctx.stroke()
+      }
+      ctx.fillStyle = editable ? '#ffffff' : C.accent
+      ctx.fillText(text, cx, cy)
+    }
+    ctx.restore()
+    if (editable && kind && targetId != null) {
+      this.dimHits.push({ x, y, w, h, kind, targetId })
+    }
+  }
+
+  private createDimEditor() {
+    const parent = this.canvas.parentElement
+    if (!parent) return
+    const el = document.createElement('input')
+    el.type = 'text'
+    el.inputMode = 'decimal'
+    el.className = 'dim-edit'
+    el.setAttribute('data-testid', 'dim-edit')
+    // Inline styles keep this self-contained in EditorCanvas (no styles.css edit),
+    // while matching the M1 dyn-input look (IBM Plex Mono, accent focus ring).
+    Object.assign(el.style, {
+      position: 'absolute',
+      zIndex: '7',
+      display: 'none',
+      width: '64px',
+      padding: '2px 6px',
+      textAlign: 'center',
+      font: '12.5px "IBM Plex Mono", ui-monospace, monospace',
+      color: '#1a1d21',
+      background: 'rgba(255,255,255,0.98)',
+      border: `1.5px solid ${C.accent}`,
+      borderRadius: '5px',
+      boxShadow: '0 1px 4px rgba(23,26,30,0.18)',
+      outline: 'none',
+    } as CSSStyleDeclaration)
+    el.addEventListener('keydown', (e) => {
+      e.stopPropagation() // never leak digits/Enter to the canvas key handlers
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        this.commitDimEdit()
+      } else if (e.key === 'Escape') {
+        e.preventDefault()
+        this.cancelDimEdit()
+      }
+    })
+    // Committing on blur would fight the Escape path; blur just cancels.
+    el.addEventListener('blur', () => this.cancelDimEdit())
+    parent.appendChild(el)
+    this.dimEditEl = el
+  }
+
+  /** Route a canvas click to the inline dimension editor when it lands on an
+   *  editable label. Returns true when consumed (so selection/placement is
+   *  skipped). Guarded to exactly-one selection via {@link drawSelectionDims}. */
+  private tryOpenDimEditor(s: { x: number; y: number }): boolean {
+    for (const hb of this.dimHits) {
+      if (s.x >= hb.x && s.x <= hb.x + hb.w && s.y >= hb.y && s.y <= hb.y + hb.h) {
+        this.openDimEditor(hb)
+        return true
+      }
+    }
+    return false
+  }
+
+  private openDimEditor(hb: { x: number; y: number; w: number; h: number; kind: 'compX' | 'compY' | 'lineLen'; targetId: number }) {
+    const el = this.dimEditEl
+    if (!el) return
+    let value = ''
+    if (hb.kind === 'lineLen') {
+      const ln = this.selectedLine()
+      if (!ln) return
+      value = Math.hypot(ln.b.x - ln.a.x, ln.b.y - ln.a.y).toFixed(2)
+    } else {
+      const c = this.getSelected()
+      if (!c) return
+      value = (hb.kind === 'compX' ? c.x : c.y).toFixed(2)
+    }
+    this.dimEditing = { kind: hb.kind, targetId: hb.targetId }
+    el.value = value
+    el.style.left = `${Math.round(hb.x + hb.w / 2 - 32)}px`
+    el.style.top = `${Math.round(hb.y + hb.h / 2 - 11)}px`
+    el.style.display = 'block'
+    this.render()
+    el.focus()
+    el.select()
+  }
+
+  private commitDimEdit() {
+    const ed = this.dimEditing
+    const el = this.dimEditEl
+    if (!ed || !el) return this.cancelDimEdit()
+    const v = parseDim(el.value)
+    if (v == null) return this.cancelDimEdit()
+    if (ed.kind === 'lineLen') {
+      const ln = this.selectedLine()
+      if (ln && ln.id === ed.targetId) {
+        this.cad.store.snapshot()
+        this.cad.store.update(ln.id, { b: endpointForLength(ln.a, ln.b, v) })
+      }
+    } else {
+      const c = this.getSelected()
+      if (c && c.id === ed.targetId) {
+        const x = ed.kind === 'compX' ? v : c.x
+        const y = ed.kind === 'compY' ? v : c.y
+        this.ed.move_component(c.id, x, y)
+        this.commit()
+      }
+    }
+    this.closeDimEditor()
+  }
+
+  private cancelDimEdit() {
+    this.closeDimEditor()
+  }
+
+  private closeDimEditor() {
+    this.dimEditing = null
+    if (this.dimEditEl) this.dimEditEl.style.display = 'none'
+    this.render()
   }
 
   // ---- API consumed by React ----
@@ -864,6 +1094,7 @@ export class EditorCanvas {
     this.tool = t
     this.wallStart = null
     this.resetDyn()
+    if (this.dimEditing) this.closeDimEditor()
     this.cad.setTool(t.startsWith('cad:') ? t.slice(4) : null)
     this.render()
   }
@@ -1140,6 +1371,7 @@ export class EditorCanvas {
     window.removeEventListener('keyup', this.onKeyUp)
     window.removeEventListener('resize', this.onResize)
     this.dynEl?.remove()
+    this.dimEditEl?.remove()
   }
 
   private onKeyUp = (e: KeyboardEvent) => {
@@ -1169,6 +1401,13 @@ export class EditorCanvas {
       this.panning = true
       this.canvas.style.cursor = 'grabbing'
       return
+    }
+    // M4: a click on an editable selection-dimension label opens the inline
+    // numeric editor (single selection, not while drawing). A miss dismisses any
+    // open editor. Runs before tool routing so it wins over select/grip hits.
+    if (e.button === 0 && !this.dynArmed()) {
+      if (this.tryOpenDimEditor(s)) return
+      if (this.dimEditing) this.cancelDimEdit()
     }
     const w = this.toWorld(s.x, s.y)
     if (this.cad.active) {
@@ -1330,6 +1569,7 @@ export class EditorCanvas {
     } else if (e.key === 'Escape') {
       this.wallStart = null
       this.resetDyn()
+      if (this.dimEditing) this.closeDimEditor()
       this.ed.clear_selection()
       this.commit()
     } else if (e.key === 'Delete' || e.key === 'Backspace') {
@@ -1440,6 +1680,9 @@ export class EditorCanvas {
 
     // Live per-segment dimension chips (Rayon helper-dimensions) above linework.
     this.drawDimChips()
+
+    // Measured dimensions of the current selection + click-to-edit targets (M4).
+    this.drawSelectionDims()
 
     if (this.presentation) {
       if (st.walls.length || st.components.length) this.drawSummary(w, h)
