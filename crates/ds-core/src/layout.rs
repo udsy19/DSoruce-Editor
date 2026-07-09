@@ -1500,7 +1500,10 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
         };
         // Priority order = placement order: reception first (entry-adjacent),
         // then the big rooms while band space is plentiful, small/distributed
-        // last.
+        // last. Focus rooms are lifted ahead of the bulk support set: they are
+        // facade-PINNED (item 4a), so they must claim a daylit band slot before
+        // the frontage is spent — otherwise, being small and late, they overflow
+        // into interior pockets, AWAY from the window the hard rule requires.
         take(&mut jobs, SpaceKind::Reception);
         for k in 0..remaining_meetings {
             let t = job_template(SpaceKind::Meeting, program);
@@ -1512,6 +1515,7 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
                 Placement::Flexible,
             ));
         }
+        take(&mut jobs, SpaceKind::Focus);
         for kind in [
             SpaceKind::Cabin,
             SpaceKind::Collab,
@@ -1519,7 +1523,6 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
             SpaceKind::ItServer,
             SpaceKind::Storage,
             SpaceKind::Wellness,
-            SpaceKind::Focus,
             SpaceKind::Print,
             SpaceKind::PhoneBooth,
         ] {
@@ -1698,6 +1701,19 @@ struct RoomJob {
     placement: Placement,
 }
 
+/// Facade preference for a DERIVED support room. Focus rooms are pinned to the
+/// facade via `Window` (item 4a: a HARD daylight/placement rule — Window biases
+/// both the wing chosen and the within-band slot toward the plate boundary — on
+/// top of the rear-alignment in `place_in_band` that seats them ON the facade
+/// wall). Every other derived room stays placement-neutral (`Flexible`) so the
+/// derive path is byte-identical apart from focus.
+fn derived_placement(kind: SpaceKind) -> Placement {
+    match kind {
+        SpaceKind::Focus => Placement::Window,
+        _ => Placement::Flexible,
+    }
+}
+
 /// Expand the derived support program into placeable room jobs (spec §1.1).
 ///
 /// Zone-type mapping (spec asks for a justified choice): cabins, phone booths
@@ -1736,9 +1752,10 @@ fn support_jobs(program: &Program, plate_area: f64) -> Vec<RoomJob> {
             } else {
                 format!("{} {}", t.name, i + 1)
             };
-            // Derived rooms carry their derive() footprint; every derived room is
-            // placement-neutral (`Flexible`).
-            jobs.push(t.to_job(req.kind, label, snap_module(req.w), snap_module(req.d), Placement::Flexible));
+            // Derived rooms carry their derive() footprint. Focus rooms are pinned
+            // to the facade (`Window`) — item 4a's HARD daylight rule; the rest stay
+            // placement-neutral (`Flexible`), so the derive path is otherwise unchanged.
+            jobs.push(t.to_job(req.kind, label, snap_module(req.w), snap_module(req.d), derived_placement(req.kind)));
         }
     }
     jobs
@@ -2286,23 +2303,27 @@ fn plan_region(
         }
     } else if let Some(e) = entry {
         // Entry into a RESERVED pure-desk field wing (no band, hence no spine):
-        // draw a short spine-width APPROACH stub from the entry's near end into
-        // the field, along the wing's long axis. It gives the door a drawn
-        // walkable approach (desks avoid it) and keeps the circulation network
-        // reaching the entry even though this wing carries no room-band spine —
-        // the deliberate open-plan entry of the field-first layout. Only ever
-        // drawn when the plate actually has an entry, so the room-free dominance
-        // fits are unaffected.
+        // draw a SECONDARY BOULEVARD running the field's FULL long axis at the
+        // entry's cross-position. Two wins over the old 2.5 m approach stub:
+        //   * NO DEAD-END — the stub terminated blind inside the desk block (a
+        //     drawn corridor to nowhere, spec §3 / deliverable 2); a full-length
+        //     run meets the region's along-edges (a seam corridor / the facade)
+        //     at BOTH ends, so the door reads as a through-route into the network.
+        //   * a LEGIBLE 1.15 m secondary aisle (IBC) that splits the reserved
+        //     field into two desk neighborhoods and ties it into the primary-spine
+        //     hierarchy — WITHOUT re-imposing the room-band + 1.5 m spine depth the
+        //     concentration rework removed (that cost the wing whole desk columns).
+        // Only the ENTRY wing is bisected; other reserved fields stay undivided and
+        // dense, connected through their seam corridors. Never drawn without a real
+        // entry, so the room-free dominance fits are unaffected.
         let (e_along, e_cross) = if portrait { (e.y, e.x) } else { (e.x, e.y) };
         rev = (e_along - a1).abs() < (e_along - a0).abs();
         let (fc0, fc1) = field_c;
-        if a1 - a0 > SPINE_W && fc1 - fc0 > SPINE_W {
-            // Keep the stub inside the field's cross-band so it never straddles
-            // the facade gap or a seam.
-            let cc = e_cross.clamp(fc0 + SPINE_W / 2.0, fc1 - SPINE_W / 2.0);
-            let approach = (a1 - a0).min(2.5).max(SPINE_W);
-            let (k0, k1) = if !rev { (a0, a0 + approach) } else { (a1 - approach, a1) };
-            connector = Some(rect(k0, k1, cc - SPINE_W / 2.0, cc + SPINE_W / 2.0));
+        if a1 - a0 > SECONDARY_W && fc1 - fc0 > 2.0 * SECONDARY_W {
+            // Keep the boulevard inside the field's cross-band so it never
+            // straddles the facade gap or a seam.
+            let cc = snap_module(e_cross.clamp(fc0 + SECONDARY_W / 2.0, fc1 - SECONDARY_W / 2.0));
+            connector = Some(rect(a0, a1, cc - SECONDARY_W / 2.0, cc + SECONDARY_W / 2.0));
         }
     }
 
@@ -2483,9 +2504,20 @@ fn place_in_band(
     if d < 0.7 * job.d - 1e-9 || w < 0.7 * job.w - 1e-9 || w < 0.5 {
         return false;
     }
-    // Front-aligned: the corridor face sits exactly on the band front line.
+    // Front-aligned: the corridor face sits exactly on the band front line — so
+    // every room front lands on one unbroken line (spec §4.3). EXCEPTION: Focus
+    // rooms REAR-align to `band_base` (the band's rear, which backs onto the
+    // boundary/facade wall) so they sit ON the facade for daylight — item 4a's
+    // HARD placement rule (front-alignment would float a shallow focus room in
+    // the band middle, AWAY from the window, which is exactly the inequality M7
+    // couldn't guarantee). Their glazed front + door still open toward the spine
+    // across the shallow set-back the deeper band leaves — a reachable pocket.
     let sign = if plan.band_far { 1.0 } else { -1.0 };
-    let cc = plan.band_front + sign * d / 2.0;
+    let cc = if job.kind == SpaceKind::Focus {
+        plan.band_base - sign * d / 2.0
+    } else {
+        plan.band_front + sign * d / 2.0
+    };
     let side = match (plan.portrait, plan.band_far) {
         (false, false) => CorridorSide::Top,
         (false, true) => CorridorSide::Bottom,
@@ -3925,6 +3957,154 @@ mod tests {
         assert!(
             best_desks >= 74,
             "best seed seated only {best_desks} workstations (< 74: concentration regressed)"
+        );
+    }
+
+    /// The reserved wing's centroid, for pinning an entry INTO the dominant desk
+    /// field so the field-boulevard path (spine-less region, `plan_region` entry
+    /// branch) is exercised.
+    fn dominant_field_center(doc: &Document) -> (f64, f64) {
+        let poly = poly_of(doc);
+        let holes: Vec<geometry::Rect> = Vec::new();
+        let min_dim = REGION_MIN_DIM.max(2.0 * 1.2 + 0.8);
+        let regions = geometry::decompose_plate(&poly, REGION_CELL, min_dim, REGION_MIN_AREA, &holes);
+        let big = (0..regions.len())
+            .max_by(|&a, &b| regions[a].area().partial_cmp(&regions[b].area()).unwrap())
+            .unwrap();
+        let r = &regions[big];
+        ((r.x0 + r.x1) / 2.0, (r.y0 + r.y1) / 2.0)
+    }
+
+    /// DELIVERABLE 1+2+3 — the circulation NETWORK. On the real ~843 m² plate with
+    /// the full professional program and an entry pinned into the dominant desk
+    /// field, the walkable free space is ONE connected region, the network REACHES
+    /// the entry, the reserved field carries a legible drawn SECONDARY aisle (the
+    /// through-boulevard, not a dead-end stub), and the headline circulation score
+    /// clears 60 — up from the ~50 the spine-less-field regression produced (the
+    /// drop was a scoring artefact: the pervasive 0.9 m bench gaps were counted as
+    /// sub-1.2 m corridor failures; the evaluator now scores connectivity, entry-
+    /// reachability, genuine-pinch avoidance and corridor HIERARCHY instead).
+    #[test]
+    fn circulation_network_reaches_entry_with_no_dead_ends() {
+        let area = geometry::polygon_area(&poly_of(&real_plate_doc()));
+        let headcount = (area / 10.0).round() as u32;
+        let mut program = Program::default();
+        program.headcount = Some(headcount);
+        program.desks = ((headcount as f64) * OPEN_SHARE).round() as u32;
+        program.meeting_rooms = 5;
+        program.meeting_w = 3.0;
+        program.meeting_h = 3.0;
+        let (ex, ey) = dominant_field_center(&real_plate_doc());
+        let mut cfg = CirculationConfig::default();
+        cfg.target_corridor_width = program.target_corridor_m; // 1.2, the app's target
+
+        for seed in 1..=4u64 {
+            let mut doc = real_plate_doc();
+            doc.entries.push(Point::new(ex, ey));
+            generate(&mut doc, &program, seed, false);
+            let s = circulation::evaluate(&doc, &cfg);
+
+            // One connected walkable region that the network reaches from the door.
+            assert!(
+                s.largest_connected_free_region >= 0.98,
+                "seed {seed}: free space fragments (largest region {:.3})",
+                s.largest_connected_free_region
+            );
+            assert!(
+                s.entry_reachable_fraction >= 0.98,
+                "seed {seed}: network fails to reach the entry ({:.3})",
+                s.entry_reachable_fraction
+            );
+            // Restored to a professional score (was ~50 spine-less).
+            assert!(s.score >= 60.0, "seed {seed}: circulation {:.1} < 60", s.score);
+
+            // The reserved desk field carries a DRAWN secondary aisle — a real
+            // through-run (> 5 m, not the retired 2.5 m dead-end stub), ~1.15 m
+            // wide (IBC secondary) — tying it into the primary-spine network.
+            let entry_aisles: Vec<(f64, f64)> = doc
+                .zones
+                .iter()
+                .filter(|z| z.zone_type == ZoneType::Circulation && z.label == "Entry")
+                .map(|z| {
+                    let (x0, y0, x1, y1) = z.shape.bbox();
+                    ((x1 - x0).abs(), (y1 - y0).abs())
+                })
+                .collect();
+            assert!(
+                entry_aisles.iter().any(|&(w, h)| {
+                    let (short, long) = (w.min(h), w.max(h));
+                    (0.9..=1.4).contains(&short) && long > 5.0
+                }),
+                "seed {seed}: no full-length secondary boulevard in the desk field: {entry_aisles:?}"
+            );
+        }
+    }
+
+    /// DELIVERABLE 3 — the score holds ≥55 on the fixtures at the app's 1.2 m
+    /// corridor target: a single-region plate (band + 1.5 m spine + desk field)
+    /// and the L-plate. Guards against the scoring rework over-penalising the
+    /// legitimate 0.9 m bench gaps a dense fixture carries.
+    #[test]
+    fn fixture_circulation_holds_above_55() {
+        let mut program = Program::default();
+        program.support_spaces = false;
+        program.desks = 30;
+        program.meeting_rooms = 2;
+        program.meeting_w = 3.0;
+        program.meeting_h = 3.0;
+        let mut cfg = CirculationConfig::default();
+        cfg.target_corridor_width = program.target_corridor_m;
+        for (label, mut doc) in [("rect 30x20", room(30.0, 20.0)), ("L-plate", l_room())] {
+            for seed in 1..=3u64 {
+                generate(&mut doc, &program, seed, false);
+                let s = circulation::evaluate(&doc, &cfg);
+                assert!(
+                    s.score >= 55.0,
+                    "{label} seed {seed}: circulation {:.1} < 55 (conn {:.2}, cover {:.2}, minw {:.2})",
+                    s.score, s.largest_connected_free_region, s.corridor_coverage, s.min_corridor_width
+                );
+            }
+        }
+    }
+
+    /// DELIVERABLE 4a — focus rooms sit ON the facade (daylight), nearer it than
+    /// the meeting rooms. `Window` placement pins them to the facade-band wing +
+    /// slot, and `place_in_band` REAR-aligns them onto the boundary wall — the
+    /// geometric rule that makes the M7 inequality hold on a feasible plate (a
+    /// front-aligned shallow focus room would float in the band middle, away from
+    /// the window). Gated to a plate that actually derives both room types.
+    #[test]
+    fn focus_rooms_hug_the_facade_nearer_than_meetings() {
+        let mut program = Program::default();
+        program.headcount = Some(64); // → 2 focus (ceil 64/60) + the 2 meetings
+        program.meeting_rooms = 2;
+        program.meeting_w = 3.0;
+        program.meeting_h = 3.0;
+        let mut doc = room(40.0, 16.0);
+        generate(&mut doc, &program, 1, false);
+        let poly = poly_of(&doc);
+        let focus: Vec<(f64, f64)> = doc
+            .zones
+            .iter()
+            .filter(|z| z.label.starts_with("Focus"))
+            .map(zone_bbox_center)
+            .collect();
+        let meetings: Vec<(f64, f64)> = doc
+            .zones
+            .iter()
+            .filter(|z| z.zone_type == ZoneType::Meeting)
+            .map(zone_bbox_center)
+            .collect();
+        // Feasibility gate: only judge when the plate carries both room types.
+        assert!(!focus.is_empty(), "test plate derived no focus rooms");
+        assert!(!meetings.is_empty(), "test plate derived no meeting rooms");
+        let avg = |v: &[(f64, f64)]| -> f64 {
+            v.iter().map(|&(x, y)| dist_to_facade(x, y, Some(&poly))).sum::<f64>() / v.len() as f64
+        };
+        let (df, dm) = (avg(&focus), avg(&meetings));
+        assert!(
+            df < dm,
+            "focus rooms ({df:.2} m to facade) are not nearer the facade than meetings ({dm:.2} m)"
         );
     }
 

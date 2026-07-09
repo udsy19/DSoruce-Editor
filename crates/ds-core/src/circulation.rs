@@ -43,11 +43,27 @@
 //! * `mean_clearance` (m) — average distance-to-obstacle over walkable cells; a
 //!   proxy for overall spaciousness.
 //! * `pct_corridors_below_min` — fraction of centreline (medial-axis) cells
-//!   whose corridor width is below `target_corridor_width`.
+//!   whose corridor width is below `target_corridor_width` (reported context).
 //! * `largest_connected_free_region` — fraction of walkable area that is one
 //!   connected piece (1.0 = furniture never chops the floor into islands).
-//! * `score` — 0–100 headline: `100 × (0.30·connectivity + 0.40·(1 −
-//!   pct_below_min) + 0.30·min(min_width/target, 1))`.
+//! * `entry_reachable_fraction` — fraction of walkable area reachable from the
+//!   building entry (1.0 = the whole floor is served by the network anchored to
+//!   the door; low = an isolated pocket the entry can't reach). Neutral (mirrors
+//!   connectivity) when the plate carries no entry to route from.
+//! * `corridor_coverage` — how much of the walkable floor reads as real
+//!   *corridor* rather than a tight bench gap: the mean, over walkable cells, of
+//!   a ramp from `0.75·target` (a 0.9 m bench-access gap → 0 credit) to
+//!   `1.25·target` (a generous ≥1.5 m primary run → full credit). This is the
+//!   term that rewards a legible primary/secondary hierarchy over an undivided
+//!   grid of 0.9 m aisles, WITHOUT flagging those code-minimum gaps as failures.
+//! * `score` — 0–100 headline: `100 × (0.25·connectivity + 0.15·entry_reach +
+//!   0.25·(1 − pct_below_passage) + 0.35·corridor_coverage)`, where
+//!   `pct_below_passage` counts only GENUINE pinches below `min_passage_width`
+//!   (a hard sub-code floor), so the pervasive 0.9 m bench gaps a dense
+//!   professional plan legitimately carries are not scored as sub-min corridors
+//!   (the bug that dropped a spine-less desk field to ~50). Hierarchy is rewarded
+//!   through `corridor_coverage`, connectivity + entry-reachability guard against
+//!   islands and dead-ends.
 //!
 //! ## Thresholds (see module sources; confirm with product owner)
 //!
@@ -83,8 +99,18 @@ const CHAMFER_DIAG: f64 = 1.4142135623730951;
 pub struct CirculationConfig {
     /// Grid resolution in meters (~0.10–0.25). Smaller = more accurate, slower.
     pub cell_size: f64,
-    /// Target minimum corridor width in meters (default 0.9 m ≈ ADA 36 in).
+    /// Target minimum corridor width in meters (default 0.9 m ≈ ADA 36 in). The
+    /// aspiration a *corridor* meets; sets the `corridor_coverage` ramp and the
+    /// reported `pct_corridors_below_min`. NOT the pinch floor — a 0.9 m bench
+    /// gap is fine even when the corridor target is 1.2 m.
     pub target_corridor_width: f64,
+    /// Hard sub-code pinch floor in meters (default 0.8). A passage narrower than
+    /// this is a GENUINE constriction (below the 0.9 m accessible-route minimum,
+    /// with raster headroom) and is penalised; anything at/above it — including
+    /// the code-minimum 0.9 m bench-access gaps of a dense plan — is not. This is
+    /// what lets a spine-less desk field score on its connectivity + hierarchy
+    /// instead of being crushed by its own legitimate 0.9 m aisles.
+    pub min_passage_width: f64,
     /// Extra free margin (m) rasterised around the wall bbox so the exterior
     /// flood-fill has room to run and clearances near the edge are well defined.
     pub padding: f64,
@@ -98,6 +124,7 @@ impl Default for CirculationConfig {
         CirculationConfig {
             cell_size: 0.15,
             target_corridor_width: 0.9,
+            min_passage_width: 0.8,
             padding: 0.3,
             max_cells: 4_000_000,
         }
@@ -132,6 +159,15 @@ pub struct CirculationScore {
     pub pct_corridors_below_min: f64,
     /// Fraction of walkable area that is a single connected region (0..1).
     pub largest_connected_free_region: f64,
+    /// Fraction of walkable area reachable from the building entry (0..1). The
+    /// network must reach the door: an isolated pocket drops this. Mirrors
+    /// connectivity when the plate carries no entry to route from.
+    pub entry_reachable_fraction: f64,
+    /// Mean corridor-grade credit over walkable cells (0..1): 0 for a 0.9 m bench
+    /// gap, ramping to 1 for a generous ≥1.25·target primary run. The legibility
+    /// / hierarchy signal — high when the plan has real corridors, low for an
+    /// undivided grid of code-minimum aisles.
+    pub corridor_coverage: f64,
     /// True if a wall-enclosed interior was detected (vs. an open/unbounded plan
     /// where we fall back to the largest connected free blob).
     pub enclosed: bool,
@@ -153,6 +189,8 @@ impl CirculationScore {
             mean_clearance: 0.0,
             pct_corridors_below_min: 1.0,
             largest_connected_free_region: 0.0,
+            entry_reachable_fraction: 0.0,
+            corridor_coverage: 0.0,
             enclosed,
             grid_cols: cols,
             grid_rows: rows,
@@ -293,8 +331,15 @@ pub fn evaluate(doc: &Document, cfg: &CirculationConfig) -> CirculationScore {
     let mut clearance_count = 0usize;
     let mut choke_count = 0usize;
     let mut choke_below = 0usize;
+    let mut choke_below_passage = 0usize;
     let mut min_width = f64::INFINITY;
     let mut max_clearance = 0.0f64;
+    // Corridor-coverage ramp: a walkable cell earns 0 credit at a 0.9 m bench gap
+    // (0.75·target) and full credit at a generous 1.25·target run — the hierarchy
+    // signal that rewards drawn corridors over an undivided desk grid.
+    let cover_lo = 0.75 * cfg.target_corridor_width;
+    let cover_hi = (1.25 * cfg.target_corridor_width).max(cover_lo + 1e-6);
+    let mut coverage_sum = 0.0f64;
     // A pinch only counts as a CORRIDOR chokepoint if it separates meaningful
     // walkable area on both pinch sides. The traced plate's V-shaped boundary
     // notches form walkable strings that narrow to nothing — locally they look
@@ -315,9 +360,11 @@ pub fn evaluate(doc: &Document, cfg: &CirculationConfig) -> CirculationScore {
             clearance_sum += d * grid.cell;
             clearance_count += 1;
             max_clearance = max_clearance.max(d * grid.cell);
+            let local_width = 2.0 * d * grid.cell;
+            coverage_sum += ((local_width - cover_lo) / (cover_hi - cover_lo)).clamp(0.0, 1.0);
 
             if let Some(vertical) = choke_axis(&grid, &dt, x, y) {
-                chokes.push((x, y, vertical, 2.0 * d * grid.cell));
+                chokes.push((x, y, vertical, local_width));
             }
         }
     }
@@ -330,6 +377,11 @@ pub fn evaluate(doc: &Document, cfg: &CirculationConfig) -> CirculationScore {
         if width < cfg.target_corridor_width {
             choke_below += 1;
         }
+        // A GENUINE pinch: below the hard sub-code floor (not merely below the
+        // corridor aspiration). Code-minimum 0.9 m bench gaps clear this.
+        if width < cfg.min_passage_width {
+            choke_below_passage += 1;
+        }
     }
 
     let mean_clearance = if clearance_count > 0 {
@@ -337,13 +389,17 @@ pub fn evaluate(doc: &Document, cfg: &CirculationConfig) -> CirculationScore {
     } else {
         0.0
     };
-    let (min_corridor_width, pct_below) = if choke_count > 0 {
-        (min_width, choke_below as f64 / choke_count as f64)
+    let (min_corridor_width, pct_below, pct_below_passage) = if choke_count > 0 {
+        (
+            min_width,
+            choke_below as f64 / choke_count as f64,
+            choke_below_passage as f64 / choke_count as f64,
+        )
     } else {
         // No constriction detected (a single open blob with no saddle): report
         // the plan's widest open span as the "narrowest corridor" and treat it
         // as fully compliant.
-        (2.0 * max_clearance, 0.0)
+        (2.0 * max_clearance, 0.0, 0.0)
     };
 
     let reachable_free_area = walkable_cells as f64 * cell_area;
@@ -353,11 +409,35 @@ pub fn evaluate(doc: &Document, cfg: &CirculationConfig) -> CirculationScore {
         0.0
     };
 
-    // --- 5. Headline score ------------------------------------------------
+    // Entry-reachability: the fraction of walkable floor in the SAME connected
+    // component as the building entry — the network must actually reach the door
+    // (an isolated pocket, or an entry that lands on the wrong side of a sealed
+    // partition, drops this). Reuses the connectivity labels: no extra flood.
+    // Neutral (mirrors connectivity) when the plate carries no entry to judge.
     let s_conn = largest_frac.clamp(0.0, 1.0);
-    let s_below = (1.0 - pct_below).clamp(0.0, 1.0);
-    let s_minw = (min_corridor_width / cfg.target_corridor_width).clamp(0.0, 1.0);
-    let score = 100.0 * (0.30 * s_conn + 0.40 * s_below + 0.30 * s_minw);
+    let entry_reachable = entry_reachable_fraction(
+        doc, &grid, &labels, &comp_sizes, &walkable_comp, walkable_cells, s_conn,
+    );
+
+    // Corridor coverage = mean corridor-grade credit over walkable cells.
+    let corridor_coverage = if clearance_count > 0 {
+        (coverage_sum / clearance_count as f64).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+
+    // --- 5. Headline score ------------------------------------------------
+    // Connectivity + entry-reachability guard the NETWORK (one connected region
+    // reaching the door, no islands/dead-ends); (1 − pct_below_passage) forbids
+    // genuine sub-code pinches; corridor_coverage rewards a real primary/secondary
+    // HIERARCHY over an undivided grid of code-minimum aisles. Bench-access gaps
+    // at 0.9 m are deliberately NOT faulted — they are the designed minimum of a
+    // dense professional plan, so a spine-less desk field is scored on its
+    // connectivity and the corridors that thread it, not crushed by its own aisles.
+    let s_entry = entry_reachable.clamp(0.0, 1.0);
+    let s_pinch = (1.0 - pct_below_passage).clamp(0.0, 1.0);
+    let score = 100.0
+        * (0.25 * s_conn + 0.15 * s_entry + 0.25 * s_pinch + 0.35 * corridor_coverage);
 
     CirculationScore {
         score,
@@ -368,6 +448,8 @@ pub fn evaluate(doc: &Document, cfg: &CirculationConfig) -> CirculationScore {
         mean_clearance,
         pct_corridors_below_min: pct_below,
         largest_connected_free_region: s_conn,
+        entry_reachable_fraction: s_entry,
+        corridor_coverage,
         enclosed,
         grid_cols: grid.cols,
         grid_rows: grid.rows,
@@ -544,6 +626,55 @@ fn label_free_regions(grid: &Grid) -> (Vec<i32>, Vec<usize>, Vec<bool>) {
         }
     }
     (labels, sizes, border)
+}
+
+/// Fraction of walkable floor in the SAME connected component as the building
+/// entry — i.e. how much of the plan the network actually serves from the door.
+/// Reuses the connectivity `labels` (no extra flood). The entry point may land
+/// on a wall/threshold, so the nearest walkable cell (small ring search) is
+/// taken. Returns the connectivity fallback `s_conn` when there is no entry to
+/// route from (neutral: it never inflates the score above connectivity), and 0
+/// when an entry exists but reaches no walkable floor (the network fails the door).
+fn entry_reachable_fraction(
+    doc: &Document,
+    grid: &Grid,
+    labels: &[i32],
+    comp_sizes: &[usize],
+    walkable_comp: &[bool],
+    walkable_cells: usize,
+    s_conn: f64,
+) -> f64 {
+    let Some(e) = doc.entries.first() else {
+        return s_conn;
+    };
+    if walkable_cells == 0 {
+        return s_conn;
+    }
+    let c0 = grid.col_of(e.x) as i64;
+    let r0 = grid.row_of(e.y) as i64;
+    let mut found: Option<usize> = None;
+    'search: for rad in 0..=8i64 {
+        for dy in -rad..=rad {
+            for dx in -rad..=rad {
+                if dx.abs().max(dy.abs()) != rad {
+                    continue; // ring shell only
+                }
+                let (x, y) = (c0 + dx, r0 + dy);
+                if x < 0 || y < 0 || x as usize >= grid.cols || y as usize >= grid.rows {
+                    continue;
+                }
+                let l = labels[grid.idx(x as usize, y as usize)];
+                if l >= 0 && walkable_comp[l as usize] {
+                    found = Some(l as usize);
+                    break 'search;
+                }
+            }
+        }
+    }
+    match found {
+        Some(l) => (comp_sizes[l] as f64 / walkable_cells as f64).clamp(0.0, 1.0),
+        None => 0.0,
+    }
 }
 
 /// Two-pass chamfer distance transform: distance (in CELL units) from each free
