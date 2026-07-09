@@ -123,7 +123,7 @@ Make generated plans read like a senior architect's work, not a diagram.
 ## Track E — Import & plate
 - [x] DWG/DXF parse (LibreDWG `/api/dwg`), plate extraction (furniture-coverage), keepouts (cores),
   entries, interior-wall extraction, editable imported furniture, palette-place new catalog items.
-- [ ] Area-select / markers+refs / wall-heal (⇒ Track A S2–S4).
+- [x] Area-select / markers+refs / wall-heal — shipped as Track A S2/S3/S4.
 - [ ] PDF/image import with scale confirmation (deferred, CAD-only v1).
 
 ## Track F — Material bank / Materio
@@ -186,8 +186,6 @@ Make generated plans read like a senior architect's work, not a diagram.
   prop (from the route) and, once wasm is ready, loads the SavedPlan via the existing library path
   (`getPlan` → `openSavedPlan` → `applyProject`), guarded by a ref latch + `currentPlanId` so the
   in-session pick never double-loads. E2E: generate→pick→edit→hard reload → 126 items / 64 ws live.
-- [ ] **Regenerate** only widens the seed search (deterministic per seed) — true A/B/C variety wants a
-  seed-offset/randomized search.
 - [ ] **Commits unsigned this session** (1Password SSH signing agent locked). Re-sign or unlock when able.
 - [ ] `e2e-core-geom.mjs` (scratchpad) asserts interior walls pushed on test-fit — stale after the
   shell-fit default; update when Track A S2–S4 land.
@@ -198,7 +196,9 @@ Make generated plans read like a senior architect's work, not a diagram.
 1. [x] Real-plate density — verified on the user's DWG (52 ws @ 10 m²/person).
 2. [x] Track A S1–S3, S5–S7 — **full guided flow verified end-to-end (10/10) on the real DWG.**
 3. [x] S4 wall-heal + cold-reload floor-open — **Track A finished (S0–S7 shipped).**
-4. [x] Leaner support ratio (open-dominant); supplier column; report cover branding.
-5. 🔄 Cloud sync (Track I) — client sync loop against `/api/plans` (build + local-verify; live on deploy).
-6. Deploy (Track J) + signed commits — both gated on the **1Password unlock** (SSH denied).
+4. [x] Leaner ratios; supplier column; report branding; cloud sync; 3D themes; smarter A/B/C strategies.
+5. [x] **Test-fit engine complete** — room concentration (80+ ws), AI-in-loop steering, circulation
+   depth (circ 81), focus-facade, keep-existing mode, trackpad pan. Generator: 94 Rust tests.
+6. **Deploy (Track J) + signed commits — both gated on the 1Password unlock (SSH denied).** ← only blocker.
+7. Later: 80+ ws on *any* wing shape · workflow-aware AI (room-# refs) · richer 3D furniture · sync tombstones.
 7. Upside: 80+ ws (room-concentration rework); keep-existing-partitions mode.
