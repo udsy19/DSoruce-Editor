@@ -484,9 +484,12 @@ function constructionSheet(state: DocState, opts: DrawingSetOpts, no: string): P
   // Overall perimeter dimension strings first (they don't compete for label space).
   dimStrings(p, state, map)
 
-  // Room labels + opening tags share one occupancy list so tags never land on a
-  // room label; each nudges deterministically and drops a leader when moved.
+  // Per-room dims, room labels and opening tags share ONE occupancy list: the
+  // per-room dimension runs (width along the bottom edge, depth along the left
+  // edge, inset just inside each room) seed it first so the room name/tag passes
+  // that follow de-collide around the dimensions. Additive over the perimeter.
   const occ: OccBox[] = []
+  roomDims(p, state, map, occ)
   roomLabels(p, state, map, occ)
   const openings = openingSchedule(state)
   for (const o of openings) {
@@ -579,6 +582,51 @@ function drawTagGlyph(p: Page, cx: number, cy: number, tag: string, kind: 'Door'
   p.text(cx, cy + size * 0.32, size * 0.68, tag, { align: 'center', bold: true, gray: 0.12 })
 }
 
+/**
+ * One architect dimension string between two canvas points (a→b) along an
+ * axis-aligned edge, drawn on a line offset perpendicular by `off` pt (sign
+ * chooses the side; e.g. negative = above/left, positive = below/right). Thin
+ * extension lines join the measured edge to the dim line, ticks cap each end,
+ * and the numeric metre label (IBM Plex Mono via the sheet font) sits centred on
+ * the line's far side. Shared by BOTH the overall-perimeter and the per-room
+ * runs so there is exactly one arrow/tick/label renderer. `horizontal` picks the
+ * edge axis: true → runs in x (label above/below), false → runs in y (label to
+ * the side).
+ */
+function dimString(
+  p: Page,
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+  off: number,
+  meters: number,
+  horizontal: boolean,
+): void {
+  const G = 0.4 // dim-line gray
+  const W = 0.5 // dim-line width
+  const EXT = { gray: 0.65, width: 0.3 } // extension-line style
+  const label = `${meters.toFixed(2)} m`
+  if (horizontal) {
+    const y = a.y + off
+    p.line(a.x, a.y, a.x, y, EXT)
+    p.line(b.x, b.y, b.x, y, EXT)
+    p.line(a.x, y, b.x, y, { gray: G, width: W })
+    p.line(a.x, y - 3, a.x, y + 3, { gray: G, width: W })
+    p.line(b.x, y - 3, b.x, y + 3, { gray: G, width: W })
+    p.text((a.x + b.x) / 2, off >= 0 ? y + 11 : y - 4, 7.5, label, { align: 'center', gray: 0.3 })
+  } else {
+    const x = a.x + off
+    p.line(a.x, a.y, x, a.y, EXT)
+    p.line(b.x, b.y, x, b.y, EXT)
+    p.line(x, a.y, x, b.y, { gray: G, width: W })
+    p.line(x - 3, a.y, x + 3, a.y, { gray: G, width: W })
+    p.line(x - 3, b.y, x + 3, b.y, { gray: G, width: W })
+    p.text(off >= 0 ? x + 4 : x - 4, (a.y + b.y) / 2 + 3, 7.5, label, {
+      align: off >= 0 ? 'left' : 'right',
+      gray: 0.3,
+    })
+  }
+}
+
 /** Overall width + height dimension strings around the plate (construction). */
 function dimStrings(
   p: Page,
@@ -597,25 +645,62 @@ function dimStrings(
   }
   if (minX === Infinity) return
 
-  const tick = (x: number, y: number, dx: number, dy: number) =>
-    p.line(x - dx, y - dy, x + dx, y + dy, { gray: 0.4, width: 0.5 })
+  // Bottom edge — overall width (offset outward, below the plate).
+  dimString(p, map(minX, maxY), map(maxX, maxY), 16, maxX - minX, true)
+  // Left edge — overall height (offset outward, left of the plate).
+  dimString(p, map(minX, minY), map(minX, maxY), -16, maxY - minY, false)
+}
 
-  // Bottom edge — overall width.
-  const bl = map(minX, maxY)
-  const br = map(maxX, maxY)
-  const by = bl.y + 16
-  p.line(bl.x, by, br.x, by, { gray: 0.4, width: 0.5 })
-  tick(bl.x, by, 0, 3)
-  tick(br.x, by, 0, 3)
-  p.text((bl.x + br.x) / 2, by + 11, 7.5, `${(maxX - minX).toFixed(2)} m`, { align: 'center', gray: 0.3 })
+// per-room dim lines sit this far inside the room's bottom / left edge (pt).
+const DIM_INSET = 12
 
-  // Left edge — overall height.
-  const tl = map(minX, minY)
-  const lx = tl.x - 16
-  p.line(lx, tl.y, lx, bl.y, { gray: 0.4, width: 0.5 })
-  tick(lx, tl.y, 3, 0)
-  tick(lx, bl.y, 3, 0)
-  p.text(lx - 4, (tl.y + bl.y) / 2, 7.5, `${(maxY - minY).toFixed(2)} m`, { align: 'right', gray: 0.3 })
+/**
+ * Per-room internal dimension runs (construction plan). For every
+ * non-circulation zone we draw its width along the bottom edge and its depth
+ * along the left edge, each inset just INSIDE the room (so a run never spills
+ * into the neighbouring room the way an outward offset would on a packed plate)
+ * — one consistent L of dimensions per room, in the same style as the overall
+ * perimeter via the shared `dimString` helper. A run is skipped when the room is
+ * too small on the sheet for its label to read, keeping dense fits legible.
+ * Rectangular rooms are dimensioned exactly; non-rectangular zones (RectRing
+ * cores) are dimensioned by their bounding extents (outer w × h). Each drawn
+ * label's box is recorded in `occ` so the room name/opening-tag pass that runs
+ * afterwards de-collides around the dimensions. Deterministic.
+ */
+function roomDims(
+  p: Page,
+  state: DocState,
+  map: (x: number, y: number) => { x: number; y: number },
+  occ: OccBox[],
+): void {
+  for (const z of state.zones ?? []) {
+    if (z.zone_type === 'Circulation') continue
+    const s = z.shape // Rect or RectRing — both centred at (x,y) with outer w×h
+    const x0 = s.x - s.w / 2
+    const x1 = s.x + s.w / 2
+    const y0 = s.y - s.h / 2
+    const y1 = s.y + s.h / 2
+    const bl = map(x0, y1)
+    const br = map(x1, y1)
+    const tl = map(x0, y0)
+    // Width along the bottom edge, inset upward into the room. Skip when the
+    // room is too narrow for the label, or when the label box would land on an
+    // already-placed dim label (declutters two rooms sharing a baseline, e.g. an
+    // open field and a cellular room whose bottom edges coincide).
+    const wLabelW = textWidth(`${s.w.toFixed(2)} m`, 7.5)
+    const wBox = { x: (bl.x + br.x) / 2 - wLabelW / 2, y: bl.y - DIM_INSET - 12, w: wLabelW, h: 12 }
+    if (Math.abs(br.x - bl.x) > wLabelW + 8 && !occ.some((b) => boxesOverlap(wBox, b))) {
+      dimString(p, bl, br, -DIM_INSET, s.w, true)
+      occ.push(wBox)
+    }
+    // Depth along the left edge, inset rightward into the room (same guards).
+    const hLabelW = textWidth(`${s.h.toFixed(2)} m`, 7.5)
+    const hBox = { x: tl.x + DIM_INSET + 4, y: (tl.y + bl.y) / 2 - 5, w: hLabelW, h: 12 }
+    if (Math.abs(bl.y - tl.y) > 26 && !occ.some((b) => boxesOverlap(hBox, b))) {
+      dimString(p, tl, bl, DIM_INSET, s.h, false)
+      occ.push(hBox)
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
