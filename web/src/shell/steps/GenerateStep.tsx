@@ -18,7 +18,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { EditorController } from '../../App'
 import type { Candidate, GenResult } from '../../editor/EditorCanvas'
-import { buildReportModel, type AltKpis } from '../../export/report'
+import { buildReportModel, computeWinners, type AltKpis } from '../../export/report'
 import { evaluateCandidates, type SoftVerdict } from '../../ai/evaluator'
 import { getProject, updateDraft, updateProject, type ProjectRecord } from '../../persist/projects'
 import { defaultSpec, programSpecToProgram } from '../../program/spec'
@@ -27,24 +27,9 @@ import { Icon } from '../../ui/icons'
 
 const LETTER = (i: number) => String.fromCharCode(65 + (i % 26))
 
-/** For each candidate index, the category badges it wins (ties → first wins). */
-function computeWinners(kpis: AltKpis[]): Record<number, string[]> {
-  const out: Record<number, string[]> = {}
-  if (kpis.length < 2) return out // a single option "wins" nothing meaningful
-  const add = (i: number, label: string) => (out[i] = [...(out[i] ?? []), label])
-  const argmax = (f: (a: AltKpis) => number) => {
-    let bi = 0
-    kpis.forEach((a, i) => {
-      if (f(a) > f(kpis[bi])) bi = i
-    })
-    return bi
-  }
-  add(argmax((a) => a.seats), 'Most seats')
-  add(argmax((a) => a.daylightPct), 'Best daylight')
-  // Densest = most workstations per m² of net internal area.
-  add(argmax((a) => (a.niaM2 > 0 ? a.workstations / a.niaM2 : 0)), 'Best density')
-  return out
-}
+// Category-winner badges (Most seats / Best daylight / Best density) are
+// computed by the shared `computeWinners` in export/report.ts, so this gallery
+// and the exported space-planning report always agree.
 
 type Phase = 'running' | 'done' | 'error'
 

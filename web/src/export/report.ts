@@ -263,6 +263,32 @@ export function buildReportModel(alternatives: AlternativeInput[], meta: ReportM
   return { meta, alternatives: alternatives.map(computeAltKpis) }
 }
 
+/**
+ * Category "winner" badges per alternative — the SAME superlatives the S7
+ * generate gallery shows on each candidate card, computed from the shared
+ * AltKpis so the picker and the report can never disagree. Returns, per
+ * alternative index, the labels it wins; ties resolve to the first alternative.
+ * Fewer than two alternatives win nothing (a lone option is not "best" at
+ * anything).
+ */
+export function computeWinners(kpis: AltKpis[]): Record<number, string[]> {
+  const out: Record<number, string[]> = {}
+  if (kpis.length < 2) return out
+  const add = (i: number, label: string) => (out[i] = [...(out[i] ?? []), label])
+  const argmax = (f: (a: AltKpis) => number) => {
+    let bi = 0
+    kpis.forEach((a, i) => {
+      if (f(a) > f(kpis[bi])) bi = i
+    })
+    return bi
+  }
+  add(argmax((a) => a.seats), 'Most seats')
+  add(argmax((a) => a.daylightPct), 'Best daylight')
+  // Densest = most workstations per m² of net internal area.
+  add(argmax((a) => (a.niaM2 > 0 ? a.workstations / a.niaM2 : 0)), 'Best density')
+  return out
+}
+
 // ---------------------------------------------------------------------------
 // Radar normalization (pure, testable)
 // ---------------------------------------------------------------------------
@@ -469,47 +495,78 @@ function pageHeader(p: Page, center: string, meta: ReportMeta): void {
 function coverPage(model: ReportModel, hero: PdfJpeg | null, logo: PdfJpeg | null): Page {
   const p = new Page()
   const { meta } = model
+  const x = MARGIN + 20
 
-  // Right ~52%: hero image (first alternative's plan stands in for the qbiq
-  // building montage — we have no building photo).
-  const heroX = PAGE_W * 0.5
+  // Right ~48%: a framed hero panel. The first alternative's plan stands in for
+  // the qbiq building photo (we have no building photo), inset and captioned so
+  // it reads as a deliberate "indicative plan", not a full-bleed image.
+  const heroX = PAGE_W * 0.52
+  const inset = 30
+  const bx = heroX
+  const by = inset
+  const bw = PAGE_W - heroX - inset
+  const bh = PAGE_H - inset * 2
+  p.box(bx, by, bw, bh, { fill: true, gray: 0.97 })
   if (hero) {
-    const boxW = PAGE_W - heroX
-    const boxH = PAGE_H
-    const s = Math.min(boxW / hero.width, boxH / hero.height)
+    const s = Math.min(bw / hero.width, bh / hero.height)
     const w = hero.width * s
     const h = hero.height * s
-    p.image(hero, heroX + (boxW - w) / 2, (boxH - h) / 2, w, h)
-  } else {
-    p.box(heroX, 0, PAGE_W - heroX, PAGE_H, { fill: true, gray: 0.95 })
+    p.image(hero, bx + (bw - w) / 2, by + (bh - h) / 2, w, h)
+    p.text(bx + 14, by + bh - 14, 9, `${altName(model.alternatives[0], 0)} — indicative plan`, {
+      gray: 0.5,
+    })
   }
+  p.box(bx, by, bw, bh, { fill: false, gray: 0.82, width: 1 })
 
-  // Left column.
-  const x = MARGIN + 20
-  p.text(x, MARGIN + 30, 26, 'dsource', { bold: true, rgb: ACCENT })
+  // Left column — the report preparer's small mark up top; client branding is
+  // the focal point below it (qbiq-cover order: preparer · client logo ·
+  // client · project · address · floor).
+  p.text(x, MARGIN + 24, 15, 'dsource', { bold: true, rgb: ACCENT })
+  p.text(x + textWidth('dsource', 15, true) + 10, MARGIN + 24, 9, 'SPACE PLANNING', { gray: 0.55 })
 
-  let y = 300
+  // Client logo — hero of the cover. Scaled up to a generous box so it is the
+  // first thing the reader sees; skipped cleanly when absent.
+  let y = 210
   if (logo) {
-    const w = Math.min(200, logo.width)
-    const h = (logo.height / logo.width) * w
-    p.image(logo, x, y - h, w, h)
-    y += 20
+    const maxW = 290
+    const maxH = 130
+    const s = Math.min(maxW / logo.width, maxH / logo.height)
+    const w = logo.width * s
+    const h = logo.height * s
+    p.image(logo, x, y, w, h)
+    y += h + 46
+  } else {
+    y += 24
   }
+
   if (meta.client) {
-    p.text(x, y, 18, meta.client, { gray: 0.3 })
-    y += 46
+    p.text(x, y, 20, meta.client, { gray: 0.3 })
+    y += 34
   }
-  p.text(x, y, 34, projectTitle(meta), { bold: true, gray: 0.05 })
-  y += 40
+  // Warm-amber brand tick above the project name (CLAUDE.md accent).
+  p.box(x, y - 5, 44, 3, { fill: true, rgb: ACCENT })
+  y += 30
+
+  // Project name large — steps down to fit the left column if very long.
+  const titleMaxW = heroX - x - 12
+  let titleSize = 34
+  while (titleSize > 18 && textWidth(pdfSafeText(projectTitle(meta)), titleSize, true) > titleMaxW) {
+    titleSize -= 2
+  }
+  p.text(x, y, titleSize, projectTitle(meta), { bold: true, gray: 0.05 })
+  y += titleSize + 12
+
   if (meta.address) {
     p.text(x, y, 14, meta.address, { gray: 0.4 })
-    y += 40
+    y += 38
   }
   if (meta.floor) {
-    p.text(x, y + 20, 15, meta.floor, { bold: true, gray: 0.15 })
+    p.text(x, y, 15, meta.floor, { bold: true, gray: 0.15 })
   }
 
-  p.text(x, PAGE_H - MARGIN, 9, 'SPACE PLANNING REPORT  ·  GENERATED BY DSOURCE EDITOR', { gray: 0.55 })
+  p.text(x, PAGE_H - MARGIN, 9, 'SPACE PLANNING REPORT  ·  PREPARED BY DSOURCE EDITOR', {
+    gray: 0.55,
+  })
   return p
 }
 
@@ -546,7 +603,9 @@ function tourPage(model: ReportModel): Page {
 // Per-alternative page — KPI rail + colored plan + legend + scale bar
 // ---------------------------------------------------------------------------
 
-function altPage(a: AltKpis, i: number, meta: ReportMeta): Page {
+const WHITE: Rgb = [1, 1, 1]
+
+function altPage(a: AltKpis, i: number, meta: ReportMeta, wins: string[]): Page {
   const p = new Page()
   const accent = hex2rgb(ALT_COLORS[i % ALT_COLORS.length])
   pageHeader(p, `${altName(a, i)}: ${projectTitle(meta)}`, meta)
@@ -554,12 +613,29 @@ function altPage(a: AltKpis, i: number, meta: ReportMeta): Page {
   // --- left KPI rail ------------------------------------------------------
   const railX = MARGIN
   const railW = 240
-  p.box(railX, 78, railW, PAGE_H - 78 - MARGIN, { fill: true, gray: 0.975, width: 0.8 })
-  p.box(railX, 78, railW, PAGE_H - 78 - MARGIN, { fill: false, gray: 0.85, width: 1 })
+  const railTop = 86
+  p.box(railX, railTop + 28, railW, PAGE_H - (railTop + 28) - MARGIN, { fill: true, gray: 0.975, width: 0.8 })
+  p.box(railX, railTop + 28, railW, PAGE_H - (railTop + 28) - MARGIN, { fill: false, gray: 0.85, width: 1 })
 
   const cx = railX + railW / 2
+  // Per-alternative identity chip: the alt's accent color makes A/B/C instantly
+  // distinguishable page-to-page (same colors as the summary radar + table).
+  p.box(railX, railTop, railW, 28, { fill: true, rgb: accent })
+  p.text(cx, railTop + 19, 13, altName(a, i).toUpperCase(), { align: 'center', bold: true, rgb: WHITE })
+
+  // "At a glance" ribbon: the category-winner pills (same superlatives as the
+  // S7 gallery), each in the alt's accent, above the plan.
+  let rx = railX + railW + 24
+  const ribbonY = railTop + 4
+  for (const label of wins) {
+    const pw = textWidth(label, 10, true) + 22
+    p.box(rx, ribbonY, pw, 20, { fill: true, rgb: accent })
+    p.text(rx + 11, ribbonY + 14, 10, label, { bold: true, rgb: WHITE })
+    rx += pw + 8
+  }
+
   const int = (n: number) => Math.round(n).toLocaleString('en-US')
-  let ky = 118
+  let ky = 126
   const kpi = (big: string, label: string) => {
     p.text(cx, ky, 26, big, { align: 'center', bold: true, gray: 0.08 })
     p.text(cx, ky + 20, 10, label, { align: 'center', gray: MUTED })
@@ -591,11 +667,11 @@ function altPage(a: AltKpis, i: number, meta: ReportMeta): Page {
   bar('Privacy', a.privacyPct)
   bar('Efficiency', a.efficiencyPct)
 
-  // --- plan drawing -------------------------------------------------------
+  // --- plan drawing (below the superlative ribbon) ------------------------
   const planX = railX + railW + 24
-  const planY = 96
+  const planY = 120
   const planW = PAGE_W - planX - MARGIN
-  const planH = 560
+  const planH = 540
   const { jpeg, metersPerPx } = planJpeg(stateOf(a.snapshot), planW, planH)
   p.image(jpeg, planX, planY, planW, planH)
 
@@ -732,31 +808,49 @@ function summaryPage(model: ReportModel): Page {
   let ty = 120
   p.box(tx, ty - 18, tw, 26 + 8 * 26, { fill: false, gray: 0.85, width: 1 })
 
-  // Header row: colored dot + alt name.
+  // Header row: an accent-colored chip per column (same colors as the alt-page
+  // identity chips + radar), so the three options separate at a glance.
   alts.forEach((a, i) => {
     const cxp = tx + labelW + colW * i + colW / 2
     const rgb = hex2rgb(ALT_COLORS[i % ALT_COLORS.length])
-    p.box(cxp - textWidth(altName(a, i), 10) / 2 - 14, ty - 8, 8, 8, { fill: true, rgb })
-    p.text(cxp + 4, ty, 10, altName(a, i), { align: 'center', bold: true, gray: 0.2 })
+    const name = altName(a, i)
+    const chW = textWidth(name, 10, true) + 20
+    p.box(cxp - chW / 2, ty - 11, chW, 17, { fill: true, rgb })
+    p.text(cxp, ty + 1, 10, name, { align: 'center', bold: true, rgb: WHITE })
   })
   ty += 22
   p.line(tx, ty - 8, tx + tw, ty - 8, { gray: 0.8, width: 0.8 })
 
-  const row = (label: string, vals: string[]) => {
+  // Each metric row highlights its leading alternative (in that alt's accent),
+  // when there is a spread — so the comparison reads without hunting. Density
+  // is left neutral (lower vs. higher is program-dependent, not "better").
+  const row = (label: string, get: (a: AltKpis) => number, fmt: (n: number) => string, highlight = true) => {
+    const nums = alts.map(get)
+    const best = Math.max(...nums)
+    const spread = best - Math.min(...nums)
     p.text(tx + 6, ty + 4, 10, label, { bold: true, gray: 0.25 })
-    vals.forEach((v, i) => p.text(tx + labelW + colW * i + colW / 2, ty + 4, 10, v, { align: 'center', gray: 0.15 }))
+    alts.forEach((_, i) => {
+      const win = highlight && spread > 1e-9 && nums[i] === best
+      p.text(tx + labelW + colW * i + colW / 2, ty + 4, 10, fmt(nums[i]), {
+        align: 'center',
+        bold: win,
+        rgb: win ? hex2rgb(ALT_COLORS[i % ALT_COLORS.length]) : undefined,
+        gray: win ? undefined : 0.15,
+      })
+    })
     ty += 26
     p.line(tx, ty - 8, tx + tw, ty - 8, { gray: 0.9, width: 0.6 })
   }
-  const each = (f: (a: AltKpis) => string) => alts.map(f)
-  row('Seats', each((a) => `${a.seats}`))
-  row('Open Space', each((a) => `${a.openSpaceSeats}`))
-  row('Offices', each((a) => `${a.offices}`))
-  row('Conf Room', each((a) => `${a.confRooms}`))
-  row('Density sqf/person', each((a) => a.densitySqf.toFixed(2)))
-  row('Daylight', each((a) => `${Math.round(a.daylightPct)}%`))
-  row('Privacy', each((a) => `${Math.round(a.privacyPct)}%`))
-  row('Efficiency', each((a) => `${Math.round(a.efficiencyPct)}%`))
+  const intFmt = (n: number) => `${Math.round(n)}`
+  const pctFmt = (n: number) => `${Math.round(n)}%`
+  row('Seats', (a) => a.seats, intFmt)
+  row('Open Space', (a) => a.openSpaceSeats, intFmt)
+  row('Offices', (a) => a.offices, intFmt)
+  row('Conf Room', (a) => a.confRooms, intFmt)
+  row('Density sqf/person', (a) => a.densitySqf, (n) => n.toFixed(2), false)
+  row('Daylight', (a) => a.daylightPct, pctFmt)
+  row('Privacy', (a) => a.privacyPct, pctFmt)
+  row('Efficiency', (a) => a.efficiencyPct, pctFmt)
 
   // --- lower panels: radar (left) + space-mix (right) ---------------------
   const panelY = ty + 24
@@ -831,11 +925,12 @@ export async function buildReportPdfBytes(
   const hero = planJpeg(stateOf(model.alternatives[0].snapshot), PAGE_W * 0.5, PAGE_H).jpeg
   const logo = await logoJpeg(meta.logo, 400)
 
+  const winners = computeWinners(model.alternatives)
   const pages: PdfPage[] = []
   const push = (pg: Page) => pages.push({ ops: pg.ops, images: pg.images })
   push(coverPage(model, hero, logo))
   push(tourPage(model))
-  model.alternatives.forEach((a, i) => push(altPage(a, i, meta)))
+  model.alternatives.forEach((a, i) => push(altPage(a, i, meta, winners[i] ?? [])))
   push(summaryPage(model))
 
   return buildMultiPagePdfBytes(pages)
