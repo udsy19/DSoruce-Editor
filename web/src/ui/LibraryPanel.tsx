@@ -38,6 +38,12 @@ export interface LibraryPanelProps {
   /** The SavedPlan currently open in the session, if any — drives the floor
    *  switcher when that plan belongs to a project. */
   current?: { planId?: string }
+  /** Trigger a manual cloud sync (persist/sync.ts). Absent ⇒ no sync UI. */
+  onSync?: () => void
+  /** Result of the last sync run, for the status line. */
+  syncState?: { at: string; pushed: number; pulled: number; error?: string } | null
+  /** A sync is in flight (drives the button's disabled/"Syncing…" state). */
+  syncing?: boolean
 }
 
 const MONO = "'IBM Plex Mono', ui-monospace, monospace"
@@ -58,6 +64,19 @@ function timeAgo(iso: string): string {
 const hhmm = (at: number) =>
   new Date(at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false })
 
+/** One-line cloud-sync status for the library header. */
+function syncStatusText(
+  syncing: boolean | undefined,
+  s: LibraryPanelProps['syncState'],
+): string {
+  if (syncing) return 'Syncing…'
+  if (!s) return 'Not synced yet'
+  if (s.error) return 'Sync failed — will retry'
+  const moved = s.pushed + s.pulled
+  const detail = moved > 0 ? ` · ↑${s.pushed} ↓${s.pulled}` : ''
+  return `Synced ${timeAgo(s.at)}${detail}`
+}
+
 export function LibraryPanel({
   plans,
   onLoad,
@@ -71,6 +90,9 @@ export function LibraryPanel({
   onExport,
   onAssign,
   current,
+  onSync,
+  syncState,
+  syncing,
 }: LibraryPanelProps) {
   const [saveName, setSaveName] = useState(defaultPlanName)
   /** Check-selected plan ids, in check order (first checked = compare side A). */
@@ -357,6 +379,30 @@ export function LibraryPanel({
         </button>
       </form>
 
+      {/* — Cloud sync (design §5): last-synced state + manual sync — */}
+      {onSync && (
+        <div style={S.syncRow}>
+          <span
+            data-testid="library-sync-status"
+            style={{ ...S.syncStatus, ...(syncState?.error ? S.syncStatusErr : {}) }}
+            title={syncState?.error ?? 'Plans sync to your account across devices'}
+          >
+            <CloudIcon />
+            {syncStatusText(syncing, syncState)}
+          </span>
+          <button
+            type="button"
+            data-testid="library-sync"
+            style={S.syncBtn}
+            disabled={!!syncing}
+            title="Sync saved plans with your account"
+            onClick={onSync}
+          >
+            {syncing ? 'Syncing…' : 'Sync'}
+          </button>
+        </div>
+      )}
+
       {/* — Saved plans — */}
       <div style={S.eyebrowRow}>
         <span style={S.eyebrow}>Saved plans</span>
@@ -506,6 +552,14 @@ function FolderPlusIcon() {
   )
 }
 
+function CloudIcon() {
+  return (
+    <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden style={{ flex: 'none' }}>
+      <path d="M17.5 19a4.5 4.5 0 0 0 .5-8.97A6 6 0 0 0 6.2 9.2 4 4 0 0 0 7 17h10.5Z" />
+    </svg>
+  )
+}
+
 function TrashIcon() {
   return (
     <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -549,6 +603,42 @@ const S: Record<string, CSSProperties> = {
     borderRadius: 6,
     background: 'var(--accent, #E8A13C)',
     color: 'var(--accent-ink, #ffffff)',
+    cursor: 'pointer',
+  },
+  syncRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    padding: '2px 2px 12px',
+    marginBottom: 12,
+    borderBottom: '1px solid var(--hairline, #e6e8ec)',
+  },
+  syncStatus: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 6,
+    flex: 1,
+    minWidth: 0,
+    fontFamily: MONO,
+    fontSize: 10.5,
+    color: 'var(--muted, #6b7280)',
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+  },
+  syncStatusErr: {
+    color: '#c94f38',
+  },
+  syncBtn: {
+    fontFamily: "var(--font-ui, 'Space Grotesk', system-ui, sans-serif)",
+    fontSize: 11.5,
+    fontWeight: 600,
+    flex: 'none',
+    padding: '4px 11px',
+    borderRadius: 6,
+    border: '1px solid var(--hairline-strong, #d7dbe0)',
+    background: 'var(--surface, #ffffff)',
+    color: 'var(--text-2, #3a4048)',
     cursor: 'pointer',
   },
   eyebrowRow: {

@@ -1,6 +1,8 @@
 import { defineConfig, loadEnv, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import path from 'node:path'
+import { promises as fs } from 'node:fs'
 import { OPENAI_TOOLS, buildSystem } from './src/ai/llmSchema'
 import { dwgConvertPlugin } from './src/import/dwgConvert'
 
@@ -141,6 +143,109 @@ function claudeProxy(): Plugin {
   }
 }
 
+// Dev-only plan store — the dev-server counterpart of handlePlans() in
+// deploy/server.ts (PROD source of truth; keep the two in lockstep, same
+// convention as agentProxy/claudeProxy). Mirrors the exact routes the client
+// sync loop (src/persist/sync.ts) talks to: POST /api/plans (store one JSON
+// file per SavedPlan), GET /api/plans (id/name/updatedAt/metrics summaries),
+// GET /api/plans/:id (full record verbatim), DELETE /api/plans/:id. The vite
+// dev server does NOT proxy /api/plans, so without this middleware sync has no
+// endpoint in `pnpm dev`. Storage: one JSON file per plan under DEV_PLANS_DIR.
+const DEV_PLANS_DIR = path.resolve('.dev-plans')
+const PLAN_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/ // also keeps ids filename-safe
+
+function plansStore(): Plugin {
+  const planPath = (id: string) => path.join(DEV_PLANS_DIR, `${id}.json`)
+  const send = (res: ServerResponse, status: number, body: unknown) => {
+    res.statusCode = status
+    res.setHeader('content-type', 'application/json')
+    res.end(JSON.stringify(body))
+  }
+  return {
+    name: 'ds-plans-store',
+    configureServer(server) {
+      server.middlewares.use('/api/plans', async (req: IncomingMessage, res: ServerResponse) => {
+        // connect strips the mount prefix: req.url is '/' (collection) or '/:id'.
+        const sub = new URL(req.url ?? '/', 'http://internal').pathname.replace(/^\//, '')
+        try {
+          if (sub === '') {
+            if (req.method === 'POST') {
+              const body = await readJson(req)
+              const file = body?.file as Record<string, unknown> | undefined
+              const valid =
+                typeof body?.id === 'string' &&
+                PLAN_ID.test(body.id) &&
+                typeof file === 'object' &&
+                file !== null &&
+                file.format === 'dsource' &&
+                file.version === 1
+              if (!valid) {
+                return send(res, 400, {
+                  error:
+                    'Expected a SavedPlan record: { id: string, file: { format: "dsource", version: 1, ... }, ... }',
+                })
+              }
+              await fs.mkdir(DEV_PLANS_DIR, { recursive: true })
+              const dest = planPath(body.id as string)
+              const tmp = `${dest}.${process.pid}.${Date.now()}.tmp`
+              await fs.writeFile(tmp, JSON.stringify(body))
+              await fs.rename(tmp, dest)
+              return send(res, 200, { ok: true, id: body.id })
+            }
+            if (req.method === 'GET') {
+              let names: string[] = []
+              try {
+                names = (await fs.readdir(DEV_PLANS_DIR)).filter((n) => n.endsWith('.json'))
+              } catch {
+                // DEV_PLANS_DIR not created yet — empty library.
+              }
+              const list: unknown[] = []
+              for (const n of names) {
+                try {
+                  const p = JSON.parse(await fs.readFile(path.join(DEV_PLANS_DIR, n), 'utf8'))
+                  list.push({ id: p.id, name: p.name, updatedAt: p.updatedAt, metrics: p.metrics })
+                } catch {
+                  // Skip unreadable/corrupt records rather than failing the list.
+                }
+              }
+              list.sort((a, b) =>
+                String((b as { updatedAt?: string }).updatedAt ?? '').localeCompare(
+                  String((a as { updatedAt?: string }).updatedAt ?? ''),
+                ),
+              )
+              return send(res, 200, list)
+            }
+            return send(res, 405, { error: 'Use GET or POST' })
+          }
+
+          if (!PLAN_ID.test(sub)) return send(res, 400, { error: 'Invalid plan id' })
+          if (req.method === 'GET') {
+            try {
+              const raw = await fs.readFile(planPath(sub), 'utf8')
+              res.statusCode = 200
+              res.setHeader('content-type', 'application/json')
+              return void res.end(raw) // full record, verbatim
+            } catch {
+              return send(res, 404, { error: 'Plan not found' })
+            }
+          }
+          if (req.method === 'DELETE') {
+            try {
+              await fs.unlink(planPath(sub))
+              return send(res, 200, { ok: true })
+            } catch {
+              return send(res, 404, { error: 'Plan not found' })
+            }
+          }
+          return send(res, 405, { error: 'Use GET or DELETE' })
+        } catch (e) {
+          return send(res, 500, { error: e instanceof Error ? e.message : String(e) })
+        }
+      })
+    },
+  }
+}
+
 function readJson(req: IncomingMessage): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
     let body = ''
@@ -164,7 +269,7 @@ export default defineConfig(({ mode }) => {
     if (env[k] && !process.env[k]) process.env[k] = env[k]
   }
   return {
-    plugins: [react(), agentProxy(), claudeProxy(), dwgConvertPlugin()],
+    plugins: [react(), agentProxy(), claudeProxy(), plansStore(), dwgConvertPlugin()],
     server: {
       port: 5173,
       proxy: {

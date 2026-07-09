@@ -61,6 +61,7 @@ import {
   type SavedPlan,
 } from './persist/plans'
 import type { ProjectRecord } from './persist/projects'
+import { syncPlans, type SyncResult } from './persist/sync'
 import { noteChange, listHistory, restoreEntry, type HistoryEntry } from './persist/history'
 import { comparePlans, snapshotThumb, type PlanComparison } from './plans/compare'
 import { commitCadToPlan } from './cad/commit'
@@ -219,6 +220,11 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
    *  Cleared when the doc stops being that record (file open / fresh doc). */
   const [currentPlanId, setCurrentPlanId] = useState<string | null>(null)
   const [history, setHistory] = useState<HistoryEntry[]>([])
+  /** Cloud plan sync (persist/sync.ts): last run's result + in-flight flag. */
+  const [syncState, setSyncState] = useState<SyncResult | null>(null)
+  const [syncing, setSyncing] = useState(false)
+  /** Guards against concurrent sync runs (auto-on-open vs manual button). */
+  const syncingRef = useRef(false)
   /** Open compare modal + the two library records behind its panes. */
   const [compare, setCompare] = useState<{ cmp: PlanComparison; a: SavedPlan; b: SavedPlan } | null>(
     null,
@@ -374,9 +380,27 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
     setPlans(await listPlans())
     setHistory(await listHistory())
   }
+
+  /** Cloud plan sync (design §5): push local changes + pull remote, then
+   *  reflect any pulls back into the list. `silent` swallows failures (the
+   *  auto-sync path) — the manual button surfaces the error in the status. */
+  const syncLibrary = async (silent = false) => {
+    if (syncingRef.current) return
+    syncingRef.current = true
+    if (!silent) setSyncing(true)
+    try {
+      const result = await syncPlans()
+      setSyncState(result)
+      if (result.pulled > 0) await refreshLibrary()
+    } finally {
+      syncingRef.current = false
+      setSyncing(false)
+    }
+  }
+
   useEffect(() => {
     if (panelTab !== 'library') return
-    void refreshLibrary()
+    void refreshLibrary().then(() => syncLibrary(true)) // auto-sync, best-effort
     // Ask the browser to exempt our origin from storage eviction (design M5;
     // idempotent, safe to re-request).
     void navigator.storage?.persist?.()
@@ -970,6 +994,9 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
                   }
                   onAssign={(id, name, floor) => void assignPlanToProject(id, name, floor)}
                   current={currentPlanId ? { planId: currentPlanId } : undefined}
+                  onSync={() => void syncLibrary(false)}
+                  syncState={syncState}
+                  syncing={syncing}
                 />
               ) : (
                 <>

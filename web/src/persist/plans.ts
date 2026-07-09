@@ -9,7 +9,7 @@ import { Editor } from '../wasm/ds_core'
 import type { EditorCanvas, Metrics, CirculationScore } from '../editor/EditorCanvas'
 import type { Drawing } from '../import/types'
 import type { BindingInfo, DSourceFile, DSourceUi } from './file'
-import { applyProject, buildProjectFile } from './file'
+import { applyProject, buildProjectFile, isRecord, parseProject } from './file'
 import { dbDel, dbGet, dbGetAll, dbPut } from './db'
 
 /** Headline numbers shown on library cards + compare rows, no wasm needed. */
@@ -47,6 +47,16 @@ export interface SavedPlan {
   /** Denormalized onto every floor record so each stays self-describing. */
   projectName?: string
   floor?: PlanFloor
+  // --- Cloud sync bookkeeping (docs/design/plan-library.md §5) ---
+  // ADDITIVE + OPTIONAL + DEVICE-LOCAL: v1 readers ignore them (same rule as
+  // the file format), and `persist/sync.ts` STRIPS them before POST so they
+  // never travel to the server — each device stamps its own. Pre-sync records
+  // (neither field) sync as "never synced".
+  /** ISO wall-clock of the last time this record was reconciled with the server. */
+  syncedAt?: string
+  /** The `updatedAt` value last confirmed on the server — the version identity
+   *  used to skip re-pulling a record we already hold (sync idempotence). */
+  remoteRev?: string
 }
 
 /** One project derived from the library — floors are plain `SavedPlan`s. */
@@ -118,6 +128,57 @@ export function buildSavedPlan(
         }
       : {}),
   }
+}
+
+/**
+ * Coerce an untrusted record (a plan pulled from the server) into a valid
+ * `SavedPlan`, or `null` if it is too malformed to store. The `file` facet is
+ * validated by the SAME `parseProject` used for opened `.dsource` files (no
+ * bloat — one format contract); metrics are coerced field-wise, and the
+ * project-grouping + sync fields are carried through when present. Returns
+ * `null` (never throws) so a bad remote record is skipped, not fatal, by the
+ * sync loop (persist/sync.ts). Pure — unit-testable in Node.
+ */
+export function sanitizeSavedPlan(raw: unknown): SavedPlan | null {
+  if (!isRecord(raw)) return null
+  if (typeof raw.id !== 'string' || raw.id.length === 0) return null
+  if (typeof raw.name !== 'string') return null
+  let file: DSourceFile
+  try {
+    file = parseProject(JSON.stringify(raw.file))
+  } catch {
+    return null // the document facet is unrecoverable → skip the whole record
+  }
+  const epoch = new Date(0).toISOString()
+  const m = isRecord(raw.metrics) ? raw.metrics : {}
+  const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
+  const numOrNull = (v: unknown): number | null =>
+    typeof v === 'number' && Number.isFinite(v) ? v : null
+  const str = (v: unknown, fallback: string): string => (typeof v === 'string' ? v : fallback)
+  const out: SavedPlan = {
+    id: raw.id,
+    name: raw.name,
+    createdAt: str(raw.createdAt, epoch),
+    updatedAt: str(raw.updatedAt, epoch),
+    thumb: str(raw.thumb, ''),
+    metrics: {
+      workstations: num(m.workstations),
+      netInternalArea: num(m.netInternalArea),
+      efficiencyPct: num(m.efficiencyPct),
+      indicativeCost: num(m.indicativeCost),
+      circulationScore: numOrNull(m.circulationScore),
+      minCorridorM: numOrNull(m.minCorridorM),
+    },
+    file,
+  }
+  if (typeof raw.projectId === 'string') out.projectId = raw.projectId
+  if (typeof raw.projectName === 'string') out.projectName = raw.projectName
+  if (isRecord(raw.floor) && typeof raw.floor.label === 'string' && typeof raw.floor.index === 'number') {
+    out.floor = { label: raw.floor.label, index: raw.floor.index }
+  }
+  if (typeof raw.syncedAt === 'string') out.syncedAt = raw.syncedAt
+  if (typeof raw.remoteRev === 'string') out.remoteRev = raw.remoteRev
+  return out
 }
 
 /** All saved plans, most recently updated first. */

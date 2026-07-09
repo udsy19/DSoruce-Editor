@@ -7,6 +7,10 @@ node_modules
 web/dist
 deploy/dist-server
 
+# Dev-only plan store (vite plansStore middleware; prod uses PLANS_DIR)
+web/.dev-plans
+deploy/plans
+
 # Generated wasm bindings (built via `make wasm`)
 web/src/wasm
 
