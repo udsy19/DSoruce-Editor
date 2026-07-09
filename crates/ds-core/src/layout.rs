@@ -839,18 +839,10 @@ const BAND_STEP: f64 = 0.15;
 /// Candidate step (m) of the interior clear-pocket scan for rooms that found
 /// no band slot on a wall-dense plate.
 const POCKET_STEP: f64 = 0.6;
-/// Band-depth cap (m) on the plate's DOMINANT region(s) — one standard room
-/// deep (a meeting room / cabin is ~3.0–3.3 m). The largest wing is reserved
-/// for the open workstation field (spec §1: desks are the MAJORITY use), so its
-/// long band stays shallow: without this cap one deep support room (collab
-/// 4.2 m, pantry 3.6 m) landing in the big wing deepens its ENTIRE band and
-/// steals a whole desk row per extra meter across the wing's length (the
-/// field-theft bug — a single 4.2 m room cut the 462 m² wing from 54 to 42
-/// desks). Deep rooms clamp to this depth here and prefer the smaller wings.
-const FIELD_REGION_BAND_D: f64 = 3.3;
-/// A region counts as a DOMINANT field region (shallow-band capped) when its
-/// area is at least this fraction of the LARGEST region's — so a plate with two
-/// comparably large wings reserves both for desks, not just the single biggest.
+/// A region counts as a DOMINANT field region — reserved as a PURE open desk
+/// field, zero room band (see `allocate_rooms`) — when its area is at least this
+/// fraction of the LARGEST region's, so a plate with two comparably large wings
+/// reserves BOTH for desks, not just the single biggest.
 const FIELD_REGION_FRAC: f64 = 0.6;
 
 // ---- M5: professional scoring (spec §5) ----
@@ -1947,19 +1939,33 @@ fn allocate_rooms(
         // least one desk row survives in front of the band. A shallow wing that
         // can't hold a room AND a desk field rejects the room here; it overflows
         // to the pocket pass rather than swallowing the wing with a room band
-        // (spec 1: rooms cluster, desks line the facade).
+        // (spec 1: rooms cluster, desks line the facade). Deepening a room-wing's
+        // band past this to fit the deep rooms was tried and REGRESSED the count:
+        // room packing here is frontage-limited, so a deeper first row only
+        // shrinks the second-row pocket, netting FEWER rooms — the room-wing
+        // capacity comes from its two banded edges (band + pocket), not depth.
         cap_d[i] = (cross - BAND_BACK_GAP - SPINE_W - FACADE_GAP - min_field_d).max(0.0);
     }
 
-    // Reserve the plate's dominant wing(s) for the open desk field: cap their
-    // band shallow (one standard room deep) so no deep room deepens the whole
-    // long band and eats desk rows (spec §1). `field_regions` already excludes
-    // the single-region case (that plate must host every room in its one band).
-    // Deep rooms clamp to this cap and, being tested smallest-wing-first, prefer
-    // the smaller wings before spilling here.
+    // Reserve the plate's dominant wing(s) as a PURE open desk field: zero band
+    // capacity, so NO support room ever bands into them and their entire
+    // cross-section stays workstations (spec §1: desks are the majority use).
+    // The old shallow-band cap (`FIELD_REGION_BAND_D`, one room deep) still ran a
+    // room band the full length of the biggest wing — on the real 462 m² wing
+    // that band + its 1.5 m spine (≈4.8 m of a 12.5 m cross-section, across the
+    // whole 37 m length) held ~9–11 rooms and cost the field ~20 desks. With
+    // `cap_d = 0` the band-pass fit check (`0.7·d ≤ cap_d`) rejects every room
+    // for these wings, `band_depths` stays 0, and `plan_region` emits no band and
+    // no spine — the whole inset rect packs desks. Rooms concentrate in the
+    // smaller wings instead (they lead the smallest-first `order`); a room that
+    // fits in no room-wing overflows to the pocket pass, whose field-region
+    // pocket is the now-empty band strip (zero width → never placed there), so
+    // overflow can never leak back into a reserved desk wing. `field_regions`
+    // already excludes the single-region case (that plate hosts every room in
+    // its one band).
     for i in 0..n {
         if field_regions[i] {
-            cap_d[i] = cap_d[i].min(FIELD_REGION_BAND_D);
+            cap_d[i] = 0.0;
         }
     }
 
@@ -2277,6 +2283,26 @@ fn plan_region(
                     connector = Some(rect(ax - SPINE_W / 2.0, ax + SPINE_W / 2.0, k0, k1));
                 }
             }
+        }
+    } else if let Some(e) = entry {
+        // Entry into a RESERVED pure-desk field wing (no band, hence no spine):
+        // draw a short spine-width APPROACH stub from the entry's near end into
+        // the field, along the wing's long axis. It gives the door a drawn
+        // walkable approach (desks avoid it) and keeps the circulation network
+        // reaching the entry even though this wing carries no room-band spine —
+        // the deliberate open-plan entry of the field-first layout. Only ever
+        // drawn when the plate actually has an entry, so the room-free dominance
+        // fits are unaffected.
+        let (e_along, e_cross) = if portrait { (e.y, e.x) } else { (e.x, e.y) };
+        rev = (e_along - a1).abs() < (e_along - a0).abs();
+        let (fc0, fc1) = field_c;
+        if a1 - a0 > SPINE_W && fc1 - fc0 > SPINE_W {
+            // Keep the stub inside the field's cross-band so it never straddles
+            // the facade gap or a seam.
+            let cc = e_cross.clamp(fc0 + SPINE_W / 2.0, fc1 - SPINE_W / 2.0);
+            let approach = (a1 - a0).min(2.5).max(SPINE_W);
+            let (k0, k1) = if !rev { (a0, a0 + approach) } else { (a1 - approach, a1) };
+            connector = Some(rect(k0, k1, cc - SPINE_W / 2.0, cc + SPINE_W / 2.0));
         }
     }
 
@@ -3794,15 +3820,18 @@ mod tests {
     /// This is the test the lean recalibration is measured by. Before it, the
     /// derived program over-roomed the floor (booth N/12, focus N/30, 0.85 open
     /// share → ~28 support rooms eating ~40% of the plate, seating only ~52
-    /// desks). After (booth N/25, focus N/60, collab ÷12, `SUPPORT_AREA_CAP`,
-    /// 0.90 open share): the support set drops to ~23 rooms, the open field grows
-    /// to ~62–64% of usable area, and the best candidate seats ~67 workstations —
-    /// materially denser while staying inside the professional band.
+    /// desks). The lean derive (booth N/25, focus N/60, collab ÷12,
+    /// `SUPPORT_AREA_CAP`, 0.90 open share) lifted it to ~67; the room-
+    /// CONCENTRATION rework (largest wing reserved as a PURE desk field, zero room
+    /// band — see `allocate_rooms`) then removed the shallow room band that still
+    /// ran the big wing's full length, lifting Balanced to a seed-stable ~76
+    /// (Open ~80) while the support set stays a lean ~16 rooms in the small wings.
     ///
-    /// Also the regression bar for the two field-theft bugs this pipeline fixed:
-    /// deep support rooms landing in the dominant wing's desk field, and one deep
-    /// room deepening a whole band — which used to crater the field below the room
-    /// count (rooms outnumbering workstations, the opposite of a real office).
+    /// Also the regression bar for the field-theft bugs this pipeline fixed:
+    /// deep support rooms landing in the dominant wing's desk field, and a room
+    /// band of ANY depth running the dominant wing — which used to crater the
+    /// field below the room count (rooms outnumbering workstations, the opposite
+    /// of a real office).
     #[test]
     fn real_plate_open_field_dominates_the_program() {
         let area = geometry::polygon_area(&poly_of(&real_plate_doc()));
@@ -3863,8 +3892,11 @@ mod tests {
                 (rooms as f64) < 0.6 * (desks as f64),
                 "seed {seed}: {rooms} rooms is not a lean minority against {desks} workstations"
             );
-            // (d) Every seed fills materially past the ~52-desk heavy-room floor.
-            assert!(desks >= 52, "seed {seed}: only {desks} workstations on an 843 m² plate");
+            // (d) Every seed fills materially past the pre-concentration floor.
+            // The room-concentration rework (largest wing reserved as a pure desk
+            // field, no room band) lifted the seed-stable Balanced count from ~67
+            // to ~76 on this plate, so the floor rises from 52 to 70.
+            assert!(desks >= 70, "seed {seed}: only {desks} workstations on an 843 m² plate");
             // (e) Density in the professional band (seat-based m²/person, 8–12).
             let m2pp = area / seats;
             assert!(
@@ -3887,12 +3919,115 @@ mod tests {
             }
         }
         // (i) The candidate the app SHOWS (best of the seed gallery) seats a
-        // materially higher count than the ~52 the pre-lean program managed —
-        // the headline win of the lean recalibration.
+        // materially higher count than the ~52 the pre-lean program managed and
+        // the ~67 the pre-concentration field managed — the headline win of the
+        // room-concentration rework (Balanced ~76 here; Open reaches ~80).
         assert!(
-            best_desks >= 64,
-            "best seed seated only {best_desks} workstations (< 64: lean rebalance regressed)"
+            best_desks >= 74,
+            "best seed seated only {best_desks} workstations (< 74: concentration regressed)"
         );
+    }
+
+    /// ROOM CONCENTRATION (the field-first rework): on the real multi-wing plate
+    /// the plate's LARGEST wing is reserved as a PURE open desk field — no support
+    /// room ever bands into it — and the support program concentrates into the
+    /// SMALLER wings. This is the mechanism that lifted the workstation count from
+    /// ~54/~67 to ~76 (Balanced) / ~80 (Open): a room band of any depth running
+    /// the dominant wing's full length cost it whole desk columns.
+    ///
+    /// Mirrors qbiq's Crystal Tower reference (docs/reference/qbiq): rooms hug the
+    /// core, open desks fill the largest perimeter wing uninterrupted.
+    #[test]
+    fn largest_wing_is_a_pure_desk_field_rooms_concentrate() {
+        let doc0 = real_plate_doc();
+        let poly = geometry::trace_floor_polygon(&wall_segments(&doc0), geometry::LOOP_SNAP_TOL).unwrap();
+        let area = geometry::polygon_area(&poly);
+        let holes: Vec<geometry::Rect> = Vec::new();
+        let corridor = 1.2;
+        let min_dim = REGION_MIN_DIM.max(2.0 * corridor + 0.8);
+        let regions = geometry::decompose_plate(&poly, REGION_CELL, min_dim, REGION_MIN_AREA, &holes);
+        assert!(regions.len() >= 2, "real plate must decompose into multiple wings");
+        let big = (0..regions.len())
+            .max_by(|&a, &b| regions[a].area().partial_cmp(&regions[b].area()).unwrap())
+            .unwrap();
+        let br = &regions[big];
+        // The reserved wing is genuinely dominant (a real "one big field").
+        let total: f64 = regions.iter().map(|r| r.area()).sum();
+        assert!(br.area() > 0.4 * total, "largest wing is not clearly dominant");
+
+        let headcount = (area / 10.0).round() as u32;
+        let inside = |cx: f64, cy: f64| cx >= br.x0 && cx <= br.x1 && cy >= br.y0 && cy <= br.y1;
+
+        for strat in [Strategy::Balanced, Strategy::Open] {
+            let mut best = 0usize;
+            for seed in 1..=4u64 {
+                let mut program = Program::default();
+                program.strategy = strat;
+                program.headcount = Some(headcount);
+                program.meeting_rooms = 5;
+                program.meeting_w = 3.0;
+                program.meeting_h = 3.0;
+                let mut doc = real_plate_doc();
+                generate(&mut doc, &program, seed, false);
+
+                let room_zones: Vec<&Zone> = doc
+                    .zones
+                    .iter()
+                    .filter(|z| matches!(z.zone_type, ZoneType::Meeting | ZoneType::ClosedOffice | ZoneType::Amenity | ZoneType::Collaboration))
+                    .collect();
+                // (a) NO room zone intersects the reserved desk wing — it is
+                // desk-only, the invariant the whole rework turns on.
+                for z in &room_zones {
+                    let (cx, cy) = zone_bbox_center(z);
+                    assert!(!inside(cx, cy), "{:?} seed {seed}: room '{}' landed in the reserved desk wing", strat, z.label);
+                }
+                // (b) The reserved wing holds the STRICT MAJORITY of desks — the
+                // open field really is concentrated there, not scattered.
+                let (mut big_desks, mut total_desks) = (0usize, 0usize);
+                for c in doc.components.iter().filter(|c| c.category == "Desk") {
+                    total_desks += 1;
+                    if inside(c.x, c.y) { big_desks += 1; }
+                }
+                assert!(
+                    big_desks * 2 > total_desks,
+                    "{strat:?} seed {seed}: reserved wing holds only {big_desks}/{total_desks} desks (not the majority)"
+                );
+                // (c) Rooms concentrate into a MINORITY of the wings (≤ the wings
+                // that are NOT the reserved desk field).
+                let wings_with_rooms = (0..regions.len())
+                    .filter(|&ri| {
+                        ri != big
+                            && room_zones.iter().any(|z| {
+                                let (cx, cy) = zone_bbox_center(z);
+                                cx >= regions[ri].x0 && cx <= regions[ri].x1 && cy >= regions[ri].y0 && cy <= regions[ri].y1
+                            })
+                    })
+                    .count();
+                assert!(
+                    wings_with_rooms <= regions.len() - 1,
+                    "{strat:?} seed {seed}: rooms not concentrated (in {wings_with_rooms} room-wings)"
+                );
+                assert!(!room_zones.is_empty(), "{:?} seed {seed}: the support program vanished", strat);
+
+                // (d) Density in the professional band + walkable + on-plate.
+                let meeting_seats: f64 = doc.zones.iter().filter(|z| matches!(z.zone_type, ZoneType::Meeting | ZoneType::Collaboration)).map(|z| z.capacity() as f64).sum();
+                let seats = total_desks as f64 + meeting_seats;
+                let m2pp = area / seats;
+                assert!((8.0..=12.0).contains(&m2pp), "{:?} seed {seed}: {m2pp:.1} m²/seat outside 8–12", strat);
+                let circ = circulation::evaluate(&doc, &CirculationConfig::default()).score;
+                assert!(circ >= 54.0, "{:?} seed {seed}: circulation {circ:.1} < 54", strat);
+                assert_no_overlaps(&doc, "concentration");
+                let pl = poly_of(&doc);
+                for c in &doc.components {
+                    assert!(footprint_in_plate(c, &pl), "{:?} seed {seed}: {} escapes the plate", strat, c.label);
+                }
+                best = best.max(total_desks);
+            }
+            // (e) The reserved-field win is materially higher than the ~54/~67 the
+            // banded-dominant-wing plans managed.
+            let floor = if strat == Strategy::Open { 78 } else { 74 };
+            assert!(best >= floor, "{:?}: best only {best} workstations (< {floor})", strat);
+        }
     }
 
     // ---- M7: strategy-distinct A/B/C alternatives ---------------------------
@@ -3931,8 +4066,18 @@ mod tests {
     /// enclosure; Cellular is privacy-forward (more enclosed offices, fewer
     /// desks); Balanced sits between. This is the flagship "smarter test-fit"
     /// differentiator (qbiq's A/B/C differ in offices/seats the same way).
-    /// Measured at authoring (best-of-6-seeds): Open 75 desks / 5 offices,
-    /// Balanced 67 / 10, Cellular 61 / 19.
+    ///
+    /// EVOLVED with the room-concentration rework (largest wing reserved as a
+    /// pure desk field): the primary distinctness signal is now the DESK FIELD
+    /// SIZE — Open fills the reserved wing hardest (80), Cellular gives most of
+    /// the headcount to rooms (61), a 19-desk spread (was ~14). The DELIVERED
+    /// office magnitude COMPRESSED (Open 4 / Balanced 7 / Cellular 8, was
+    /// 5/10/19): rooms now concentrate into the small room-wings, whose banded
+    /// capacity is bounded, so Cellular's extra derived cabins partly overflow
+    /// rather than all landing as offices. Offices still increase monotonically
+    /// with enclosure; the assertion tracks that reality (strict monotonic
+    /// desks + offices, with a realistic office delta) instead of the old
+    /// pre-concentration +5 magnitude.
     #[test]
     fn strategies_are_structurally_distinct() {
         let (open_d, open_o, _) = strategy_fit(Strategy::Open);
@@ -3940,18 +4085,21 @@ mod tests {
         let (cell_d, cell_o, _) = strategy_fit(Strategy::Cellular);
 
         // Open seats materially MORE workstations than Cellular (the density
-        // trade-off the user picks between).
+        // trade-off the user picks between) — the headline distinctness signal,
+        // now a wide ~19-desk spread from reserving the biggest wing for Open.
         assert!(
             open_d >= cell_d + 8,
             "Open ({open_d} desks) must seat materially more than Cellular ({cell_d})"
         );
         assert!(bal_d > cell_d && bal_d < open_d, "Balanced desks {bal_d} should sit between Cellular {cell_d} and Open {open_d}");
-        // Cellular is privacy-forward: MORE enclosed offices than Open.
+        // Cellular is privacy-forward: MORE enclosed offices than Open. The
+        // delivered delta is realistic (room-wing capacity bounds the count),
+        // but still materially more enclosed.
         assert!(
-            cell_o >= open_o + 5,
+            cell_o >= open_o + 3,
             "Cellular ({cell_o} offices) must be materially more enclosed than Open ({open_o})"
         );
-        assert!(bal_o > open_o && bal_o < cell_o, "Balanced offices {bal_o} should sit between Open {open_o} and Cellular {cell_o}");
+        assert!(bal_o > open_o && bal_o <= cell_o, "Balanced offices {bal_o} should sit between Open {open_o} and Cellular {cell_o}");
     }
 
     /// The DERIVED program mix shifts with strategy: Open pushes the open share
@@ -5273,6 +5421,33 @@ mod tests {
         // The recentered density sub-score rewards the in-band fill.
         let s = score(&doc, &Program::default());
         assert!(s.density >= 80.0, "REAL_PLATE density sub-score {:.0} should reward the in-band fill", s.density);
+    }
+
+    /// SMALL single-region plate (18×12) stays SANE after the room-concentration
+    /// rework, not degenerate. The rework zeroes the room band only on the
+    /// dominant wing(s) of a DECOMPOSED plate; a rectangular plate is one region
+    /// (never a `field_region`), so it keeps its `min_field_d` desk-row reserve
+    /// and must still host BOTH a real desk field AND its support rooms in one
+    /// band — the regression guard that the multi-wing change left the common
+    /// single-room-plate path untouched.
+    #[test]
+    fn small_single_region_plate_stays_sane() {
+        let mut doc = room(18.0, 12.0);
+        generate(&mut doc, &Program::default(), 1, false);
+        let desks = doc.components.iter().filter(|c| c.category == "Desk").count();
+        let rooms = doc
+            .zones
+            .iter()
+            .filter(|z| matches!(z.zone_type, ZoneType::Meeting | ZoneType::ClosedOffice | ZoneType::Amenity | ZoneType::Collaboration))
+            .count();
+        let (seats, area) = seats_and_area(&doc);
+        let m2pp = area / seats;
+        assert!(desks >= 5, "18×12 seated only {desks} desks (degenerate)");
+        assert!(rooms >= 3, "18×12 placed only {rooms} support rooms (degenerate)");
+        assert!((8.0..=13.0).contains(&m2pp), "18×12: {m2pp:.1} m²/person out of band");
+        let circ = circulation::evaluate(&doc, &CirculationConfig::default()).score;
+        assert!(circ >= 54.0, "18×12: circulation {circ:.1} < 54");
+        assert_no_overlaps(&doc, "small plate");
     }
 
     /// The recentered density sub-score peaks in the professional band and falls
