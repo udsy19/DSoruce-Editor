@@ -45,6 +45,7 @@ import { extractPlate, extractInteriorWalls } from '../import/testfit'
 import { healWalls } from '../import/heal'
 import { triggerDownload } from './png'
 import { sectionSheets } from './section'
+import { servicesSheets } from './servicesSheets'
 
 // ---------------------------------------------------------------------------
 // Meta + options
@@ -67,7 +68,7 @@ export interface DrawingSetOpts {
    * Optional sheet whitelist (M6 sheets-manager toggles). When present, ONLY
    * sheets whose id is listed are emitted; when absent, ALL sheets emit
    * (backward compatible). Ids: 'cover' | 'contents' | 'demolition' |
-   * 'construction' | 'sections' | 'furniture' | 'moodboard'.
+   * 'construction' | 'rcp' | 'power' | 'sections' | 'furniture' | 'moodboard'.
    */
   include?: string[]
 }
@@ -1084,6 +1085,20 @@ export async function buildDrawingSetPdf(state: DocState, opts: DrawingSetOpts):
   }
   add('demolition', 'Demolition Plan', (no) => demolitionSheet(state, opts, no))
   add('construction', 'Construction & Furnishing Plan', (no) => constructionSheet(state, opts, no))
+  // ── Services plans: Reflected Ceiling Plan + Power & Data (servicesSheets.ts) ──
+  // Grouped with the architectural plans (before sections). servicesSheets builds
+  // both sheets self-numbered A.(startNo+i+1); startNo=numbered.length keeps them
+  // in the running A.NN sequence. Each sheet honors its own M6 toggle (rcp/power).
+  // Try-wrapped so a services-render failure never sinks the rest of the set.
+  if (want('rcp') || want('power')) {
+    try {
+      for (const s of servicesSheets(state, { meta: opts.meta, startNo: numbered.length })) {
+        if (want(s.kind)) numbered.push({ title: s.title, no: s.no, page: s.page })
+      }
+    } catch (err) {
+      console.warn('drawing-set: services sheets skipped —', err)
+    }
+  }
   // ── Section sheets (orthographic cuts from the 3D model, export/section.ts) ──
   // section.ts self-numbers as A.(startNo+i+1); passing startNo=numbered.length
   // gives the first cut the next free slot (A.03 after the two plans) and keeps

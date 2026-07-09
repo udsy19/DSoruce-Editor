@@ -63,20 +63,22 @@ export const SHEET_MANIFEST: SheetDescriptor[] = [
     blurb: 'New walls blue · furniture · door/window schedule',
     available: true,
   },
+  // Order below mirrors buildDrawingSetPdf's assembly (A.NN is auto-assigned by
+  // position at build time; these `no` hints track that order).
   {
-    id: 'furniture',
+    id: 'rcp',
     no: 'A.03',
-    title: 'Furniture & Fixtures',
-    kind: 'furniture',
-    blurb: 'Product cards · specs · pricing (from the takeoff + bank)',
+    title: 'Reflected Ceiling Plan',
+    kind: 'plan',
+    blurb: 'Ceiling grid · luminaires/diffusers/detectors · fixture schedule',
     available: true,
   },
   {
-    id: 'moodboard',
+    id: 'power',
     no: 'A.04',
-    title: 'Materials / Moodboard',
-    kind: 'moodboard',
-    blurb: 'Bound-product tiles grouped by room type',
+    title: 'Power & Data Plan',
+    kind: 'plan',
+    blurb: 'Outlets/data per desk · floor boxes · switches · DB · points schedule',
     available: true,
   },
   {
@@ -85,6 +87,22 @@ export const SHEET_MANIFEST: SheetDescriptor[] = [
     title: 'Sections & Elevations',
     kind: 'section',
     blurb: 'Orthographic cuts · scale figures · height dims',
+    available: true,
+  },
+  {
+    id: 'furniture',
+    no: 'A.06',
+    title: 'Furniture & Fixtures',
+    kind: 'furniture',
+    blurb: 'Product cards · specs · pricing (from the takeoff + bank)',
+    available: true,
+  },
+  {
+    id: 'moodboard',
+    no: 'A.07',
+    title: 'Materials / Moodboard',
+    kind: 'moodboard',
+    blurb: 'Bound-product tiles grouped by room type',
     available: true,
   },
 ]
