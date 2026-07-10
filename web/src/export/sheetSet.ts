@@ -46,6 +46,7 @@ import { healWalls } from '../import/heal'
 import { triggerDownload } from './png'
 import { sectionSheets } from './section'
 import { servicesSheets } from './servicesSheets'
+import { finishScheduleSheets } from './finishSchedule'
 
 // ---------------------------------------------------------------------------
 // Meta + options
@@ -68,7 +69,8 @@ export interface DrawingSetOpts {
    * Optional sheet whitelist (M6 sheets-manager toggles). When present, ONLY
    * sheets whose id is listed are emitted; when absent, ALL sheets emit
    * (backward compatible). Ids: 'cover' | 'contents' | 'demolition' |
-   * 'construction' | 'rcp' | 'power' | 'sections' | 'furniture' | 'moodboard'.
+   * 'construction' | 'rcp' | 'power' | 'sections' | 'furniture' | 'moodboard' |
+   * 'finishes'.
    */
   include?: string[]
 }
@@ -1119,6 +1121,19 @@ export async function buildDrawingSetPdf(state: DocState, opts: DrawingSetOpts):
     ),
   )
   add('moodboard', 'Moodboard', (no) => moodboardSheet(opts, no, moodGroups, keyPlan()))
+  // ── Room Finish Schedule (export/finishSchedule.ts) — the closing schedule ──
+  // Self-numbered like sections/services; startNo=numbered.length keeps it in the
+  // running A.NN sequence. Paginates to continuation sheets. Try-wrapped so a
+  // schedule failure never sinks the rest of the set.
+  if (want('finishes')) {
+    try {
+      for (const s of finishScheduleSheets(state, { meta: opts.meta, startNo: numbered.length })) {
+        numbered.push({ title: s.title, no: s.no, page: s.page })
+      }
+    } catch (err) {
+      console.warn('drawing-set: finish schedule skipped —', err)
+    }
+  }
 
   const toPage = (pg: Page): PdfPage => ({ ops: pg.ops, images: pg.images })
   const pages: PdfPage[] = []

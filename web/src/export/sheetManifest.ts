@@ -10,7 +10,14 @@
 // docs/design/drawing-set-generator.md §4), flip its `available` flag here and
 // it surfaces in the manager automatically — no SheetsPanel edit required.
 
-export type SheetKind = 'cover' | 'contents' | 'plan' | 'furniture' | 'moodboard' | 'section'
+export type SheetKind =
+  | 'cover'
+  | 'contents'
+  | 'plan'
+  | 'furniture'
+  | 'moodboard'
+  | 'section'
+  | 'schedule'
 
 export interface SheetDescriptor {
   /** Stable id — also the include-toggle key. */
@@ -103,6 +110,14 @@ export const SHEET_MANIFEST: SheetDescriptor[] = [
     title: 'Materials / Moodboard',
     kind: 'moodboard',
     blurb: 'Bound-product tiles grouped by room type',
+    available: true,
+  },
+  {
+    id: 'finishes',
+    no: 'A.08',
+    title: 'Room Finish Schedule',
+    kind: 'schedule',
+    blurb: 'Per-room floor / base / wall / ceiling finishes · area',
     available: true,
   },
 ]
