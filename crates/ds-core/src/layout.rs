@@ -1667,6 +1667,24 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
         }
     }
 
+    // --- Degenerate-plate rescue: an ANGLED / irregular selection (every
+    // hand-drawn area lasso is one) whose usable band is a narrow diagonal has a
+    // wall-bbox far larger than its area, so `decompose_plate` inscribes no
+    // axis-aligned region ≥ `min_dim` and the single-region fallback packs the
+    // oversized bbox — whose axis-aligned lattice seats ZERO desks inside the
+    // tilted polygon. When the whole run placed no desks but the plate has real
+    // room, fill it on a grid ROTATED to the plate's principal axis, so a rotated
+    // band packs as densely as the same band would axis-aligned. Fires only at
+    // placed_desks == 0, so axis-aligned and large/convex plates are untouched.
+    if placed_desks == 0 && remaining_desks > 0 {
+        if let Some(poly) = plate.as_deref() {
+            // Side effect only (pushes Desk components into the field the normal
+            // pass already zoned); the count is not needed again — the score and
+            // stats read the placed components directly.
+            pack_desks_oriented(doc, program, poly, remaining_desks, &iwalls, &mut obstacles, clear);
+        }
+    }
+
     // Keep-outs surface as `Core` zones (gray tint, Core cost/NIA rate). Emitted
     // last so a point inside a keep-out buckets to Core, winning the
     // last-non-Circulation-wins tie over any overlapping Workspace rect.
@@ -2981,6 +2999,125 @@ fn pack_desks(
     }
 
     desks_here
+}
+
+/// Orientation (radians) of a polygon's LONGEST edge — the principal axis a
+/// rotated rectangular/T/L selection reads along. `pack_desks_oriented` aligns
+/// its desk grid to this so a tilted band fills lengthwise, exactly as the same
+/// band would if it were axis-aligned.
+fn principal_axis(poly: &[Point]) -> f64 {
+    let mut best_len2 = -1.0;
+    let mut theta = 0.0;
+    for i in 0..poly.len() {
+        let a = poly[i];
+        let b = poly[(i + 1) % poly.len()];
+        let (dx, dy) = (b.x - a.x, b.y - a.y);
+        let len2 = dx * dx + dy * dy;
+        if len2 > best_len2 {
+            best_len2 = len2;
+            theta = dy.atan2(dx);
+        }
+    }
+    theta
+}
+
+/// True when the axis-aligned rectangle (`w`×`h`) rotated by `theta` about
+/// `(cx, cy)` sits inside `poly` with at least `margin` clearance to every edge.
+/// The rotated-rect variant of [`slot_fits_plate`]: it transforms each polygon
+/// edge into the rectangle's own frame (rotate by −θ about the center) and
+/// reuses the exact axis-aligned [`geometry::rect_segment_dist`], so no new
+/// distance math is introduced. Used only by the degenerate-plate rescue.
+fn oriented_slot_in_poly(poly: &[Point], cx: f64, cy: f64, w: f64, h: f64, theta: f64, margin: f64) -> bool {
+    if !geometry::point_in_polygon(cx, cy, poly) {
+        return false;
+    }
+    let (s, c) = (-theta).sin_cos(); // rotate WORLD into rect-local by −θ
+    let to_local = |p: Point| -> Point {
+        let (dx, dy) = (p.x - cx, p.y - cy);
+        Point::new(dx * c - dy * s, dx * s + dy * c)
+    };
+    (0..poly.len()).all(|i| {
+        let a = to_local(poly[i]);
+        let b = to_local(poly[(i + 1) % poly.len()]);
+        geometry::rect_segment_dist(0.0, 0.0, w, h, a, b) >= margin - 1e-6
+    })
+}
+
+/// Last-resort desk fill for a plate the axis-aligned region packer could not
+/// seat a single desk in — always a NARROW / ANGLED band (the region raster
+/// found no inscribed axis-aligned rectangle, so the field packer ran over the
+/// oversized wall-bbox and every lattice slot fell outside the tilted polygon).
+/// Packs desks on a grid rotated to the plate's principal axis, testing each
+/// rotated footprint against the polygon (with the facade gap), the interior
+/// walls, and the existing obstacle set (rooms / keep-outs). Deterministic and
+/// self-non-overlapping (regular pitch ≥ footprint + clearance). Returns the
+/// count placed; caller invokes it only when the normal packer placed zero.
+fn pack_desks_oriented(
+    doc: &mut Document,
+    program: &Program,
+    poly: &[Point],
+    target: u32,
+    iwalls: &[(Point, Point, f64)],
+    obstacles: &mut Vec<(f64, f64, f64, f64)>,
+    clear: f64,
+) -> u32 {
+    let (fw, fh) = (program.desk_w, program.desk_h);
+    if fw <= 0.0 || fh <= 0.0 || target == 0 {
+        return 0;
+    }
+    let theta = principal_axis(poly);
+    let (s, c) = theta.sin_cos();
+    // Polygon bounds in the rotated (u = along axis, v = across) frame.
+    let mut umin = f64::INFINITY;
+    let mut umax = f64::NEG_INFINITY;
+    let mut vmin = f64::INFINITY;
+    let mut vmax = f64::NEG_INFINITY;
+    for p in poly {
+        let u = p.x * c + p.y * s;
+        let v = -p.x * s + p.y * c;
+        umin = umin.min(u);
+        umax = umax.max(u);
+        vmin = vmin.min(v);
+        vmax = vmax.max(v);
+    }
+    let (pitch_u, pitch_v) = (fw + clear, fh + clear);
+    let (world_w, world_h) = world_extents(fw, fh, theta);
+    // Centered lines along one axis: count how many footprints fit inside the
+    // MARGIN-inset span (the facade gap the poly test enforces on both edges),
+    // then center that run within the full span. Centering is what seats the
+    // single row a narrow band holds — a phase anchored at the edge lands every
+    // candidate row against a margin and fits none (the field packer's bug).
+    let lines = |lo: f64, hi: f64, size: f64, pitch: f64, margin: f64| -> Vec<f64> {
+        let usable = (hi - lo) - 2.0 * margin;
+        if usable < size - 1e-9 {
+            return Vec::new();
+        }
+        let n = ((usable - size) / pitch).floor() as i64 + 1;
+        let run = (n - 1) as f64 * pitch + size;
+        let first = lo + margin + (usable - run) / 2.0 + size / 2.0;
+        (0..n).map(|k| first + k as f64 * pitch).collect()
+    };
+    let start = obstacles.len();
+    let mut placed = 0u32;
+    'rows: for &v in &lines(vmin, vmax, fh, pitch_v, FACADE_GAP) {
+        for &u in &lines(umin, umax, fw, pitch_u, FACADE_GAP) {
+            if placed >= target {
+                break 'rows;
+            }
+            // Rotated grid center back in world coordinates.
+            let cx = u * c - v * s;
+            let cy = u * s + v * c;
+            if oriented_slot_in_poly(poly, cx, cy, fw, fh, theta, FACADE_GAP)
+                && slot_clears_walls(iwalls, cx, cy, world_w, world_h)
+                && !footprint_overlaps(&obstacles[..start], cx, cy, world_w, world_h, clear - 1e-6)
+            {
+                push_component(doc, "Desk", cx, cy, fw, fh, theta);
+                obstacles.push((cx, cy, world_w, world_h));
+                placed += 1;
+            }
+        }
+    }
+    placed
 }
 
 /// Professional density sub-score from NIA m² per person (spec §5). Peaks (100)
@@ -5697,6 +5834,50 @@ mod tests {
         assert!(desks_on(14.0, 10.0) >= 6, "14×10 (140 m²) under-packed");
         // Large plate stays strong (density-calibrated, well clear of any floor).
         assert!(desks_on(24.0, 15.0) >= 30, "24×15 (360 m²) lost its strong field");
+    }
+
+    /// ANGLED-PLATE regression (area-select 0-desk bug): a hand-drawn lasso is
+    /// never axis-aligned, so its plate is a tilted polygon. A tilted band has a
+    /// wall-bbox far larger than its area, so `decompose_plate` inscribes no
+    /// axis-aligned region ≥ min_dim and the single-region fallback packs the
+    /// oversized bbox — whose axis-aligned lattice seats ZERO desks inside the
+    /// rotated polygon (the reported "263 m² selection → 0 workstations"). The
+    /// oriented desk-fill rescue must seat a real field, matching the SAME band
+    /// axis-aligned. Genuinely-too-thin bands (usable width < a desk) still seat 0.
+    #[test]
+    fn angled_plate_packs_desks_not_zero() {
+        // A 4 m × 34 m band, packed axis-aligned then rotated by θ about the origin.
+        let band = |theta: f64| -> Document {
+            let (s, c) = theta.sin_cos();
+            let rot = |x: f64, y: f64| (x * c - y * s, x * s + y * c);
+            room_from_corners(&[rot(0.0, 0.0), rot(34.0, 0.0), rot(34.0, 4.0), rot(0.0, 4.0)])
+        };
+        // Best over a seed sweep — the product's `autoGenerate` keeps the best
+        // candidate, so a per-seed lattice-phase wobble is not the failure mode.
+        let best_desks = |mk: &dyn Fn() -> Document| -> usize {
+            (1u64..=8)
+                .map(|seed| {
+                    let mut doc = mk();
+                    generate(&mut doc, &Program::default(), seed, false);
+                    doc.components.iter().filter(|c| c.category == "Desk").count()
+                })
+                .max()
+                .unwrap_or(0)
+        };
+
+        // Axis-aligned reference: this band packs a healthy field.
+        let flat_desks = best_desks(&|| band(0.0));
+        assert!(flat_desks >= 8, "axis-aligned 4×34 band seated only {flat_desks} desks");
+
+        // The SAME band rotated at several angles must ALSO seat a real field —
+        // never the pre-fix ZERO — a genuine handful, not a dead zone.
+        for theta in [0.2_f64, 0.4, 0.7, 1.0, 1.3] {
+            let n = best_desks(&|| band(theta));
+            assert!(
+                n >= 4,
+                "4×34 band at {theta:.1} rad seated {n} desks (axis-aligned seats {flat_desks}) — angled dead zone"
+            );
+        }
     }
 
     /// The recentered density sub-score peaks in the professional band and falls
