@@ -1274,6 +1274,12 @@ export class EditorCanvas {
     let sdy = 0
     const bb = this.wallWorldBBox()
     if (bb) {
+      // If the swapped box can't fit the plate in an axis, no translation can
+      // bring it fully on-plate — clamping one edge would shove furniture off the
+      // opposite side (a wide room rotated onto a plate too short to hold its
+      // length). Refuse the rotation (no-op) rather than let furniture escape.
+      const eps = 1e-6
+      if (newW > bb.maxX - bb.minX + eps || newH > bb.maxY - bb.minY + eps) return
       const left = cx - newW / 2
       const right = cx + newW / 2
       const top = cy - newH / 2
@@ -1299,6 +1305,17 @@ export class EditorCanvas {
       this.ed.set_wall(wl.id, snap(a.x + sdx), snap(a.y + sdy), snap(b.x + sdx), snap(b.y + sdy))
     }
     this.ed.resize_zone(id, snap(cx + sdx), snap(cy + sdy), newW, newH)
+    // Permanent invariant (DEV): after a rotation every member must still sit on
+    // the plate. The fit-guard + shared translate guarantee this; a fire here
+    // means a regression in either. (snap can nudge a member ≤½ a grid cell past
+    // a wall, so allow SNAP_M/2 slack.)
+    if (import.meta.env.DEV && bb) {
+      const slack = SNAP_M / 2 + 1e-6
+      for (const c of this.getState().components.filter((m) => z.component_ids.includes(m.id))) {
+        if (c.x < bb.minX - slack || c.x > bb.maxX + slack || c.y < bb.minY - slack || c.y > bb.maxY + slack)
+          console.error(`rotateRoom: member ${c.id} escaped the plate at (${c.x}, ${c.y})`, bb)
+      }
+    }
     this.selectedZoneId = id
     this.emitRoom(true)
     this.commit()
