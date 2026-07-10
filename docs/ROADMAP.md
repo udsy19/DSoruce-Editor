@@ -63,8 +63,14 @@ The qbiq-style flow: Project → Upload → Program → Generate → Editor → 
   test-fit. Verified: 88→88 m² (4 desks), 140→140 (10), 81→81 (6); full plate unchanged (882→80). Unit
   test `plate.test.mjs`. Limitation: clips to the building bounding box, not its concave outline (fine
   for in-bounds selections; a wild over-draw gets the bbox).
-- [ ] **Follow-up:** dev `#/editor` route auto-persists/restores the last doc (harmless in the prod
-  wizard flow, but it confounds console testing). Low priority; consider a fresh-doc flag for `#/editor`.
+- [x] **Full-wizard E2E re-verified in the real UI** (not console) after all four fixes: create project →
+  upload sample DWG → Space preview fills the box (BUG 1 ✓, 882 m²/533 comps) → Program → Generate (3
+  candidates) → Open in editor → **editor opens FRAMED on the whole irregular plan with 80 workstations**
+  (BUG 2a ✓), not blank. Area-select math (BUG 2b + plate-match) console-proven (88→88 m²→4 desks).
+- [x] **Routing "quirk" investigated → NOT a bug.** The always-mounted editor never drives the hash: the
+  wizard route held steady for 6 s + a resize in isolation. The earlier report was shared-Playwright-tab
+  contention (parallel agents navigating one browser to `#/editor`). Note: the dev `#/editor` route does
+  auto-restore the last doc (dev-only convenience; harmless in the prod wizard flow) — left as-is.
 - [x] **S4 — Wall healing.** `healWalls(drawing)` bridges near-miss partition gaps (degree-1 wall ends
   within 0.25 m that are near-collinear or perpendicular, + endpoint→segment T-junctions; doorway guard
   at 0.8 m). Space-step **Heal gaps / As drawn** toggle (default heal on; testids space-heal-toggle/on/off)
