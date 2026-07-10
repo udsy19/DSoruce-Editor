@@ -1458,3 +1458,65 @@ function finishPlate(c: {
     areaM2: c.area,
   }
 }
+
+// ---- area-select plate ------------------------------------------------------
+
+/** Source-coord bounding box [x0,y0,x1,y1] of a finished plate (undoes offset). */
+export function plateSourceBounds(p: PlateResult): [number, number, number, number] {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
+  for (const [x, y] of p.boundary) {
+    x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y)
+  }
+  return [x0 + p.offset.x, y0 + p.offset.y, x1 + p.offset.x, y1 + p.offset.y]
+}
+
+/** Clip a polygon to an axis-aligned rectangle (Sutherland–Hodgman; the rect is
+ *  convex so this is exact). Returns the clipped ring (possibly empty). */
+function clipToRect(poly: Pt[], x0: number, y0: number, x1: number, y1: number): Pt[] {
+  const stage = (pts: Pt[], inside: (p: Pt) => boolean, cut: (a: Pt, b: Pt) => Pt): Pt[] => {
+    const out: Pt[] = []
+    const n = pts.length
+    for (let i = 0; i < n; i++) {
+      const cur = pts[i]
+      const prev = pts[(i + n - 1) % n]
+      const curIn = inside(cur)
+      const prevIn = inside(prev)
+      if (curIn) {
+        if (!prevIn) out.push(cut(prev, cur))
+        out.push(cur)
+      } else if (prevIn) {
+        out.push(cut(prev, cur))
+      }
+    }
+    return out
+  }
+  let r = poly
+  r = stage(r, (p) => p[0] >= x0, (a, b) => [x0, a[1] + ((x0 - a[0]) / (b[0] - a[0])) * (b[1] - a[1])])
+  if (r.length < 3) return r
+  r = stage(r, (p) => p[0] <= x1, (a, b) => [x1, a[1] + ((x1 - a[0]) / (b[0] - a[0])) * (b[1] - a[1])])
+  if (r.length < 3) return r
+  r = stage(r, (p) => p[1] >= y0, (a, b) => [a[0] + ((y0 - a[1]) / (b[1] - a[1])) * (b[0] - a[0]), y0])
+  if (r.length < 3) return r
+  r = stage(r, (p) => p[1] <= y1, (a, b) => [a[0] + ((y1 - a[1]) / (b[1] - a[1])) * (b[0] - a[0]), y1])
+  return r
+}
+
+/**
+ * Build a floor plate that matches a user-selected AREA polygon (source coords)
+ * instead of a tight hull around whatever furniture the lasso happened to catch.
+ * The polygon IS the work boundary; we only clip it to the building's bounding
+ * box (`bounds`, source coords) so a loose lasso never spills past the floor.
+ * Returns null (caller falls back to `extractPlate`) when the clipped region is
+ * degenerate (< ~4 m²), so a stray tiny selection can't seed an empty plate.
+ */
+export function plateFromArea(
+  polygon: Pt[],
+  bounds: [number, number, number, number],
+): PlateResult | null {
+  if (!polygon || polygon.length < 3) return null
+  const clipped = clipToRect(polygon, bounds[0], bounds[1], bounds[2], bounds[3])
+  if (clipped.length < 3) return null
+  const area = Math.abs(signedArea(clipped))
+  if (area < 4) return null
+  return finishPlate({ ring: clipped, method: 'loop', coverage: 1, area })
+}

@@ -20,9 +20,10 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { DrawingView } from '../../import/DrawingView'
 import { CategoryPlan, type CategoryPlanGroup } from '../../ui/CategoryPlan'
 import { buildCategoryGroups, type EditorController } from '../../App'
-import { extractPlate, extractKeepouts, type Pt } from '../../import/testfit'
+import { extractKeepouts, type Pt, type PlateResult } from '../../import/testfit'
 import { restrictDrawing } from '../../import/area'
 import { healWalls } from '../../import/heal'
+import { derivePlate } from '../../import/plate'
 import { ROOM_TYPES, nextRoomRef, type RoomMarker, type RoomType } from '../../import/markers'
 import { bankCategoryForItem } from '../../materialBank/office'
 import { getProject, updateDraft, type SpaceReadoutsSummary } from '../../persist/projects'
@@ -81,9 +82,9 @@ function programBuckets(drawing: Drawing) {
   return b
 }
 
-/** Derive the full Space-step readouts from a parsed drawing. Pure (no wasm). */
-function computeReadouts(drawing: Drawing): Readouts {
-  const plate = extractPlate(drawing)
+/** Derive the full Space-step readouts from a parsed drawing + its plate (which
+ *  the caller derives via the shared `derivePlate`). Pure (no wasm). */
+function computeReadouts(drawing: Drawing, plate: PlateResult | null): Readouts {
   const bom = buildCategoryGroups(drawing, new Map())
   const rooms: DetectedRoom[] = []
 
@@ -205,7 +206,18 @@ export function SpaceStep({
     () => (restricted && healOn ? healWalls(restricted) : restricted),
     [restricted, healOn],
   )
-  const readouts = useMemo(() => (healed ? computeReadouts(healed) : null), [healed])
+  // Plate via the SHARED derivation (`derivePlate`) — identical to the test-fit,
+  // so the usable area shown here is exactly what the generator builds in. For an
+  // area selection this is the lassoed region clipped to the floor, not a hull
+  // around the caught furniture.
+  const plate = useMemo(
+    () => (drawing ? derivePlate(drawing, areaPolygon, healOn) : null),
+    [drawing, areaPolygon, healOn],
+  )
+  const readouts = useMemo(
+    () => (healed ? computeReadouts(healed, plate) : null),
+    [healed, plate],
+  )
 
   // Persist area + markers + heal (and the recomputed readouts) once hydrated.
   useEffect(() => {
@@ -310,7 +322,8 @@ export function SpaceStep({
       setAreaPolygon((cur) => (cur === null ? cur : null))
       setMarkers((cur) => (cur.length === 0 ? cur : []))
       setActiveTool('none')
-      const r = computeReadouts(d)
+      // Fresh upload → no sub-area yet, so the plate is the whole-floor hull.
+      const r = computeReadouts(d, derivePlate(d, null, healOn))
       // Also drop any §3.5 anchor pins — they were pinned to the OLD plate.
       await updateDraft(projectId, {
         drawing: d,

@@ -45,7 +45,6 @@ import { downloadDXF, downloadDrawingDXF } from './export/dxf'
 import { CandidateGallery } from './ui/CandidateGallery'
 import { CategoryPlan, type CategoryPlanGroup } from './ui/CategoryPlan'
 import {
-  extractPlate,
   pushPlateToEditor,
   extractKeepouts,
   pushKeepoutsToEditor,
@@ -57,6 +56,7 @@ import {
   type PlateResult,
   type Pt,
 } from './import/testfit'
+import { derivePlate } from './import/plate'
 import { saveProject, openProject, applyProject, type BindingInfo, type DSourceFile } from './persist/file'
 import {
   buildSavedPlan,
@@ -698,16 +698,18 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
     if (!ec || !drawing) return
     // Area-select (workflow.md §3.1): restrict the plate/keepouts/entries to the
     // selected sub-area. Non-destructive — the full `drawing` stays as-is.
-    const restricted =
-      opts?.areaPolygon && opts.areaPolygon.length >= 3
-        ? restrictDrawing(drawing, opts.areaPolygon)
-        : drawing
+    const hasArea = !!opts?.areaPolygon && opts.areaPolygon.length >= 3
+    const restricted = hasArea ? restrictDrawing(drawing, opts!.areaPolygon!) : drawing
     // S4 wall-heal (workflow.md §3.3): bridge near-miss partition gaps so the
     // plate/keepout/entry traces close cleanly. Default on (identity when off or
     // nothing to heal), so every downstream extract sees the same healed linework
     // the Space step's readouts previewed.
     const working = opts?.heal === false ? restricted : healWalls(restricted)
-    const plate = extractPlate(working)
+    // Plate derivation (shared with the Space-step readouts via `derivePlate`, so
+    // the usable area a user saw is exactly what gets fitted). For an AREA
+    // selection the plate matches the lassoed region clipped to the floor — not a
+    // tight hull around whichever furniture the lasso caught.
+    const plate = derivePlate(drawing, opts?.areaPolygon, opts?.heal !== false)
     if (!plate) {
       setImportErr('No wall geometry found in this drawing to derive a floor plate from.')
       return
