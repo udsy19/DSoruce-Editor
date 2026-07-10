@@ -115,11 +115,23 @@ The qbiq-style flow: Project → Upload → Program → Generate → Editor → 
      dimmed editor tail), per-step guidance strips, self-explaining disabled Next, guided Generate→editor
      hand-off. 100 Rust tests, typecheck clean. Combined verified: filled tilted plate + room toolbar +
      resize handles + Zones breakdown all render together.
-- [ ] **Batch-3 follow-ups:** (a) tilted-plate stats — the plate-bbox Workspace zone can make NIA slightly
-  exceed GEA + inflate the zone's area-based pax label vs actual desks (clip the zone to the tilted
-  polygon in metrics). (b) normalize furniture on the INITIAL import view too (not just on merge). (c)
-  re-apply the bound product price in App's `stampBaseInto` on merge (normalize.ts already carries it).
-  (d) room Rotate op (needs a component-rotation-in-group primitive). (e) non-rectangular room resize.
+- [x] **(a) tilted-plate stats** — builder+reviewer. Root cause: the plate-spanning Workspace zone
+  overlaps nested rooms → summing zone areas double-counts → NIA>GEA + area-capacity pax. Fix (`lib.rs`):
+  `effective_zone_areas()` de-overlaps the spanning Workspace (`plate − Σ other zones`), reports seated
+  pax. Reviewer broke the builder's 0.9-area detector (mis-fired on large bare axis rects, 100×60→0.953)
+  and replaced it with an exact wall-bbox footprint signature. NIA≤GEA + seated-pax hold across 880
+  shape×rotation×seed combos. 105 Rust tests.
+- [x] **(b) normalize furniture on INITIAL import** — builder+reviewer. `DrawingCanvas` renders imported
+  furniture via `normalizeFurniture`+`drawFurnitureSymbol` (editor view + Space preview). Reviewer caught
+  that 35% of desks (27/78 on the real DWG) were drawn UPRIGHT/misoriented (w/h aspect only encodes
+  landscape/portrait, conflating 0/180 & 90/270); added a `rotation` facet (parity pinned to aspect so
+  mergeFit stays byte-identical) + un-swap-and-rotate. Perf ~0.9 ms/533 items. normalize.test extended.
+- [ ] **(c) merge stamping: rotation + product price** — the MERGE path (`mergeFit` + App `stampBaseInto`)
+  still stamps imported surroundings UPRIGHT (same 35% misorientation (b) just fixed for the initial
+  view) and doesn't re-apply the bound product price (`normalize.ts` now carries both rotation + productId).
+  Apply both when stamping merged surroundings.
+- [ ] Remaining: (d) room Rotate op (needs a component-rotation-in-group primitive). (e) non-rectangular
+  room resize.
 - [x] **S4 — Wall healing.** `healWalls(drawing)` bridges near-miss partition gaps (degree-1 wall ends
   within 0.25 m that are near-collinear or perpendicular, + endpoint→segment T-junctions; doorway guard
   at 0.8 m). Space-step **Heal gaps / As drawn** toggle (default heal on; testids space-heal-toggle/on/off)
