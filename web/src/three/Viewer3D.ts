@@ -50,11 +50,13 @@ import {
  *  - 'high'   — RenderPass → OutputPass → SMAA (SAO/GTAO/bloom all disabled;
  *               2048 shadow map, DPR ≤ 2). Today's look, untouched.
  *  - 'render' — the Enscape tier: a physical Sky dome + PMREM sky-environment,
- *               RenderPass → GTAO → UnrealBloom → OutputPass → SMAA
- *               (GTAO+bloom in linear HDR before OutputPass tone-maps; SMAA
- *               last on display-referred colors), 4096 shadow map, exposure
- *               0.75. The directional sun + the Sky's sun uniform + the sky
- *               environment all derive from {@link Viewer3D.setSun}.
+ *               RenderPass → GTAO → OutputPass → SMAA (GTAO in linear HDR before
+ *               OutputPass tone-maps; SMAA last on display-referred colors),
+ *               4096 shadow map, exposure 0.5, and a gentler sky-environment
+ *               intensity so the bright atmosphere doesn't wash the interior out.
+ *               The directional sun + the Sky's sun uniform + the sky environment
+ *               all derive from {@link Viewer3D.setSun}. (Bloom is wired but stays
+ *               OFF — see applyPipeline: it blooms the HDR sky to a white void.)
  * A rolling FPS window auto-degrades one tier at a time below 40 fps
  * (render → high → low); it never auto-upgrades.
  *
@@ -129,17 +131,21 @@ const SUN_ELEV_MAX = 90
 // Debounce for regenerating the sky PMREM environment while a slider drags.
 // (PMREM from a lone sky mesh is cheap, but per-tick regen is still wasteful.)
 const SKY_ENV_DEBOUNCE_MS = 150
-// Tone-mapping exposure: the physical sky is bright, so 'render' sits lower than
-// the crisp-interior lift used by 'high'/'low'.
-const EXPOSURE_DEFAULT = 1.05
-const EXPOSURE_RENDER = 0.75
-// Image-based ambient intensity per source (RoomEnvironment vs. sky PMREM).
-const ENV_INTENSITY_ROOM = 0.85
-const ENV_INTENSITY_SKY = 1.0
-// Base fixture emissive color; boosted past the bloom threshold in 'render' so
-// the ceiling panels (and only them) pick up a subtle glint.
+// Tone-mapping exposure: the physical sky is bright, so 'render' sits well below
+// the crisp-interior lift used by 'high'/'low'. At 0.75 the atmospheric sky (a
+// large HDR value) still tone-mapped to near-white and flooded the interior; 0.5
+// lands a legible daylit interior with real wall/floor shading.
+const EXPOSURE_DEFAULT = 1.0 // ACES neutral; 1.05 washed the light studio walls flat
+const EXPOSURE_RENDER = 0.5
+// Image-based ambient intensity per source (RoomEnvironment vs. sky PMREM). The
+// sky PMREM integrates the very bright atmosphere, so it drives surfaces far
+// harder than RoomEnvironment at the same intensity — keep both low so ambient
+// fills shadows without blowing the albedo out (0.85 room ambient left the walls
+// reading as flat white; 0.75 lets the sun shading and shadows carry depth).
+const ENV_INTENSITY_ROOM = 0.75
+const ENV_INTENSITY_SKY = 0.5
+// Ceiling light-fixture panel color (walk mode only); an unlit warm white.
 const FIXTURE_COLOR = 0xfff6e6
-const FIXTURE_RENDER_BOOST = 1.9 // pushes the (unlit) fixture color above 1.0 linear
 
 const easeOutCubic = (t: number): number => 1 - Math.pow(1 - t, 3)
 const easeInOutCubic = (t: number): number =>
@@ -438,7 +444,7 @@ export class Viewer3D {
     this.renderer.shadowMap.enabled = true
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping
-    this.renderer.toneMappingExposure = 1.05 // slight lift for a crisp interior read
+    this.renderer.toneMappingExposure = EXPOSURE_DEFAULT // 'high'/'low' interior read
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
     container.appendChild(this.renderer.domElement)
 
@@ -618,10 +624,14 @@ export class Viewer3D {
     })
     this.gtaoPass.enabled = false // only the 'render' tier turns this on
 
-    // Subtle bloom — glints on emissive fixtures/screens ONLY, never a haze.
-    // High threshold + low strength keeps it off diffuse surfaces.
+    // Bloom is wired into the pass list but stays DISABLED in every tier (like
+    // SAO). It runs in linear HDR before OutputPass tone-maps, so it blooms the
+    // physical Sky dome (a huge HDR value that fills the background) across the
+    // whole frame — hazing the render tier to a white void. The render look gets
+    // its depth from GTAO + 4096 shadows + the sky environment instead. Flip on
+    // only if the sky is first clamped out of the bright-pass input.
     this.bloomPass = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.18, 0.4, 1.0)
-    this.bloomPass.enabled = false // only the 'render' tier turns this on
+    this.bloomPass.enabled = false
 
     this.outputPass = new OutputPass()
     this.smaaPass = new SMAAPass()
@@ -787,25 +797,24 @@ export class Viewer3D {
         this.scene.environment = this.envRT.texture
         this.scene.environmentIntensity = ENV_INTENSITY_ROOM
         console.info(
-          '[Viewer3D] render tier on software GL: physical sky, GTAO + bloom disabled (sun angles + shadows kept).',
+          '[Viewer3D] render tier on software GL: physical sky + GTAO disabled (sun angles + shadows kept).',
         )
       } else {
-        // Physical sky replaces the gradient background; sky PMREM replaces
-        // the RoomEnvironment ambient; fixtures glow past the bloom threshold.
+        // Physical sky replaces the gradient background; sky PMREM replaces the
+        // RoomEnvironment ambient (at a gentler intensity so it fills without
+        // washing surfaces out).
         this.sky.visible = true
         this.scene.background = null
         this.applySunToSky()
         this.regenerateSkyEnv() // sync: environment ready before the next frame
         this.scene.environmentIntensity = ENV_INTENSITY_SKY
       }
-      this.fixtureMat.color.setHex(FIXTURE_COLOR).multiplyScalar(FIXTURE_RENDER_BOOST)
     } else {
       // Restore today's look for 'high'/'low'.
       this.sky.visible = false
       this.scene.background = this.skyTex
       this.scene.environment = this.envRT.texture
       this.scene.environmentIntensity = ENV_INTENSITY_ROOM
-      this.fixtureMat.color.setHex(FIXTURE_COLOR)
     }
 
     this.positionSun() // angle-driven in 'render'; else the content-relative key light
@@ -1213,17 +1222,41 @@ export class Viewer3D {
   }
 
   /** The standard 3/4 framing of the current content: camera position, orbit
-   *  target, and the fit distance. Pure math — mutates nothing. */
+   *  target, and the fit distance. Pure math — mutates nothing.
+   *
+   *  Fits the ACTUAL bounding box (not its loose bounding sphere) to BOTH frustum
+   *  axes at the current aspect ratio, so a wide plan on a landscape viewport
+   *  fills the frame instead of sitting small with big empty margins (the old
+   *  sphere-to-vertical-FOV fit over-zoomed by the plan's 3D diagonal and ignored
+   *  the wider horizontal axis). For the fixed 3/4 direction we build the view
+   *  basis, then require the camera far enough back that every box corner's
+   *  horizontal/vertical offset lands inside the (aspect-corrected) half-FOV. */
   private frameAllPose(): { pos: THREE.Vector3; target: THREE.Vector3; fitDist: number } {
     const box = this.contentBounds
     if (box.isEmpty()) {
       return { pos: new THREE.Vector3(12, 12, 16), target: new THREE.Vector3(), fitDist: 20 }
     }
     const center = box.getCenter(new THREE.Vector3())
-    const radius = Math.max(box.getBoundingSphere(new THREE.Sphere()).radius, 3)
-    const fov = (this.camera.fov * Math.PI) / 180
-    const fitDist = (radius / Math.sin(fov / 2)) * 1.12
-    const dir = new THREE.Vector3(0.55, 0.62, 1).normalize()
+    const dir = new THREE.Vector3(0.55, 0.62, 1).normalize() // fixed 3/4 iso
+    const forward = dir.clone().negate() // camera looks from center + dir back toward center
+    const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize()
+    const up = new THREE.Vector3().crossVectors(right, forward).normalize()
+    const tanV = Math.tan(((this.camera.fov * Math.PI) / 180) / 2)
+    const tanH = tanV * Math.max(this.camera.aspect, 1e-4)
+    const o = new THREE.Vector3()
+    let dist = 0
+    for (let i = 0; i < 8; i++) {
+      o.set(
+        i & 1 ? box.max.x : box.min.x,
+        i & 2 ? box.max.y : box.min.y,
+        i & 4 ? box.max.z : box.min.z,
+      ).sub(center)
+      // Depth along the view direction, plus the back-off each screen axis needs.
+      const along = dir.dot(o)
+      const need = Math.max(Math.abs(right.dot(o)) / tanH, Math.abs(up.dot(o)) / tanV)
+      dist = Math.max(dist, along + need)
+    }
+    const fitDist = Math.max(dist * 1.06, 6) // small margin; floor for tiny plans
     return { pos: center.clone().addScaledVector(dir, fitDist), target: center, fitDist }
   }
 
@@ -1271,13 +1304,14 @@ export class Viewer3D {
 
   /** Enable exactly the passes the current tier needs. The composer runs only
    *  for 'high'/'render' (animate() bypasses it for 'low'); disabled passes are
-   *  skipped and never claim `renderToScreen`. GTAO + bloom are the 'render'
-   *  differentiators and are additionally gated by the software-GL guard. */
+   *  skipped and never claim `renderToScreen`. GTAO is the 'render' differentiator
+   *  and is additionally gated by the software-GL guard. Bloom stays off in every
+   *  tier — it blooms the HDR sky to white (see the bloomPass construction note). */
   private applyPipeline(): void {
     const post = this.quality === 'render' && !this.softwareGL
     this.saoPass.enabled = false // superseded by GTAO; kept for manual validation
     this.gtaoPass.enabled = post
-    this.bloomPass.enabled = post
+    this.bloomPass.enabled = false
   }
 
   /** Unit vector pointing from the scene toward the sun, from the stored
