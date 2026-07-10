@@ -11,7 +11,9 @@
 // to stamp AROUND that generated region:
 //
 //   • furniture whose bbox center is OUTSIDE the selection polygon → kept (the rest
-//     of the floor); furniture INSIDE the selection → dropped (replaced by the fit).
+//     of the floor), each NORMALIZED to a canonical component (see normalize.ts) so
+//     the surroundings share the generator's furniture symbology; furniture INSIDE
+//     the selection → dropped (replaced by the fit).
 //   • wall/glazing linework whose midpoint is OUTSIDE the selection → kept (the shell
 //     + untouched partitions); linework INSIDE → dropped (the old fit-out).
 //
@@ -24,8 +26,9 @@
 // Pure TS. Coordinates in meters. Reuses `pointInRing` + `collectWallSegments` from
 // testfit.ts (the single point-in-polygon + shell-linework collectors) — no fork.
 
-import type { Drawing, Category } from './types'
+import type { Drawing } from './types'
 import { collectWallSegments, pointInRing, type Pt } from './testfit'
+import { normalizeFurniture } from './normalize'
 
 /** One imported wall/glazing segment, translated into editor coords — ready for
  *  `Editor.add_wall(ax, ay, bx, by, thickness)`. */
@@ -48,6 +51,9 @@ export interface StampComp {
   h: number
   rotation: number
   label: string
+  /** Preserved material-bank binding (re-imagine) carried from the imported block. */
+  productId?: string
+  productName?: string
 }
 
 /** The imported plan's surroundings to stamp around a generated region test-fit,
@@ -62,21 +68,6 @@ export interface BaseStamp {
 }
 
 const IMPORTED_WALL_THICKNESS = 0.15 // m — matches pushPlateToEditor's default
-
-/** Map an imported CAD category to an editor component category so the stamped
- *  surroundings pick up a recognizable top-view symbol where one exists (doors,
- *  windows); everything else renders as a clean outline (the editor's `default`
- *  furniture symbol) rather than being mislabeled as a specific piece. */
-function editorCategory(cat: Category): string {
-  switch (cat) {
-    case 'door':
-      return 'Door'
-    case 'glazing':
-      return 'Window'
-    default:
-      return 'Furniture'
-  }
-}
 
 /**
  * Partition an imported drawing by a selection polygon and translate the OUTSIDE
@@ -103,16 +94,22 @@ export function baseStampAround(
       removedInside++ // inside the region → cleared for the new fit
       continue
     }
+    // Normalize to a canonical component so the imported surroundings render with
+    // the SAME symbology + size class as the generated region (a task chair and a
+    // generated chair become the identical glyph) instead of raw bbox outlines.
+    const norm = normalizeFurniture(f)
     comps.push({
-      category: editorCategory(f.category),
+      category: norm.category,
       x: cx - offset.x,
       y: cy - offset.y,
-      // The bbox is the axis-aligned world extent (rotation already baked in), so
-      // stamp it upright — re-applying `f.rotation` would double-rotate.
-      w: f.bbox[2] - f.bbox[0],
-      h: f.bbox[3] - f.bbox[1],
+      // normalize() encodes orientation in w/h and the bbox already bakes the
+      // block's rotation in — stamp upright (re-applying f.rotation double-rotates).
+      w: norm.w,
+      h: norm.h,
       rotation: 0,
-      label: f.name,
+      label: norm.label,
+      productId: norm.productId,
+      productName: norm.productName,
     })
   }
 
