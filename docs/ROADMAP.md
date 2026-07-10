@@ -71,6 +71,27 @@ The qbiq-style flow: Project → Upload → Program → Generate → Editor → 
   wizard route held steady for 6 s + a resize in isolation. The earlier report was shared-Playwright-tab
   contention (parallel agents navigating one browser to `#/editor`). Note: the dev `#/editor` route does
   auto-restore the last doc (dev-only convenience; harmless in the prod wizard flow) — left as-is.
+- [x] **Batch 2 fixes (user-reported from real use, 2026-07-10)** — 5 parallel agents, each root-caused +
+  browser-verified + committed:
+  1. **0 workstations on area-select** — the real cause was ANGLED plates: a hand-drawn lasso is never
+     axis-aligned, so its tilted polygon defeats the axis-aligned desk lattice → 0 desks (my synthetic
+     axis-aligned lassos hid it). Fix (`layout.rs`): a zero-desk rescue that packs on a grid rotated to
+     the plate's principal axis; fires only at placed_desks==0 so all working plates are byte-identical.
+     Verified: angled 20°→16, 35°→18, angled bands 9/5 desks; full plate 80→80. +1 test (96 Rust tests).
+  2. **Tool dock "doesn't work"** (`ui/ToolDock.tsx`+CSS) — flyouts were positioned past the rail's
+     `overflow` clip edge → rendered but unclickable. Now `position:fixed` anchored to the tile; click
+     opens, tool activates, Esc/outside-click close.
+  3. **3D not framing + white Render** (`three/Viewer3D.ts`) — framing fit a bounding SPHERE to the
+     vertical FOV only (over-zoomed on landscape → off-screen); now box-corner fit on both axes. White
+     render = UnrealBloom blooming the HDR Sky dome; bloom disabled + exposure 0.75→0.5. Both verified.
+  4. **AI note only on winner** (`ai/evaluator.ts`+`GenerateStep.tsx`) — evaluator sent only gate-passing
+     (top) candidates to Claude; now all candidates evaluated, uniform off/pending/ready state; "—"
+     m²/person when 0 workstations (honesty).
+  5. **Merge test-fit into imported plan** (`import/mergeFit.ts`+App) — user chose "one merged document":
+     region's original furniture removed, test-fit stamped in, surroundings intact. Verified 407 kept +
+     92 generated = 499, no leftovers inside.
+  Combined re-verification on merged main: angled plates seat desks; 3D framed + Render legible (not
+  white); tool-dock flyout opens + activates; typecheck clean, 96 Rust tests, report 43/43, plate 9/9.
 - [x] **S4 — Wall healing.** `healWalls(drawing)` bridges near-miss partition gaps (degree-1 wall ends
   within 0.25 m that are near-collinear or perpendicular, + endpoint→segment T-junctions; doorway guard
   at 0.8 m). Space-step **Heal gaps / As drawn** toggle (default heal on; testids space-heal-toggle/on/off)
