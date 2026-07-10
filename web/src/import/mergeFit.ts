@@ -98,15 +98,26 @@ export function baseStampAround(
     // the SAME symbology + size class as the generated region (a task chair and a
     // generated chair become the identical glyph) instead of raw bbox outlines.
     const norm = normalizeFurniture(f)
+    // Un-swap the aspect-baked footprint back to NATURAL (pre-rotation) so the
+    // component stores a natural w/h + a real rotation facet — the exact split the
+    // editor's symbol renderer expects (it draws w/h then `ctx.rotate(rotation)`),
+    // mirroring DrawingCanvas.drawItemSymbol. Stamping upright (rotation 0) with the
+    // aspect-baked w/h collapses the 90°/180° distinction, so ~35% of desks faced
+    // the wrong way. `rotation`'s 90°-parity agrees with the aspect, so `odd` (an
+    // odd number of quarter-turns ⟺ portrait) recovers the natural footprint.
+    const odd = Math.round(norm.rotation / (Math.PI / 2)) % 2 !== 0
     comps.push({
       category: norm.category,
       x: cx - offset.x,
       y: cy - offset.y,
-      // normalize() encodes orientation in w/h and the bbox already bakes the
-      // block's rotation in — stamp upright (re-applying f.rotation double-rotates).
-      w: norm.w,
-      h: norm.h,
-      rotation: 0,
+      w: odd ? norm.h : norm.w,
+      h: odd ? norm.w : norm.h,
+      // normalize's `rotation` is world-CCW (Y-up). The editor renders in a Y-DOWN
+      // document frame (the plate push is offset-only, so imported Y-up coords land
+      // vertically flipped), and its furniture symbols are left-right symmetric — so
+      // the world→editor vertical flip is a +π turn of the facet. set_component_rotation
+      // then faces each desk/chair the way it does in the (now-correct) import view.
+      rotation: norm.rotation + Math.PI,
       label: norm.label,
       productId: norm.productId,
       productName: norm.productName,

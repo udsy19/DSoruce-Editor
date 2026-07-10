@@ -157,12 +157,20 @@ function buildRoomRefs(zones: DocZone[], markers: EditorMarker[]): Map<number, s
  *  imported plan's surroundings, already in editor coords — into the live document
  *  as plain walls + components. Called on top of a generated region test-fit so the
  *  rest of the floor rejoins it as one editable document; the generated region is
- *  never rebuilt, so its zones/labels/glazing stay intact. */
-function stampBaseInto(ec: EditorCanvas, stamp: BaseStamp): void {
+ *  never rebuilt, so its zones/labels/glazing stay intact. `bindings` re-applies the
+ *  imported product bindings (price ₹) so a bank-specified surrounding keeps its
+ *  cost/takeoff line + "specified furniture" tally through the merge. */
+function stampBaseInto(ec: EditorCanvas, stamp: BaseStamp, bindings: Map<string, BindingInfo>): void {
   for (const w of stamp.walls) ec.ed.add_wall(w.ax, w.ay, w.bx, w.by, w.thickness)
   for (const c of stamp.comps) {
     const id = ec.ed.add_component(c.category, c.x, c.y, c.w, c.h)
     if (c.rotation) ec.ed.set_component_rotation(id, c.rotation)
+    // Re-bind the imported bank product so its ₹ price flows into specified_cost +
+    // the takeoff (same primitive user re-imagine uses); price comes from the App
+    // bindings map keyed by product id (the item itself only carries id/name).
+    if (c.productId) {
+      ec.ed.assign_product(id, c.productId, c.productName ?? c.label, bindings.get(c.productId)?.price ?? undefined)
+    }
   }
   ec.ed.clear_selection()
 }
@@ -306,6 +314,9 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
   /** Full product data per binding (price ₹, thumbnail) — the item itself only
    *  carries id/name; the selection card + category plan need the rest. */
   const [bindings, setBindings] = useState<Map<string, BindingInfo>>(() => new Map())
+  // Live mirror so the []-memoized merge closure re-binds against the CURRENT prices.
+  const bindingsRef = useRef(bindings)
+  bindingsRef.current = bindings
 
   const bindProduct = (it: FurnitureItem, product: OfficeProduct) => {
     it.productId = product.id
@@ -857,7 +868,7 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
     const stamp = baseStampAround(drawing, mc.selection, mc.offset)
     for (const c of candidates) {
       ec.applyCandidate(c.snap) // restore this candidate's region-only fit
-      stampBaseInto(ec, stamp) // + the untouched rest of the floor
+      stampBaseInto(ec, stamp, bindingsRef.current) // + the untouched rest of the floor
       c.snap = ec.snapshot() // now one merged document
     }
     // Keep the merged best-scoring option live (candidates stay in strategy order).
