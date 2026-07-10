@@ -70,6 +70,44 @@ pub struct Editor {
     doc: Document,
 }
 
+/// Per-zone floor areas (m², clipped to the plate polygon) with the oriented
+/// desk-field's plate-spanning Workspace zone **de-overlapped**, plus the index
+/// of that spanning Workspace when present.
+///
+/// The tilted/irregular-plate packer lays one Workspace zone across the whole
+/// plate bbox as the desk field's background fill (see `layout.rs`, "Fill
+/// irregular/tilted plates"). Clipped to the polygon its area is ≈ the entire
+/// plate, so it overlaps every room/corridor/core zone nested inside it —
+/// summing raw clipped areas double-counts that floor and pushes NIA above GEA.
+/// Here the spanning Workspace is given only the OPEN floor it truly contributes
+/// (`plate − the zones inside it`) so the zones tile exactly (Σ = GEA) and
+/// NIA ≤ GEA holds on ANY plate shape. Axis-aligned plates have no plate-spanning
+/// Workspace, so every area is returned unchanged (byte-identical) and the index
+/// is `None`. Pure over `Document`, so it is natively testable.
+fn effective_zone_areas(doc: &Document) -> (Vec<f64>, Option<usize>) {
+    let plate = doc.plate_polygon();
+    let plate_ref = plate.as_deref();
+    let floor_area = doc.floor_area();
+    let mut areas: Vec<f64> = doc.zones.iter().map(|z| z.area_on(plate_ref)).collect();
+    if floor_area <= 0.0 {
+        return (areas, None);
+    }
+    // A Workspace zone whose clipped area spans (≈) the whole plate is the
+    // oriented desk field's background fill; nothing else grows that large.
+    let spanning = (0..doc.zones.len())
+        .find(|&i| doc.zones[i].zone_type == ZoneType::Workspace && areas[i] >= 0.9 * floor_area);
+    if let Some(idx) = spanning {
+        let others: f64 = areas
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| *i != idx)
+            .map(|(_, a)| *a)
+            .sum();
+        areas[idx] = (floor_area - others).max(0.0);
+    }
+    (areas, spanning)
+}
+
 #[wasm_bindgen]
 impl Editor {
     #[wasm_bindgen(constructor)]
@@ -274,21 +312,12 @@ impl Editor {
     /// polygon so non-rectangular plates report true numbers (see
     /// `Document::plate_polygon`); rectangular rooms are unchanged.
     pub fn metrics(&self) -> Result<JsValue, JsValue> {
-        let plate = self.doc.plate_polygon();
-        let plate_ref = plate.as_deref();
         let floor_area = self.doc.floor_area();
-        // Net internal area can never exceed the gross floor. Normally the zones
-        // tile the plate so the sum equals it, but an oriented (tilted-plate)
-        // desk field emits a plate-spanning Workspace zone that overlaps the
-        // room/corridor zones inside it — cap the sum at the gross area so the
-        // overlap can't push NIA above GEA (and area/workstation stays real).
-        let nia: f64 = self
-            .doc
-            .zones
-            .iter()
-            .map(|z| z.area_on(plate_ref))
-            .sum::<f64>()
-            .min(floor_area);
+        let (areas, _) = effective_zone_areas(&self.doc);
+        // Zones tile the plate; the oriented desk field's plate-spanning
+        // Workspace is de-overlapped in `effective_zone_areas`, so the sum can no
+        // longer exceed the gross floor. `.min` stays a cheap invariant guard.
+        let nia: f64 = areas.iter().sum::<f64>().min(floor_area);
         let workstations = self
             .doc
             .components
@@ -299,13 +328,14 @@ impl Editor {
             .doc
             .zones
             .iter()
-            .filter(|z| {
+            .zip(&areas)
+            .filter(|(z, _)| {
                 matches!(
                     z.zone_type,
                     ZoneType::Workspace | ZoneType::Meeting | ZoneType::Collaboration
                 )
             })
-            .map(|z| z.area_on(plate_ref))
+            .map(|(_, a)| *a)
             .sum();
         let area_per_workstation = if workstations > 0 {
             nia / workstations as f64
@@ -349,14 +379,16 @@ impl Editor {
     /// Per-zone stats for the Statistics panel + AI reasoning. Array of
     /// `{ id, zone_type, label, area, capacity, seated, pct_of_nia }`.
     pub fn zone_stats(&self) -> Result<JsValue, JsValue> {
-        let plate = self.doc.plate_polygon();
-        let plate_ref = plate.as_deref();
-        let nia: f64 = self.doc.zones.iter().map(|z| z.area_on(plate_ref)).sum();
+        // De-overlapped areas so the Zones tab / Areas donut sum to GEA (never
+        // above it) on tilted/irregular plates — same source of truth as metrics.
+        let (areas, spanning) = effective_zone_areas(&self.doc);
+        let nia: f64 = areas.iter().sum();
         let stats: Vec<ZoneStat> = self
             .doc
             .zones
             .iter()
-            .map(|z| {
+            .enumerate()
+            .map(|(i, z)| {
                 let seated = z
                     .component_ids
                     .iter()
@@ -367,13 +399,23 @@ impl Editor {
                             .any(|c| c.id == cid && c.category == "Desk")
                     })
                     .count();
-                let area = z.area_on(plate_ref);
+                let area = areas[i];
+                // The plate-spanning oriented Workspace reports its REAL seated
+                // desk count as capacity, not the area rule-of-thumb: its bbox
+                // area would imply several times the desks it actually holds, so
+                // the on-canvas "N pax" label (which reads `capacity`) would lie.
+                // Every other zone keeps the area-based `capacity()`.
+                let capacity = if Some(i) == spanning {
+                    seated as u32
+                } else {
+                    z.capacity()
+                };
                 ZoneStat {
                     id: z.id,
                     zone_type: z.zone_type,
                     label: z.label.clone(),
                     area,
-                    capacity: z.capacity(),
+                    capacity,
                     seated,
                     pct_of_nia: if nia > 0.0 { area / nia * 100.0 } else { 0.0 },
                 }

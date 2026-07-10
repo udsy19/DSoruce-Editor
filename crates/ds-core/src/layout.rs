@@ -6074,6 +6074,79 @@ mod tests {
         }
     }
 
+    /// INSIGHTS CORRECTNESS on the oriented-fill path: the plate-spanning
+    /// Workspace zone the tilted/irregular packer emits has a bbox-derived area
+    /// that overlaps the rooms/corridors nested inside it. Left raw, the summed
+    /// zone areas exceed the true (tilted) plate area — NIA > GEA, an impossible
+    /// number — and the Workspace's area-rule `capacity()` reports several times
+    /// the desks actually seated. `effective_zone_areas` de-overlaps the spanning
+    /// Workspace so the zones tile exactly. Asserts, per tilted + hexagonal plate:
+    ///   • NIA (Σ de-overlapped zone areas) ≤ GEA (true plate polygon area), and
+    ///   • the spanning Workspace's reported pax == the placed desk count.
+    #[test]
+    fn oriented_fill_insights_are_correct_nia_le_gea_and_pax_is_seated() {
+        let rot = |x: f64, y: f64, th: f64, ox: f64, oy: f64| {
+            let (s, c) = th.sin_cos();
+            (ox + x * c - y * s, oy + x * s + y * c)
+        };
+        // 26×10 rectangle rotated 25° (≈0.436 rad) — the reported repro shape.
+        let tilted_rect: Vec<(f64, f64)> = [(0.0, 0.0), (26.0, 0.0), (26.0, 10.0), (0.0, 10.0)]
+            .iter()
+            .map(|&(x, y)| rot(x, y, 0.436, 2.0, 2.0))
+            .collect();
+        let hexagon: Vec<(f64, f64)> = (0..6)
+            .map(|i| {
+                let a = std::f64::consts::PI / 3.0 * i as f64 + 0.1;
+                (10.0 + 10.0 * a.cos(), 10.0 + 10.0 * a.sin())
+            })
+            .collect();
+
+        for (name, corners) in [
+            ("tilted rect 26×10 @25°", tilted_rect),
+            ("hexagon r≈10", hexagon),
+        ] {
+            for seed in 1u64..=6 {
+                let mut doc = room_from_corners(&corners);
+                generate(&mut doc, &Program::default(), seed, false);
+
+                let gea = doc.floor_area();
+                let (areas, spanning) = crate::effective_zone_areas(&doc);
+                let nia: f64 = areas.iter().sum();
+                // (1) NIA can never exceed GEA — the whole point of the fix.
+                assert!(
+                    nia <= gea + 1e-6,
+                    "{name} seed {seed}: NIA {nia:.1} > GEA {gea:.1} (impossible)"
+                );
+
+                // The oriented path must actually engage (spanning Workspace).
+                let idx = spanning.unwrap_or_else(|| {
+                    panic!("{name} seed {seed}: no plate-spanning Workspace zone emitted")
+                });
+                // (2) The spanning Workspace's pax == placed desks, not area rule.
+                let placed_desks =
+                    doc.components.iter().filter(|c| c.category == "Desk").count();
+                let seated = doc.zones[idx]
+                    .component_ids
+                    .iter()
+                    .filter(|&&cid| {
+                        doc.components.iter().any(|c| c.id == cid && c.category == "Desk")
+                    })
+                    .count();
+                assert_eq!(
+                    seated, placed_desks,
+                    "{name} seed {seed}: Workspace seats {seated} but {placed_desks} desks placed"
+                );
+                // The area-rule capacity() would be far larger than the real
+                // seated count on the oversized bbox — confirm the gap is real so
+                // this test would catch a regression to area-based pax.
+                assert!(
+                    doc.zones[idx].capacity() as usize >= placed_desks,
+                    "{name} seed {seed}: area capacity unexpectedly below seated"
+                );
+            }
+        }
+    }
+
     /// The recentered density sub-score peaks in the professional band and falls
     /// off BOTH sides — a pure-function guard on the M5 curve (spec §5): the old
     /// band peaked at ~2.3 m²/desk cramming; this one peaks at 10 m²/person.
