@@ -369,8 +369,32 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
     }
   }, [])
 
+  // After a load/generate replaces the document, frame the whole plan so it
+  // sits centered and fully visible — otherwise the fixed default view leaves a
+  // large plate off-screen (bottom-right) or a small one hidden in the corner,
+  // which reads as a blank canvas. `frameEditor` frames immediately when the 2D
+  // canvas is shown & measured; when a path also switches INTO 2D (setMode is
+  // async, so the canvas is still hidden here) it latches, and the mode→2D
+  // effect below frames once the canvas is visible & measured.
+  const pendingFrameRef = useRef(false)
+  const frameEditor = () => {
+    if (modeRef.current === '2d') {
+      pendingFrameRef.current = false
+      ecRef.current?.frameContent()
+    } else {
+      pendingFrameRef.current = true
+    }
+  }
+
   useEffect(() => {
-    if (mode === '2d' && ready) ecRef.current?.refresh()
+    if (mode === '2d' && ready) {
+      const ec = ecRef.current
+      ec?.refresh()
+      if (pendingFrameRef.current) {
+        pendingFrameRef.current = false
+        ec?.frameContent()
+      }
+    }
   }, [mode, ready])
 
   // Save the whole session (document snapshot incl. CAD layer, program,
@@ -501,6 +525,7 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
     setCurrentPlanId(saved.id)
     setSelItem(null)
     setMode('2d')
+    frameEditor() // frame the applied candidate on the deep-link into the editor
     if (panelTab === 'library') await refreshLibrary()
     return saved.id
   }
@@ -514,6 +539,7 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
     applyOpenedFile(ec, p.file)
     setCurrentPlanId(p.id) // remember which record is open → floor switcher
     setPanelTab('plan')
+    frameEditor() // frame the loaded saved plan (cold-reload of #/p/:pid/f/:planId)
   }
 
   // Cold-reload floor-open (Known bug): a hard reload of #/p/:pid/f/:planId lands
@@ -768,6 +794,7 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
       setPlateNotice(null)
     }
     setMode('2d')
+    frameEditor() // frame the freshly-traced plate so the editor shows it
   }
 
   // Controller seam (workflow.md §1) — thin lifts of the closures above, so
@@ -782,14 +809,17 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
         if (ecRef.current) ecRef.current.program = { ...p }
         setProgramVersion((v) => v + 1)
       },
-      runGenerate: (program, o) =>
-        ecRef.current
-          ? ecRef.current.autoGenerate(program, {
-              maxIter: o?.maxIter ?? 18,
-              target: o?.target ?? 82,
-              keepConfirmed: o?.keepConfirmed ?? false,
-            })
-          : null,
+      runGenerate: (program, o) => {
+        const ec = ecRef.current
+        if (!ec) return null
+        const res = ec.autoGenerate(program, {
+          maxIter: o?.maxIter ?? 18,
+          target: o?.target ?? 82,
+          keepConfirmed: o?.keepConfirmed ?? false,
+        })
+        frameEditor() // frame the generated plan when the wizard lands in the editor
+        return res
+      },
       openCandidate: (c, proj) => openCandidateRef.current(c, proj),
       setMode,
       ec: () => ecRef.current,

@@ -2,6 +2,7 @@ import init, { Editor } from '../wasm/ds_core'
 import { catByCategory } from './catalog'
 import { drawFurnitureSymbol } from './furniture'
 import { CadController } from '../cad/controller'
+import { entityBBox } from '../cad/render'
 import type { CadEntity, SnapContext, Vec2, SnapResult } from '../cad/model'
 import {
   emptyDyn,
@@ -1300,6 +1301,52 @@ export class EditorCanvas {
   /** Re-measure + repaint. Call after the canvas becomes visible again (2D/3D toggle). */
   refresh() {
     this.resize()
+    this.render()
+    this.updateScaleReadout()
+  }
+
+  /** Frame the whole document (walls · components · CAD entities) so it sits
+   *  centered and fully visible in the current viewport. `padding` is the
+   *  fraction of the viewport kept clear on each side. No-op when the document
+   *  is empty. Call after any load/generate that replaces content, otherwise
+   *  the fixed default view leaves a plate off-screen or as a corner sliver. */
+  frameContent(padding = 0.08) {
+    // Ensure the canvas is measured (may be freshly un-hidden from 3D/route change).
+    this.resize()
+    const w = this.canvas.width / this.dpr
+    const h = this.canvas.height / this.dpr
+    if (w === 0 || h === 0) return // hidden — nothing to frame into
+
+    const st = this.getState()
+    let minX = Infinity
+    let minY = Infinity
+    let maxX = -Infinity
+    let maxY = -Infinity
+    const acc = (ax: number, ay: number, bx: number, by: number) => {
+      minX = Math.min(minX, ax)
+      minY = Math.min(minY, ay)
+      maxX = Math.max(maxX, bx)
+      maxY = Math.max(maxY, by)
+    }
+    const wb = wallBbox(st.walls)
+    if (wb) acc(wb.minX, wb.minY, wb.maxX, wb.maxY)
+    for (const c of st.components) acc(c.x - c.w / 2, c.y - c.h / 2, c.x + c.w / 2, c.y + c.h / 2)
+    for (const e of this.cad.store.entities) {
+      const [ex0, ey0, ex1, ey1] = entityBBox(e)
+      acc(ex0, ey0, ex1, ey1)
+    }
+    if (!isFinite(minX)) return // no content
+
+    const spanX = Math.max(maxX - minX, 0.001)
+    const spanY = Math.max(maxY - minY, 0.001)
+    const availW = w * (1 - 2 * padding)
+    const availH = h * (1 - 2 * padding)
+    const k = clampN(Math.min(availW / spanX, availH / spanY), 8, 300)
+    this.scale = k
+    // Map the content center onto the viewport center under screenX = wx*k + off.x.
+    this.offset.x = w / 2 - ((minX + maxX) / 2) * k
+    this.offset.y = h / 2 - ((minY + maxY) / 2) * k
+
     this.render()
     this.updateScaleReadout()
   }
