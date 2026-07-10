@@ -182,8 +182,12 @@ User showed Rayon drawing-set PDFs as the output bar (`docs/reference/rayon-outp
   M6-toggleable). **The drawing set is now a complete 10-sheet architectural set** (cover · contents ·
   demolition · construction · RCP · power · 2× sections · furniture · moodboard). Verified live +
   rasterized both services sheets.
-- [ ] Nice-to-have polish: services-plan glyph/label de-collision (fixtures overlap some room labels),
-  true lighting-circuit/switching lines, per-room finish schedule.
+- [x] **Services-plan polish** — glyph/label de-collision (room names painted last with knockout halos,
+  colliding glyphs nudged clear) + lighting-circuit runs (nearest switch→luminaire, LC-NN) on the RCP.
+- [x] **Room Finish Schedule** — `export/finishSchedule.ts`: per-room floor/base/wall/ceiling/skirting
+  finishes + area, India-market vocabulary keyed by room type, paginated, wired as sheet A.08. **The
+  drawing set is now 11 sheets.** Verified live (full set 11 pp; finishes include filter 1 pp).
+- [ ] Longer tail: RCP lighting-circuit switching diagram detail, cloud plan sync, live deploy.
 
 ## Track E — Import & plate
 - [x] DWG/DXF parse (LibreDWG `/api/dwg`), plate extraction (furniture-coverage), keepouts (cores),
