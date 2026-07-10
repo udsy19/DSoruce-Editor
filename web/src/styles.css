@@ -778,6 +778,139 @@ button {
   text-align: right;
 }
 
+/* breakdown tables (Zones / CO2 / Costs) */
+.bd-table {
+  margin-top: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.bd-head,
+.bd-foot {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+  color: var(--eyebrow);
+  padding: 0 2px 7px;
+}
+.bd-foot {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 13px;
+  color: var(--text);
+  padding: 9px 2px 2px;
+  margin-top: 4px;
+  border-top: 1.5px solid var(--hairline-strong);
+}
+.bd-head span,
+.bd-foot span {
+  flex: 1;
+}
+.bd-head .r,
+.bd-foot .r {
+  flex: none;
+  width: 42px;
+  text-align: right;
+}
+/* Zones table: 5-column grid so numbers align under Count/Pax/Area/% */
+.bd-head.zones,
+.bd-foot.zones,
+.bd-row.zones {
+  display: grid;
+  grid-template-columns: 1fr 42px 42px 46px 38px;
+  gap: 6px;
+  align-items: baseline;
+}
+.bd-head.zones span,
+.bd-foot.zones span,
+.bd-row.zones .r {
+  flex: none;
+  width: auto;
+}
+.bd-head.zones .r,
+.bd-foot.zones .r,
+.bd-row.zones .r {
+  text-align: right;
+}
+.bd-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 7px 2px;
+  border-bottom: 1px solid var(--hairline);
+  font-size: 13px;
+}
+.bd-row.group {
+  font-weight: 600;
+  color: var(--text);
+}
+.bd-row.sub {
+  padding: 5px 2px 5px 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  border-bottom: 1px solid var(--hairline);
+}
+.bd-name {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.bd-name.sub {
+  padding-left: 20px;
+  color: var(--muted);
+}
+.bd-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex: none;
+}
+.bd-qty {
+  color: var(--faint);
+  font-size: 11.5px;
+  width: 78px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.bd-val {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  min-width: 78px;
+  font-weight: 600;
+  color: var(--text);
+}
+.bd-row.sub .bd-val {
+  font-weight: 500;
+  color: var(--text-2);
+}
+.bd-unit {
+  color: var(--faint);
+  font-weight: 500;
+}
+.bd-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1.5px solid var(--hairline-strong);
+}
+.bd-total-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.bd-total-val {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
 /* schedule (legacy metric list) */
 .schedule {
   border-top: 1px solid var(--hairline);
