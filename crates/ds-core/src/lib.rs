@@ -174,6 +174,7 @@ impl Editor {
             w,
             h,
             rotation: 0.0,
+            mirror: false,
             label,
             product_id: None,
             price_inr: None,
@@ -277,6 +278,16 @@ impl Editor {
     pub fn set_component_rotation(&mut self, id: u32, radians: f64) {
         if let Some(c) = self.doc.component_mut(id) {
             c.rotation = radians;
+        }
+    }
+
+    /// Set a component's hinge handedness (mirror across its long axis). Doors
+    /// imported from CAD recover a left- vs right-hand swing this way; renderers
+    /// reflect the leaf+arc when set. Additive: complements `set_component_rotation`
+    /// and leaves `add_component` (default `mirror: false`) untouched.
+    pub fn set_component_mirror(&mut self, id: u32, mirror: bool) {
+        if let Some(c) = self.doc.component_mut(id) {
+            c.mirror = mirror;
         }
     }
 

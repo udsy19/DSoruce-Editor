@@ -58,6 +58,16 @@ export interface NormalizedComponent {
    * are 0 (their symbols are left-right symmetric, so a mirror == a `+π` turn).
    */
   rotation: number
+  /**
+   * Hinge handedness for a Door (left- vs right-hand swing), reflected across the
+   * door's long axis. `rotation` alone can't express it — a door and its mirror
+   * image cannot be rotated onto each other — so this second facet carries the
+   * hand recovered from the swing arc (see `recoverDoorPose`). It rides ALONGSIDE
+   * the aspect-baked `w/h` (a reflection leaves the bbox unchanged, so the un-swap
+   * contract is untouched). Non-doors are left-right symmetric → always `false`.
+   * The renderer reflects the leaf+arc when true (`furniture.ts` `drawDoor`).
+   */
+  mirror: boolean
   /** Human-readable label (the bound product name when present, else the block name). */
   label: string
   /** Preserved material-bank binding (re-imagine), if the block carried one. */
@@ -125,7 +135,31 @@ export function normalizeFurniture(item: FurnitureItem): NormalizedComponent {
   let w: number
   let h: number
   let rotation = 0
+  let mirror = false
   switch (category) {
+    case 'Door': {
+      // Doors are directional AND handed. Recover the opening axis (which wall it
+      // sits in) + the hinge hand from the swing arc in the block's geometry (see
+      // recoverDoorPose). Footprint becomes the canonical thin leaf-slab so it
+      // renders as the door SYMBOL (opening span + swing arc), not a raw bbox.
+      const pose = recoverDoorPose(item)
+      if (pose) {
+        const leaf = Math.min(2.5, Math.max(0.3, pose.leafLen))
+        const slab = Math.min(DOOR_SLAB, leaf * 0.35)
+        // Opening runs vertically ⟺ an odd number of quarter-turns; aspect-bake
+        // w/h to match so the consumers' un-swap reconstructs the natural (leaf ×
+        // slab) footprint exactly (same contract as a portrait desk).
+        const vertical = Math.round(pose.axisAngle / (Math.PI / 2)) % 2 === 1
+        ;[w, h] = vertical ? [slab, leaf] : [leaf, slab]
+        rotation = pose.axisAngle
+        mirror = pose.mirror
+      } else {
+        // No recoverable swing arc → keep the real footprint, upright (old behavior).
+        w = bw
+        h = bh
+      }
+      break
+    }
     case 'Desk': {
       // Snap to the canonical desk footprint, long side along the block's long side.
       const long = Math.max(DESK.w, DESK.h)
@@ -147,7 +181,7 @@ export function normalizeFurniture(item: FurnitureItem): NormalizedComponent {
       h = Math.max(bh, MIN_TABLE_SIDE)
       break
     default:
-      // Door / Window / neutral Furniture: keep the real footprint.
+      // Window / neutral Furniture: keep the real footprint (symmetric symbols).
       w = bw
       h = bh
   }
@@ -157,10 +191,153 @@ export function normalizeFurniture(item: FurnitureItem): NormalizedComponent {
     w,
     h,
     rotation,
+    mirror,
     label: item.productName ?? item.name,
     productId: item.productId,
     productName: item.productName,
   }
+}
+
+/** Canonical thin depth (meters) of a door leaf-slab in the plan symbol — matches
+ *  the generator's door footprint so imported + generated doors read identically. */
+const DOOR_SLAB = 0.15
+
+/** A door's recovered plan pose. `axisAngle` is the world-CCW opening axis (hinge
+ *  → strike jamb), snapped to a cardinal so it obeys the same aspect/parity
+ *  contract as desks; `mirror` is the hinge hand; `leafLen` is the swing radius. */
+interface DoorPose {
+  axisAngle: number
+  mirror: boolean
+  leafLen: number
+}
+
+/**
+ * Recover a door's plan pose from its block geometry. A CAD door block draws its
+ * leaf swing as a quarter-circle ARC (tessellated to a polyline on import): the
+ * arc CENTER is the hinge, its RADIUS the leaf length, and its two endpoints are
+ * the strike jamb (leaf closed, along the wall) and the open leaf tip. From those
+ * we get the opening axis (hinge→strike) and the hand (which side of the axis the
+ * leaf swings, via the endpoint cross-product). Returns null when no swing arc is
+ * found (e.g. a frameless opening or a degenerate stub) — the caller then keeps
+ * the raw footprint upright, unmirrored (the pre-existing behavior).
+ */
+function recoverDoorPose(item: FurnitureItem): DoorPose | null {
+  const arcs = detectArcs(item.entities)
+  if (arcs.length === 0) return null
+  const maxR = Math.max(...arcs.map((a) => a.r))
+  // Swing arcs: near-full-radius, quarter-turn-ish sweep (rules out tiny fillets).
+  const swing = arcs.filter((a) => a.r > 0.6 * maxR && a.sweep > 0.6 && a.sweep < 2.2)
+  if (swing.length === 0) return null
+
+  // Distinct hinge centers. A double door has two leaves hinged at opposite jambs;
+  // it is symmetric (no hand), and the opening axis is the line between the hinges.
+  const centers: [number, number][] = []
+  for (const a of swing) {
+    if (!centers.some((c) => dist(c, a.center) < 0.15)) centers.push(a.center)
+  }
+  if (centers.length >= 2) {
+    const [h1, h2] = centers
+    return { axisAngle: snapCardinal(Math.atan2(h2[1] - h1[1], h2[0] - h1[0])), mirror: false, leafLen: maxR }
+  }
+
+  const arc = swing.reduce((m, a) => (a.r > m.r ? a : m), swing[0])
+  const H = arc.center
+  const r = arc.r
+  // The leaf line (a straight segment ≈ r long from the hinge) points to the OPEN
+  // tip; the other arc endpoint is then the strike jamb (along the wall).
+  let openTip: [number, number] | null = null
+  let best = Infinity
+  for (const e of item.entities) {
+    if (e.kind !== 'polyline' || !e.pts || e.pts.length < 2) continue
+    const a = e.pts[0]
+    const b = e.pts[e.pts.length - 1]
+    const len = dist(a, b)
+    if (Math.abs(len - r) > 0.2 * r) continue
+    if (dist(a, H) < 0.12 * r && dist(b, H) > 0.7 * r && dist(a, H) < best) { best = dist(a, H); openTip = b }
+    else if (dist(b, H) < 0.12 * r && dist(a, H) > 0.7 * r && dist(b, H) < best) { best = dist(b, H); openTip = a }
+  }
+  let strike: [number, number]
+  let open: [number, number]
+  if (openTip) {
+    open = dist(openTip, arc.e0) < dist(openTip, arc.e1) ? arc.e0 : arc.e1
+    strike = open === arc.e0 ? arc.e1 : arc.e0
+  } else {
+    // Fallback: the block's authored insert rotation points toward the strike jamb.
+    const wx = Math.cos(item.rotation)
+    const wy = Math.sin(item.rotation)
+    const d0 = (arc.e0[0] - H[0]) * wx + (arc.e0[1] - H[1]) * wy
+    const d1 = (arc.e1[0] - H[0]) * wx + (arc.e1[1] - H[1]) * wy
+    strike = d0 >= d1 ? arc.e0 : arc.e1
+    open = strike === arc.e0 ? arc.e1 : arc.e0
+  }
+  const axisAngle = snapCardinal(Math.atan2(strike[1] - H[1], strike[0] - H[0]))
+  // Cross product (strike−H) × (open−H): >0 ⟹ leaf swings CCW/left of the axis
+  // (the canonical, unmirrored hand); <0 ⟹ the reflected hand.
+  const cross = (strike[0] - H[0]) * (open[1] - H[1]) - (strike[1] - H[1]) * (open[0] - H[0])
+  return { axisAngle, mirror: cross < 0, leafLen: r }
+}
+
+interface DetectedArc {
+  center: [number, number]
+  r: number
+  e0: [number, number]
+  e1: [number, number]
+  sweep: number
+}
+
+/** Find polylines that are (tessellated) circular arcs: all vertices near-equal
+ *  distance from the circumcenter of their first/mid/last points. */
+function detectArcs(entities: FurnitureItem['entities']): DetectedArc[] {
+  const out: DetectedArc[] = []
+  for (const e of entities) {
+    if (e.kind !== 'polyline' || !e.pts || e.pts.length < 6) continue
+    const p = e.pts
+    const n = p.length
+    const c = circumcenter(p[0], p[Math.floor(n / 2)], p[n - 1])
+    if (!c) continue
+    const r = dist(c, p[0])
+    if (!(r > 0.05)) continue
+    let ok = true
+    const step = Math.max(1, Math.floor(n / 6))
+    for (let i = 0; i < n; i += step) {
+      if (Math.abs(dist(c, p[i]) - r) > 0.06 * r) { ok = false; break }
+    }
+    if (!ok) continue
+    const a0 = Math.atan2(p[0][1] - c[1], p[0][0] - c[0])
+    const a1 = Math.atan2(p[n - 1][1] - c[1], p[n - 1][0] - c[0])
+    let sweep = Math.abs(a1 - a0)
+    if (sweep > Math.PI) sweep = 2 * Math.PI - sweep
+    out.push({ center: c, r, e0: p[0], e1: p[n - 1], sweep })
+  }
+  return out
+}
+
+/** Circumcenter of three points, or null if they are collinear. */
+function circumcenter(a: [number, number], b: [number, number], c: [number, number]): [number, number] | null {
+  const [ax, ay] = a
+  const [bx, by] = b
+  const [cx, cy] = c
+  const d = 2 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by))
+  if (Math.abs(d) < 1e-9) return null
+  const a2 = ax * ax + ay * ay
+  const b2 = bx * bx + by * by
+  const c2 = cx * cx + cy * cy
+  return [
+    (a2 * (by - cy) + b2 * (cy - ay) + c2 * (ay - by)) / d,
+    (a2 * (cx - bx) + b2 * (ax - cx) + c2 * (bx - ax)) / d,
+  ]
+}
+
+function dist(a: [number, number], b: [number, number]): number {
+  return Math.hypot(a[0] - b[0], a[1] - b[1])
+}
+
+/** Snap an angle to the nearest cardinal (0 · π/2 · π · 3π/2), normalized to
+ *  [0, 2π). Office walls are axis-aligned, and this keeps the door's rotation on
+ *  the same cardinal/aspect-parity contract the desk/chair renderers rely on. */
+function snapCardinal(rad: number): number {
+  const q = ((Math.round(rad / (Math.PI / 2)) % 4) + 4) % 4
+  return q * (Math.PI / 2)
 }
 
 /**

@@ -38,6 +38,9 @@ export interface DocComponent {
   w: number
   h: number
   rotation: number
+  /** Hinge handedness (doors only): reflect the symbol across its long axis. serde
+   *  defaults false, so pre-mirror snapshots + generated components read as false. */
+  mirror?: boolean
   label: string
   product_id: string | null
   decision: 'Open' | 'InReview' | 'Confirmed'
@@ -2532,6 +2535,7 @@ export class EditorCanvas {
       w,
       h,
       rotation: c.rotation,
+      mirror: c.mirror,
       stroke: frozen ? DECISION_DOT.Confirmed : C.furniture,
       detail: '#b4b9c1',
       accent: C.accent,

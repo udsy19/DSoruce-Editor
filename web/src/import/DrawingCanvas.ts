@@ -1407,6 +1407,7 @@ export class DrawingCanvas {
       w: nw * this.scale,
       h: nh * this.scale,
       rotation: -norm.rotation, // world CCW → screen CW (Y-flip)
+      mirror: norm.mirror, // door hinge hand (recovered from the swing arc)
       stroke,
       detail,
       accent: ACCENT,

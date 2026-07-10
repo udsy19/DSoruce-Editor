@@ -770,6 +770,7 @@ fn push_component(doc: &mut Document, category: &str, x: f64, y: f64, w: f64, h:
         w,
         h,
         rotation,
+        mirror: false,
         label: format!("{} {}", category, id),
         product_id: None,
             price_inr: None,

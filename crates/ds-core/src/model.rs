@@ -77,6 +77,14 @@ pub struct Component {
     pub h: f64,
     /// radians
     pub rotation: f64,
+    /// Hinge handedness: reflect the symbol across its own long (local-x) axis.
+    /// Only doors carry a meaningful mirror — a left- vs right-hand swing that
+    /// `rotation` alone can't express (see `web/src/editor/furniture.ts`). Every
+    /// other category is left-right symmetric, so `mirror` is a no-op there.
+    /// `serde(default)` keeps pre-mirror snapshots + every non-setting caller at
+    /// `false`, so old `.dsource` blobs and the generator are unaffected.
+    #[serde(default)]
+    pub mirror: bool,
     pub label: String,
     /// bound product from the material bank (None until re-imagined)
     pub product_id: Option<String>,
@@ -116,5 +124,37 @@ mod tests {
         assert!(back.generated && back.glazing, "flags survive the round-trip");
         assert_eq!(back.id, 8);
         assert!((back.thickness - 0.05).abs() < 1e-12);
+    }
+
+    /// Pre-mirror snapshots carry components WITHOUT the `mirror` flag — they must
+    /// deserialize (flag defaults false), and a component with `mirror: true` (an
+    /// imported door's recovered hinge hand) must survive a full round-trip.
+    #[test]
+    fn component_mirror_defaults_false_and_round_trips() {
+        // A component blob exactly as pre-mirror builds serialized it: no `mirror`.
+        let old = r#"{"id":3,"category":"Desk","x":1.0,"y":2.0,"w":1.4,"h":0.7,
+            "rotation":0.0,"label":"Desk 3","product_id":null,"decision":"Open"}"#;
+        let c: Component = serde_json::from_str(old).expect("old component JSON must parse");
+        assert!(!c.mirror, "missing `mirror` defaults to false");
+
+        // A left-hand door round-trips with its recovered hinge hand intact.
+        let door = Component {
+            id: 9,
+            category: "Door".to_string(),
+            x: 4.0,
+            y: 5.0,
+            w: 0.9,
+            h: 0.15,
+            rotation: std::f64::consts::FRAC_PI_2,
+            mirror: true,
+            label: "Door 9".to_string(),
+            product_id: None,
+            price_inr: None,
+            decision: DecisionState::Open,
+        };
+        let json = serde_json::to_string(&door).unwrap();
+        let back: Component = serde_json::from_str(&json).unwrap();
+        assert!(back.mirror, "mirror survives the round-trip");
+        assert_eq!(back.category, "Door");
     }
 }

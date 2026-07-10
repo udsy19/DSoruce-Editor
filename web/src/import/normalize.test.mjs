@@ -137,8 +137,58 @@ check('Desk rotation parity matches footprint aspect (un-swap is exact)', deskIt
 const turnedDesks = deskItems.filter(({ n }) => quarterTurns(n.rotation) !== 0).length
 check('rotated source desks recover a non-zero orientation', turnedDesks > 0 && deskItems.length > turnedDesks)
 
-// (4) non-directional pieces stay upright (Table/Door/Window/Furniture → rotation 0).
-check('non-directional categories carry rotation 0', norms.every(({ n }) => ['Desk', 'Chair'].includes(n.category) || n.rotation === 0))
+// (4) symmetric non-directional pieces stay upright (Table/Window/Furniture → 0).
+//     Desks/Chairs are directional; Doors are now directional AND handed (see 4b).
+check('symmetric categories carry rotation 0', norms.every(({ n }) => ['Desk', 'Chair', 'Door'].includes(n.category) || n.rotation === 0))
+
+// (4b) DOORS recover a real plan pose from the swing arc: a cardinal opening axis
+//      + a boolean hinge hand, with BOTH hands present across the sample (the fix
+//      is not a no-op) and the canonical thin leaf-slab footprint (never a raw bbox).
+const doorNorms = norms.filter(({ n }) => n.category === 'Door').map(({ n }) => n)
+check('doors present in sample', doorNorms.length > 0)
+check('every door mirror is a boolean', doorNorms.every((n) => typeof n.mirror === 'boolean'))
+check('doors recover both hinge hands (mirror true AND false both occur)', doorNorms.some((n) => n.mirror) && doorNorms.some((n) => !n.mirror))
+check('doors carry a thin leaf-slab footprint (min side ≤ 0.2 m, max side ≥ 0.4 m)', doorNorms.every((n) => Math.min(n.w, n.h) <= 0.2 && Math.max(n.w, n.h) >= 0.4))
+check('non-door categories are never mirrored', norms.every(({ n }) => n.category === 'Door' || n.mirror === false))
+
+// (4c) SYNTHETIC door pose contract, independent of the sample: a quarter swing
+//      arc (hinge = arc center) + a leaf line to the open tip recovers the opening
+//      axis (hinge→strike) and the hand (cross-product of the two arc endpoints).
+const arcPts = (cx, cy, r, a0, a1) => {
+  const pts = []
+  const n = 16
+  for (let i = 0; i <= n; i++) {
+    const t = a0 + ((a1 - a0) * i) / n
+    pts.push([cx + r * Math.cos(t), cy + r * Math.sin(t)])
+  }
+  return pts
+}
+const mkDoor = (a0, a1) => {
+  const r = 0.9
+  const openA = a1 // second arc endpoint is the open tip in these fixtures
+  const open = [r * Math.cos(openA), r * Math.sin(openA)]
+  return {
+    id: 1, name: 'Door Single', raw: 'DOOR-SINGLE', category: 'door',
+    bbox: [Math.min(0, open[0], r), Math.min(0, open[1]), Math.max(0, open[0], r), Math.max(0, open[1], r)],
+    origin: [0, 0], rotation: 0,
+    entities: [
+      { kind: 'polyline', layer: '0', category: 'door', pts: arcPts(0, 0, r, a0, a1) },
+      { kind: 'polyline', layer: '0', category: 'door', pts: [[0, 0], open] },
+    ],
+  }
+}
+// strike at +x (a0=0), open swinging CCW to +y → left-hand, mirror false, axis 0.
+const dL = normalizeFurniture(mkDoor(0, HALF_PI))
+check('synthetic left-hand door: axis 0, mirror false', quarterTurns(dL.rotation) === 0 && dL.mirror === false)
+// strike at +x, open swinging CW to −y → right-hand, mirror true, axis 0.
+const dR = normalizeFurniture(mkDoor(0, -HALF_PI))
+check('synthetic right-hand door: axis 0, mirror true', quarterTurns(dR.rotation) === 0 && dR.mirror === true)
+// strike at +y (a0=90), open to −x → axis 90 (vertical opening), portrait footprint.
+const dV = normalizeFurniture(mkDoor(HALF_PI, Math.PI))
+check('synthetic vertical door: axis 90, portrait leaf-slab', quarterTurns(dV.rotation) === 1 && dV.h > dV.w)
+// a door with NO swing arc falls back: upright, unmirrored, real footprint kept.
+const dNull = normalizeFurniture({ id: 3, name: 'Door', raw: 'DOOR', category: 'door', bbox: [0, 0, 0.9, 0.2], origin: [0, 0], rotation: 0, entities: [] })
+check('door without a swing arc falls back to upright + unmirrored', dNull.rotation === 0 && dNull.mirror === false)
 
 // (5) SYNTHETIC pure contract: fabricate desks at each cardinal authored angle and
 //     assert the recovered orientation — independent of the sample DWG. A landscape

@@ -165,6 +165,7 @@ function stampBaseInto(ec: EditorCanvas, stamp: BaseStamp, bindings: Map<string,
   for (const c of stamp.comps) {
     const id = ec.ed.add_component(c.category, c.x, c.y, c.w, c.h)
     if (c.rotation) ec.ed.set_component_rotation(id, c.rotation)
+    if (c.mirror) ec.ed.set_component_mirror(id, c.mirror) // door hinge hand (mergeFit)
     // Re-bind the imported bank product so its ₹ price flows into specified_cost +
     // the takeoff (same primitive user re-imagine uses); price comes from the App
     // bindings map keyed by product id (the item itself only carries id/name).

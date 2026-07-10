@@ -50,6 +50,8 @@ export interface StampComp {
   w: number
   h: number
   rotation: number
+  /** Door hinge hand (mirror across the long axis), carried through the merge. */
+  mirror: boolean
   label: string
   /** Preserved material-bank binding (re-imagine) carried from the imported block. */
   productId?: string
@@ -106,18 +108,23 @@ export function baseStampAround(
     // the wrong way. `rotation`'s 90°-parity agrees with the aspect, so `odd` (an
     // odd number of quarter-turns ⟺ portrait) recovers the natural footprint.
     const odd = Math.round(norm.rotation / (Math.PI / 2)) % 2 !== 0
+    // normalize's `rotation` is world-CCW (Y-up). The editor renders in a Y-DOWN
+    // document frame (the plate push is offset-only, so imported Y-up coords land
+    // vertically flipped). For a left-right SYMMETRIC symbol that vertical flip is
+    // just a +π turn of the facet, so desks/chairs/tables carry `rotation + π`,
+    // `mirror` false. A DOOR is NOT symmetric (it has a hand), so the flip is a
+    // genuine reflection: the editor pose is `rotation` (no +π) with the hand
+    // INVERTED (`!mirror`). Both make the merged piece read exactly as the (now
+    // correct) import view — see the derivation in furniture.ts/drawDoor.
+    const isDoor = norm.category === 'Door'
     comps.push({
       category: norm.category,
       x: cx - offset.x,
       y: cy - offset.y,
       w: odd ? norm.h : norm.w,
       h: odd ? norm.w : norm.h,
-      // normalize's `rotation` is world-CCW (Y-up). The editor renders in a Y-DOWN
-      // document frame (the plate push is offset-only, so imported Y-up coords land
-      // vertically flipped), and its furniture symbols are left-right symmetric — so
-      // the world→editor vertical flip is a +π turn of the facet. set_component_rotation
-      // then faces each desk/chair the way it does in the (now-correct) import view.
-      rotation: norm.rotation + Math.PI,
+      rotation: isDoor ? norm.rotation : norm.rotation + Math.PI,
+      mirror: isDoor ? !norm.mirror : false,
       label: norm.label,
       productId: norm.productId,
       productName: norm.productName,

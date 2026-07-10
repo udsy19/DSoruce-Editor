@@ -15,6 +15,11 @@ export interface FurnitureOpts {
   w: number // SCREEN size (already × scale)
   h: number
   rotation: number // radians
+  /** Reflect the symbol across its own long (local-x) axis — a door's hinge
+   *  handedness. Only doors set this true; other symbols are left-right symmetric
+   *  so the reflection is invisible. Applied after translate+rotate, so it flips
+   *  the leaf+swing to the opposite side of the opening. Optional → default no-op. */
+  mirror?: boolean
   stroke: string // base line color (e.g. '#8a9099')
   detail: string // secondary line color (e.g. '#b4b9c1')
   accent: string // selected color
@@ -38,6 +43,9 @@ export function drawFurnitureSymbol(ctx: CanvasRenderingContext2D, o: FurnitureO
   ctx.save()
   ctx.translate(cx, cy)
   ctx.rotate(rotation)
+  // Hinge handedness: reflect across the local long (x) axis. A door's leaf+arc
+  // flip to the other side of the opening; symmetric symbols are unaffected.
+  if (o.mirror) ctx.scale(1, -1)
   ctx.lineJoin = 'round'
   ctx.lineCap = 'round'
 
