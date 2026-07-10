@@ -277,7 +277,18 @@ impl Editor {
         let plate = self.doc.plate_polygon();
         let plate_ref = plate.as_deref();
         let floor_area = self.doc.floor_area();
-        let nia: f64 = self.doc.zones.iter().map(|z| z.area_on(plate_ref)).sum();
+        // Net internal area can never exceed the gross floor. Normally the zones
+        // tile the plate so the sum equals it, but an oriented (tilted-plate)
+        // desk field emits a plate-spanning Workspace zone that overlaps the
+        // room/corridor zones inside it — cap the sum at the gross area so the
+        // overlap can't push NIA above GEA (and area/workstation stays real).
+        let nia: f64 = self
+            .doc
+            .zones
+            .iter()
+            .map(|z| z.area_on(plate_ref))
+            .sum::<f64>()
+            .min(floor_area);
         let workstations = self
             .doc
             .components

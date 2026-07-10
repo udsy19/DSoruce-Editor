@@ -1240,6 +1240,18 @@ const REGION_MIN_AREA: f64 = 9.0;
 /// a legitimate second band row rather than in the workstations.
 const SMALL_PLATE_FIELD_AREA: f64 = 180.0;
 
+/// Axis-aligned coverage threshold that flips the desk field to the principal-
+/// axis oriented packer. A materially tilted or angular plate (a rotated area
+/// selection, a hexagon, a sharp diagonal facade) has a small set of maximal
+/// inscribed AXIS-ALIGNED rectangles, so `decompose_plate` covers only a
+/// fraction of its true area and the axis lattice fills merely a corner. When
+/// the decomposition covers LESS than this fraction of the plate, the whole desk
+/// field is driven by `pack_desks_oriented` instead (desks follow the facade
+/// angle and spread across the polygon). Chosen so the real multi-wing plate
+/// (~0.80 coverage) and axis-aligned L/T plates (~0.85–1.0) keep the per-wing
+/// band path, while rotated rects / hexagons (~0.45–0.60) fill via orientation.
+const ORIENTED_COVER_FRAC: f64 = 0.70;
+
 /// One region edge: how far the desk field insets from it, and whether it is a
 /// SEAM shared with an adjacent region (half-corridor each side, forming ONE
 /// shared corridor) or a plate-boundary/facade edge (0.9 m maintenance gap —
@@ -1453,6 +1465,26 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
         }
         _ => Vec::new(),
     };
+    // Oriented-field gate: how much of the plate the AXIS-ALIGNED decomposition
+    // actually covers (computed from the raw decomposition, BEFORE the
+    // single-region bbox fallback below inflates `regions`). A tilted/angular
+    // plate leaves most of itself uncovered → drive the desk field with the
+    // principal-axis oriented packer so it fills the WHOLE polygon rather than a
+    // corner. A rectangle (regions empty only because plate ≈ bbox) and an
+    // axis-aligned L/T (near-total coverage) keep the current per-wing path.
+    let is_rectangular = match &plate {
+        Some(poly) => geometry::polygon_area(poly) >= 0.98 * bbox_area,
+        None => true, // open walls → historical bbox behaviour, never oriented
+    };
+    let axis_cover: f64 = match &plate {
+        Some(poly) if !is_rectangular => regions
+            .iter()
+            .map(|r| geometry::rect_polygon_clip_area(poly, r.x0, r.y0, r.x1, r.y1))
+            .sum(),
+        _ => plate_area,
+    };
+    let use_oriented_field =
+        !is_rectangular && plate_area > 0.0 && axis_cover < ORIENTED_COVER_FRAC * plate_area;
     let single_region = regions.is_empty();
     if single_region {
         regions.push(geometry::Rect { x0: min_x, y0: min_y, x1: max_x, y1: max_y });
@@ -1597,6 +1629,42 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
         }
     }
 
+    // --- Oriented desk field FIRST (tilted / irregular plates only) ---------
+    // Desks are the MAJORITY use (spec §1), so on a compact single-region
+    // irregular plate the desk field must claim the floor BEFORE the support
+    // rooms — otherwise the derived room program fills the one inscribed core
+    // and crushes the field to a handful (a hexagon seated 5 rooms + 3 desks).
+    // Placing the principal-axis field first makes every desk an obstacle the
+    // room passes below pack AROUND, so rooms settle into the leftover pockets
+    // (Laiout's "support in the core, desks radiating" — desks win the tie on a
+    // tight plate; a large tilted plate still leaves ample room pockets). Axis-
+    // aligned plates keep the room-first order and their per-wing lattice.
+    if use_oriented_field {
+        // Workspace zone spanning the plate bbox. Both the canvas fill and the
+        // metrics `area_on` clip it to the plate polygon, so it reports the true
+        // desk-field floor on a tilted/angular plate (the small per-region
+        // inscribed rect used elsewhere would leave most oriented desks unzoned,
+        // craters NIA and shows an absurd ~3 m²/workstation). Emitted BEFORE the
+        // room passes so each room's zone, pushed later, wins its own interior in
+        // the point-in-zone bucketing (last-non-Circulation-wins). NIA can now
+        // exceed the summed disjoint tiling by the room/corridor overlap; the
+        // metrics layer caps NIA at the gross area (NIA ≤ GEA is always true).
+        push_zone(
+            doc,
+            ZoneType::Workspace,
+            ZoneShape::Rect {
+                x: (min_x + max_x) / 2.0,
+                y: (min_y + max_y) / 2.0,
+                w: max_x - min_x,
+                h: max_y - min_y,
+            },
+            "Open Workspace",
+        );
+        if let Some(poly) = plate.as_deref() {
+            pack_desks_oriented(doc, program, poly, remaining_desks, &iwalls, &mut obstacles, clear);
+        }
+    }
+
     // --- Pass 0: anchored rooms land FIRST at (near) their pinned point ------
     // Placed before the free band/pocket program so every later placement packs
     // AROUND them (each becomes an obstacle). The exact pin wins when it fits;
@@ -1638,50 +1706,50 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
         emit_plan_zones(doc, plan);
     }
 
-    // --- Pass C: desk fields on the global lattice -------------------------
-    let d_alloc = allocate_desks(program, &plans, clear, remaining_desks);
-    let mut placed_desks = 0u32;
-    for (i, plan) in plans.iter().enumerate() {
-        let region_no = if single_region { None } else { Some((i + 1) as u32) };
-        placed_desks += pack_desks(
-            doc, program, plan, d_alloc[i], region_no, /*emit_zones=*/ true,
-            plate.as_deref(), &iwalls, &mut obstacles, lat, clear, choices,
-        );
-    }
-    // --- Top-up pass: reclaim allocation lost to rooms/geometry. Smallest
-    // wings first: the proportional allocation already loaded the big regions.
-    // SAME global lattice → top-up slots either coincide with occupied lines
-    // (rejected) or fill genuinely free ones in perfect row alignment.
-    let mut shortfall = remaining_desks.saturating_sub(placed_desks);
-    if shortfall > 0 {
-        for (i, plan) in plans.iter().enumerate().rev() {
-            if shortfall == 0 {
-                break;
-            }
+    // --- Pass C: desk fields -----------------------------------------------
+    // Oriented plates already filled their desk field + Workspace zone above
+    // (before the room passes). Only the axis-aligned path packs here.
+    if !use_oriented_field {
+        // AXIS-ALIGNED plate (rectangle, L/T, real multi-wing): desks on the
+        // shared global lattice, per-region proportional allocation.
+        let mut placed_desks = 0u32;
+        let d_alloc = allocate_desks(program, &plans, clear, remaining_desks);
+        for (i, plan) in plans.iter().enumerate() {
             let region_no = if single_region { None } else { Some((i + 1) as u32) };
-            let got = pack_desks(
-                doc, program, plan, shortfall, region_no, /*emit_zones=*/ false,
+            placed_desks += pack_desks(
+                doc, program, plan, d_alloc[i], region_no, /*emit_zones=*/ true,
                 plate.as_deref(), &iwalls, &mut obstacles, lat, clear, choices,
             );
-            shortfall = shortfall.saturating_sub(got);
         }
-    }
+        // --- Top-up pass: reclaim allocation lost to rooms/geometry. Smallest
+        // wings first: the proportional allocation already loaded the big regions.
+        // SAME global lattice → top-up slots either coincide with occupied lines
+        // (rejected) or fill genuinely free ones in perfect row alignment.
+        let mut shortfall = remaining_desks.saturating_sub(placed_desks);
+        if shortfall > 0 {
+            for (i, plan) in plans.iter().enumerate().rev() {
+                if shortfall == 0 {
+                    break;
+                }
+                let region_no = if single_region { None } else { Some((i + 1) as u32) };
+                let got = pack_desks(
+                    doc, program, plan, shortfall, region_no, /*emit_zones=*/ false,
+                    plate.as_deref(), &iwalls, &mut obstacles, lat, clear, choices,
+                );
+                shortfall = shortfall.saturating_sub(got);
+            }
+        }
 
-    // --- Degenerate-plate rescue: an ANGLED / irregular selection (every
-    // hand-drawn area lasso is one) whose usable band is a narrow diagonal has a
-    // wall-bbox far larger than its area, so `decompose_plate` inscribes no
-    // axis-aligned region ≥ `min_dim` and the single-region fallback packs the
-    // oversized bbox — whose axis-aligned lattice seats ZERO desks inside the
-    // tilted polygon. When the whole run placed no desks but the plate has real
-    // room, fill it on a grid ROTATED to the plate's principal axis, so a rotated
-    // band packs as densely as the same band would axis-aligned. Fires only at
-    // placed_desks == 0, so axis-aligned and large/convex plates are untouched.
-    if placed_desks == 0 && remaining_desks > 0 {
-        if let Some(poly) = plate.as_deref() {
-            // Side effect only (pushes Desk components into the field the normal
-            // pass already zoned); the count is not needed again — the score and
-            // stats read the placed components directly.
-            pack_desks_oriented(doc, program, poly, remaining_desks, &iwalls, &mut obstacles, clear);
+        // --- Degenerate-plate rescue (safety net): if an axis-aligned plate
+        // somehow seated ZERO (an adverse global-lattice phase on a shallow
+        // field, say), fall back to the oriented packer just as before. Tilted
+        // plates take the `use_oriented_field` branch above; this only catches
+        // the rare axis-aligned zero.
+        if placed_desks == 0 && remaining_desks > 0 {
+            if let Some(poly) = plate.as_deref() {
+                // Side effect only — the count is not needed after this branch.
+                pack_desks_oriented(doc, program, poly, remaining_desks, &iwalls, &mut obstacles, clear);
+            }
         }
     }
 
@@ -5880,6 +5948,132 @@ mod tests {
         }
     }
 
+    /// IRREGULAR-PLATE FILL (the #1 product gap): a materially tilted or angular
+    /// ~200 m² plate must seat a PROFESSIONAL desk field spread across its whole
+    /// footprint — not the ~1–10 corner desks the axis-aligned lattice managed
+    /// before the oriented-field switch. The axis-aligned decomposition covers
+    /// only ~0.45–0.60 of such a plate, so `use_oriented_field` fires and the
+    /// principal-axis oriented packer fills the polygon. Asserts, per shape:
+    ///   (a) ≥ 15 desks — professional density on ~200 m² (8–12 m²/person), and
+    ///   (b) the desk bbox spans a LARGE fraction of the plate bbox (desks are
+    ///       distributed, not confined to a corner).
+    #[test]
+    fn irregular_plates_fill_with_a_spread_desk_field() {
+        // (name, corners) — each ~200–210 m², none axis-aligned/rectangular.
+        let rot = |x: f64, y: f64, th: f64, ox: f64, oy: f64| {
+            let (s, c) = th.sin_cos();
+            (ox + x * c - y * s, oy + x * s + y * c)
+        };
+        let tilted_rect: Vec<(f64, f64)> =
+            [(0.0, 0.0), (25.0, 0.0), (25.0, 8.0), (0.0, 8.0)]
+                .iter()
+                .map(|&(x, y)| rot(x, y, 0.52, 2.0, 2.0))
+                .collect();
+        let angled_band: Vec<(f64, f64)> =
+            [(0.0, 0.0), (34.0, 0.0), (34.0, 6.0), (0.0, 6.0)]
+                .iter()
+                .map(|&(x, y)| rot(x, y, 0.5, 1.0, 1.0))
+                .collect();
+        let hexagon: Vec<(f64, f64)> = (0..6)
+            .map(|i| {
+                let a = std::f64::consts::PI / 3.0 * i as f64 + 0.1;
+                (9.0 + 9.0 * a.cos(), 9.0 + 9.0 * a.sin())
+            })
+            .collect();
+
+        for (name, corners) in [
+            ("tilted rect 25×8 @0.52", tilted_rect),
+            ("angled band 6×34 @0.5", angled_band),
+            ("hexagon r≈9", hexagon),
+        ] {
+            // Best over a seed sweep (the app's `autoGenerate` keeps the best).
+            let mut best_desks = 0usize;
+            let mut best_doc: Option<Document> = None;
+            for seed in 1u64..=6 {
+                let mut doc = room_from_corners(&corners);
+                generate(&mut doc, &Program::default(), seed, false);
+                let n = doc.components.iter().filter(|c| c.category == "Desk").count();
+                if n >= best_desks {
+                    best_desks = n;
+                    best_doc = Some(doc);
+                }
+            }
+            let doc = best_doc.unwrap();
+            // (a) Professional count on ~200 m².
+            assert!(
+                best_desks >= 15,
+                "{name}: only {best_desks} desks (< 15) — irregular plate under-filled"
+            );
+
+            let poly = poly_of(&doc);
+            // Every desk stays inside the plate.
+            for c in &doc.components {
+                assert!(footprint_in_plate(c, &poly), "{name}: {} escapes the plate", c.label);
+            }
+
+            let desks: Vec<&crate::model::Component> =
+                doc.components.iter().filter(|c| c.category == "Desk").collect();
+            // The oriented field is a SINGLE coherent orientation (the plate's
+            // principal axis) — never the mixed axis+oriented look.
+            let th = desks[0].rotation;
+            assert!(
+                desks.iter().all(|d| (d.rotation - th).abs() < 1e-9),
+                "{name}: oriented field is not a single coherent orientation"
+            );
+            // Exact non-overlap: rotating every desk center into the shared θ
+            // frame makes them axis-aligned w×h rects, so an AABB test there is
+            // exact (the `world_extents` helper is a conservative AABB that
+            // false-positives on rotated neighbours). Desks must clear by ≥ their
+            // footprint (regular-pitch guarantee of the oriented packer).
+            let (s, c) = (-th).sin_cos();
+            for i in 0..desks.len() {
+                for j in (i + 1)..desks.len() {
+                    let (a, b) = (desks[i], desks[j]);
+                    let (dx, dy) = (a.x - b.x, a.y - b.y);
+                    let (lx, ly) = (dx * c - dy * s, dx * s + dy * c);
+                    assert!(
+                        lx.abs() >= a.w - 1e-6 || ly.abs() >= a.h - 1e-6,
+                        "{name}: {} physically overlaps {}",
+                        a.label,
+                        b.label
+                    );
+                }
+            }
+
+            // (b) SPATIAL SPREAD: the desk bbox covers a large fraction of the
+            // plate bbox — desks span the footprint, not a single corner.
+            let (mut pnx, mut pny, mut pxx, mut pxy) =
+                (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
+            for p in &poly {
+                pnx = pnx.min(p.x);
+                pny = pny.min(p.y);
+                pxx = pxx.max(p.x);
+                pxy = pxy.max(p.y);
+            }
+            let (mut dnx, mut dny, mut dxx, mut dxy) =
+                (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
+            for d in &desks {
+                dnx = dnx.min(d.x);
+                dny = dny.min(d.y);
+                dxx = dxx.max(d.x);
+                dxy = dxy.max(d.y);
+            }
+            // Per-dimension linear spread: the desk field must reach across BOTH
+            // axes of the plate bbox (a corner-confined field spans one axis but
+            // not the other). Area ratio is unusable here — a tilted band's own
+            // polygon is only ~40% of its axis-aligned bbox, so even a perfect
+            // fill can't exceed that by area; linear reach is the honest measure.
+            let sx = (dxx - dnx) / (pxx - pnx);
+            let sy = (dxy - dny) / (pxy - pny);
+            assert!(
+                sx >= 0.5 && sy >= 0.5,
+                "{name}: desk field reaches only {:.0}%×{:.0}% of the plate bbox — bunched, not spread",
+                100.0 * sx,
+                100.0 * sy
+            );
+        }
+    }
+
     /// The recentered density sub-score peaks in the professional band and falls
     /// off BOTH sides — a pure-function guard on the M5 curve (spec §5): the old
     /// band peaked at ~2.3 m²/desk cramming; this one peaks at 10 m²/person.
@@ -6028,3 +6222,4 @@ mod tests {
         assert_eq!(a.anchors.len(), 2, "generate preserves the anchors (like entries)");
     }
 }
+
