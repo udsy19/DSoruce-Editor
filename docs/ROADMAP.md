@@ -45,6 +45,22 @@ The qbiq-style flow: Project → Upload → Program → Generate → Editor → 
   Plan" gone). `shell/steps/GenerateStep.tsx`. **Full-flow E2E 10/10 on the real DWG.**
 - **Track A end-to-end verified:** create → upload → area → markers → program → anchors → generate A/B/C
   → pick → edit → branded report + costed takeoff. **S0–S7 all shipped — Track A closed.**
+- [x] **Workflow bug fixes (user-reported, 2026-07-09)** — three confirmed bugs from a real small-area
+  test-fit, root-caused via live browser repro on the sample DWG:
+  1. **0 workstations on small plates** — generator dead zone: plates < ~100 m² produced 0 desks
+     regardless of program (overflow rooms poisoned the desk field + a shallow-field lattice phase).
+     Fixed in `layout.rs` (SMALL_PLATE_FIELD_AREA gate + degenerate-field fallback); 81 m²→6, 88 m²→4,
+     140 m²→10, large plates unchanged. Rust regression test `small_plates_pack_desks_not_zero` (95 tests).
+  2. **Blank editor after generate** — no frame-to-content existed; the view kept its default scale/offset
+     so content sat off-screen. Added `EditorCanvas.frameContent()` wired into testFit/generate/
+     open-candidate/open-saved-plan (`App.tsx`).
+  3. **Confined Space-step preview** — fixed 460px `.space-preview` height too short for a near-square
+     plate; now `clamp(460px,74vh,880px)` + re-fit on resize (`DrawingCanvas.ts`). Content fill 42%→72%.
+  Verified end-to-end: an 88 m² plate now generates 4 workstations, framed + fully visible.
+- [ ] **Follow-up (found during the above):** sub-area plate-tracing shrinkage — `restrictDrawing` +
+  `extractPlate` on a lasso trace a plate smaller than the selected polygon (an ~88 m² lasso → ~36 m²
+  plate), so a small selection under-fills. Also the dev `#/editor` route auto-persists/restores the last
+  doc (harmless in prod wizard flow, but confounds testing). Both are refinements, not blockers.
 - [x] **S4 — Wall healing.** `healWalls(drawing)` bridges near-miss partition gaps (degree-1 wall ends
   within 0.25 m that are near-collinear or perpendicular, + endpoint→segment T-junctions; doorway guard
   at 0.8 m). Space-step **Heal gaps / As drawn** toggle (default heal on; testids space-heal-toggle/on/off)
