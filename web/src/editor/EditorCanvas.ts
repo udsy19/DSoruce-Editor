@@ -1233,6 +1233,77 @@ export class EditorCanvas {
     this.commit()
   }
 
+  /**
+   * Rotate a rectangular room 90° clockwise about its center. The zone Rect
+   * swaps w/h (center fixed); every furniture member and interior wall is
+   * rotated about that center — positions turn AND each component gains 90° of
+   * `rotation` so the piece itself (chair/monitor) turns with the room. If the
+   * swapped box would leave the plate it's translated back on (everything with
+   * it, so members stay aligned). Rings aren't Rect → skipped, like resize.
+   * Four calls return to the original orientation (4×90° = identity).
+   */
+  rotateRoom(id: number, deg = 90) {
+    const z = this.zoneById(id)
+    if (!z || z.shape.kind !== 'Rect') return // rings aren't rotatable (non-Rect)
+    const s = z.shape
+    const cx = s.x
+    const cy = s.y
+    // Number of clockwise quarter-turns (only 90° multiples keep an axis-aligned Rect).
+    const turns = ((Math.round(deg / 90) % 4) + 4) % 4
+    if (turns === 0) return
+    const quarter = (Math.PI / 2) * turns
+    // Clockwise quarter-turn about center in the Y-down plan: (dx,dy) → (-dy,dx).
+    const rot = (px: number, py: number) => {
+      let dx = px - cx
+      let dy = py - cy
+      for (let i = 0; i < turns; i++) {
+        const ndx = -dy
+        const ndy = dx
+        dx = ndx
+        dy = ndy
+      }
+      return { x: cx + dx, y: cy + dy }
+    }
+    // Odd turns swap w/h; even turns keep them.
+    const newW = turns % 2 === 1 ? s.h : s.w
+    const newH = turns % 2 === 1 ? s.w : s.h
+    // Clamp the swapped box back onto the plate; translate the whole room by the
+    // same (grid-snapped) delta so members stay aligned inside it.
+    const snap = (v: number) => Math.round(v / SNAP_M) * SNAP_M
+    let sdx = 0
+    let sdy = 0
+    const bb = this.wallWorldBBox()
+    if (bb) {
+      const left = cx - newW / 2
+      const right = cx + newW / 2
+      const top = cy - newH / 2
+      const bottom = cy + newH / 2
+      if (left < bb.minX) sdx = bb.minX - left
+      else if (right > bb.maxX) sdx = bb.maxX - right
+      if (top < bb.minY) sdy = bb.minY - top
+      else if (bottom > bb.maxY) sdy = bb.maxY - bottom
+    }
+    sdx = snap(sdx)
+    sdy = snap(sdy)
+    const members = this.getState().components.filter((c) => z.component_ids.includes(c.id))
+    for (const c of members) {
+      const p = rot(c.x, c.y)
+      this.ed.move_component(c.id, snap(p.x + sdx), snap(p.y + sdy))
+      // Normalize into [0, 2π) so 4 turns land exactly back on the original value.
+      const nr = (((c.rotation + quarter) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)
+      this.ed.set_component_rotation(c.id, nr)
+    }
+    for (const wl of this.interiorWalls(this.zoneWorldBBox(z))) {
+      const a = rot(wl.a.x, wl.a.y)
+      const b = rot(wl.b.x, wl.b.y)
+      this.ed.set_wall(wl.id, snap(a.x + sdx), snap(a.y + sdy), snap(b.x + sdx), snap(b.y + sdy))
+    }
+    this.ed.resize_zone(id, snap(cx + sdx), snap(cy + sdy), newW, newH)
+    this.selectedZoneId = id
+    this.emitRoom(true)
+    this.commit()
+  }
+
   // ---- room geometry / hit-testing helpers ----
   private wallWorldBBox() {
     const bb = wallBbox(this.getState().walls)

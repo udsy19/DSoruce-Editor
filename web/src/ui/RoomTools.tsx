@@ -57,6 +57,14 @@ export function RoomTools({ ec, zone, box }: { ec: EditorCanvas; zone: DocZone; 
           >
             <Icon name="copy" size={16} />
           </button>
+          <button
+            className="rt-btn"
+            title="Rotate 90° clockwise"
+            onClick={() => ec.rotateRoom(zone.id)}
+            data-testid="room-rotate"
+          >
+            <Icon name="rotate" size={16} />
+          </button>
         </>
       )}
       <button
