@@ -57,10 +57,14 @@ The qbiq-style flow: Project → Upload → Program → Generate → Editor → 
   3. **Confined Space-step preview** — fixed 460px `.space-preview` height too short for a near-square
      plate; now `clamp(460px,74vh,880px)` + re-fit on resize (`DrawingCanvas.ts`). Content fill 42%→72%.
   Verified end-to-end: an 88 m² plate now generates 4 workstations, framed + fully visible.
-- [ ] **Follow-up (found during the above):** sub-area plate-tracing shrinkage — `restrictDrawing` +
-  `extractPlate` on a lasso trace a plate smaller than the selected polygon (an ~88 m² lasso → ~36 m²
-  plate), so a small selection under-fills. Also the dev `#/editor` route auto-persists/restores the last
-  doc (harmless in prod wizard flow, but confounds testing). Both are refinements, not blockers.
+- [x] **Sub-area plate-tracing shrinkage** — a lasso traced a tight hull around the caught furniture
+  (~88 m² lasso → ~36 m² plate → 1 desk). Fixed: `plateFromArea` clips the lasso to the building bbox
+  and uses it as the plate; shared `import/plate.ts` `derivePlate()` feeds BOTH the Space readout and the
+  test-fit. Verified: 88→88 m² (4 desks), 140→140 (10), 81→81 (6); full plate unchanged (882→80). Unit
+  test `plate.test.mjs`. Limitation: clips to the building bounding box, not its concave outline (fine
+  for in-bounds selections; a wild over-draw gets the bbox).
+- [ ] **Follow-up:** dev `#/editor` route auto-persists/restores the last doc (harmless in the prod
+  wizard flow, but it confounds console testing). Low priority; consider a fresh-doc flag for `#/editor`.
 - [x] **S4 — Wall healing.** `healWalls(drawing)` bridges near-miss partition gaps (degree-1 wall ends
   within 0.25 m that are near-collinear or perpendicular, + endpoint→segment T-junctions; doorway guard
   at 0.8 m). Space-step **Heal gaps / As drawn** toggle (default heal on; testids space-heal-toggle/on/off)
