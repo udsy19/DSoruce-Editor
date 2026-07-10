@@ -108,8 +108,8 @@ check('inferCategory agrees with normalizeFurniture', norms.every(({ f, n }) => 
 // --- rotation / orientation recovery -----------------------------------------
 // A directional symbol (Desk monitor/chair, Chair backrest) must FACE the way the
 // source block did. normalize encodes that in `rotation`; the imported canvas
-// un-swaps the aspect-baked w/h back to natural and rotates by it. Two invariants
-// keep that exact and mergeFit-safe (mergeFit ignores rotation, stamps upright):
+// un-swaps the aspect-baked w/h back to natural and rotates by it. mergeFit does
+// the same (+π for the import↔editor Y-mirror). Two invariants keep that exact:
 const HALF_PI = Math.PI / 2
 const quarterTurns = (rot) => (((Math.round(rot / HALF_PI) % 4) + 4) % 4)
 const isCardinal = (rot) => Math.abs(rot - quarterTurns(rot) * HALF_PI) < 1e-9

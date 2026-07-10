@@ -52,8 +52,10 @@ export interface NormalizedComponent {
    * "un-swaps" back to the block's NATURAL (pre-rotation) footprint —
    * `odd ? [h, w] : [w, h]` — and draws THAT rotated by `rotation` (negated for a
    * Y-down screen), which reproduces the `w/h` on-screen extent while facing right.
-   * `mergeFit` ignores this field (stamps upright, unchanged); only the imported
-   * 2D canvas uses it. Non-directional pieces (Table/Door/Window/Furniture) are 0.
+   * BOTH consumers use it: the imported 2D canvas (`DrawingCanvas.drawItemSymbol`)
+   * and the merge stamp (`mergeFit` → `stampBaseInto`, which adds `+π` for the
+   * import↔editor Y-mirror). Non-directional pieces (Table/Door/Window/Furniture)
+   * are 0 (their symbols are left-right symmetric, so a mirror == a `+π` turn).
    */
   rotation: number
   /** Human-readable label (the bound product name when present, else the block name). */
