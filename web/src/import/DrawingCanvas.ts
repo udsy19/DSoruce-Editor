@@ -2,6 +2,8 @@ import type { Drawing, DrawEntity, FurnitureItem, Category } from './types'
 import { CATEGORY_COLOR } from './types'
 import { collectWallSegments, type Pt, type Segment } from './testfit'
 import type { RoomMarker, RoomType } from './markers'
+import { normalizeFurniture } from './normalize'
+import { drawFurnitureSymbol } from '../editor/furniture'
 
 /**
  * Framework-agnostic CAD renderer for an imported {@link Drawing}. Renders
@@ -19,8 +21,10 @@ import type { RoomMarker, RoomType } from './markers'
 
 // Mat behind the plate — matches EditorCanvas C.mat.
 const MAT = '#f2f4f7'
-// Furniture linework (gray).
+// Furniture linework (gray) + a lighter secondary tone for a symbol's detail
+// (monitor, chair, glazing centerline). Mirrors EditorCanvas's stroke/detail pair.
 const FURNITURE_LINE = '#5c6670'
+const FURNITURE_DETAIL = '#9aa2ad'
 // Selection = warm amber accent; hover = a lighter amber wash. Kept distinct
 // from the blue used for product-bound items so the two never read the same.
 const ACCENT = '#E8A13C'
@@ -29,6 +33,7 @@ const HOVER = 'rgba(232,161,60,0.55)'
 // Bound ("specified"/re-imagined) furniture — solid data-blue so a decided item
 // reads distinctly from both unbound gray linework and the amber selection.
 const SPECIFIED = '#2d5bd6'
+const SPECIFIED_DETAIL = '#6d8fe0'
 
 /** A placeable footprint the palette hands to {@link DrawingCanvas.beginPlace}. */
 export interface PlaceSpec {
@@ -1359,32 +1364,44 @@ export class DrawingCanvas {
     ctx.textBaseline = 'alphabetic'
   }
 
-  /** Furniture linework: unbound in gray, bound ("specified") in a muted accent —
-   *  two batched strokes so a re-imagined item reads distinctly. */
+  /** Imported furniture, rendered as CANONICAL top-view symbols (the same
+   *  `drawFurnitureSymbol` vocabulary the generator emits) instead of raw DWG
+   *  linework — so a freshly imported plan reads identically to a generated or
+   *  merged fit: clean Desk/Chair/Table/Door/Window glyphs, no vendor-block
+   *  clutter. Unbound pieces are gray; bound ("specified") pieces are data-blue
+   *  so a re-imagined item still reads distinctly. */
   private drawFurniture(d: Drawing) {
-    if (d.furniture.length === 0) return
-    const ctx = this.ctx
-    let hasBound = false
-    ctx.strokeStyle = FURNITURE_LINE
-    ctx.lineWidth = 1
-    ctx.beginPath()
     for (const it of d.furniture) {
-      if (it.productId) {
-        hasBound = true
-        continue
-      }
-      for (const e of it.entities) this.appendEntity(e)
+      if (it.productId) this.drawItemSymbol(it, SPECIFIED, SPECIFIED_DETAIL, false)
+      else this.drawItemSymbol(it, FURNITURE_LINE, FURNITURE_DETAIL, false)
     }
-    ctx.stroke()
-    if (!hasBound) return
-    ctx.strokeStyle = SPECIFIED
-    ctx.lineWidth = 1
-    ctx.beginPath()
-    for (const it of d.furniture) {
-      if (!it.productId) continue
-      for (const e of it.entities) this.appendEntity(e)
-    }
-    ctx.stroke()
+  }
+
+  /** Draw one imported furniture item as its canonical symbol. Reuses the exact
+   *  `normalizeFurniture` mapping the merge path uses (mergeFit.ts) so the
+   *  imported view and the merged result are pixel-consistent: the piece is
+   *  stamped at its bbox center; the axis-aligned bbox already bakes the block's
+   *  rotation, so orientation rides in normalize()'s w/h aspect and we draw
+   *  upright (rotation 0 — applying it.rotation would double-rotate). An unknown
+   *  category falls to `drawFurnitureSymbol`'s neutral rounded outline, never raw
+   *  linework. `w/h` are meters → screen px via `scale`; `toScreen` handles the
+   *  Y-flip on the center, and the symbol's own local frame is screen-space
+   *  (Y-down) exactly as EditorCanvas draws it. */
+  private drawItemSymbol(it: FurnitureItem, stroke: string, detail: string, selected: boolean) {
+    const norm = normalizeFurniture(it)
+    const c = this.toScreen((it.bbox[0] + it.bbox[2]) / 2, (it.bbox[1] + it.bbox[3]) / 2)
+    drawFurnitureSymbol(this.ctx, {
+      category: norm.category,
+      cx: c.x,
+      cy: c.y,
+      w: norm.w * this.scale,
+      h: norm.h * this.scale,
+      rotation: 0,
+      stroke,
+      detail,
+      accent: ACCENT,
+      selected,
+    })
   }
 
   private drawTexts(d: Drawing) {
@@ -1413,30 +1430,23 @@ export class DrawingCanvas {
     ctx.lineCap = 'round'
     ctx.lineJoin = 'round'
     if (this.hovered && this.hovered !== this.selected) {
-      // soft thick wash so a hovered item reads as "pickable" without hiding its linework
-      ctx.strokeStyle = HOVER
-      ctx.lineWidth = 3
-      ctx.beginPath()
-      for (const e of this.hovered.entities) this.appendEntity(e)
-      ctx.stroke()
+      // soft amber wash over the canonical symbol so a hovered item reads as
+      // "pickable" (redrawn as its symbol, not raw linework — the body is a
+      // clean glyph now).
+      this.drawItemSymbol(this.hovered, HOVER, HOVER, false)
     }
     if (this.selected) {
-      // 1) translucent halo underneath — makes the selection glow over dense plans
+      const [minX, minY, maxX, maxY] = this.selected.bbox
+      const a = this.toScreen(minX, maxY) // top-left (maxY = top)
+      const b = this.toScreen(maxX, minY) // bottom-right
+      // 1) translucent halo over the footprint — makes the selection glow over
+      //    dense plans (the raw bbox extent, so it hugs the true footprint).
       ctx.strokeStyle = ACCENT_HALO
       ctx.lineWidth = 4
-      ctx.beginPath()
-      for (const e of this.selected.entities) this.appendEntity(e)
-      ctx.stroke()
-      // 2) crisp amber outline on top
-      ctx.strokeStyle = ACCENT
-      ctx.lineWidth = 1.6
-      ctx.beginPath()
-      for (const e of this.selected.entities) this.appendEntity(e)
-      ctx.stroke()
+      ctx.strokeRect(a.x, a.y, b.x - a.x, b.y - a.y)
+      // 2) the canonical symbol redrawn in crisp amber
+      this.drawItemSymbol(this.selected, ACCENT, ACCENT, true)
       // 3) dashed bbox + solid corner handles
-      const [minX, minY, maxX, maxY] = this.selected.bbox
-      const a = this.toScreen(minX, maxY)
-      const b = this.toScreen(maxX, minY)
       ctx.strokeStyle = ACCENT
       ctx.lineWidth = 1
       ctx.setLineDash([4, 3])
