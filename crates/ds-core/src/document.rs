@@ -335,6 +335,48 @@ impl Document {
         self.reassign_components();
         Ok(())
     }
+
+    /// Create a new zone from a shape (the direct-manipulation "add a room" /
+    /// duplicate-room primitive). Returns the new id; rebuckets components so any
+    /// furniture the shape now covers is recorded in its `component_ids`.
+    pub fn add_zone(&mut self, zone_type: ZoneType, shape: ZoneShape, label: String) -> u32 {
+        let id = self.alloc_id();
+        self.zones.push(Zone {
+            id,
+            zone_type,
+            shape,
+            label,
+            component_ids: Vec::new(),
+            group: None,
+        });
+        self.reassign_components();
+        id
+    }
+
+    /// Delete a room: remove the zone **and every component it contains** (its
+    /// furniture), then rebucket the remainder. Clears the selection if it
+    /// pointed at a removed component. `NotFound` if the id is unknown.
+    pub fn delete_zone(&mut self, id: u32) -> Result<(), ZoneError> {
+        let i = self.zone_index(id).ok_or(ZoneError::NotFound)?;
+        let members = std::mem::take(&mut self.zones[i].component_ids);
+        self.zones.remove(i);
+        self.components.retain(|c| !members.contains(&c.id));
+        if let Some(sel) = self.selection {
+            if members.contains(&sel) {
+                self.selection = None;
+            }
+        }
+        self.reassign_components();
+        Ok(())
+    }
+
+    /// Rename a zone's human/AI-facing label (e.g. after reclassifying its type).
+    /// `NotFound` if the id is unknown.
+    pub fn rename_zone(&mut self, id: u32, label: String) -> Result<(), ZoneError> {
+        let i = self.zone_index(id).ok_or(ZoneError::NotFound)?;
+        self.zones[i].label = label;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -438,6 +480,48 @@ mod tests {
         let right = doc.zones.iter().find(|z| z.id == b).unwrap();
         assert_eq!(left.component_ids, vec![101]);
         assert_eq!(right.component_ids, vec![102]);
+    }
+
+    #[test]
+    fn add_zone_returns_id_and_buckets_contained_components() {
+        let mut doc = Document::new();
+        doc.next_id = 30;
+        doc.components.push(desk(101, 5.0, 5.0));
+        let id = doc.add_zone(
+            ZoneType::Meeting,
+            ZoneShape::Rect { x: 5.0, y: 5.0, w: 4.0, h: 4.0 },
+            "Meeting Room".into(),
+        );
+        assert!(id > 30, "fresh id allocated");
+        let z = doc.zones.iter().find(|z| z.id == id).unwrap();
+        assert_eq!(z.component_ids, vec![101], "covers the desk at its center");
+    }
+
+    #[test]
+    fn delete_zone_removes_room_and_its_furniture() {
+        let mut doc = Document::new();
+        doc.next_id = 40;
+        doc.zones.push(rect_zone(1, ZoneType::Workspace, 5.0, 5.0, 10.0, 10.0));
+        doc.components.push(desk(101, 3.0, 3.0)); // inside
+        doc.components.push(desk(102, 30.0, 30.0)); // far outside
+        doc.reassign_components();
+        doc.selection = Some(101);
+
+        doc.delete_zone(1).expect("zone exists");
+        assert!(doc.zones.is_empty(), "the room is gone");
+        assert!(doc.components.iter().all(|c| c.id != 101), "its furniture deleted");
+        assert!(doc.components.iter().any(|c| c.id == 102), "outside furniture kept");
+        assert_eq!(doc.selection, None, "selection on a deleted member cleared");
+        assert_eq!(doc.delete_zone(1), Err(ZoneError::NotFound));
+    }
+
+    #[test]
+    fn rename_zone_updates_label() {
+        let mut doc = Document::new();
+        doc.zones.push(rect_zone(1, ZoneType::Workspace, 5.0, 5.0, 4.0, 4.0));
+        doc.rename_zone(1, "Board Room".into()).unwrap();
+        assert_eq!(doc.zones[0].label, "Board Room");
+        assert_eq!(doc.rename_zone(99, "x".into()), Err(ZoneError::NotFound));
     }
 
     #[test]

@@ -510,6 +510,48 @@ impl Editor {
     pub fn zone_at(&self, x: f64, y: f64) -> Option<u32> {
         self.doc.zone_at(x, y)
     }
+
+    /// Create a `Rect` zone (center `x,y`, size `w,h`) of `zone_type`; returns the
+    /// new zone id. The direct-manipulation "duplicate room" / "draw room"
+    /// primitive.
+    pub fn add_zone(
+        &mut self,
+        zone_type: &str,
+        x: f64,
+        y: f64,
+        w: f64,
+        h: f64,
+        label: String,
+    ) -> Result<JsValue, JsValue> {
+        let t: ZoneType = serde_json::from_str(&format!("\"{}\"", zone_type))
+            .map_err(|_| JsValue::from_str("unknown zone type"))?;
+        let id = self.doc.add_zone(t, ZoneShape::Rect { x, y, w, h }, label);
+        Ok(JsValue::from_f64(id as f64))
+    }
+
+    /// Delete a room by zone id: removes the zone and the furniture it contains.
+    pub fn delete_zone(&mut self, id: u32) -> Result<(), JsValue> {
+        self.doc
+            .delete_zone(id)
+            .map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
+    /// Rename a zone's label (e.g. to match a reclassified type).
+    pub fn rename_zone(&mut self, id: u32, label: String) -> Result<(), JsValue> {
+        self.doc
+            .rename_zone(id, label)
+            .map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
+    /// Move an existing wall's endpoints (by id) to `a=(ax,ay)`, `b=(bx,by)`.
+    /// No-op if the id is unknown. Lets an interior partition wall travel with a
+    /// room during drag/resize (generated plans have none; hand-drawn walls do).
+    pub fn set_wall(&mut self, id: u32, ax: f64, ay: f64, bx: f64, by: f64) {
+        if let Some(w) = self.doc.walls.iter_mut().find(|w| w.id == id) {
+            w.a = Point::new(ax, ay);
+            w.b = Point::new(bx, by);
+        }
+    }
 }
 
 impl Default for Editor {

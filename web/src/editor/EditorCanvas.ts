@@ -388,6 +388,38 @@ const ZONE: Record<string, { fill: string; line: string }> = {
   Amenity: { fill: '#d9f0ef', line: '#3f9c95' },
 }
 
+/** Default room name per zone type, applied when a room is reclassified. */
+export const ZONE_LABEL: Record<ZoneType, string> = {
+  Circulation: 'Circulation',
+  Workspace: 'Open Workspace',
+  Meeting: 'Meeting Room',
+  Collaboration: 'Collaboration',
+  Core: 'Core',
+  ClosedOffice: 'Closed Office',
+  Amenity: 'Amenity',
+}
+
+/** A selected room + its on-screen box, handed to the floating `RoomTools`. */
+export interface RoomSelection {
+  zone: DocZone
+  /** Room bounding box in canvas CSS px (top-left origin). */
+  box: { left: number; top: number; width: number; height: number }
+}
+
+// Resize-handle order: TL, T, TR, R, BR, B, BL, L — with matching cursors.
+const ROOM_MIN_M = 1.0 // a room can't be dragged smaller than 1 m on a side
+const HANDLE_HIT_PX = 8 // grab radius around a handle
+const HANDLE_CURSOR = [
+  'nwse-resize',
+  'ns-resize',
+  'nesw-resize',
+  'ew-resize',
+  'nwse-resize',
+  'ns-resize',
+  'nesw-resize',
+  'ew-resize',
+]
+
 /**
  * Owns the canvas: transforms, input, and 2D rendering. All document mutations
  * go through the Rust `Editor`; this class re-reads `state()` to draw. Rendering
@@ -420,6 +452,28 @@ export class EditorCanvas {
   /** Space held → left-drag pans (universal design-tool convention). */
   private spaceDown = false
   private lastScreen = { x: 0, y: 0 }
+
+  // ---- direct room manipulation (Laiout-style) ----
+  /** Currently selected room (zone id), independent of component selection. */
+  selectedZoneId: number | null = null
+  /** Notified when the selected room (or its screen box) changes; null on deselect. */
+  onRoom: ((sel: RoomSelection | null) => void) | null = null
+  private roomDrag: {
+    zoneId: number
+    start: { x: number; y: number }
+    zone0: { x: number; y: number; w: number; h: number }
+    comps: { id: number; x0: number; y0: number }[]
+    walls: { id: number; ax0: number; ay0: number; bx0: number; by0: number }[]
+  } | null = null
+  private roomResize: {
+    zoneId: number
+    handle: number
+    zone0: { x: number; y: number; w: number; h: number }
+    // members stored as fractions of the room box so they re-flow on resize
+    comps: { id: number; fx: number; fy: number }[]
+    walls: { id: number; afx: number; afy: number; bfx: number; bfy: number }[]
+  } | null = null
+  private lastRoomKey: string | null = null
 
   // ---- dynamic input (cursor-first typed Distance/Angle, M1) ----
   /** Typed Distance/Angle buffers for the in-progress Line/Wall segment. */
@@ -1096,6 +1150,11 @@ export class EditorCanvas {
     this.wallStart = null
     this.resetDyn()
     if (this.dimEditing) this.closeDimEditor()
+    if (t !== 'select' && this.selectedZoneId != null) {
+      this.selectedZoneId = null
+      this.emitRoom()
+    }
+    this.canvas.style.cursor = t === 'select' ? '' : 'crosshair'
     this.cad.setTool(t.startsWith('cad:') ? t.slice(4) : null)
     this.render()
   }
@@ -1110,6 +1169,253 @@ export class EditorCanvas {
   deleteSelected() {
     this.ed.delete_selected()
     this.commit()
+  }
+
+  // ---- rooms: selection + contextual ops (composed from core bindings) ----
+  private zones(): DocZone[] {
+    return this.getState().zones ?? []
+  }
+  private zoneById(id: number): DocZone | null {
+    return this.zones().find((z) => z.id === id) ?? null
+  }
+  getSelectedZone(): DocZone | null {
+    return this.selectedZoneId == null ? null : this.zoneById(this.selectedZoneId)
+  }
+
+  /** Select a room by zone id (clears component selection); null to deselect. */
+  selectRoom(id: number | null) {
+    this.selectedZoneId = id
+    if (id != null) this.ed.clear_selection()
+    this.emitRoom(true)
+    this.commit()
+  }
+
+  /** Reclassify a room's type and rename it to that type's default label. */
+  setZoneTypeRoom(id: number, type: ZoneType) {
+    this.ed.set_zone_type(id, type)
+    this.ed.rename_zone(id, ZONE_LABEL[type] ?? type)
+    this.selectedZoneId = id
+    this.emitRoom(true)
+    this.commit()
+  }
+
+  /** Delete a room (its zone + the furniture inside it). */
+  deleteRoom(id: number) {
+    this.ed.delete_zone(id)
+    this.selectRoom(null)
+  }
+
+  /** Split a rectangular room in half along its longer axis. */
+  splitRoom(id: number) {
+    const z = this.zoneById(id)
+    if (!z || z.shape.kind !== 'Rect') return
+    const s = z.shape
+    if (s.w >= s.h) this.ed.split_zone(id, 'Vertical', s.x)
+    else this.ed.split_zone(id, 'Horizontal', s.y)
+    this.emitRoom(true)
+    this.commit()
+  }
+
+  /** Duplicate a rectangular room + its furniture, offset into free space. */
+  duplicateRoom(id: number) {
+    const z = this.zoneById(id)
+    if (!z || z.shape.kind !== 'Rect') return
+    const s = z.shape
+    const bb = this.wallWorldBBox()
+    // Offset by 1 m, clamped so the copy's bbox stays on the plate.
+    let off = 1
+    if (bb) off = Math.min(off, Math.max(0, bb.maxX - (s.x + s.w / 2)), Math.max(0, bb.maxY - (s.y + s.h / 2)))
+    const members = this.getState().components.filter((c) => z.component_ids.includes(c.id))
+    const newId = Number(this.ed.add_zone(z.zone_type, s.x + off, s.y + off, s.w, s.h, `${z.label} copy`))
+    for (const c of members) this.ed.add_component(c.category, c.x + off, c.y + off, c.w, c.h)
+    this.selectedZoneId = newId
+    this.emitRoom(true)
+    this.commit()
+  }
+
+  // ---- room geometry / hit-testing helpers ----
+  private wallWorldBBox() {
+    const bb = wallBbox(this.getState().walls)
+    return bb ? { minX: bb.minX, minY: bb.minY, maxX: bb.maxX, maxY: bb.maxY } : null
+  }
+  private zoneWorldBBox(z: DocZone) {
+    const s = z.shape
+    return { minX: s.x - s.w / 2, minY: s.y - s.h / 2, maxX: s.x + s.w / 2, maxY: s.y + s.h / 2 }
+  }
+  /** Selected room box in screen px (top-left origin). */
+  private roomScreenBox(z: DocZone) {
+    const bb = this.zoneWorldBBox(z)
+    const p0 = this.toScreen(bb.minX, bb.minY)
+    const p1 = this.toScreen(bb.maxX, bb.maxY)
+    return { x: p0.x, y: p0.y, w: p1.x - p0.x, h: p1.y - p0.y }
+  }
+  /** Topmost non-MeetingRoom component whose footprint covers world point w. */
+  private topFurnitureAt(w: { x: number; y: number }): DocComponent | null {
+    const comps = this.getState().components
+    for (let i = comps.length - 1; i >= 0; i--) {
+      const c = comps[i]
+      if (c.category === 'MeetingRoom') continue
+      if (Math.abs(c.x - w.x) <= c.w / 2 && Math.abs(c.y - w.y) <= c.h / 2) return c
+    }
+    return null
+  }
+  /** Index of the selected room's resize handle under screen point s, or null. */
+  private handleAt(s: { x: number; y: number }): number | null {
+    const z = this.getSelectedZone()
+    if (!z || z.shape.kind !== 'Rect') return null
+    const pts = handlePoints(this.roomScreenBox(z))
+    for (let i = 0; i < pts.length; i++) {
+      if (Math.abs(pts[i].x - s.x) <= HANDLE_HIT_PX && Math.abs(pts[i].y - s.y) <= HANDLE_HIT_PX) return i
+    }
+    return null
+  }
+
+  /** Interior walls strictly inside a room's bbox (they travel with the room). */
+  private interiorWalls(bb: { minX: number; minY: number; maxX: number; maxY: number }) {
+    const eps = 0.05
+    const inside = (p: { x: number; y: number }) =>
+      p.x > bb.minX + eps && p.x < bb.maxX - eps && p.y > bb.minY + eps && p.y < bb.maxY - eps
+    return this.getState().walls.filter((wl) => inside(wl.a) && inside(wl.b))
+  }
+
+  // ---- room drag / resize (called from pointer handlers) ----
+  private beginRoomDrag(zoneId: number, w: { x: number; y: number }) {
+    const z = this.zoneById(zoneId)
+    if (!z || z.shape.kind !== 'Rect') return // rings aren't draggable
+    const s = z.shape
+    const comps = this.getState()
+      .components.filter((c) => z.component_ids.includes(c.id))
+      .map((c) => ({ id: c.id, x0: c.x, y0: c.y }))
+    const walls = this.interiorWalls(this.zoneWorldBBox(z)).map((wl) => ({
+      id: wl.id,
+      ax0: wl.a.x,
+      ay0: wl.a.y,
+      bx0: wl.b.x,
+      by0: wl.b.y,
+    }))
+    this.roomDrag = { zoneId, start: w, zone0: { x: s.x, y: s.y, w: s.w, h: s.h }, comps, walls }
+  }
+
+  private updateRoomDrag(screen: { x: number; y: number }) {
+    const rd = this.roomDrag
+    if (!rd) return
+    const w = this.toWorld(screen.x, screen.y)
+    let dx = w.x - rd.start.x
+    let dy = w.y - rd.start.y
+    const bb = this.wallWorldBBox()
+    if (bb) {
+      dx = clampN(dx, bb.minX - (rd.zone0.x - rd.zone0.w / 2), bb.maxX - (rd.zone0.x + rd.zone0.w / 2))
+      dy = clampN(dy, bb.minY - (rd.zone0.y - rd.zone0.h / 2), bb.maxY - (rd.zone0.y + rd.zone0.h / 2))
+    }
+    dx = Math.round(dx / SNAP_M) * SNAP_M
+    dy = Math.round(dy / SNAP_M) * SNAP_M
+    for (const c of rd.comps) this.ed.move_component(c.id, c.x0 + dx, c.y0 + dy)
+    for (const wl of rd.walls) this.ed.set_wall(wl.id, wl.ax0 + dx, wl.ay0 + dy, wl.bx0 + dx, wl.by0 + dy)
+    this.ed.resize_zone(rd.zoneId, rd.zone0.x + dx, rd.zone0.y + dy, rd.zone0.w, rd.zone0.h)
+    this.emitRoom(true)
+    this.commit()
+  }
+
+  private beginRoomResize(handle: number, zoneId: number) {
+    const z = this.zoneById(zoneId)
+    if (!z || z.shape.kind !== 'Rect') return
+    const s = z.shape
+    const frac = (v: number, o: number, size: number) => (v - o) / size
+    const comps = this.getState()
+      .components.filter((c) => z.component_ids.includes(c.id))
+      .map((c) => ({ id: c.id, fx: frac(c.x, s.x, s.w), fy: frac(c.y, s.y, s.h) }))
+    const walls = this.interiorWalls(this.zoneWorldBBox(z)).map((wl) => ({
+      id: wl.id,
+      afx: frac(wl.a.x, s.x, s.w),
+      afy: frac(wl.a.y, s.y, s.h),
+      bfx: frac(wl.b.x, s.x, s.w),
+      bfy: frac(wl.b.y, s.y, s.h),
+    }))
+    this.roomResize = { zoneId, handle, zone0: { x: s.x, y: s.y, w: s.w, h: s.h }, comps, walls }
+  }
+
+  private updateRoomResize(screen: { x: number; y: number }) {
+    const rr = this.roomResize
+    if (!rr) return
+    const w = this.toWorld(screen.x, screen.y)
+    const snap = (v: number) => Math.round(v / SNAP_M) * SNAP_M
+    const z0 = rr.zone0
+    let left = z0.x - z0.w / 2
+    let right = z0.x + z0.w / 2
+    let top = z0.y - z0.h / 2
+    let bottom = z0.y + z0.h / 2
+    const h = rr.handle
+    if (h === 0 || h === 6 || h === 7) left = snap(w.x) // left-edge handles
+    if (h === 2 || h === 3 || h === 4) right = snap(w.x) // right-edge handles
+    if (h === 0 || h === 1 || h === 2) top = snap(w.y) // top-edge handles
+    if (h === 4 || h === 5 || h === 6) bottom = snap(w.y) // bottom-edge handles
+    // enforce a minimum size (push the moving edge back if it crosses)
+    if (right - left < ROOM_MIN_M) {
+      if (h === 0 || h === 6 || h === 7) left = right - ROOM_MIN_M
+      else right = left + ROOM_MIN_M
+    }
+    if (bottom - top < ROOM_MIN_M) {
+      if (h === 0 || h === 1 || h === 2) top = bottom - ROOM_MIN_M
+      else bottom = top + ROOM_MIN_M
+    }
+    // clamp to the plate
+    const bb = this.wallWorldBBox()
+    if (bb) {
+      left = Math.max(left, bb.minX)
+      top = Math.max(top, bb.minY)
+      right = Math.min(right, bb.maxX)
+      bottom = Math.min(bottom, bb.maxY)
+    }
+    const nx = (left + right) / 2
+    const ny = (top + bottom) / 2
+    const nw = right - left
+    const nh = bottom - top
+    for (const c of rr.comps) this.ed.move_component(c.id, nx + c.fx * nw, ny + c.fy * nh)
+    for (const wl of rr.walls) {
+      this.ed.set_wall(wl.id, nx + wl.afx * nw, ny + wl.afy * nh, nx + wl.bfx * nw, ny + wl.bfy * nh)
+    }
+    this.ed.resize_zone(rr.zoneId, nx, ny, nw, nh)
+    this.emitRoom(true)
+    this.commit()
+  }
+
+  /** Push the current room selection + its screen box to the floating toolbar. */
+  private emitRoom(force = false) {
+    if (!this.onRoom) return
+    if (this.selectedZoneId == null) {
+      if (this.lastRoomKey !== null || force) this.onRoom(null)
+      this.lastRoomKey = null
+      return
+    }
+    const z = this.zoneById(this.selectedZoneId)
+    if (!z) {
+      this.onRoom(null)
+      this.lastRoomKey = null
+      return
+    }
+    const b = this.roomScreenBox(z)
+    const box = { left: b.x, top: b.y, width: b.w, height: b.h }
+    const key = `${z.id}:${z.zone_type}:${z.label}:${Math.round(b.x)}:${Math.round(b.y)}:${Math.round(b.w)}:${Math.round(b.h)}`
+    if (!force && key === this.lastRoomKey) return
+    this.lastRoomKey = key
+    this.onRoom({ zone: z, box })
+  }
+
+  private updateHoverCursor(s: { x: number; y: number }) {
+    let cur = ''
+    const z = this.getSelectedZone()
+    if (z && z.shape.kind === 'Rect') {
+      const hi = this.handleAt(s)
+      if (hi != null) cur = HANDLE_CURSOR[hi]
+      else if (inScreenBox(this.roomScreenBox(z), s)) cur = 'move'
+    }
+    if (!cur) {
+      const w = this.toWorld(s.x, s.y)
+      if (this.topFurnitureAt(w)) cur = 'pointer'
+      else if (this.ed.zone_at(w.x, w.y) != null) cur = 'move'
+      else cur = 'default'
+    }
+    this.canvas.style.cursor = cur
   }
 
   /** One deterministic test-fit for `seed`; mutates the document. */
@@ -1471,8 +1777,37 @@ export class EditorCanvas {
       return
     }
     if (this.tool === 'select') {
-      const hit = this.ed.select_at(w.x, w.y)
-      this.dragging = hit !== undefined
+      // 1. Grabbing a resize handle of the already-selected room?
+      const hi = this.handleAt(s)
+      if (hi != null && this.selectedZoneId != null) {
+        this.beginRoomResize(hi, this.selectedZoneId)
+        return
+      }
+      // 2. Directly on a piece of furniture → component selection (re-imagine).
+      const furn = this.topFurnitureAt(w)
+      if (furn) {
+        this.selectedZoneId = null
+        this.emitRoom()
+        this.ed.select_at(w.x, w.y)
+        this.dragging = true
+        this.commit()
+        return
+      }
+      // 3. Inside a room → select the room and start dragging it.
+      const zid = this.ed.zone_at(w.x, w.y)
+      if (zid != null) {
+        this.selectedZoneId = zid
+        this.ed.clear_selection()
+        this.beginRoomDrag(zid, w)
+        this.emitRoom(true)
+        this.commit()
+        return
+      }
+      // 4. Empty plate → clear everything.
+      this.selectedZoneId = null
+      this.emitRoom()
+      this.ed.clear_selection()
+      this.dragging = false
       this.commit()
     } else if (this.tool === 'wall') {
       // First point: classic grid snap. Chained points: honor typed/polar input.
@@ -1521,6 +1856,15 @@ export class EditorCanvas {
       if (hint && this.coordEl) this.coordEl.textContent = hint
       return
     }
+    // Room manipulation takes priority over component drag.
+    if (this.roomResize) {
+      this.updateRoomResize(s)
+      return
+    }
+    if (this.roomDrag) {
+      this.updateRoomDrag(s)
+      return
+    }
     if (this.dragging && this.tool === 'select') {
       const dxw = (s.x - this.lastScreen.x) / this.scale
       const dyw = (s.y - this.lastScreen.y) / this.scale
@@ -1529,6 +1873,7 @@ export class EditorCanvas {
       this.commit()
       return
     }
+    if (this.tool === 'select') this.updateHoverCursor(s)
     if (this.tool === 'wall' && this.wallStart) this.render()
     else if (this.hasCursor) this.render() // keep ruler cursor ticks live
   }
@@ -1543,6 +1888,12 @@ export class EditorCanvas {
     if (this.cad.active && !this.panning) {
       const s = this.screenFromEvent(e)
       this.cad.up(s.x, s.y)
+    }
+    if (this.roomDrag || this.roomResize) {
+      this.roomDrag = null
+      this.roomResize = null
+      this.emitRoom(true)
+      this.commit()
     }
     this.panning = false
     this.dragging = false
@@ -1617,10 +1968,15 @@ export class EditorCanvas {
       this.wallStart = null
       this.resetDyn()
       if (this.dimEditing) this.closeDimEditor()
+      this.selectedZoneId = null
+      this.emitRoom()
       this.ed.clear_selection()
       this.commit()
     } else if (e.key === 'Delete' || e.key === 'Backspace') {
-      if (this.getState().selection != null) {
+      if (this.selectedZoneId != null) {
+        e.preventDefault()
+        this.deleteRoom(this.selectedZoneId)
+      } else if (this.getState().selection != null) {
         e.preventDefault()
         this.ed.delete_selected()
         this.commit()
@@ -1712,6 +2068,7 @@ export class EditorCanvas {
       )
     }
     for (const c of st.components) this.drawComponent(c, c.id === st.selection)
+    this.drawRoomSelection()
     // Room tags sit ABOVE furniture (architect's sheet convention) with a soft
     // paper halo so they stay legible over desks and linework.
     this.drawZoneTags(tags)
@@ -1739,6 +2096,53 @@ export class EditorCanvas {
 
     // Floating typed Distance/Angle widget at the cursor.
     this.syncDynWidget()
+
+    if (this.selectedZoneId != null) this.emitRoom()
+  }
+
+  /** Selected-room outline, 8 resize handles, and a live W×H dimension badge. */
+  private drawRoomSelection() {
+    if (this.selectedZoneId == null) return
+    const z = this.zoneById(this.selectedZoneId)
+    if (!z) return
+    const ctx = this.ctx
+    const box = this.roomScreenBox(z)
+    const ring = z.shape.kind !== 'Rect'
+
+    ctx.save()
+    ctx.strokeStyle = C.accent
+    ctx.lineWidth = 2
+    ctx.setLineDash(ring ? [6, 4] : [])
+    ctx.strokeRect(box.x + 0.5, box.y + 0.5, box.w - 1, box.h - 1)
+    ctx.setLineDash([])
+    ctx.restore()
+
+    if (ring) return // no handles / dims for the non-rectangular Circulation ring
+
+    // Live dimension badge (accent pill) centered under the room.
+    const label = `${z.shape.w.toFixed(2)} × ${z.shape.h.toFixed(2)} m`
+    ctx.font = '600 11px "Hanken Grotesk", system-ui, sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    const tw = ctx.measureText(label).width
+    const cx = box.x + box.w / 2
+    const by = box.y + box.h + 14
+    ctx.fillStyle = C.accent
+    roundRect(ctx, cx - tw / 2 - 7, by - 9, tw + 14, 18, 9)
+    ctx.fill()
+    ctx.fillStyle = '#ffffff'
+    ctx.fillText(label, cx, by + 1)
+
+    // 8 white square handles with an accent border.
+    ctx.fillStyle = '#ffffff'
+    ctx.strokeStyle = C.accent
+    ctx.lineWidth = 1.5
+    for (const p of handlePoints(box)) {
+      ctx.beginPath()
+      ctx.rect(p.x - 4, p.y - 4, 8, 8)
+      ctx.fill()
+      ctx.stroke()
+    }
   }
 
   /**
@@ -2247,6 +2651,27 @@ function wallBbox(
     }
   }
   return { minX, minY, maxX, maxY }
+}
+
+/** The 8 resize-handle screen points of a room box, ordered TL,T,TR,R,BR,B,BL,L. */
+function handlePoints(box: { x: number; y: number; w: number; h: number }) {
+  const { x, y, w, h } = box
+  const mx = x + w / 2
+  const my = y + h / 2
+  return [
+    { x, y },
+    { x: mx, y },
+    { x: x + w, y },
+    { x: x + w, y: my },
+    { x: x + w, y: y + h },
+    { x: mx, y: y + h },
+    { x, y: y + h },
+    { x, y: my },
+  ]
+}
+
+function inScreenBox(box: { x: number; y: number; w: number; h: number }, s: { x: number; y: number }) {
+  return s.x >= box.x && s.x <= box.x + box.w && s.y >= box.y && s.y <= box.y + box.h
 }
 
 function line(ctx: CanvasRenderingContext2D, x1: number, y1: number, x2: number, y2: number) {

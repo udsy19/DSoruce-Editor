@@ -8,6 +8,7 @@ import {
   GenResult,
   Candidate,
   RefineOutcome,
+  RoomSelection,
   DEFAULT_PROGRAM,
   STRATEGY_LABEL,
 } from './editor/EditorCanvas'
@@ -17,6 +18,7 @@ import { searchBankLive, bankQueryFor, formatINR, type BankProduct } from './mat
 import { Icon } from './ui/icons'
 import { ToolDock, type DockTool } from './ui/ToolDock'
 import { StatsPanel } from './ui/StatsPanel'
+import { RoomTools } from './ui/RoomTools'
 import { ObjectInspector } from './ui/ObjectInspector'
 import { LayersPanel } from './ui/LayersPanel'
 import { SheetsPanel } from './ui/SheetsPanel' // M6 — sheets manager + publish
@@ -241,6 +243,7 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
   // re-reads `ec.program` (its form state is seeded once at mount otherwise).
   const [programVersion, setProgramVersion] = useState(0)
   const [tool, setTool] = useState('select')
+  const [roomSel, setRoomSel] = useState<RoomSelection | null>(null)
   const [mode, setMode] = useState<'2d' | '3d' | 'import'>('2d')
   const [aiOpen, setAiOpen] = useState(false)
   const [drawing, setDrawing] = useState<Drawing | null>(null)
@@ -385,6 +388,7 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
         setTick((t) => t + 1)
         noteChange(ec, 'edit') // autosave ring (debounced/deduped in history.ts)
       }
+      ec.onRoom = (sel) => setRoomSel(sel)
       ec.coordEl = coordRef.current
       ec.scaleEl = scaleRef.current
       ec.refresh()
@@ -1119,6 +1123,7 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
               </div>
             )}
           </div>
+          {mode === '2d' && roomSel && ec && <RoomTools ec={ec} zone={roomSel.zone} box={roomSel.box} />}
         </main>
 
         <aside className="inspector">
