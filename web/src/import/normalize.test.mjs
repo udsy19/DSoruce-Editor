@@ -105,6 +105,75 @@ check('every normalized component carries a non-empty label', norms.every(({ n }
 // inferCategory is the pure decision function.
 check('inferCategory agrees with normalizeFurniture', norms.every(({ f, n }) => inferCategory(f) === n.category))
 
+// --- rotation / orientation recovery -----------------------------------------
+// A directional symbol (Desk monitor/chair, Chair backrest) must FACE the way the
+// source block did. normalize encodes that in `rotation`; the imported canvas
+// un-swaps the aspect-baked w/h back to natural and rotates by it. Two invariants
+// keep that exact and mergeFit-safe (mergeFit ignores rotation, stamps upright):
+const HALF_PI = Math.PI / 2
+const quarterTurns = (rot) => (((Math.round(rot / HALF_PI) % 4) + 4) % 4)
+const isCardinal = (rot) => Math.abs(rot - quarterTurns(rot) * HALF_PI) < 1e-9
+
+// (1) every rotation is a finite cardinal multiple of 90°.
+check('every rotation is a cardinal (0/90/180/270) angle', norms.every(({ n }) => Number.isFinite(n.rotation) && isCardinal(n.rotation)))
+
+// (2) PARITY: a Desk's rotation quarter-turn parity matches its footprint aspect
+//     (portrait ⟺ odd), so the canvas un-swap `odd ? [h,w] : [w,h]` reproduces the
+//     exact aspect-baked w/h — no double-rotation, no footprint drift.
+const deskItems = norms.filter(({ n }) => n.category === 'Desk')
+check('Desk rotation parity matches footprint aspect (un-swap is exact)', deskItems.every(({ n }) => {
+  const odd = quarterTurns(n.rotation) % 2 === 1
+  const portrait = n.h > n.w
+  // reconstruct the on-screen extent from natural + rotation; must equal w/h.
+  const nw = odd ? n.h : n.w
+  const nh = odd ? n.w : n.h
+  const ew = odd ? nh : nw
+  const eh = odd ? nw : nh
+  return odd === portrait && Math.abs(ew - n.w) < 1e-9 && Math.abs(eh - n.h) < 1e-9
+}))
+
+// (3) the fix actually turns rotated desks: the real plan has 180°/270° benches, so
+//     a healthy fraction of desks must carry a non-zero rotation (else it's a no-op).
+const turnedDesks = deskItems.filter(({ n }) => quarterTurns(n.rotation) !== 0).length
+check('rotated source desks recover a non-zero orientation', turnedDesks > 0 && deskItems.length > turnedDesks)
+
+// (4) non-directional pieces stay upright (Table/Door/Window/Furniture → rotation 0).
+check('non-directional categories carry rotation 0', norms.every(({ n }) => ['Desk', 'Chair'].includes(n.category) || n.rotation === 0))
+
+// (5) SYNTHETIC pure contract: fabricate desks at each cardinal authored angle and
+//     assert the recovered orientation — independent of the sample DWG. A landscape
+//     block flips 0↔180; a portrait block turns 90↔270.
+const mkDesk = (bw, bh, rotDeg) => ({
+  id: 1, name: 'WORKSTATION', raw: 'WORKSTATION', category: 'furniture',
+  bbox: [0, 0, bw, bh], origin: [bw / 2, bh / 2], rotation: (rotDeg * Math.PI) / 180, entities: [],
+})
+const synth = [
+  [mkDesk(1.5, 0.7, 0), 0], // landscape, upright
+  [mkDesk(1.5, 0.7, 180), 180], // landscape, flipped (monitor to the opposite edge)
+  [mkDesk(0.7, 1.5, 90), 90], // portrait, quarter-turned
+  [mkDesk(0.7, 1.5, 270), 270], // portrait, three-quarter-turned
+  [mkDesk(0.7, 1.5, -90), 270], // negative angles normalize (−90 ≡ 270), portrait bbox
+]
+check('synthetic desk orientations recover the authored cardinal angle', synth.every(([item, deg]) => {
+  const n = normalizeFurniture(item)
+  return Math.round((((n.rotation * 180) / Math.PI) % 360 + 360) % 360) === deg
+}))
+
+// (6) ROBUSTNESS: degenerate / NaN / negative dims never crash or emit non-finite
+//     footprints (the canvas guards `w>0 && h>0`, but normalize must not throw).
+const degenerate = [
+  mkDesk(0, 0, 0), mkDesk(-1, 0.7, 90), mkDesk(NaN, 0.7, 0),
+  { id: 2, name: 'Mystery Object', raw: 'MYSTERY', category: 'furniture', bbox: [0, 0, 0, 0], origin: [0, 0], rotation: NaN, entities: [] },
+]
+check('degenerate/NaN items normalize without throwing and yield finite rotation', degenerate.every((item) => {
+  try {
+    const n = normalizeFurniture(item)
+    return Number.isFinite(n.rotation)
+  } catch {
+    return false
+  }
+}))
+
 if (failures > 0) {
   console.log(`\n${failures} assertion(s) failed`)
   process.exit(1)

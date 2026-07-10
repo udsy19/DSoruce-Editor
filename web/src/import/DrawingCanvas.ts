@@ -1378,25 +1378,35 @@ export class DrawingCanvas {
   }
 
   /** Draw one imported furniture item as its canonical symbol. Reuses the exact
-   *  `normalizeFurniture` mapping the merge path uses (mergeFit.ts) so the
-   *  imported view and the merged result are pixel-consistent: the piece is
-   *  stamped at its bbox center; the axis-aligned bbox already bakes the block's
-   *  rotation, so orientation rides in normalize()'s w/h aspect and we draw
-   *  upright (rotation 0 — applying it.rotation would double-rotate). An unknown
-   *  category falls to `drawFurnitureSymbol`'s neutral rounded outline, never raw
-   *  linework. `w/h` are meters → screen px via `scale`; `toScreen` handles the
-   *  Y-flip on the center, and the symbol's own local frame is screen-space
-   *  (Y-down) exactly as EditorCanvas draws it. */
+   *  `normalizeFurniture` mapping the merge path uses (mergeFit.ts) so the imported
+   *  view and the merged result share one vocabulary: the piece is stamped at its
+   *  bbox center. A DIRECTIONAL symbol (a Desk's monitor/chair, a Chair's backrest)
+   *  must FACE the way the source block did — but normalize's axis-aligned `w/h`
+   *  only carries landscape-vs-portrait, not the flip/turn, so drawing every symbol
+   *  upright pointed ~35% of the sample's desks the wrong way. We fix that with
+   *  `norm.rotation` (cardinal, world-CCW): un-swap `w/h` back to the block's NATURAL
+   *  (pre-rotation) footprint — `odd ? [h,w] : [w,h]` — then rotate by −rotation
+   *  (world CCW → screen CW under the Y-flip). This reproduces the same on-screen
+   *  extent as the bbox while facing correctly, and it does NOT double-rotate: the
+   *  un-swap removes the aspect the rotation re-applies. An unknown category falls
+   *  to `drawFurnitureSymbol`'s neutral rounded outline, never raw linework. */
   private drawItemSymbol(it: FurnitureItem, stroke: string, detail: string, selected: boolean) {
     const norm = normalizeFurniture(it)
+    // Skip degenerate/NaN footprints so we never emit NaN paths or 0-size garbage.
+    if (!(norm.w > 0) || !(norm.h > 0)) return
     const c = this.toScreen((it.bbox[0] + it.bbox[2]) / 2, (it.bbox[1] + it.bbox[3]) / 2)
+    // Un-swap the aspect-baked footprint back to natural, then let the rotation
+    // orient both footprint and symbol together (see normalize's rotation contract).
+    const odd = Math.round(norm.rotation / (Math.PI / 2)) % 2 !== 0
+    const nw = odd ? norm.h : norm.w
+    const nh = odd ? norm.w : norm.h
     drawFurnitureSymbol(this.ctx, {
       category: norm.category,
       cx: c.x,
       cy: c.y,
-      w: norm.w * this.scale,
-      h: norm.h * this.scale,
-      rotation: 0,
+      w: nw * this.scale,
+      h: nh * this.scale,
+      rotation: -norm.rotation, // world CCW → screen CW (Y-flip)
       stroke,
       detail,
       accent: ACCENT,
