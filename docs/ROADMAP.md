@@ -134,8 +134,20 @@ The qbiq-style flow: Project → Upload → Program → Generate → Editor → 
   `mergeOrient.test.mjs` + `mergePricing.test.mjs`. Known limit: **Door** is the one asymmetric symbol —
   a rotation can't express its hinge mirror (pre-existing: normalize emits door rotation 0 anyway);
   a true fix needs a `mirror` facet in the Rust component model + `drawFurnitureSymbol`/`drawComponent`.
-- [ ] Remaining: (d) room Rotate op (needs a component-rotation-in-group primitive). (e) non-rectangular
-  room resize. (f) Door mirror facet (Rust model) so door swings match the source + merge exactly.
+- [x] **(d) room Rotate** — builder+reviewer. `rotateRoom(id,90°)` composes existing bindings: zone
+  w/h swap + each member position `(dx,dy)→(−dy,dx)` about center + `rotation+=π/2` + interior-wall
+  rotate + grid-snap/clamp. Reviewer broke it (a wide room rotated onto a too-short plate escaped
+  furniture off-plate + half-applied + threw); fixed with a pre-mutation fit-guard (clean no-op) + a
+  DEV off-plate invariant. Swept 360 aspect×position×member cases (0 escapes), 4×=identity, worst
+  drift 0.0014 m. Rotate button gated to Rect zones.
+- [~] **(e) non-rectangular room resize — DEFERRED (low value).** The only non-Rect zone is the
+  Circulation ring (its outer box == the plate); resizing it via handles is meaningless/confusing.
+  Genuine L/T-shaped rooms need a richer zone model (multi-rect / polygon zones) — a larger design
+  decision, not a quick polish. Revisit if arbitrary room shapes are wanted.
+- [ ] **(f) Door mirror facet** — doors lose BOTH swing orientation (normalize emits rotation 0) and
+  hinge handedness (no mirror facet). Add a `mirror` facet to the Rust Component model, recover door
+  rotation+hand in `normalize.ts`, render it in `drawFurnitureSymbol`/`drawComponent`, carry it through
+  merge — so door swings match the source drawing and the merged plan exactly.
 - [x] **S4 — Wall healing.** `healWalls(drawing)` bridges near-miss partition gaps (degree-1 wall ends
   within 0.25 m that are near-collinear or perpendicular, + endpoint→segment T-junctions; doorway guard
   at 0.8 m). Space-step **Heal gaps / As drawn** toggle (default heal on; testids space-heal-toggle/on/off)
