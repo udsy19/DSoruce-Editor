@@ -126,12 +126,16 @@ The qbiq-style flow: Project → Upload → Program → Generate → Editor → 
   that 35% of desks (27/78 on the real DWG) were drawn UPRIGHT/misoriented (w/h aspect only encodes
   landscape/portrait, conflating 0/180 & 90/270); added a `rotation` facet (parity pinned to aspect so
   mergeFit stays byte-identical) + un-swap-and-rotate. Perf ~0.9 ms/533 items. normalize.test extended.
-- [ ] **(c) merge stamping: rotation + product price** — the MERGE path (`mergeFit` + App `stampBaseInto`)
-  still stamps imported surroundings UPRIGHT (same 35% misorientation (b) just fixed for the initial
-  view) and doesn't re-apply the bound product price (`normalize.ts` now carries both rotation + productId).
-  Apply both when stamping merged surroundings.
+- [x] **(c) merge stamping: rotation + product price** — builder+reviewer. `mergeFit` un-swaps the
+  aspect footprint + sets `rotation = norm.rotation + π` (the `+π` is the import↔editor Y-mirror);
+  App `stampBaseInto` re-binds via `assign_product` so ₹ price flows to `specified_cost`/takeoff.
+  Reviewer proved orientation-equivalence pixel-by-pixel (merged == mirror(import view)) for all 5
+  symmetric categories + pricing robust across missing/dup/0/re-merge/generated-region edges; added
+  `mergeOrient.test.mjs` + `mergePricing.test.mjs`. Known limit: **Door** is the one asymmetric symbol —
+  a rotation can't express its hinge mirror (pre-existing: normalize emits door rotation 0 anyway);
+  a true fix needs a `mirror` facet in the Rust component model + `drawFurnitureSymbol`/`drawComponent`.
 - [ ] Remaining: (d) room Rotate op (needs a component-rotation-in-group primitive). (e) non-rectangular
-  room resize.
+  room resize. (f) Door mirror facet (Rust model) so door swings match the source + merge exactly.
 - [x] **S4 — Wall healing.** `healWalls(drawing)` bridges near-miss partition gaps (degree-1 wall ends
   within 0.25 m that are near-collinear or perpendicular, + endpoint→segment T-junctions; doorway guard
   at 0.8 m). Space-step **Heal gaps / As drawn** toggle (default heal on; testids space-heal-toggle/on/off)
