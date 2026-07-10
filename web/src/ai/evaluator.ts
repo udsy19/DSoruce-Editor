@@ -2,15 +2,17 @@ import type { Candidate, Program } from '../editor/EditorCanvas'
 
 /**
  * Claude-in-the-loop soft-goal evaluator (the vision's "judge the aesthetic
- * goals a metric can't"). Takes the autonomous search's top-K candidates that
- * ALREADY pass the hard-metric gate and asks Claude — via the key-holding
- * /api/claude dev proxy — to judge layout coherence: cluster regularity,
- * meeting-room placement, corridor legibility, dead zones. One request for
- * the whole batch; the verdicts annotate + re-rank the gallery.
+ * goals a metric can't"). Takes the autonomous search's top-K candidates and
+ * asks Claude — via the key-holding /api/claude dev proxy — to judge layout
+ * coherence: cluster regularity, meeting-room placement, corridor legibility,
+ * dead zones. One request judges the WHOLE batch, so every candidate the
+ * gallery shows carries its own verdict — not just the top scorer.
  *
- * Gated by design: if no candidate clears `hardTarget`, or the proxy has no
- * key, we return null WITHOUT spending tokens. Any failure also → null; the
- * UI treats null as "no AI ranking".
+ * Gated by design: the `hardTarget` acts as a batch worth-it check — if NOT
+ * ONE candidate clears it, the whole batch is too weak to spend tokens on and
+ * we return null. Once it's worth running, every candidate is judged. No key,
+ * or any failure, also → null; the UI treats null as "no AI ranking" and shows
+ * a uniform (empty) state across all cards.
  */
 
 export interface SoftVerdict {
@@ -26,7 +28,7 @@ export interface EvalResult {
   model: string
 }
 
-const SYSTEM_PROMPT = `You are an expert office test-fit critic. You review generated office floor-plan candidates that already pass hard numeric metrics (capacity, adjacency, circulation, density) and judge the SOFT qualities a metric cannot capture:
+const SYSTEM_PROMPT = `You are an expert office test-fit critic. You review generated office floor-plan candidates — each already scored on hard numeric metrics (capacity, adjacency, circulation, density) — and judge the SOFT qualities a metric cannot capture:
 - desk-cluster regularity: even, rational grids vs ragged or orphaned clusters
 - meeting-room placement: rooms at the plate edge or grouped in a band are good; rooms blocking natural flow or stranded mid-floor are bad
 - corridor legibility: a clear, continuous circulation spine vs dog-legs and pinch points
@@ -51,16 +53,19 @@ export function evaluatorAvailable(): Promise<boolean> {
   return availability
 }
 
-/** Hard-constraint gate: only candidates whose total clears the target are worth tokens. */
+/** Hard-constraint gate: which candidates clear the target (batch worth-it check). */
 export function gateCandidates(candidates: Candidate[], hardTarget: number): Candidate[] {
   return candidates.filter((c) => c.score.total >= hardTarget)
 }
 
 /**
- * Judge the gated candidates in ONE Claude request. `summaries` (keyed by
- * seed) lets the orchestrator pass richer per-candidate text — e.g. an ASCII
- * occupancy sketch — derived while each candidate's snapshot was live; we
- * never restore snapshots here (that would mutate the live document).
+ * Judge EVERY candidate in ONE Claude request so the whole gallery is annotated
+ * consistently — not just the top scorer. `hardTarget` only decides whether the
+ * batch is worth any tokens at all (at least one candidate must clear it).
+ * `summaries` (keyed by seed) lets the orchestrator pass richer per-candidate
+ * text — e.g. an ASCII occupancy sketch — derived while each candidate's
+ * snapshot was live; we never restore snapshots here (that would mutate the
+ * live document).
  */
 export async function evaluateCandidates(
   candidates: Candidate[],
@@ -68,8 +73,10 @@ export async function evaluateCandidates(
   hardTarget: number,
   summaries?: Record<number, string>,
 ): Promise<EvalResult | null> {
-  const passing = gateCandidates(candidates, hardTarget)
-  if (passing.length === 0) return null
+  if (candidates.length === 0) return null
+  // Worth spending tokens only if at least one candidate clears the hard gate —
+  // but once it is, judge all displayed candidates, not only the passing ones.
+  if (gateCandidates(candidates, hardTarget).length === 0) return null
   if (!(await evaluatorAvailable())) return null
 
   const controller = new AbortController()
@@ -80,7 +87,7 @@ export async function evaluateCandidates(
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         system: SYSTEM_PROMPT,
-        messages: [{ role: 'user', content: buildPrompt(passing, program, summaries) }],
+        messages: [{ role: 'user', content: buildPrompt(candidates, program, summaries) }],
         max_tokens: 1024,
       }),
       signal: controller.signal,
@@ -91,7 +98,7 @@ export async function evaluateCandidates(
       content?: { type: string; text?: string }[]
     }
     const text = (data.content ?? []).find((b) => b.type === 'text')?.text ?? ''
-    const known = new Set(passing.map((c) => c.seed))
+    const known = new Set(candidates.map((c) => c.seed))
     const verdicts = parseVerdicts(text).filter((v) => known.has(v.seed))
     if (verdicts.length === 0) return null
     return { verdicts, model: data.model ?? 'claude' }

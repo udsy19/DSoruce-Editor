@@ -20,7 +20,7 @@ import type { EditorController } from '../../App'
 import type { Candidate, GenResult } from '../../editor/EditorCanvas'
 import { STRATEGY_LABEL, STRATEGY_BLURB } from '../../editor/EditorCanvas'
 import { buildReportModel, computeWinners, type AltKpis } from '../../export/report'
-import { evaluateCandidates, type SoftVerdict } from '../../ai/evaluator'
+import { evaluateCandidates, evaluatorAvailable, type SoftVerdict } from '../../ai/evaluator'
 import { getProject, updateDraft, updateProject, type ProjectRecord } from '../../persist/projects'
 import { defaultSpec, programSpecToProgram } from '../../program/spec'
 import { navigate } from '../route'
@@ -33,6 +33,11 @@ const LETTER = (i: number) => String.fromCharCode(65 + (i % 26))
 // and the exported space-planning report always agree.
 
 type Phase = 'running' | 'done' | 'error'
+// The soft-goal (Claude) pass runs across the WHOLE gallery, so every card
+// shares one state: 'off' (no key / batch too weak / failed → no AI on any
+// card), 'pending' (request in flight → all cards show a loading line), or
+// 'ready' (verdicts in → each card shows its own, or an honest "not assessed").
+type AiPhase = 'off' | 'pending' | 'ready'
 
 export function GenerateStep({
   projectId,
@@ -47,18 +52,23 @@ export function GenerateStep({
   const [candidates, setCandidates] = useState<Candidate[]>([])
   const [kpis, setKpis] = useState<AltKpis[]>([])
   const [verdicts, setVerdicts] = useState<Record<number, SoftVerdict>>({})
+  const [aiPhase, setAiPhase] = useState<AiPhase>('off')
   const [activeSeed, setActiveSeed] = useState<number | null>(null)
   const [result, setResult] = useState<GenResult | null>(null)
   const [round, setRound] = useState(0)
   const projectRef = useRef<ProjectRecord | null>(null)
+  // Guards the async AI pass against a newer search (regenerate) resolving late.
+  const runTokenRef = useRef(0)
   const readyRef = useRef(onReadyChange)
   readyRef.current = onReadyChange
 
   const badges = useMemo(() => computeWinners(kpis), [kpis])
 
   const runSearch = async (searchRound: number) => {
+    const token = ++runTokenRef.current
     setPhase('running')
     setVerdicts({})
+    setAiPhase('off')
     readyRef.current?.(false)
     const rec = (await getProject(projectId)) ?? null
     projectRef.current = rec
@@ -103,11 +113,26 @@ export function GenerateStep({
     setActiveSeed(res.seed)
     setPhase('done')
     readyRef.current?.(true)
-    // Claude soft-goal evaluation — gated + gracefully null without a key.
+    // Claude soft-goal evaluation — judges EVERY card in one batch so the
+    // gallery is annotated consistently, never just the winner. Gracefully
+    // uniform without a key: no card shows an AI line (aiPhase stays 'off').
     const gate = Math.min(82, Math.floor(res.best.total))
-    void evaluateCandidates(cands, program, gate).then((ai) => {
-      if (ai) setVerdicts(Object.fromEntries(ai.verdicts.map((v) => [v.seed, v])))
-    })
+    void (async () => {
+      // Only flash the per-card loading state if the proxy actually has a key;
+      // otherwise leave every card cleanly AI-free (cached, so no extra cost).
+      if (!(await evaluatorAvailable())) return
+      if (runTokenRef.current !== token) return
+      setAiPhase('pending')
+      const ai = await evaluateCandidates(cands, program, gate)
+      if (runTokenRef.current !== token) return
+      if (!ai) {
+        // Batch too weak to spend tokens on, or the call failed → uniform off.
+        setAiPhase('off')
+        return
+      }
+      setVerdicts(Object.fromEntries(ai.verdicts.map((v) => [v.seed, v])))
+      setAiPhase('ready')
+    })()
   }
 
   // Run once on entry. The deferred start means React StrictMode's throwaway
@@ -201,6 +226,7 @@ export function GenerateStep({
       <div className="generate-gallery">
         {candidates.map((c, i) => {
           const k = kpis[i]
+          const ws = k?.workstations ?? c.score.placed_desks
           const ai = verdicts[c.seed]
           const wins = badges[i] ?? []
           const active = c.seed === activeSeed
@@ -249,11 +275,13 @@ export function GenerateStep({
                 <dl className="generate-alt-metrics">
                   <div>
                     <dt>Workstations</dt>
-                    <dd className="num">{k?.workstations ?? c.score.placed_desks}</dd>
+                    <dd className="num">{ws}</dd>
                   </div>
                   <div>
                     <dt>m²/person</dt>
-                    <dd className="num">{k ? k.densityM2.toFixed(1) : '—'}</dd>
+                    {/* m²/person is per-seat — meaningless with 0 workstations,
+                        so don't imply a density that isn't there. */}
+                    <dd className="num">{k && ws > 0 ? k.densityM2.toFixed(1) : '—'}</dd>
                   </div>
                   <div>
                     <dt>Efficiency</dt>
@@ -261,12 +289,28 @@ export function GenerateStep({
                   </div>
                 </dl>
 
-                {ai && (
-                  <div className="generate-alt-ai" data-testid="generate-alt-ai">
-                    <span className="generate-alt-ai-badge num">AI {Math.round(ai.score)}</span>
-                    <span className="generate-alt-ai-verdict">{ai.verdict}</span>
+                {aiPhase === 'pending' && (
+                  <div
+                    className="generate-alt-ai is-pending"
+                    data-testid="generate-alt-ai"
+                    aria-busy="true"
+                  >
+                    <span className="generate-alt-ai-badge num">AI</span>
+                    <span className="generate-alt-ai-verdict">Assessing soft goals…</span>
                   </div>
                 )}
+                {aiPhase === 'ready' &&
+                  (ai ? (
+                    <div className="generate-alt-ai" data-testid="generate-alt-ai">
+                      <span className="generate-alt-ai-badge num">AI {Math.round(ai.score)}</span>
+                      <span className="generate-alt-ai-verdict">{ai.verdict}</span>
+                    </div>
+                  ) : (
+                    <div className="generate-alt-ai is-na" data-testid="generate-alt-ai">
+                      <span className="generate-alt-ai-badge num">AI</span>
+                      <span className="generate-alt-ai-verdict">No assessment returned.</span>
+                    </div>
+                  ))}
 
                 <button
                   type="button"
