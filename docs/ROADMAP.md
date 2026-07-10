@@ -92,6 +92,34 @@ The qbiq-style flow: Project → Upload → Program → Generate → Editor → 
      92 generated = 499, no leftovers inside.
   Combined re-verification on merged main: angled plates seat desks; 3D framed + Render legible (not
   white); tool-dock flyout opens + activates; typecheck clean, 96 Rust tests, report 43/43, plate 9/9.
+- [x] **Batch 3 — Laiout-parity push (user-reported from real use, 2026-07-10)** — laiout.co is the
+  north-star ([[laiout-parity-north-star]]). 5 parallel research+build agents, each browser-verified +
+  committed; room-editing hit the stale-worktree hazard and was re-applied cleanly on current main:
+  1. **Generator FILLS irregular/weird space** (`layout.rs`) — the oriented desk field only fired at 0
+     desks, so tilted/hex/angled plates filled only their inscribed axis-aligned rect (a corner box).
+     Now a coverage gate (`ORIENTED_COVER_FRAC=0.70`) flips irregular plates to a principal-axis oriented
+     field packed desks-FIRST; rooms settle into the core. tilted 25×8→**20**, angled band→**20**,
+     hex→**20** desks, all ~10 m²/person; axis-aligned + 843 m² real plate unchanged. +1 test (97 Rust).
+  2. **Furniture normalization** (`import/normalize.ts`+`mergeFit.ts`) — imported CAD blocks map to
+     canonical Desk/Chair/Table/Door/Window (block-name/layer/size), snapped to catalog sizes, so
+     imported + generated render identically (editor + exports, which are category-driven). 78 Desk/120
+     Chair/21 Table on the real 533-block DWG; +12-assertion test.
+  3. **Laiout-grade insights** (`editor/stats.ts`+`StatsPanel.tsx`) — Zones (per-room-type Count·Pax·
+     Area·Area% with S/M/L sub-classes + totals), CO2 by element (partition/floor/furniture/lighting),
+     Costs by element (₹), enriched Areas. Internally consistent (Σ area%=100, Σ lines=total).
+  4. **Intuitive room editing** (`EditorCanvas`+`ui/RoomTools.tsx`+additive `document.rs`/`lib.rs` zone
+     bindings) — click a room → contextual toolbar (Assign-to type / Split / Duplicate / Delete); drag
+     the room (zone+furniture+interior walls together, snapped); 8-handle Canva-style resize with live
+     W×H badge + furniture re-flow. M1/M4/framing/pan regressions verified intact. Rotate deferred.
+  5. **Naive-user workflow** (`shell/*`) — legible linear stepper (Property·Space·Program·Generate + a
+     dimmed editor tail), per-step guidance strips, self-explaining disabled Next, guided Generate→editor
+     hand-off. 100 Rust tests, typecheck clean. Combined verified: filled tilted plate + room toolbar +
+     resize handles + Zones breakdown all render together.
+- [ ] **Batch-3 follow-ups:** (a) tilted-plate stats — the plate-bbox Workspace zone can make NIA slightly
+  exceed GEA + inflate the zone's area-based pax label vs actual desks (clip the zone to the tilted
+  polygon in metrics). (b) normalize furniture on the INITIAL import view too (not just on merge). (c)
+  re-apply the bound product price in App's `stampBaseInto` on merge (normalize.ts already carries it).
+  (d) room Rotate op (needs a component-rotation-in-group primitive). (e) non-rectangular room resize.
 - [x] **S4 — Wall healing.** `healWalls(drawing)` bridges near-miss partition gaps (degree-1 wall ends
   within 0.25 m that are near-collinear or perpendicular, + endpoint→segment T-junctions; doorway guard
   at 0.8 m). Space-step **Heal gaps / As drawn** toggle (default heal on; testids space-heal-toggle/on/off)
