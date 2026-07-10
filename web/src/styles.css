@@ -1811,6 +1811,18 @@ button {
 .empty-btn.primary:hover {
   background: var(--accent-hover);
 }
+/* A locked primary action must READ as locked — not a live blue button that
+   silently does nothing when a naive user clicks it. */
+.empty-btn:disabled {
+  cursor: not-allowed;
+}
+.empty-btn.primary:disabled,
+.empty-btn.primary:disabled:hover {
+  background: var(--surface-2);
+  color: var(--faint);
+  border-color: var(--hairline-strong);
+  box-shadow: none;
+}
 .empty-hint {
   margin: 16px 0 0;
   font-size: 11.5px;
@@ -2446,20 +2458,51 @@ kbd {
 .wizard-steps {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 0;
   list-style: none;
   margin: 0;
   padding: 0;
+  flex-wrap: nowrap;
 }
 .wizard-step {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+/* Connector rail before each step (except the first) — its colour traces how far
+   the user has come. */
+.wizard-rail {
+  width: clamp(10px, 1.4vw, 22px);
+  height: 2px;
+  border-radius: 2px;
+  background: var(--hairline);
+  flex: 0 0 auto;
+}
+.wizard-step.done .wizard-rail,
+.wizard-step.active .wizard-rail {
+  background: var(--accent);
+}
+.wizard-step.future .wizard-rail {
+  background: var(--hairline);
+}
+.wizard-step-hit {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  padding: 5px 12px 5px 6px;
+  padding: 4px 11px 4px 5px;
+  border: 0;
+  background: transparent;
   border-radius: var(--r-pill);
   font-size: 12.5px;
   font-weight: 600;
   color: var(--faint);
+  white-space: nowrap;
+}
+.wizard-step.clickable .wizard-step-hit {
+  cursor: pointer;
+}
+.wizard-step.clickable .wizard-step-hit:hover {
+  background: var(--overlay-scrim);
 }
 .wizard-step-dot {
   display: inline-flex;
@@ -2471,22 +2514,93 @@ kbd {
   background: var(--hairline);
   color: var(--muted);
   font-size: 11px;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
-.wizard-step.done {
+.wizard-step-pip {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--faint);
+}
+.wizard-step.done .wizard-step-hit {
   color: var(--text-2);
 }
 .wizard-step.done .wizard-step-dot {
   background: var(--ok-soft);
   color: var(--ok);
 }
-.wizard-step.active {
+.wizard-step.active .wizard-step-hit {
   color: var(--accent);
   background: var(--accent-soft);
 }
 .wizard-step.active .wizard-step-dot {
   background: var(--accent);
   color: var(--accent-ink);
+}
+.wizard-step.future .wizard-step-hit {
+  color: var(--faint);
+}
+.wizard-step.future .wizard-step-dot {
+  background: transparent;
+}
+/* The editor-phase tail is context, not a control — drop it on narrow screens so
+   the four guided steps stay legible. */
+@media (max-width: 1120px) {
+  .wizard-step.future {
+    display: none;
+  }
+}
+
+/* "What to do here" guide strip — the single, unmissable instruction. */
+.wizard-guide {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 4px;
+  padding: 11px 14px;
+  border: 1px solid var(--accent-soft);
+  background: var(--accent-soft);
+  border-radius: var(--r-md);
+  color: var(--accent-hover);
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+.wizard-guide-arrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.wizard-guide-arrow svg {
+  transform: rotate(-90deg);
+}
+.wizard-guide-text {
+  color: var(--text-2);
+}
+
+/* Footer Next + its "why it's locked" explanation. */
+.wizard-next-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.wizard-next-reason {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--muted);
+}
+.wizard-next-reason svg {
+  color: var(--faint);
 }
 .wizard-head {
   padding: clamp(20px, 4vw, 40px) 0 20px;

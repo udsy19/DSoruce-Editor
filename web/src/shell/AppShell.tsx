@@ -20,7 +20,7 @@ import { EditorView, type EditorController } from '../App'
 import { navigate, useRoute } from './route'
 import { ProjectLibrary } from './ProjectLibrary'
 import { CreateProject } from './CreateProject'
-import { WizardChrome } from './WizardChrome'
+import { WizardChrome, type WizardStepId } from './WizardChrome'
 import { SpaceStep } from './steps/SpaceStep'
 import { ProgramStep } from './steps/ProgramStep'
 import { GenerateStep } from './steps/GenerateStep'
@@ -73,6 +73,14 @@ export function AppShell() {
     }
   }, [activePid])
 
+  // Clicking a completed step in the stepper jumps back to it. Property (the
+  // project set-up) lives before the wizard, so it returns to the library.
+  const goToStep = (pid: string) => (id: WizardStepId) => {
+    if (id === 'property') navigate({ name: 'projects' })
+    else if (id === 'space') navigate({ name: 'wizard', projectId: pid, step: 'space' })
+    else if (id === 'program') navigate({ name: 'wizard', projectId: pid, step: 'program' })
+  }
+
   return (
     <>
       {route.name === 'projects' && (
@@ -91,7 +99,9 @@ export function AppShell() {
         <WizardChrome
           current="space"
           title="Drop the floor plate"
-          subtitle="Upload a CAD floor plan (DXF or DWG). We trace its usable plate, tally its components, and detect the rooms and program before you set the brief."
+          subtitle="Upload a CAD floor plan and we read it for you — tracing the usable plate, tallying the furniture, and detecting rooms before you set the brief."
+          guide="Drop a DXF or DWG floor plan below. Everything else is automatic — then press Next."
+          onStep={goToStep(route.projectId)}
           onBack={() => navigate({ name: 'projects' })}
           onNext={async () => {
             // Seed the editor's test-fit with the Space step's sub-area + room
@@ -110,6 +120,7 @@ export function AppShell() {
           }}
           nextLabel="Next: Program"
           nextDisabled={!spaceReady}
+          disabledReason="Upload a floor plan to continue"
         >
           <SpaceStep
             key={route.projectId}
@@ -123,7 +134,9 @@ export function AppShell() {
         <WizardChrome
           current="program"
           title="State the program"
-          subtitle="Say what to build — how many of each room type, the desk type and size, and where offices should sit. Start from a template or a headcount, then tune every count in Detailed."
+          subtitle="Tell the engine what to build — the room mix, desk type and size, and where offices should sit. Sensible defaults are already filled in, so you can tune as much or as little as you like."
+          guide="Pick a template or type a headcount. The counts are pre-filled — adjust anything, then press Next."
+          onStep={goToStep(route.projectId)}
           onBack={() => navigate({ name: 'wizard', projectId: route.projectId, step: 'space' })}
           onNext={() => {
             // Advance to Generate — the GenerateStep authoritatively re-arms the
@@ -146,7 +159,9 @@ export function AppShell() {
         <WizardChrome
           current="generate"
           title="Pick a test-fit"
-          subtitle="The engine generated alternatives against your program. Compare their metrics and category winners, then open one to edit — or head back to adjust the brief."
+          subtitle="The engine generated a few alternatives against your program. Compare their metrics and category winners, then open one to keep designing — or head back to adjust the brief."
+          guide="Compare the options, then press “Open in editor” on the one you like to keep designing (Review → Design → Visualise → Share)."
+          onStep={goToStep(route.projectId)}
           onBack={() => navigate({ name: 'wizard', projectId: route.projectId, step: 'program' })}
           hideNext
         >
