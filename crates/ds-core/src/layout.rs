@@ -1231,6 +1231,15 @@ const REGION_MIN_DIM: f64 = 3.0;
 /// …and at least this many m² — below this a region is noise, not a wing.
 const REGION_MIN_AREA: f64 = 9.0;
 
+/// Below this plate area (m²) a SINGLE (rectangular) plate reserves its desk field
+/// from overflow rooms (see the pocket note in `plan_region`). The dead-zone bug
+/// starved plates up to ~140 m² to ZERO desks because the fixed default program's
+/// overflow rooms poisoned the field; a ~180 m² gate covers that zone with margin
+/// while leaving the density-calibrated mid/large plates (≥ ~216 m²) exactly as
+/// they were — those already seat a healthy field and host their overflow rooms in
+/// a legitimate second band row rather than in the workstations.
+const SMALL_PLATE_FIELD_AREA: f64 = 180.0;
+
 /// One region edge: how far the desk field insets from it, and whether it is a
 /// SEAM shared with an adjacent region (half-corridor each side, forming ONE
 /// shared corridor) or a plate-boundary/facade edge (0.9 m maintenance gap —
@@ -1561,6 +1570,7 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
                 band_depths[i],
                 if i == entry_idx { entry } else { None },
                 field_regions[i],
+                single_region && plate_area < SMALL_PLATE_FIELD_AREA,
             )
         })
         .collect();
@@ -2196,6 +2206,7 @@ fn plan_region(
     band_depth: f64,
     entry: Option<Point>,
     field_region: bool,
+    reserve_field: bool,
 ) -> RegionPlan {
     // Along-axis span (the long axis) and cross-axis outer coords + edges.
     let (a0, a1, c0, c1, e_lo, e_hi) = if portrait {
@@ -2267,7 +2278,20 @@ fn plan_region(
     // band. Other regions (small wings, and every region of a single-region
     // plate) keep the FULL cross-section so overflow rooms can stack in a second
     // band row rather than being dropped.
-    let pocket = if field_region {
+    // A SMALL single (rectangular) plate ALSO reserves its desk field: its pocket
+    // is the band strip only, exactly like a dominant field wing. Otherwise the
+    // pocket spanned the whole cross-section, so on a small plate the fixed default
+    // program's overflow rooms (the ones the band frontage couldn't hold) dropped
+    // into the middle of the desk field — and each overflow room's full-clearance
+    // halo then rejected EVERY desk slot, starving the field to zero desks (the
+    // dead-zone bug: plates up to ~140 m² seated 0 desks). Confining the pocket
+    // makes a genuinely over-set room on a tiny plate DROP to a `program_fit`
+    // shortfall rather than swallow the workstations (spec §1: desks are the
+    // majority use). The gate is `SMALL_PLATE_FIELD_AREA` (in the caller): larger
+    // single plates keep the full-cross pocket so their density-calibrated fill and
+    // legitimate second band row are unchanged, and multi-region plates keep it for
+    // their small non-field wings where rooms cluster (882 m² decomposition intact).
+    let pocket = if field_region || reserve_field {
         if !band_far {
             rect(a0, a1, c0 + e_lo.inset, band_front.max(c0 + e_lo.inset))
         } else {
@@ -2826,8 +2850,18 @@ fn pack_desks(
         // the SAME lines across the seam. `ceil` picks that first line; the offset
         // it introduces is why global alignment can cost a fractional row (bench
         // pairing more than pays it back). Inner axis (uniform pitch):
-        let inner_first =
+        let mut inner_first =
             inner_o + ((inner_dz0 - inner_o) / inner_pitch).ceil() * inner_pitch + inner_half;
+        // Degenerate-field fallback (small-plate graceful degradation): the GLOBAL
+        // lattice phase — the odd-seed half-pitch, or an inset edge falling just
+        // past a lattice line — can push the ONLY line that physically fits OUT of
+        // a shallow field, zeroing an axis that has room for a desk. When the first
+        // phased line overshoots but a desk fits in the span, seat that single line
+        // at the field's near edge. Fires only in the n==0-but-fits case, so
+        // aligned fields on larger plates keep the shared global lattice untouched.
+        if inner_first + inner_half > inner_dz1 + 1e-9 && inner_dz1 - inner_dz0 >= inner_size - 1e-9 {
+            inner_first = inner_dz0 + inner_half;
+        }
         let inner_n = if inner_first + inner_half <= inner_dz1 + 1e-9 {
             (((inner_dz1 - inner_half - inner_first) / inner_pitch).floor() as i64 + 1).max(0)
         } else {
@@ -2841,8 +2875,16 @@ fn pack_desks(
         // lines so stacked wings still share pair lines. `bench == false` restores
         // uniform single rows on the same global lattice.
         let block = 2.0 * outer_desk + SPINE_GAP + clear;
-        let outer_first =
+        let mut outer_first =
             outer_o + ((outer_dz0 - outer_o) / outer_pitch).ceil() * outer_pitch + outer_half;
+        // Same degenerate-field fallback as the inner axis: a shallow (≈one-pitch)
+        // field must still seat its single row even when the global lattice phase
+        // lands the first line past its far edge (seed 1 on an ~88 m² plate zeroed
+        // the field this way). o==0 sits at `outer_first`, so this pull-to-near-edge
+        // also rescues the bench pair's first row.
+        if outer_first + outer_half > outer_dz1 + 1e-9 && outer_dz1 - outer_dz0 >= outer_desk - 1e-9 {
+            outer_first = outer_dz0 + outer_half;
+        }
         // Pairs start at the first PITCH-aligned line clearing the inset (not the
         // coarser block line — that wasted up to a full 2·desk+clear block at each
         // region's near edge, shrinking the field's spread). Two regions sharing
@@ -5628,6 +5670,33 @@ mod tests {
         let circ = circulation::evaluate(&doc, &CirculationConfig::default()).score;
         assert!(circ >= 54.0, "18×12: circulation {circ:.1} < 54");
         assert_no_overlaps(&doc, "small plate");
+    }
+
+    /// DEAD-ZONE regression: a small-but-usable rectangular plate must still pack a
+    /// desk field, not zero. The fixed default program (24-desk / 2-meeting) put
+    /// enough enclosed rooms on plates up to ~140 m² that overflow rooms fell into
+    /// the desk field and their full-clearance halos rejected EVERY desk slot, so a
+    /// tenant selecting an ~86 m² sub-area got 0 workstations. The fix confines the
+    /// small-single-region pocket to the band strip (overflow drops rather than
+    /// poisons the field) and rescues a shallow field's single row from an adverse
+    /// lattice phase. Plates degrade gracefully — a handful of desks, never zero —
+    /// while the density-calibrated mid/large plates (asserted elsewhere) are
+    /// untouched. Seed 1 is the odd (half-pitch) phase that used to zero ~88 m².
+    #[test]
+    fn small_plates_pack_desks_not_zero() {
+        let desks_on = |w: f64, h: f64| {
+            let mut doc = room(w, h);
+            generate(&mut doc, &Program::default(), 1, false);
+            doc.components.iter().filter(|c| c.category == "Desk").count()
+        };
+        // ~81 m² and ~88 m²: the confirmed dead zone — must seat a handful, not 0.
+        assert!(desks_on(9.0, 9.0) >= 1, "9×9 (81 m²) seated 0 desks (dead zone)");
+        let d88 = desks_on(11.0, 8.0);
+        assert!(d88 >= 3, "11×8 (88 m²) seated only {d88} desks (dead zone)");
+        // A mid plate that also read 0 before must now pack a real field.
+        assert!(desks_on(14.0, 10.0) >= 6, "14×10 (140 m²) under-packed");
+        // Large plate stays strong (density-calibrated, well clear of any floor).
+        assert!(desks_on(24.0, 15.0) >= 30, "24×15 (360 m²) lost its strong field");
     }
 
     /// The recentered density sub-score peaks in the professional band and falls
