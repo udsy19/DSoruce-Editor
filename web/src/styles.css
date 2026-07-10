@@ -2598,7 +2598,10 @@ kbd {
 }
 .space-preview {
   position: relative;
-  height: 460px;
+  /* Tall, viewport-responsive box so a floor plate (often near-square/portrait)
+     fills the preview instead of leaving big side margins in a wide-short frame.
+     DrawingCanvas re-fits on resize, so this stays framed as the window grows. */
+  height: clamp(460px, 74vh, 880px);
   border: 1px solid var(--hairline);
   border-radius: var(--r-md);
   background: var(--canvas-bg);

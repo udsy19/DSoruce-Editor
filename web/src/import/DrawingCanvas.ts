@@ -107,6 +107,11 @@ export class DrawingCanvas {
 
   private scale = 40 // px per meter
   private offset = { x: 0, y: 0 } // screen px of world origin
+  // True while the view still shows the auto-fit framing (no manual pan/zoom
+  // since the last fitToView). When set, a container/window resize RE-FITS so
+  // the plan keeps filling the box; once the user pans or zooms we stop
+  // re-fitting and just repaint, preserving their navigation.
+  private fitted = false
 
   private selected: FurnitureItem | null = null
   private hovered: FurnitureItem | null = null
@@ -435,6 +440,7 @@ export class DrawingCanvas {
     const cy = (minY + maxY) / 2
     this.offset.x = w / 2 - cx * this.scale
     this.offset.y = h / 2 + cy * this.scale
+    this.fitted = true
     this.render()
   }
 
@@ -581,10 +587,7 @@ export class DrawingCanvas {
     window.addEventListener('keydown', this.onKey)
     // DPR-aware container resize.
     if (typeof ResizeObserver !== 'undefined' && this.canvas.parentElement) {
-      this.ro = new ResizeObserver(() => {
-        this.resize()
-        this.render()
-      })
+      this.ro = new ResizeObserver(this.onResize)
       this.ro.observe(this.canvas.parentElement)
     }
   }
@@ -666,6 +669,7 @@ export class DrawingCanvas {
       } else if (this.didPan) {
         this.offset.x += s.x - this.lastScreen.x
         this.offset.y += s.y - this.lastScreen.y
+        this.fitted = false // user took manual control — stop auto-fit on resize
         this.render()
       }
       this.lastScreen = s
@@ -1064,24 +1068,37 @@ export class DrawingCanvas {
     // Keep the world point under the cursor fixed (Y flipped).
     this.offset.x = s.x - before.x * this.scale
     this.offset.y = s.y + before.y * this.scale
+    this.fitted = false // user zoomed — stop auto-fit on resize
     this.render()
   }
 
+  // Container/window resize: re-measure the backing store, then RE-FIT (so the
+  // plan keeps filling the box) while still at the fitted framing, else repaint
+  // preserving the user's pan/zoom. Shared by the window listener + the
+  // ResizeObserver on the container (the RO catches box changes the window
+  // event misses — e.g. a vh-sized preview or a layout reflow).
   private onResize = () => {
-    this.resize()
-    this.render()
+    if (!this.resize()) return
+    if (this.fitted) this.fitToView()
+    else this.render()
   }
 
-  private resize() {
+  /** Size the backing store to the container × DPR. Returns true iff the pixel
+   *  dimensions actually changed (so callers can skip redundant refits). */
+  private resize(): boolean {
     const parent = this.canvas.parentElement
-    if (!parent) return
+    if (!parent) return false
     const rect = parent.getBoundingClientRect()
-    if (rect.width === 0 || rect.height === 0) return // hidden
+    if (rect.width === 0 || rect.height === 0) return false // hidden
     this.dpr = Math.max(1, window.devicePixelRatio || 1)
-    this.canvas.width = Math.floor(rect.width * this.dpr)
-    this.canvas.height = Math.floor(rect.height * this.dpr)
+    const w = Math.floor(rect.width * this.dpr)
+    const h = Math.floor(rect.height * this.dpr)
+    if (w === this.canvas.width && h === this.canvas.height) return false
+    this.canvas.width = w
+    this.canvas.height = h
     this.canvas.style.width = `${rect.width}px`
     this.canvas.style.height = `${rect.height}px`
+    return true
   }
 
   // ---- furniture hit-test (topmost by draw order) ----
