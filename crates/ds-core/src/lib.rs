@@ -84,6 +84,17 @@ pub struct Editor {
 /// NIA ≤ GEA holds on ANY plate shape. Axis-aligned plates have no plate-spanning
 /// Workspace, so every area is returned unchanged (byte-identical) and the index
 /// is `None`. Pure over `Document`, so it is natively testable.
+///
+/// **Detection (robust, exact-by-construction).** The oriented emit site
+/// (`layout.rs`) writes this zone as a `Rect` whose footprint is *exactly* the
+/// wall bbox `((min+max)/2, max−min)`. That is its unique signature: every
+/// axis-aligned-path Workspace *field* is strictly inset by the perimeter
+/// corridor + facade gap, so no other Workspace ever spans the full wall bbox.
+/// Matching that signature (not an area ratio) is what makes de-overlap fire on
+/// exactly the oriented spanning zone and NEVER on a legitimate axis-aligned
+/// open-plan field — the earlier `area ≥ 0.9·floor` heuristic mis-fired on large
+/// bare open-plan rectangles (a 100×60 field clips to 0.95·floor), silently
+/// rewriting a real rectangular plate's Workspace area + pax.
 fn effective_zone_areas(doc: &Document) -> (Vec<f64>, Option<usize>) {
     let plate = doc.plate_polygon();
     let plate_ref = plate.as_deref();
@@ -92,10 +103,28 @@ fn effective_zone_areas(doc: &Document) -> (Vec<f64>, Option<usize>) {
     if floor_area <= 0.0 {
         return (areas, None);
     }
-    // A Workspace zone whose clipped area spans (≈) the whole plate is the
-    // oriented desk field's background fill; nothing else grows that large.
-    let spanning = (0..doc.zones.len())
-        .find(|&i| doc.zones[i].zone_type == ZoneType::Workspace && areas[i] >= 0.9 * floor_area);
+    // The oriented spanning Workspace's `Rect` footprint == the wall bbox. Only
+    // the oriented desk-field background fill is emitted that way; axis-path
+    // Workspace fields are inset, so they can never match. `None` bbox (open
+    // walls) → no plate → nothing to de-overlap.
+    let spanning = doc.wall_bbox().and_then(|(min_x, min_y, max_x, max_y)| {
+        let (cx, cy) = ((min_x + max_x) / 2.0, (min_y + max_y) / 2.0);
+        let (bw, bh) = (max_x - min_x, max_y - min_y);
+        // 1 mm tolerance: the emit writes these exact expressions, so a match is
+        // effectively exact; the epsilon only absorbs f64 round-trip noise.
+        const TOL: f64 = 1e-3;
+        (0..doc.zones.len()).find(|&i| {
+            doc.zones[i].zone_type == ZoneType::Workspace
+                && matches!(
+                    doc.zones[i].shape,
+                    ZoneShape::Rect { x, y, w, h }
+                        if (x - cx).abs() < TOL
+                            && (y - cy).abs() < TOL
+                            && (w - bw).abs() < TOL
+                            && (h - bh).abs() < TOL
+                )
+        })
+    });
     if let Some(idx) = spanning {
         let others: f64 = areas
             .iter()

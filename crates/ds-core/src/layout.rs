@@ -6294,5 +6294,320 @@ mod tests {
         assert_eq!(a.zones.len(), b.zones.len(), "identical zone count");
         assert_eq!(a.anchors.len(), 2, "generate preserves the anchors (like entries)");
     }
+
+    // ===================================================================
+    // STRESS HARNESS — insights invariants across the full shape space.
+    // Sweeps many plates × rotations × seeds and asserts, for EACH result:
+    //   (1) NIA (Σ effective zone areas) ≤ GEA (true plate area)  [+ε]
+    //   (2) Σ effective zone areas ≈ GEA when the spanning Workspace is
+    //       de-overlapped (the tiling closes — no double-count, no gap
+    //       beyond the deliberately un-zoned facade/circulation floor)
+    //   (3) the spanning Workspace's reported pax == placed Desk count
+    //   (4) no zone area is negative or NaN
+    //   (5) axis-aligned plates are NEVER de-overlapped (spanning == None),
+    //       so their reported areas are byte-identical to the raw clip.
+    // ===================================================================
+
+    /// Rotate `corners` by `th` rad about (ox,oy).
+    fn rot_poly(corners: &[(f64, f64)], th: f64, ox: f64, oy: f64) -> Vec<(f64, f64)> {
+        let (s, c) = th.sin_cos();
+        corners
+            .iter()
+            .map(|&(x, y)| (ox + x * c - y * s, oy + x * s + y * c))
+            .collect()
+    }
+
+    /// A library of base (axis-aligned) plate outlines spanning the shape space:
+    /// rectangles, slivers, L/T/U, hexagon, octagon, concave/notched, tiny→large.
+    fn stress_shapes() -> Vec<(String, Vec<(f64, f64)>)> {
+        let mut v: Vec<(String, Vec<(f64, f64)>)> = Vec::new();
+        // Rectangles across sizes (incl. a tiny ~30 m² and a large ~900 m²).
+        for &(w, h) in &[(6.0, 5.0), (12.0, 9.0), (25.0, 8.0), (30.0, 30.0), (45.0, 20.0)] {
+            v.push((format!("rect {w}x{h}"), vec![(0.0, 0.0), (w, 0.0), (w, h), (0.0, h)]));
+        }
+        // Thin slivers (worst case for bbox vs polygon at 45°).
+        for &(w, h) in &[(40.0, 5.0), (34.0, 4.0), (50.0, 3.5)] {
+            v.push((format!("sliver {w}x{h}"), vec![(0.0, 0.0), (w, 0.0), (w, h), (0.0, h)]));
+        }
+        // L-shape (20×14 with an 8×6 notch).
+        v.push((
+            "L 20x14".into(),
+            vec![(0.0, 0.0), (20.0, 0.0), (20.0, 8.0), (12.0, 8.0), (12.0, 14.0), (0.0, 14.0)],
+        ));
+        // T-shape.
+        v.push((
+            "T".into(),
+            vec![
+                (0.0, 10.0), (8.0, 10.0), (8.0, 0.0), (16.0, 0.0), (16.0, 10.0),
+                (24.0, 10.0), (24.0, 16.0), (0.0, 16.0),
+            ],
+        ));
+        // U-shape (deeply concave).
+        v.push((
+            "U".into(),
+            vec![
+                (0.0, 0.0), (24.0, 0.0), (24.0, 18.0), (18.0, 18.0), (18.0, 6.0),
+                (6.0, 6.0), (6.0, 18.0), (0.0, 18.0),
+            ],
+        ));
+        // Regular hexagon r≈10.
+        v.push((
+            "hexagon r10".into(),
+            (0..6)
+                .map(|i| {
+                    let a = std::f64::consts::PI / 3.0 * i as f64;
+                    (12.0 + 10.0 * a.cos(), 12.0 + 10.0 * a.sin())
+                })
+                .collect(),
+        ));
+        // Regular octagon r≈11.
+        v.push((
+            "octagon r11".into(),
+            (0..8)
+                .map(|i| {
+                    let a = std::f64::consts::PI / 4.0 * i as f64 + 0.2;
+                    (13.0 + 11.0 * a.cos(), 13.0 + 11.0 * a.sin())
+                })
+                .collect(),
+        ));
+        // Sharp notch (very concave — a deep slot cut into a rectangle).
+        v.push((
+            "notched".into(),
+            vec![
+                (0.0, 0.0), (26.0, 0.0), (26.0, 16.0), (15.0, 16.0), (15.0, 4.0),
+                (11.0, 4.0), (11.0, 16.0), (0.0, 16.0),
+            ],
+        ));
+        // Trapezoid / near-degenerate wedge.
+        v.push(("trapezoid".into(), vec![(0.0, 0.0), (30.0, 0.0), (22.0, 12.0), (4.0, 12.0)]));
+        // Parallelogram (already "tilted" without rotation — the axis path can't
+        // cover it, so the oriented field always fires).
+        v.push(("parallelogram".into(), vec![(0.0, 0.0), (28.0, 0.0), (34.0, 12.0), (6.0, 12.0)]));
+        v
+    }
+
+    /// Assert every insights invariant on one generated document.
+    fn assert_insights_invariants(doc: &Document, tag: &str) {
+        let gea = doc.floor_area();
+        let (areas, spanning) = crate::effective_zone_areas(doc);
+        // (4) finite, non-negative areas.
+        for (i, a) in areas.iter().enumerate() {
+            assert!(a.is_finite(), "{tag}: zone[{i}] area is NaN/inf ({a})");
+            assert!(*a >= -1e-9, "{tag}: zone[{i}] area is negative ({a})");
+        }
+        let nia: f64 = areas.iter().sum();
+        // (1) NIA ≤ GEA.
+        assert!(
+            nia <= gea + 1e-6,
+            "{tag}: NIA {nia:.4} > GEA {gea:.4} (impossible)"
+        );
+        if let Some(idx) = spanning {
+            // (2) When de-overlapped, the tiling closes exactly to GEA: the
+            // spanning Workspace absorbs precisely `plate − Σ others`.
+            assert!(
+                (nia - gea).abs() <= 1e-6,
+                "{tag}: de-overlapped Σ areas {nia:.4} ≠ GEA {gea:.4}"
+            );
+            // (3) spanning Workspace pax == placed desks.
+            let placed = doc.components.iter().filter(|c| c.category == "Desk").count();
+            let seated = doc.zones[idx]
+                .component_ids
+                .iter()
+                .filter(|&&cid| doc.components.iter().any(|c| c.id == cid && c.category == "Desk"))
+                .count();
+            assert_eq!(seated, placed, "{tag}: spanning Workspace seats {seated}, {placed} desks placed");
+            assert_eq!(
+                doc.zones[idx].zone_type,
+                ZoneType::Workspace,
+                "{tag}: de-overlapped zone must be a Workspace"
+            );
+        }
+    }
+
+    /// The clamp break, guarded: rooms + circulation that overlap beyond the
+    /// floor would make `others > floor`, clamping the spanning Workspace to 0 and
+    /// leaving Σ others > GEA (NIA > GEA). Room-heavy programs (hc120, 8 meeting
+    /// rooms, hc200 + wide corridors) on small→medium tilted plates crowd the
+    /// floor hardest; the raw effective NIA must still never exceed GEA.
+    #[test]
+    fn nia_never_exceeds_gea_under_room_heavy_tilted_plates() {
+        let mut worst = 0.0_f64;
+        let mut worst_tag = String::new();
+        // Aggressive room-heavy programs on small→medium tilted plates.
+        let programs: Vec<(&str, Program)> = {
+            let mut ps = Vec::new();
+            let mut p1 = Program::default();
+            p1.headcount = Some(120);
+            p1.desks = 120;
+            ps.push(("hc120", p1));
+            let mut p2 = Program::default();
+            p2.meeting_rooms = 8;
+            p2.desks = 8;
+            ps.push(("mr8", p2));
+            let mut p3 = Program::default();
+            p3.headcount = Some(200);
+            p3.desks = 4;
+            p3.target_corridor_m = 2.4;
+            ps.push(("hc200-widecorr", p3));
+            ps
+        };
+        // Small→medium plates where rooms crowd the floor, tilted.
+        let bases: Vec<(&str, Vec<(f64, f64)>)> = vec![
+            ("rect 10x8", vec![(0.0, 0.0), (10.0, 0.0), (10.0, 8.0), (0.0, 8.0)]),
+            ("rect 14x10", vec![(0.0, 0.0), (14.0, 0.0), (14.0, 10.0), (0.0, 10.0)]),
+            ("rect 18x12", vec![(0.0, 0.0), (18.0, 0.0), (18.0, 12.0), (0.0, 12.0)]),
+            ("hex r8", (0..6).map(|i| { let a = std::f64::consts::PI/3.0*i as f64; (9.0+8.0*a.cos(), 9.0+8.0*a.sin()) }).collect()),
+            ("trap", vec![(0.0, 0.0), (20.0, 0.0), (14.0, 10.0), (4.0, 10.0)]),
+        ];
+        for (pn, prog) in &programs {
+            for (bn, base) in &bases {
+                for th in [0.1_f64, 0.3, 0.5, 0.7, 0.9, 1.1, 1.3] {
+                    let corners = rot_poly(base, th, 2.0, 2.0);
+                    for seed in 1u64..=8 {
+                        let mut doc = room_from_corners(&corners);
+                        generate(&mut doc, prog, seed, false);
+                        let gea = doc.floor_area();
+                        if gea <= 0.0 { continue; }
+                        let (areas, _) = crate::effective_zone_areas(&doc);
+                        let nia: f64 = areas.iter().sum();
+                        let ratio = nia / gea;
+                        if ratio > worst {
+                            worst = ratio;
+                            worst_tag = format!("{pn} / {bn} @{th:.1} seed {seed}: NIA {nia:.2} GEA {gea:.2}");
+                        }
+                    }
+                }
+            }
+        }
+        assert!(worst <= 1.0 + 1e-6, "WORST raw NIA/GEA = {worst:.4}  ({worst_tag})");
+    }
+
+    /// REGRESSION (the break this review found): a large BARE open-plan AXIS
+    /// rectangle's single Workspace field clips to ≥ 0.9·floor (a 100×60 plate
+    /// reaches ~0.95), which the old `area ≥ 0.9·floor` detector mis-read as the
+    /// oriented spanning field — de-overlapping a real rectangular plate and
+    /// silently rewriting its Workspace area + pax. The geometric (bbox-signature)
+    /// detector must NEVER fire on any axis-aligned plate. The test also asserts
+    /// the dangerous regime is actually reached (max field fraction ≥ 0.9), so it
+    /// can't go vacuous if field insets change.
+    #[test]
+    fn large_bare_open_plan_axis_plates_are_not_de_overlapped() {
+        let mut bare = Program::default();
+        bare.support_spaces = false;
+        bare.meeting_rooms = 0;
+        bare.headcount = None;
+        let mut max_frac = 0.0_f64;
+        let mut misfires = 0usize;
+        // Small→large rectangles, incl. big open floors where the field fraction
+        // crosses the old 0.9 threshold.
+        for w in [5.0, 8.0, 12.0, 20.0, 30.0, 40.0, 60.0, 80.0, 100.0] {
+            for h in [4.0, 6.0, 8.0, 10.0, 20.0, 40.0, 60.0] {
+                let corners = vec![(0.0, 0.0), (w, 0.0), (w, h), (0.0, h)];
+                for seed in 1u64..=8 {
+                    let mut doc = room_from_corners(&corners);
+                    generate(&mut doc, &bare, seed, false);
+                    let floor = doc.floor_area();
+                    if floor <= 0.0 {
+                        continue;
+                    }
+                    let plate = doc.plate_polygon();
+                    for z in &doc.zones {
+                        if z.zone_type == ZoneType::Workspace {
+                            max_frac = max_frac.max(z.area_on(plate.as_deref()) / floor);
+                        }
+                    }
+                    let (_, spanning) = crate::effective_zone_areas(&doc);
+                    if spanning.is_some() {
+                        misfires += 1;
+                    }
+                }
+            }
+        }
+        assert!(
+            max_frac >= 0.9,
+            "test regime not reached: max axis Workspace/floor was only {max_frac:.3} (< 0.9)"
+        );
+        assert_eq!(
+            misfires, 0,
+            "de-overlap MIS-FIRED on {misfires} axis-aligned open-plan plates (max ws/floor {max_frac:.3})"
+        );
+    }
+
+    /// The BIG sweep: every shape × a fine rotation ladder × seeds 1..=8.
+    #[test]
+    fn stress_insights_invariants_over_shape_space() {
+        let rotations = [0.0_f64, 0.15, 0.3, 0.45, 0.6, 0.785398, 0.95, 1.1, 1.35, 1.5];
+        let mut combos = 0usize;
+        let mut oriented_hits = 0usize;
+        for (name, base) in stress_shapes() {
+            for &th in &rotations {
+                let corners = rot_poly(&base, th, 3.0, 3.0);
+                for seed in 1u64..=8 {
+                    let mut doc = room_from_corners(&corners);
+                    generate(&mut doc, &Program::default(), seed, false);
+                    let tag = format!("{name} @{th:.2}rad seed {seed}");
+                    assert_insights_invariants(&doc, &tag);
+                    let (_, spanning) = crate::effective_zone_areas(&doc);
+                    if spanning.is_some() {
+                        oriented_hits += 1;
+                    }
+                    combos += 1;
+                }
+            }
+        }
+        // Prove the sweep is real and that it actually exercised the oriented
+        // (de-overlap) path many times — otherwise the invariants are vacuous.
+        assert!(combos >= 800, "sweep too small: only {combos} combos");
+        assert!(
+            oriented_hits >= 200,
+            "oriented de-overlap path barely exercised ({oriented_hits} hits) — sweep not meaningful"
+        );
+    }
+
+    /// AXIS-ALIGNED plates must NEVER trigger de-overlap: the spanning index is
+    /// always `None`, so their reported zone areas are the raw clip (byte-
+    /// identical to pre-fix behaviour). Guards the mis-fire failure mode where a
+    /// large open workspace on a small rectangular plate is wrongly identified as
+    /// the oriented desk field and has its area rewritten.
+    #[test]
+    fn axis_aligned_plates_are_never_de_overlapped() {
+        // Rectangles from tiny to large, plus an axis-aligned L the axis packer
+        // covers well — none should ever de-overlap.
+        let mut shapes: Vec<(String, Vec<(f64, f64)>)> = Vec::new();
+        for &(w, h) in &[
+            (5.0, 6.0), (6.0, 5.0), (8.0, 7.0), (10.0, 8.0), (12.0, 9.0),
+            (16.0, 12.0), (25.0, 8.0), (30.0, 20.0), (40.0, 25.0), (30.0, 30.0),
+        ] {
+            shapes.push((format!("rect {w}x{h}"), vec![(0.0, 0.0), (w, 0.0), (w, h), (0.0, h)]));
+        }
+        shapes.push((
+            "axis L".into(),
+            vec![(0.0, 0.0), (20.0, 0.0), (20.0, 8.0), (12.0, 8.0), (12.0, 14.0), (0.0, 14.0)],
+        ));
+        for (name, corners) in shapes {
+            for seed in 1u64..=8 {
+                let mut doc = room_from_corners(&corners);
+                generate(&mut doc, &Program::default(), seed, false);
+                let (areas_eff, spanning) = crate::effective_zone_areas(&doc);
+                assert!(
+                    spanning.is_none(),
+                    "{name} seed {seed}: axis-aligned plate was WRONGLY de-overlapped (spanning={spanning:?})"
+                );
+                // Byte-identical to the raw per-zone clip.
+                let plate = doc.plate_polygon();
+                let raw: Vec<f64> = doc.zones.iter().map(|z| z.area_on(plate.as_deref())).collect();
+                assert_eq!(
+                    areas_eff.len(), raw.len(),
+                    "{name} seed {seed}: zone count changed"
+                );
+                for (i, (a, b)) in areas_eff.iter().zip(&raw).enumerate() {
+                    assert!(
+                        (a - b).abs() < 1e-12,
+                        "{name} seed {seed}: zone[{i}] area diverged from raw clip ({a} vs {b})"
+                    );
+                }
+            }
+        }
+    }
 }
 
