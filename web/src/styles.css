@@ -363,11 +363,12 @@ button {
   border-radius: 50%;
   box-shadow: 0 0 0 1px rgba(23, 26, 30, 0.12);
 }
-/* Flyout: reveals the group's members to the right of the tile. */
+/* Flyout: reveals the group's members to the right of the tile. Rendered
+   `position: fixed` (coords set inline from the tile's live rect in ToolDock)
+   so it escapes the rail's `overflow` clip — an absolutely-positioned flyout
+   was clipped away by the rail and unclickable. */
 .tdock-flyout {
-  position: absolute;
-  left: calc(100% + 10px);
-  top: -4px;
+  position: fixed;
   min-width: 176px;
   display: flex;
   flex-direction: column;
