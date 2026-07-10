@@ -57,6 +57,7 @@ import {
   type Pt,
 } from './import/testfit'
 import { derivePlate } from './import/plate'
+import { baseStampAround, type BaseStamp } from './import/mergeFit'
 import { saveProject, openProject, applyProject, type BindingInfo, type DSourceFile } from './persist/file'
 import {
   buildSavedPlan,
@@ -148,6 +149,20 @@ function buildRoomRefs(zones: DocZone[], markers: EditorMarker[]): Map<number, s
     if (z && !out.has(z.id)) out.set(z.id, m.ref)
   }
   return out
+}
+
+/** Merge-into-plan (design: merge-into-plan): stamp a {@link BaseStamp} — the
+ *  imported plan's surroundings, already in editor coords — into the live document
+ *  as plain walls + components. Called on top of a generated region test-fit so the
+ *  rest of the floor rejoins it as one editable document; the generated region is
+ *  never rebuilt, so its zones/labels/glazing stay intact. */
+function stampBaseInto(ec: EditorCanvas, stamp: BaseStamp): void {
+  for (const w of stamp.walls) ec.ed.add_wall(w.ax, w.ay, w.bx, w.by, w.thickness)
+  for (const c of stamp.comps) {
+    const id = ec.ed.add_component(c.category, c.x, c.y, c.w, c.h)
+    if (c.rotation) ec.ed.set_component_rotation(id, c.rotation)
+  }
+  ec.ed.clear_selection()
 }
 
 /** Options carried into a wizard-driven test-fit (workflow.md §3.1/§3.2). */
@@ -271,6 +286,19 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
   /** Room markers in EDITOR coords, captured at the last test-fit — resolved to
    *  zones on demand for the takeoff Room ID + AI room refs (workflow.md §3.2). */
   const roomMarkersRef = useRef<EditorMarker[]>([])
+
+  /** Merge-into-plan context (design: merge-into-plan). Set by `testFitPlan` when a
+   *  test-fit is generated for a SELECTED sub-area: the selection ring (source
+   *  coords) + the region plate offset. `runGenerate` reads it after generation to
+   *  stamp the imported plan's surroundings around the generated region, producing
+   *  ONE merged document. Null for a whole-plate test-fit (full replace, as before). */
+  const mergeCtxRef = useRef<{
+    selection: Pt[]
+    offset: { x: number; y: number }
+    /** Clean region-plate-only snapshot (walls/keepouts/entries, no fit) — restored
+     *  before every (re)generate so packing stays scoped to the region. */
+    plateSnap: string
+  } | null>(null)
 
   /** Full product data per binding (price ₹, thumbnail) — the item itself only
    *  carries id/name; the selection card + category plan need the rest. */
@@ -765,6 +793,18 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
     // generate() places each pinned room FIRST at (near) its point.
     pushAnchorsToEditor(ec, opts?.anchors ?? [], plate)
     ec.sync()
+    // Merge-into-plan (design: merge-into-plan). For a SUB-AREA test-fit, stash the
+    // selection ring + plate offset + this clean region-plate snapshot so
+    // `runGenerate` can (a) run every (re)generate on the region alone — restoring
+    // this snapshot first, so a prior merge's surrounding walls never widen the
+    // packed plate — and (b) stamp the imported plan's surroundings back around the
+    // generated region afterward, yielding ONE unified, editable document where only
+    // the selected area is re-fitted. A whole-plate test-fit merges nothing (full
+    // replace, as before): clear the context.
+    mergeCtxRef.current =
+      hasArea && opts?.areaPolygon
+        ? { selection: opts.areaPolygon, offset: plate.offset, plateSnap: ec.snapshot() }
+        : null
     // Plate-quality feedback. `coverage`/`areaM2` are additive optional fields
     // on PlateResult — guard so this works whether or not they're present.
     const { coverage, areaM2 } = plate as PlateResult & { coverage?: number; areaM2?: number }
@@ -799,6 +839,28 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
     frameEditor() // frame the freshly-traced plate so the editor shows it
   }
 
+  /** Merge-into-plan (design: merge-into-plan). Turn each region-only test-fit
+   *  candidate into a merged document = the generated region fit (kept native, so
+   *  its zones/room labels/glazing survive) PLUS the imported plan's surroundings
+   *  stamped around it (furniture + shell walls outside the selection, translated
+   *  into editor coords; furniture inside the selection dropped). Leaves the merged
+   *  BEST candidate live. No-op unless the last test-fit was for a sub-area. Reads
+   *  live state via refs so the []-memoized controller closure never goes stale. */
+  const mergeCandidatesIntoPlan = (ec: EditorCanvas, candidates: Candidate[]) => {
+    const mc = mergeCtxRef.current
+    const drawing = drawingRef.current
+    if (!mc || !drawing || candidates.length === 0) return
+    const stamp = baseStampAround(drawing, mc.selection, mc.offset)
+    for (const c of candidates) {
+      ec.applyCandidate(c.snap) // restore this candidate's region-only fit
+      stampBaseInto(ec, stamp) // + the untouched rest of the floor
+      c.snap = ec.snapshot() // now one merged document
+    }
+    // Keep the merged best-scoring option live (candidates stay in strategy order).
+    const best = candidates.reduce((a, b) => (b.score.total > a.score.total ? b : a))
+    ec.applyCandidate(best.snap)
+  }
+
   // Controller seam (workflow.md §1) — thin lifts of the closures above, so
   // the shell/wizard can drive the editor while its internals stay untouched.
   useImperativeHandle(
@@ -814,11 +876,20 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
       runGenerate: (program, o) => {
         const ec = ecRef.current
         if (!ec) return null
+        const mc = mergeCtxRef.current
+        // Merge-into-plan (design: merge-into-plan): re-fit the SELECTED region
+        // alone — restore the clean region plate so a prior merge's surrounding
+        // walls never widen the packed area on a Regenerate.
+        if (mc) ec.restore(mc.plateSnap)
         const res = ec.autoGenerate(program, {
           maxIter: o?.maxIter ?? 18,
           target: o?.target ?? 82,
           keepConfirmed: o?.keepConfirmed ?? false,
         })
+        // Stamp the imported plan's surroundings back around each candidate's
+        // region-only fit, so opening ANY candidate (and the live best) yields one
+        // unified document. No-op for a whole-plate test-fit (`mc` null → replace).
+        mergeCandidatesIntoPlan(ec, res.candidates)
         frameEditor() // frame the generated plan when the wizard lands in the editor
         return res
       },
