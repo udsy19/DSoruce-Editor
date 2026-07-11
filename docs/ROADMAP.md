@@ -196,16 +196,25 @@ The qbiq-style flow: Project → Upload → Program → Generate → Editor → 
      furnished room grabbed a desk, never the room. Now **room-first (Laiout/Canva)**: click a room →
      select+drag the whole room even over furniture; second click drills into a desk (Materio preserved).
      Verified: click on a desk selects its ROOM; second click drills to the desk; room drags.
-- [ ] **Batch 4c — STILL OPEN (user-reported, 2026-07-11):**
-  - **Space utilization** — generator packs desks into a ~11.8 m central column, leaving big empty regions
-    of the irregular plate. "Our product should be the designer that takes those calls." → Rust `layout.rs`
-    fill-the-plate fix IN PROGRESS (agent).
-  - **Reader too "cheap" vs Laiout/qbiq** — user flagged ALL of: furniture faint/cluttered, zones/labels
-    unclear, walls/linework weak, overall polish. Needs a premium visual overhaul of `furniture.ts` +
-    `EditorCanvas` zone/wall/label rendering against `laiout-visual-system.md` (hard white label boxes →
-    soft pills, stronger linework hierarchy, clearer furniture, crisper labels). Do WITH browser iteration
-    on top of the space-fill fix. PENDING (next).
-  - Then: build the **agentic designer** Phase 1 (`agentic-designer.md`), per user request.
+- [~] **Batch 4c (user-reported 2026-07-11) — 4 parallel worktree agents, merged as they land:**
+  - [x] **Space utilization / wall-to-wall** (`layout.rs`, `60f016c`) — was a ~11.8 m central column stranding
+    ~33% of the plate. Now a whole-plate lattice fill sweeps every empty in-plate slot (module/clearance
+    respected, density-capped 8.2–10.5 m²/seat), and residual pockets become explicit **Circulation** zones
+    (no silent empty floor). Untyped floor 33%→11%, desk span 11.8→23.9 m, +9 desks. 116 Rust tests. Deferred:
+    exact `ZoneShape::Poly` angled-wall-hugging rooms (residual gaps are Circulation for now). Pre-existing
+    0.30 m min-corridor spots flagged to clean up.
+  - [x] **Cost/carbon fidelity** (`cost.rs`+`stats.ts`, `af65b3d`) — was Σ(area×rate) → options within ~4%.
+    Now an ELEMENT model (base shell + partitions solid/glazed per-m + doors/leaf + enclosed-room premium +
+    furniture/unit; only GENERATED walls charged). Spread now +23% cost / +53% carbon, monotonic with
+    enclosure — Budget/Max-seats materially cheaper+greener than Experience/Collaboration. 120 Rust tests.
+  - [x] **Agentic designer + Design-with-AI UI** (`ai/designer.ts`, `ui/DesignWithAI.tsx`, several commits) —
+    Claude designs program/strategy/room-mix/emphasis (GCC-curated), solver places; multi-objective option
+    cards (Max seats/Cost/Collaboration/Experience/Balanced) with pax·₹·CO₂ headline + click-to-apply. See
+    [[gcc-niche-and-agentic-designer]].
+  - [ ] **Reader too "cheap" vs Laiout/qbiq** — premium visual overhaul of `furniture.ts` + `EditorCanvas`
+    zone/wall/label rendering against `laiout-visual-system.md`. Agent IN PROGRESS.
+  - [ ] **Boundary-conforming polygon rooms** (`ZoneShape::Poly`) — rooms that hug angled walls exactly, the
+    deep cure for "robotic"/negative-space. SEQUENCED next (same files as the fill; can't parallel it).
   - Feasibility answered (research): an **agentic senior-designer** layer (Claude decides program/strategy/
     adjacency/critique; the deterministic solver does geometry) is viable as a hybrid — build after the
     core is perfected. Pure-LLM geometric placement is unreliable (misalignment/overlaps, even GPT-5).
