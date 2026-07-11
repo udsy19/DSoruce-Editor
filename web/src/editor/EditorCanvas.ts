@@ -1696,21 +1696,24 @@ export class EditorCanvas {
 
   /**
    * AGENTIC SENIOR DESIGNER (docs/design/agentic-designer.md, phase 1). Claude
-   * DESIGNS the fit from a brief — deciding the program, strategy, support-room mix
-   * and emphasis — and the deterministic generator PLACES it. A plate must already
-   * exist (walls); the design is sized to the net internal area. Returns the spec
-   * (incl. Claude's rationale) + the realized score, or `null` without a Claude key
-   * / on failure (generation is never blocked — callers fall back to Generate).
+   * DESIGNS the program from a brief — deciding headcount, desk + meeting counts,
+   * the spatial strategy, the support-room mix with placement bias, and objective
+   * emphasis — and APPLIES it to `this.program`. The caller then generates (the UI
+   * runs the normal seed-search so Claude's design gets the A/B/C gallery + gates;
+   * a script can `generateOnce`). Geometry stays entirely with the solver — Claude
+   * never emits coordinates. A plate must exist (walls); the design is sized to the
+   * net internal area. Returns the spec (incl. Claude's rationale), or `null`
+   * without a Claude key / on failure (design is never blocking — fall back to
+   * Generate).
    */
-  async designWithAI(brief: string, seed = 1, signal?: AbortSignal): Promise<{ spec: DesignSpec; score: LayoutScore } | null> {
+  async designWithAI(brief: string, signal?: AbortSignal): Promise<DesignSpec | null> {
     const m = this.getMetrics()
     if (m.wall_count === 0) return null // no plate to design for
     const plateAreaM2 = m.net_internal_area ?? m.floor_area
     const spec = await proposeDesign({ plateAreaM2, program: this.program, brief }, signal)
     if (!spec) return null
     this.program = applyDesignSpec(this.program, spec)
-    const score = this.generateOnce(this.program, seed)
-    return { spec, score }
+    return spec
   }
 
   /** True when two programs match on every lever the AI delta can touch. */
