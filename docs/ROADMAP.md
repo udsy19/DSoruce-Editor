@@ -213,7 +213,7 @@ The qbiq-style flow: Project → Upload → Program → Generate → Editor → 
     [[gcc-niche-and-agentic-designer]].
   - [ ] **Reader too "cheap" vs Laiout/qbiq** — premium visual overhaul of `furniture.ts` + `EditorCanvas`
     zone/wall/label rendering against `laiout-visual-system.md`. Agent IN PROGRESS.
-  - [~] **Boundary-conforming polygon zones** (`ZoneShape::Poly`, `e9f0827`) — added a real polygon zone shape
+  - [x] **Boundary-conforming polygon zones — rooms too** (`ZoneShape::Poly`, `e9f0827`+`4fa0da2`) — added a real polygon zone shape
     (removed `Copy`), an exact `clip_rect_to_polygon` (Sutherland–Hodgman, no staircase on the wall edge), and
     a `conform_zones_to_plate` pass that grows CIRCULATION zones to the wall + clips to the plate → 19 polygons
     hugging the stepped/diagonal walls on the real plate; ~91 m² of near-wall wedges closed (verified at the
