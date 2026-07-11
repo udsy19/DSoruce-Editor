@@ -451,6 +451,12 @@ export class EditorCanvas {
   /** Cold-reload guard: frameContent retries via rAF until the canvas has a real
    *  measured viewport (a saved plan can open before layout has sized the canvas). */
   private frameRetries = 0
+  /** Set when frameContent bails because the container isn't laid out yet. The
+   *  ResizeObserver completes the frame the instant the container reaches a real
+   *  size — robust even if the rAF retry budget expires first (e.g. a candidate
+   *  opened straight from the wizard route, where layout settles a beat late). */
+  private frameOnLayout = false
+  private containerObserver: ResizeObserver | null = null
   tool: ToolId = 'select'
   /** Presentation ("paper") mode: white full-bleed sheet — no grid, no axis,
    *  no rulers — lightened zone tints and a bottom-right plan-summary block.
@@ -555,6 +561,14 @@ export class EditorCanvas {
     this.attach()
     this.createDynWidget()
     this.createDimEditor()
+    // Observe the CONTAINER (not just window resize): the canvas parent can go
+    // from 0 → real size a frame or two after a route mount (opening a candidate
+    // from the wizard), which window 'resize' never fires for. This is what
+    // reliably finishes a frame that bailed while the container was collapsed.
+    if (typeof ResizeObserver !== 'undefined' && this.canvas.parentElement) {
+      this.containerObserver = new ResizeObserver(this.onContainerResize)
+      this.containerObserver.observe(this.canvas.parentElement)
+    }
     this.resize()
     this.render()
     // Dev-only test seam: expose the live instance so E2E / debugging can drive
@@ -1740,19 +1754,25 @@ export class EditorCanvas {
     if (!isRetry) this.frameRetries = 0
     // Ensure the canvas is measured (may be freshly un-hidden from 3D/route change).
     this.resize()
-    const w = this.canvas.width / this.dpr
-    const h = this.canvas.height / this.dpr
-    // Not yet laid out (hidden, or opened before the canvas was sized): a
-    // zero/tiny viewport frames into the wrong extent. Retry next frame, capped
-    // so a genuinely hidden canvas (3D mode) doesn't spin forever.
-    if (w < FRAME_MIN_VIEWPORT_PX || h < FRAME_MIN_VIEWPORT_PX) {
+    // Gate on the CONTAINER, never the canvas. resize() bails on a collapsed
+    // container (0-size, mid-route-mount) leaving the canvas at its 300×150
+    // intrinsic default — a canvas-based guard would pass that and frame the plan
+    // into a tiny corner at the 8 px/m floor (the "opens tiny" bug). Not laid out
+    // yet → mark the frame pending (the ResizeObserver finishes it when layout
+    // settles) and retry on rAF, capped so a genuinely hidden canvas doesn't spin.
+    const vp = this.viewportReady()
+    if (!vp) {
+      this.frameOnLayout = true
       if (this.frameRetries < FRAME_MAX_RETRIES) {
         this.frameRetries++
         requestAnimationFrame(() => this.frameContent(padding, true))
       }
       return
     }
+    const w = vp.w
+    const h = vp.h
     this.frameRetries = 0
+    this.frameOnLayout = false
 
     const st = this.getState()
     // Anchor to the shell: walls + placed/generated components. This is the clean
@@ -1893,6 +1913,7 @@ export class EditorCanvas {
     window.removeEventListener('keydown', this.onKey)
     window.removeEventListener('keyup', this.onKeyUp)
     window.removeEventListener('resize', this.onResize)
+    this.containerObserver?.disconnect()
     this.dynEl?.remove()
     this.dimEditEl?.remove()
   }
@@ -2157,6 +2178,30 @@ export class EditorCanvas {
   private onResize = () => {
     this.resize()
     this.render()
+  }
+
+  /** Container-size changes (route mount, panel show/hide, split-pane drag). If a
+   *  frame was left pending because the container was collapsed, complete it the
+   *  moment the container becomes real — otherwise just resize+repaint, preserving
+   *  the user's pan/zoom (no `frameOnLayout` → never fights a deliberate view). */
+  private onContainerResize = () => {
+    this.resize()
+    if (this.frameOnLayout && this.viewportReady()) {
+      this.frameOnLayout = false
+      this.frameContent()
+      return
+    }
+    this.render()
+  }
+
+  /** True when the canvas container is laid out to a real, usable size. Framing
+   *  gates on THIS (the container), never on the canvas — resize() bails on a
+   *  collapsed container, leaving the canvas at its 300×150 intrinsic default,
+   *  which would otherwise sail past a canvas-based guard and frame into a corner. */
+  private viewportReady(): { w: number; h: number } | null {
+    const r = this.canvas.parentElement?.getBoundingClientRect()
+    if (!r || r.width < FRAME_MIN_VIEWPORT_PX || r.height < FRAME_MIN_VIEWPORT_PX) return null
+    return { w: r.width, h: r.height }
   }
 
   private updateCoordReadout() {
