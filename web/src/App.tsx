@@ -44,6 +44,7 @@ import type { RoomMarker } from './import/markers'
 import type { AnchorPin } from './program/anchors'
 import { downloadDXF, downloadDrawingDXF } from './export/dxf'
 import { CandidateGallery } from './ui/CandidateGallery'
+import { DesignWithAI } from './ui/DesignWithAI'
 import { CategoryPlan, type CategoryPlanGroup } from './ui/CategoryPlan'
 import {
   pushPlateToEditor,
@@ -1862,7 +1863,9 @@ function GenerateCard({
 
   return (
     <div className="panel-body" style={{ borderTop: '1px solid var(--hairline)' }}>
-      <div className="panel-eyebrow">
+      <DesignWithAI ec={ec} aiReady={aiReady} hasPlate={(metrics?.wall_count ?? 0) > 0} />
+
+      <div className="panel-eyebrow" style={{ marginTop: 18 }}>
         <Icon name="sparkles" size={13} /> Autonomous test-fit
       </div>
       <p className="panel-lead">
