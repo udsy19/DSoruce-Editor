@@ -421,34 +421,6 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
     }
   }, [])
 
-  // After a load/generate replaces the document, frame the whole plan so it
-  // sits centered and fully visible — otherwise the fixed default view leaves a
-  // large plate off-screen (bottom-right) or a small one hidden in the corner,
-  // which reads as a blank canvas. `frameEditor` frames immediately when the 2D
-  // canvas is shown & measured; when a path also switches INTO 2D (setMode is
-  // async, so the canvas is still hidden here) it latches, and the mode→2D
-  // effect below frames once the canvas is visible & measured.
-  const pendingFrameRef = useRef(false)
-  const frameEditor = () => {
-    if (modeRef.current === '2d') {
-      pendingFrameRef.current = false
-      ecRef.current?.frameContent()
-    } else {
-      pendingFrameRef.current = true
-    }
-  }
-
-  useEffect(() => {
-    if (mode === '2d' && ready) {
-      const ec = ecRef.current
-      ec?.refresh()
-      if (pendingFrameRef.current) {
-        pendingFrameRef.current = false
-        ec?.frameContent()
-      }
-    }
-  }, [mode, ready])
-
   // Save the whole session (document snapshot incl. CAD layer, program,
   // import session, view hints) to a local .dsource file. Routed through a
   // ref so the []-dep keydown effect below always calls the fresh closure.
@@ -685,6 +657,42 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
   cmdkOpenRef.current = cmdkOpen
   const modeRef = useRef(mode)
   modeRef.current = mode
+  // Live mirrors so the async frame-on-open path (frameEditor/tryFrameEditor) reads
+  // the current mode/ready/doc-content, not the values captured when it was queued.
+  const readyRef = useRef(ready)
+  readyRef.current = ready
+  const docEmptyRef = useRef(docEmpty)
+  docEmptyRef.current = docEmpty
+
+  // After a load/generate replaces the document, frame the whole plan so it sits
+  // centered and fully visible — otherwise the fixed default view leaves a large
+  // plate off-screen or a small one as a corner sliver, reading as a blank canvas.
+  //
+  // Framing must run when the 2D canvas is at its FINAL laid-out size: the plan
+  // callers (openSavedPlan, generate, trace) all `setMode('2d')` right before this,
+  // and setMode is async — so at call time modeRef is stale AND the doc isn't
+  // committed, meaning the stats panel isn't mounted yet and the canvas is full
+  // width. Framing then fits the plate to the wrong extent and lands it off-center
+  // (the cold-reload-into-3D symptom). So `frameEditor` only latches a request; the
+  // effect below fires it once mode/ready/docEmpty settle — by which point the 2D
+  // canvas is shown with the panel mounted and its real width. `frameContent`
+  // itself retries via rAF if it still measures a not-yet-sized viewport.
+  const pendingFrameRef = useRef(false)
+  const tryFrameEditor = () => {
+    if (modeRef.current === '2d' && readyRef.current && !docEmptyRef.current) {
+      pendingFrameRef.current = false
+      ecRef.current?.frameContent()
+    }
+  }
+  const frameEditor = () => {
+    pendingFrameRef.current = true
+    tryFrameEditor() // frame now if the 2D canvas is already live; else the effect will
+  }
+
+  useEffect(() => {
+    if (mode === '2d' && ready) ecRef.current?.refresh()
+    if (pendingFrameRef.current) tryFrameEditor()
+  }, [mode, ready, docEmpty])
   const letterMapRef = useRef(letterMap)
   letterMapRef.current = letterMap
 

@@ -416,6 +416,10 @@ export interface RoomSelection {
 // Resize-handle order: TL, T, TR, R, BR, B, BL, L — with matching cursors.
 const ROOM_MIN_M = 1.0 // a room can't be dragged smaller than 1 m on a side
 const HANDLE_HIT_PX = 8 // grab radius around a handle
+// frameContent tuning (see the method for rationale):
+const FRAME_MIN_VIEWPORT_PX = 40 // below this the canvas isn't really laid out → retry
+const FRAME_MAX_RETRIES = 30 // ~0.5 s of rAF before giving up (canvas genuinely hidden)
+const FRAME_ENTITY_MARGIN = 1.0 // admit CAD entities within 1× the shell span of it
 const HANDLE_CURSOR = [
   'nwse-resize',
   'ns-resize',
@@ -441,6 +445,9 @@ export class EditorCanvas {
 
   scale = 46 // px per meter
   offset = { x: 120, y: 96 } // screen px of world origin
+  /** Cold-reload guard: frameContent retries via rAF until the canvas has a real
+   *  measured viewport (a saved plan can open before layout has sized the canvas). */
+  private frameRetries = 0
   tool: ToolId = 'select'
   /** Presentation ("paper") mode: white full-bleed sheet — no grid, no axis,
    *  no rulers — lightened zone tints and a bottom-right plan-summary block.
@@ -1706,35 +1713,86 @@ export class EditorCanvas {
     this.updateScaleReadout()
   }
 
-  /** Frame the whole document (walls · components · CAD entities) so it sits
-   *  centered and fully visible in the current viewport. `padding` is the
-   *  fraction of the viewport kept clear on each side. No-op when the document
-   *  is empty. Call after any load/generate that replaces content, otherwise
-   *  the fixed default view leaves a plate off-screen or as a corner sliver. */
+  /** Frame the document so the PLATE/SHELL sits centered and fully visible in the
+   *  current viewport. `padding` is the fraction of the viewport kept clear on
+   *  each side. No-op when the document is empty.
+   *
+   *  Robustness — two failure modes this guards against (see
+   *  docs/design/laiout-deep-research.md §2.4):
+   *  1. **Outlier CAD entities.** Imported DXFs carry stray geometry far from the
+   *     plate (leaders, site lines, title blocks). Framing to the raw entity set
+   *     blows the span up and clamps scale to the 8 px/m floor, cornering the
+   *     plan. So we anchor to the walls+components bbox (the real shell) and admit
+   *     a CAD entity only when it overlaps a generous margin of that anchor. A
+   *     pure CAD doc (no walls/components) still frames to all its entities.
+   *  2. **Viewport not yet measured on open.** A saved plan can open before layout
+   *     has sized the canvas; a zero/tiny measurement would mis-frame. We retry on
+   *     the next frame (capped) until the canvas has a real size. */
   frameContent(padding = 0.08) {
     // Ensure the canvas is measured (may be freshly un-hidden from 3D/route change).
     this.resize()
     const w = this.canvas.width / this.dpr
     const h = this.canvas.height / this.dpr
-    if (w === 0 || h === 0) return // hidden — nothing to frame into
+    // Not yet laid out (hidden, or opened before the canvas was sized): a
+    // zero/tiny viewport frames into the wrong extent. Retry next frame, capped
+    // so a genuinely hidden canvas (3D mode) doesn't spin forever.
+    if (w < FRAME_MIN_VIEWPORT_PX || h < FRAME_MIN_VIEWPORT_PX) {
+      if (this.frameRetries < FRAME_MAX_RETRIES) {
+        this.frameRetries++
+        requestAnimationFrame(() => this.frameContent(padding))
+      }
+      return
+    }
+    this.frameRetries = 0
 
     const st = this.getState()
-    let minX = Infinity
-    let minY = Infinity
-    let maxX = -Infinity
-    let maxY = -Infinity
+    // Anchor to the shell: walls + placed/generated components. This is the clean
+    // extent a user expects to see, free of stray CAD outliers.
+    let aMinX = Infinity
+    let aMinY = Infinity
+    let aMaxX = -Infinity
+    let aMaxY = -Infinity
+    const anchor = (ax: number, ay: number, bx: number, by: number) => {
+      aMinX = Math.min(aMinX, ax)
+      aMinY = Math.min(aMinY, ay)
+      aMaxX = Math.max(aMaxX, bx)
+      aMaxY = Math.max(aMaxY, by)
+    }
+    const wb = wallBbox(st.walls)
+    if (wb) anchor(wb.minX, wb.minY, wb.maxX, wb.maxY)
+    for (const c of st.components) anchor(c.x - c.w / 2, c.y - c.h / 2, c.x + c.w / 2, c.y + c.h / 2)
+    const hasAnchor = isFinite(aMinX)
+
+    let minX = aMinX
+    let minY = aMinY
+    let maxX = aMaxX
+    let maxY = aMaxY
     const acc = (ax: number, ay: number, bx: number, by: number) => {
       minX = Math.min(minX, ax)
       minY = Math.min(minY, ay)
       maxX = Math.max(maxX, bx)
       maxY = Math.max(maxY, by)
     }
-    const wb = wallBbox(st.walls)
-    if (wb) acc(wb.minX, wb.minY, wb.maxX, wb.maxY)
-    for (const c of st.components) acc(c.x - c.w / 2, c.y - c.h / 2, c.x + c.w / 2, c.y + c.h / 2)
-    for (const e of this.cad.store.entities) {
-      const [ex0, ey0, ex1, ey1] = entityBBox(e)
-      acc(ex0, ey0, ex1, ey1)
+    if (hasAnchor) {
+      // Admit only CAD entities that overlap the anchor grown by a generous margin
+      // (one full plan-span on each side). Doors/windows/dims drawn on the shell
+      // stay in frame; a leader 1000 m away is dropped so it can't force 8 px/m.
+      const margin = FRAME_ENTITY_MARGIN * Math.max(aMaxX - aMinX, aMaxY - aMinY, 1)
+      const gMinX = aMinX - margin
+      const gMinY = aMinY - margin
+      const gMaxX = aMaxX + margin
+      const gMaxY = aMaxY + margin
+      for (const e of this.cad.store.entities) {
+        const [ex0, ey0, ex1, ey1] = entityBBox(e)
+        if (ex1 < gMinX || ex0 > gMaxX || ey1 < gMinY || ey0 > gMaxY) continue // outlier
+        acc(ex0, ey0, ex1, ey1)
+      }
+    } else {
+      // No shell — a hand-drawn CAD-only doc: frame to all its entities.
+      for (const e of this.cad.store.entities) {
+        const [ex0, ey0, ex1, ey1] = entityBBox(e)
+        acc(ex0, ey0, ex1, ey1)
+      }
     }
     if (!isFinite(minX)) return // no content
 
