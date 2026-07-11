@@ -213,8 +213,15 @@ The qbiq-style flow: Project → Upload → Program → Generate → Editor → 
     [[gcc-niche-and-agentic-designer]].
   - [ ] **Reader too "cheap" vs Laiout/qbiq** — premium visual overhaul of `furniture.ts` + `EditorCanvas`
     zone/wall/label rendering against `laiout-visual-system.md`. Agent IN PROGRESS.
-  - [ ] **Boundary-conforming polygon rooms** (`ZoneShape::Poly`) — rooms that hug angled walls exactly, the
-    deep cure for "robotic"/negative-space. SEQUENCED next (same files as the fill; can't parallel it).
+  - [~] **Boundary-conforming polygon zones** (`ZoneShape::Poly`, `e9f0827`) — added a real polygon zone shape
+    (removed `Copy`), an exact `clip_rect_to_polygon` (Sutherland–Hodgman, no staircase on the wall edge), and
+    a `conform_zones_to_plate` pass that grows CIRCULATION zones to the wall + clips to the plate → 19 polygons
+    hugging the stepped/diagonal walls on the real plate; ~91 m² of near-wall wedges closed (verified at the
+    user's exact top-right corner). Fixed a pre-existing NIA double-count the fill exposed. 125 Rust tests; 2D
+    (+ pdf/thumb via new `util/zoneGeom.ts`) + 3D render polys. **LIMIT:** only Circulation conforms — Workspace
+    tiles + enclosed rooms stay Rect (conforming Workspace overflowed NIA>GEA on tilted plates). So a ROOM
+    directly on an angled wall still gaps; on this plate rooms sit off the diagonal so it's mostly circulation
+    that needed it. Room-conforming (with the area invariant preserved) is the remaining follow-up.
   - Feasibility answered (research): an **agentic senior-designer** layer (Claude decides program/strategy/
     adjacency/critique; the deterministic solver does geometry) is viable as a hybrid — build after the
     core is perfected. Pure-LLM geometric placement is unreliable (misalignment/overlaps, even GPT-5).
