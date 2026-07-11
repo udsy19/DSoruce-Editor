@@ -18,7 +18,7 @@ import {
 import { fmtMeters, parseDim, endpointForLength } from '../cad/dimEdit'
 import { evaluatorAvailable } from '../ai/evaluator'
 import { applyDelta, proposeAdjustment, refScore, type ProgramDelta } from '../ai/refine'
-import { proposeDesign, applyDesignSpec, type DesignSpec } from '../ai/designer'
+import { proposeDesign, proposeDesignOptions, applyDesignSpec, DESIGN_OBJECTIVES, type DesignSpec, type DesignObjective } from '../ai/designer'
 
 // Types mirroring the Rust core's serialized document (serde field names).
 export interface DocWall {
@@ -284,6 +284,25 @@ export interface GenResult {
   seed: number
   /** Top-K distinct candidates, best first. */
   candidates: Candidate[]
+}
+
+/** One objective-optimised design option (Laiout-style) from {@link EditorCanvas.designOptions}:
+ *  Claude's spec + the realised fit + its headline metric, snapshot-backed. */
+export interface DesignOptionResult {
+  objective: DesignObjective
+  spec: DesignSpec
+  score: LayoutScore
+  /** Placed workstations. */
+  pax: number
+  /** Indicative fit-out cost (₹). */
+  cost: number
+  /** Indicative embodied carbon (kgCO₂e). */
+  carbon: number
+  /** Net internal area (m²). */
+  nia: number
+  /** Opaque snapshot — pass to `applyCandidate` to make this option live. */
+  snapshot: string
+  thumb: string
 }
 
 /** One reasoning step of the AI refinement loop (surfaced in the UI trace). */
@@ -1714,6 +1733,41 @@ export class EditorCanvas {
     if (!spec) return null
     this.program = applyDesignSpec(this.program, spec)
     return spec
+  }
+
+  /**
+   * MULTI-OBJECTIVE designer (docs/design/agentic-designer.md; Laiout-style option
+   * set). Claude designs a DISTINCT fit per objective — Max people / Budget / Low
+   * carbon / Wellbeing / Balanced — and the solver realizes each; every option
+   * carries its headline metric (pax · ₹ fit-out · kgCO₂e) for the option cards.
+   * Snapshots are captured so the UI can make any option live. Leaves the program
+   * unchanged. Returns [] without a Claude key / plate.
+   */
+  async designOptions(brief: string, seed = 1, signal?: AbortSignal): Promise<DesignOptionResult[]> {
+    const m0 = this.getMetrics()
+    if (m0.wall_count === 0) return []
+    const plateAreaM2 = m0.net_internal_area ?? m0.floor_area
+    const opts = await proposeDesignOptions({ plateAreaM2, program: this.program, brief }, DESIGN_OBJECTIVES, signal)
+    const base = { ...this.program }
+    const out: DesignOptionResult[] = []
+    for (const o of opts) {
+      this.program = applyDesignSpec(base, o.spec)
+      const score = this.generateOnce(this.program, seed)
+      const m = this.getMetrics()
+      out.push({
+        objective: o.objective,
+        spec: o.spec,
+        score,
+        pax: m.workstations ?? 0,
+        cost: m.indicative_cost ?? 0,
+        carbon: m.indicative_carbon ?? 0,
+        nia: m.net_internal_area ?? 0,
+        snapshot: this.ed.snapshot() as string,
+        thumb: renderThumb(this.getState()),
+      })
+    }
+    this.program = base
+    return out
   }
 
   /** True when two programs match on every lever the AI delta can touch. */

@@ -188,26 +188,79 @@ export const DESIGN_TOOL = {
 
 const ANTHROPIC_DESIGN_TOOLS = openaiToolsToAnthropic([DESIGN_TOOL])
 
-/** The senior-designer persona + standards. Kept India-first per the product. */
-export const DESIGNER_SYSTEM = `You are a SENIOR WORKPLACE INTERIOR DESIGNER producing a code-compliant office test-fit inside DSource. You make the design decisions a principal designer makes, then a deterministic engine places the geometry. Units are meters.
+/** The senior-designer persona + standards + design intelligence. India-first. */
+export const DESIGNER_SYSTEM = `You are a SENIOR WORKPLACE INTERIOR DESIGNER (15+ years, principal level) producing a real, code-compliant office test-fit inside DSource. You make the design decisions a principal makes; a deterministic engine then places the geometry. Units are meters. Design like a human designer — NOT a robot that tiles a uniform desk grid.
 
-You DECIDE, at the program level only:
+WHAT MAKES A GOOD WORKPLACE (design like this, not a grid):
+- Activity-based, not one-size: real offices are a MIX of settings — focus (quiet, enclosed), collaborate (open breakout, project tables), socialise (pantry/café as a heart), and privacy (phone booths, cabins). A wall of identical desks is a bad, dated design. Vary the settings to the work.
+- Neighbourhoods, not a barracks: cluster desks into human-scaled teams (~6–12) with breakout and storage nearby, separated by circulation and soft landscape — not one monolithic bench field.
+- The journey & front-of-house: reception + client-facing meeting rooms + the best boardroom form a welcoming "front"; heads-down focus, IT, storage, service sit "back". Design the arrival experience.
+- Daylight & biophilia: put people on the daylight facade; keep views to the perimeter open; pull enclosed/served rooms to the core so no one is walled off from light.
+- Circulation as a social spine, generous and legible — the "walking place" is where culture happens, not wasted floor.
+- Acoustic zoning: keep focus/phone booths away from pantry, collab and the entry buzz.
+- Generosity where it counts; efficiency where it doesn't. Wall-to-wall use of the plate — empty, undeclared floor is wasted money and bad design.
+
+You DECIDE, at the PROGRAM level only:
 - the program: headcount, open-plan desk count, meeting-room count (never per-desk coordinates)
 - the spatial STRATEGY (Open / Balanced / Cellular) that fits the brief and culture
-- the support room mix (reception, focus rooms, phone booths, pantry, boardroom, cabins, print, IT, storage, wellness) with SOFT placement bias (Window / Core / Flexible)
+- the support room mix (reception, focus, phone booths, collab, pantry, boardroom, cabins, print, IT, storage, wellness) with SOFT placement bias (Window / Core / Flexible)
 - the objective emphasis (adjacency / circulation / daylight)
 
 Standards to honour (India-first):
 - NBC 2016 egress: primary circulation ≥ 1.5 m; keep clearances generous.
-- Density: BCO/RICS ~8–12 m²/person; do not overpack.
-- Zoning method: circulation spine first; support/service to the core; benches on the daylight facade; meeting rooms banded; reception at the entry; keep focus/phone booths acoustically away from pantry, collab and the entry.
-- Scale the room mix to headcount (e.g. ~1 phone booth / 8–10 desks, focus rooms for concentration, a boardroom only when headcount warrants it).
+- Density: BCO/RICS ~8–12 m²/person is professional; below ~6 is cramped; above ~15 is generous/premium.
+- Scale the room mix to headcount (~1 phone booth / 8–10 desks; focus rooms for concentration; a boardroom only when headcount + client-facing needs warrant it; a real pantry always).
 
 Boundaries (critical):
 - NEVER output coordinates or positions. You work only in counts, strategy, room kinds, placement bias, and emphasis. The engine owns geometry and rejects anything illegal.
 - If the brief is sparse, use professional defaults sized to the floor area given.
 
-Call design_layout exactly once with your full design and a clear rationale explaining the zoning logic.`
+Call design_layout exactly once with your full design and a rationale that reads like a designer explaining the CONCEPT and the neighbourhood/adjacency logic — not a spec dump.`
+
+/** A named optimisation lens — DSource generates a distinct test-fit per objective
+ *  (like Laiout's budget / carbon / people options), each a real design tradeoff. */
+export interface DesignObjective {
+  id: string
+  /** Short card label. */
+  label: string
+  /** What the option optimises, shown under the label. */
+  tagline: string
+  /** The design brief lens handed to Claude — how to bias the design for this goal. */
+  lens: string
+}
+
+export const DESIGN_OBJECTIVES: readonly DesignObjective[] = [
+  {
+    id: 'balanced',
+    label: 'Balanced',
+    tagline: 'A professional all-round fit',
+    lens: 'Optimise for a well-rounded professional workplace: a healthy mix of focus, collaborate and social settings at ~8–11 m²/person. No single metric dominates.',
+  },
+  {
+    id: 'people',
+    label: 'Max people',
+    tagline: 'Highest headcount',
+    lens: 'Optimise for MAXIMUM headcount: push desk density (bench-pair benching on every daylight run), lean support rooms to the essential minimum, keep only code-required circulation. Still humane (≥ ~6 m²/person), but seats-first.',
+  },
+  {
+    id: 'budget',
+    label: 'Budget',
+    tagline: 'Lowest fit-out cost',
+    lens: 'Optimise for LOWEST fit-out cost: minimise built partitions and enclosed rooms (walls + doors are the expensive items), favour an open plan, prefer fewer/simpler furniture types, reuse over new. Only build enclosure the brief truly needs.',
+  },
+  {
+    id: 'carbon',
+    label: 'Low carbon',
+    tagline: 'Least embodied CO₂',
+    lens: 'Optimise for LOWEST embodied carbon: fewer partitions and less built material (partitions/ceilings dominate embodied carbon), an open and daylight-led plan (less artificial lighting), and reused/existing furniture where possible. Enclose sparingly.',
+  },
+  {
+    id: 'wellbeing',
+    label: 'Wellbeing',
+    tagline: 'Best human experience',
+    lens: 'Optimise for people’s EXPERIENCE: generous space per person (~12–15 m²), daylight and views for the many (desks on the facade), a real café/pantry heart, ample quiet focus rooms and phone booths, wellness and biophilia. Fewer, better-served seats.',
+  },
+]
 
 /** Context the designer reasons over — the floor it must design for. */
 export interface DesignContext {
@@ -217,15 +270,21 @@ export interface DesignContext {
   program: Program
   /** Free-text brief from the user (may be empty → design to best professional practice). */
   brief: string
+  /** Optional optimisation lens — biases the whole design toward one goal. */
+  objective?: DesignObjective
 }
 
 function buildDesignerPrompt(ctx: DesignContext): string {
   const area = ctx.plateAreaM2 && ctx.plateAreaM2 > 0 ? `${Math.round(ctx.plateAreaM2)} m² usable floor area` : 'an unmeasured floor'
   const brief = ctx.brief.trim() || '(no specific brief — design a professional general-purpose office for this floor)'
+  const lens = ctx.objective
+    ? ['', `OPTIMISATION LENS — "${ctx.objective.label}": ${ctx.objective.lens}`, 'Let this lens genuinely shape the design so it differs from other options; explain the tradeoff you are making in the rationale.']
+    : []
   return [
     `Design an office test-fit for ${area}.`,
     '',
     `Brief: ${brief}`,
+    ...lens,
     '',
     `Current defaults you may override: ${ctx.program.desks} desks, ${ctx.program.meeting_rooms} meeting rooms, ${ctx.program.target_corridor_m} m corridor.`,
     '',
@@ -260,4 +319,30 @@ export async function proposeDesign(ctx: DesignContext, signal?: AbortSignal): P
   } catch {
     return null
   }
+}
+
+/** One objective-optimised design option. */
+export interface DesignOption {
+  objective: DesignObjective
+  spec: DesignSpec
+}
+
+/**
+ * Generate a distinct design per objective (Laiout-style budget / carbon / people /
+ * wellbeing options), each a real tradeoff Claude reasons about. Runs the lenses
+ * concurrently; drops any that fail so a partial set still returns. `objectives`
+ * defaults to the full {@link DESIGN_OBJECTIVES} set. Returns [] without a key.
+ */
+export async function proposeDesignOptions(
+  ctx: Omit<DesignContext, 'objective'>,
+  objectives: readonly DesignObjective[] = DESIGN_OBJECTIVES,
+  signal?: AbortSignal,
+): Promise<DesignOption[]> {
+  const results = await Promise.all(
+    objectives.map(async (objective) => {
+      const spec = await proposeDesign({ ...ctx, objective }, signal)
+      return spec ? { objective, spec } : null
+    }),
+  )
+  return results.filter((o): o is DesignOption => o !== null)
 }
