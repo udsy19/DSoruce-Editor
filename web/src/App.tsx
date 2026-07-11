@@ -171,9 +171,12 @@ function stampBaseInto(ec: EditorCanvas, stamp: BaseStamp, bindings: Map<string,
     // the generated region (never stamped here) counts — so a merged plan reports the
     // generated desk count, not generated + every imported desk-block.
     ec.ed.set_component_reference(id, true)
-    // Re-bind the imported bank product so its ₹ price flows into specified_cost +
-    // the takeoff (same primitive user re-imagine uses); price comes from the App
-    // bindings map keyed by product id (the item itself only carries id/name).
+    // Retain the imported bank binding on the reference piece so its product
+    // identity/price survives the merge (same primitive user re-imagine uses; the
+    // item itself only carries id/name). Because it is `reference`, the price does
+    // NOT enter specified_cost or the per-element BoQ — legacy furniture isn't
+    // purchased (Laiout parity). The binding only re-enters cost if the user later
+    // un-references the piece (adopts it into the fit-out).
     if (c.productId) {
       ec.ed.assign_product(id, c.productId, c.productName ?? c.label, bindings.get(c.productId)?.price ?? undefined)
     }

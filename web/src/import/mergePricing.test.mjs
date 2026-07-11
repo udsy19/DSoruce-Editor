@@ -9,12 +9,21 @@
 //       ed.assign_product(id, c.productId, c.productName ?? c.label,
 //                         bindings.get(c.productId)?.price ?? undefined)
 //
-// (App.tsx:163-176 is the source of truth; the loop below mirrors it verbatim so
-// this test pins the merged specified_cost across the pricing edge cases: no
-// bindings, all/partial, a productId absent from the bindings map (price → None,
-// never NaN/0-double-count), the same product on several items (Σ, no under/over
-// count), non-accumulation on a re-stamp, and the generated region's own bindings
-// surviving the surroundings rebind.)
+// This pins the Rust cost engine's BINDING MATH on COUNTED (non-reference)
+// components across the pricing edge cases: no bindings, all/partial, a productId
+// absent from the bindings map (price → None, never NaN/0-double-count), the same
+// product on several items (Σ, no under/over count), non-accumulation on a
+// re-stamp, and the generated region's own bindings surviving the surroundings
+// rebind.
+//
+// NOTE: the loop below omits `set_component_reference(id, true)` on purpose — the
+// REAL `App.stampBaseInto` marks stamped surroundings `reference: true`, and since
+// the reference fix those pieces contribute 0 to `specified_cost` (Laiout: legacy
+// isn't purchased). That reference-path exclusion — and the three-surface
+// agreement it guarantees — is covered end-to-end in
+// `web/src/editor/referenceMetrics.test.mjs`. Here we deliberately isolate the
+// non-reference binding arithmetic that `specified_cost` still performs on the
+// generated/adopted content that DOES count.
 
 import fs from 'node:fs'
 import path from 'node:path'

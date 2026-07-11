@@ -761,4 +761,352 @@ mod tests {
         assert!((apw - nia / n_generated as f64).abs() < 1e-9);
         assert!(apw > nia / (n_generated + m_reference) as f64, "reference must not tighten m²/ws");
     }
+
+    // =====================================================================
+    // Reference-facet invariants (INV1–INV5). These drive the SAME pure
+    // functions `metrics()` / `zone_stats()` / `cost::specified_cost` delegate
+    // to, so a green suite here == the wasm surface agrees. (The wasm methods
+    // themselves return `JsValue`, so they are exercised end-to-end from the
+    // node harnesses `mergePricing.test.mjs` + `stats.test.mjs`.)
+    // =====================================================================
+
+    /// General component builder (any category / reference / bound price).
+    fn comp(id: u32, category: &str, x: f64, y: f64, reference: bool, price: Option<f64>) -> Component {
+        Component {
+            id,
+            category: category.into(),
+            x,
+            y,
+            w: 1.4,
+            h: 0.7,
+            rotation: 0.0,
+            mirror: false,
+            reference,
+            label: format!("{category} {id}"),
+            product_id: price.map(|_| format!("p{id}")),
+            price_inr: price,
+            decision: DecisionState::Open,
+        }
+    }
+
+    fn add_rect_zone(doc: &mut Document, zt: ZoneType, x: f64, y: f64, w: f64, h: f64) -> u32 {
+        let id = doc.alloc_id();
+        doc.zones.push(Zone {
+            id,
+            zone_type: zt,
+            shape: ZoneShape::Rect { x, y, w, h },
+            label: format!("{zt:?}"),
+            component_ids: Vec::new(),
+            group: None,
+        });
+        id
+    }
+
+    /// A 20×10 plate (floor 200 m²). Left half is a Workspace zone (x∈[0,10]); a
+    /// Meeting zone sits at x∈[10,16]; x∈[16,20] is left UNZONED so both the
+    /// "desk in a non-Workspace zone" and "desk in NO zone" cases are reachable.
+    /// No zone's footprint equals the wall bbox, so `effective_zone_areas` never
+    /// treats one as the plate-spanning field (no de-overlap surprise).
+    fn plate_ws_meeting_gap() -> Document {
+        let mut doc = Document::new();
+        for (a, b) in [
+            ((0.0, 0.0), (20.0, 0.0)),
+            ((20.0, 0.0), (20.0, 10.0)),
+            ((20.0, 10.0), (0.0, 10.0)),
+            ((0.0, 10.0), (0.0, 0.0)),
+        ] {
+            let id = doc.alloc_id();
+            doc.walls.push(Wall {
+                id,
+                a: Point::new(a.0, a.1),
+                b: Point::new(b.0, b.1),
+                thickness: 0.1,
+                generated: false,
+                glazing: false,
+            });
+        }
+        add_rect_zone(&mut doc, ZoneType::Workspace, 5.0, 5.0, 10.0, 10.0); // x∈[0,10]
+        add_rect_zone(&mut doc, ZoneType::Meeting, 13.0, 5.0, 6.0, 6.0); // x∈[10,16]
+        doc
+    }
+
+    /// RHS of INV1: Σ over Workspace zones of the per-zone `seated`, recomputed
+    /// byte-for-byte as `zone_stats()` computes it. Must equal `workstation_count`.
+    fn workspace_seated_sum(doc: &Document) -> usize {
+        doc.zones
+            .iter()
+            .filter(|z| z.zone_type == ZoneType::Workspace)
+            .map(|z| {
+                z.component_ids
+                    .iter()
+                    .filter(|&&cid| doc.components.iter().any(|c| c.id == cid && is_workstation(c)))
+                    .count()
+            })
+            .sum()
+    }
+
+    /// `metrics().area_per_workstation`, recomputed from identical pure inputs.
+    fn area_per_ws(doc: &Document) -> f64 {
+        let (areas, _) = effective_zone_areas(doc);
+        let nia: f64 = areas.iter().sum::<f64>().min(doc.floor_area());
+        let ws = workstation_count(doc);
+        if ws > 0 {
+            nia / ws as f64
+        } else {
+            0.0
+        }
+    }
+
+    /// INV1: `workstation_count` (== `metrics().workstations`) equals Σ over
+    /// Workspace zones of `zone_stats().seated` — the two are the SAME computation,
+    /// so they can't drift. A desk in a Meeting zone is `seated` there but is never
+    /// a workstation/pax; a desk in NO zone counts nowhere. Both facts hold in Rust
+    /// AND (by the same `seated`) in `stats.ts` `zonePax`, so the surfaces agree.
+    #[test]
+    fn inv1_workstations_equal_workspace_seated_and_define_unzoned_and_wrong_zone() {
+        let mut doc = plate_ws_meeting_gap();
+        // 3 counted desks (workspace), 1 desk in the Meeting zone, 1 desk in the
+        // unzoned strip, 2 reference desks in the workspace.
+        for (x, y) in [(2.0, 5.0), (4.0, 5.0), (6.0, 5.0)] {
+            let id = doc.alloc_id();
+            doc.components.push(comp(id, "Desk", x, y, false, None));
+        }
+        let meeting_desk = doc.alloc_id();
+        doc.components.push(comp(meeting_desk, "Desk", 13.0, 5.0, false, None)); // in Meeting zone
+        let unzoned = doc.alloc_id();
+        doc.components.push(comp(unzoned, "Desk", 18.0, 5.0, false, None)); // in NO zone (x∈[16,20])
+        for (x, y) in [(3.0, 3.0), (3.5, 7.0)] {
+            let id = doc.alloc_id();
+            doc.components.push(comp(id, "Desk", x, y, true, None)); // reference, in workspace
+        }
+        doc.reassign_components();
+
+        // INV1: the single number agrees between the two Rust surfaces.
+        assert_eq!(workstation_count(&doc), 3, "3 non-reference desks in the Workspace");
+        assert_eq!(
+            workstation_count(&doc),
+            workspace_seated_sum(&doc),
+            "metrics().workstations must equal Σ Workspace zone_stats().seated"
+        );
+
+        // A desk in the Meeting zone is `seated` there (documented behavior) but is
+        // NOT a workstation/pax — the Meeting zone contributes 0 to pax in stats.ts.
+        let meeting = doc.zones.iter().find(|z| z.zone_type == ZoneType::Meeting).unwrap();
+        let meeting_seated = meeting
+            .component_ids
+            .iter()
+            .filter(|&&cid| doc.components.iter().any(|c| c.id == cid && is_workstation(c)))
+            .count();
+        assert_eq!(meeting_seated, 1, "the desk in the Meeting zone is seated there");
+        // …yet it never inflates workstations (only Workspace seats count).
+
+        // The unzoned desk belongs to no zone's component_ids at all.
+        assert!(
+            !doc.zones.iter().any(|z| z.component_ids.contains(&unzoned)),
+            "an unzoned desk is in no component_ids → counted nowhere"
+        );
+    }
+
+    /// INV2 (count side): flipping a desk to `reference` decrements the count IFF
+    /// it was a counted (in-Workspace, non-reference) desk; flipping an unzoned or
+    /// wrong-zone or already-reference desk is a no-op. `set_component_reference`
+    /// is the live mutator; here we flip the field directly (same effect).
+    #[test]
+    fn inv2_flip_to_reference_decrements_only_counted_desks() {
+        let mut doc = plate_ws_meeting_gap();
+        let ws_desk = doc_next(&mut doc);
+        doc.components.push(comp(ws_desk, "Desk", 2.0, 5.0, false, None));
+        let meeting_desk = doc_next(&mut doc);
+        doc.components.push(comp(meeting_desk, "Desk", 13.0, 5.0, false, None));
+        let unzoned = doc_next(&mut doc);
+        doc.components.push(comp(unzoned, "Desk", 18.0, 5.0, false, None));
+        doc.reassign_components();
+        assert_eq!(workstation_count(&doc), 1);
+
+        // Flip the wrong-zone (Meeting) desk → no change (was never counted).
+        doc.component_mut(meeting_desk).unwrap().reference = true;
+        assert_eq!(workstation_count(&doc), 1, "flipping a Meeting-zone desk changes nothing");
+        // Flip the unzoned desk → no change.
+        doc.component_mut(unzoned).unwrap().reference = true;
+        assert_eq!(workstation_count(&doc), 1, "flipping an unzoned desk changes nothing");
+        // Flip the counted workspace desk → decrement to 0.
+        doc.component_mut(ws_desk).unwrap().reference = true;
+        assert_eq!(workstation_count(&doc), 0, "flipping the counted desk decrements");
+        // Flip it back → increment.
+        doc.component_mut(ws_desk).unwrap().reference = false;
+        assert_eq!(workstation_count(&doc), 1, "un-referencing re-counts it");
+    }
+
+    /// INV2 (cost side): `specified_cost` excludes reference furniture regardless
+    /// of category, and flipping a bound desk to reference drops its price. A
+    /// reference desk with a real bound price must contribute 0 (Laiout: legacy
+    /// isn't purchased); a non-reference bound item MUST count.
+    #[test]
+    fn inv2_specified_cost_excludes_reference() {
+        let mut doc = plate_ws_meeting_gap();
+        let paid = doc_next(&mut doc);
+        doc.components.push(comp(paid, "Desk", 2.0, 5.0, false, Some(5_000.0))); // counts
+        let legacy = doc_next(&mut doc);
+        doc.components.push(comp(legacy, "Desk", 4.0, 5.0, true, Some(9_000.0))); // reference → 0
+        let legacy_chair = doc_next(&mut doc);
+        doc.components.push(comp(legacy_chair, "Chair", 5.0, 5.0, true, Some(1_500.0))); // reference → 0
+        doc.reassign_components();
+
+        assert_eq!(cost::specified_cost(&doc), 5_000.0, "only the non-reference bound item counts");
+
+        // Flip the counted desk to reference → cost drops to 0.
+        doc.component_mut(paid).unwrap().reference = true;
+        assert_eq!(cost::specified_cost(&doc), 0.0, "reference furniture contributes 0 to cost");
+        // Adopt the legacy desk into the fit-out (un-reference) → its price counts.
+        doc.component_mut(legacy).unwrap().reference = false;
+        assert_eq!(cost::specified_cost(&doc), 9_000.0, "un-referenced bound desk re-enters cost");
+    }
+
+    /// INV3: `area_per_workstation` is NIA / workstations, and is a defined finite
+    /// 0.0 (never NaN / div-by-zero) when workstations == 0 — including the
+    /// all-reference doc and the empty doc (floor_area 0).
+    #[test]
+    fn inv3_area_per_workstation_is_finite_and_zero_guarded() {
+        // All-reference doc: workstations 0 → apw 0.0 finite.
+        let mut doc = plate_ws_meeting_gap();
+        for i in 0..4 {
+            let id = doc_next(&mut doc);
+            doc.components.push(comp(id, "Desk", 2.0 + i as f64, 5.0, true, None));
+        }
+        doc.reassign_components();
+        assert_eq!(workstation_count(&doc), 0);
+        let apw = area_per_ws(&doc);
+        assert!(apw.is_finite() && apw == 0.0, "all-reference → 0 m²/ws, no NaN (got {apw})");
+
+        // Empty doc: no walls, no zones, no components — still 0.0, no NaN.
+        let empty = Document::new();
+        let apw_e = area_per_ws(&empty);
+        assert!(apw_e.is_finite() && apw_e == 0.0, "empty doc → 0 m²/ws, no NaN (got {apw_e})");
+
+        // A single counted desk → apw = NIA / 1, finite and positive.
+        let one = doc_next(&mut doc);
+        doc.components.push(comp(one, "Desk", 3.0, 5.0, false, None));
+        doc.reassign_components();
+        assert_eq!(workstation_count(&doc), 1);
+        assert!(area_per_ws(&doc) > 0.0 && area_per_ws(&doc).is_finite());
+    }
+
+    /// INV4: GEA (floor_area), NIA (Σ effective zone areas) and the programmed
+    /// area that drives efficiency are floor-plate/zone based and NEVER move when
+    /// component `reference` flags flip — the counts change, the areas don't.
+    #[test]
+    fn inv4_areas_and_efficiency_are_invariant_to_reference() {
+        let mut doc = plate_ws_meeting_gap();
+        for i in 0..5 {
+            let id = doc_next(&mut doc);
+            doc.components.push(comp(id, "Desk", 2.0 + i as f64, 5.0, false, None));
+        }
+        doc.reassign_components();
+
+        let gea0 = doc.floor_area();
+        let (areas0, _) = effective_zone_areas(&doc);
+        let nia0: f64 = areas0.iter().sum();
+
+        // Flip every component to reference.
+        for c in doc.components.iter_mut() {
+            c.reference = true;
+        }
+        let gea1 = doc.floor_area();
+        let (areas1, _) = effective_zone_areas(&doc);
+        let nia1: f64 = areas1.iter().sum();
+
+        assert_eq!(gea0, gea1, "GEA is wall-bbox based, unaffected by reference");
+        assert_eq!(areas0, areas1, "per-zone effective areas unaffected by reference");
+        assert!((nia0 - nia1).abs() < 1e-12, "NIA unaffected by reference");
+        // …while the workstation count DID collapse (proving the flip took effect).
+        assert_eq!(workstation_count(&doc), 0);
+    }
+
+    /// INV5: a clean full test-fit is byte-identical to the pre-fix semantics —
+    /// with nothing marked reference, `workstations == every placed Desk` and the
+    /// INV1 identity holds on real generated output. If a generated desk ever fell
+    /// outside a Workspace zone this would fail (a real regression signal).
+    #[test]
+    fn inv5_clean_generate_counts_all_desks() {
+        use crate::layout::{generate, Program};
+        let program = Program::default();
+        let mut doc = layout_test_room(30.0, 20.0);
+        generate(&mut doc, &program, 3, false);
+
+        let desks = doc.components.iter().filter(|c| c.category == "Desk").count();
+        assert!(desks > 0, "a clean fit must seat desks");
+        assert!(
+            doc.components.iter().all(|c| !c.reference),
+            "generated content is never reference"
+        );
+        assert_eq!(workstation_count(&doc), desks, "clean fit: workstations == every placed Desk");
+        assert_eq!(
+            workstation_count(&doc),
+            workspace_seated_sum(&doc),
+            "INV1 holds on real generated output"
+        );
+    }
+
+    /// Only `Desk` ever counts as a workstation — Tables/Chairs/MeetingRooms in a
+    /// Workspace zone never do, reference or not.
+    #[test]
+    fn only_desks_count_as_workstations() {
+        let mut doc = plate_ws_meeting_gap();
+        for (cat, x) in [("Chair", 2.0), ("Table", 3.0), ("MeetingRoom", 4.0)] {
+            let id = doc_next(&mut doc);
+            doc.components.push(comp(id, cat, x, 5.0, false, None));
+        }
+        let desk = doc_next(&mut doc);
+        doc.components.push(comp(desk, "Desk", 6.0, 5.0, false, None));
+        doc.reassign_components();
+        assert_eq!(workstation_count(&doc), 1, "only the Desk counts");
+    }
+
+    /// Persistence / serde gap: an old `.dsource` Document blob written BEFORE the
+    /// `reference` field deserializes with every component defaulting to `false`,
+    /// so it counts exactly as it did pre-fix. Simulated by stripping the field
+    /// from a serialized snapshot (the shape a pre-fix build emitted).
+    #[test]
+    fn old_document_blob_without_reference_deserializes_and_counts() {
+        let mut doc = plate_ws_meeting_gap();
+        let id = doc_next(&mut doc);
+        doc.components.push(comp(id, "Desk", 2.0, 5.0, false, None));
+        doc.reassign_components();
+        let json = serde_json::to_string(&doc).unwrap();
+        assert!(json.contains("\"reference\":false"), "new blobs carry the field");
+        // Strip it → exactly what a pre-`reference` build serialized.
+        let old_blob = json.replace(",\"reference\":false", "");
+        assert!(!old_blob.contains("\"reference\""), "old blob has no reference field");
+        let restored: Document = serde_json::from_str(&old_blob).expect("old blob must parse");
+        assert!(restored.components.iter().all(|c| !c.reference), "missing field → false");
+        assert_eq!(workstation_count(&restored), 1, "counts as before the facet existed");
+    }
+
+    /// Small id allocator so the tests don't juggle a closure borrowing `doc`.
+    fn doc_next(doc: &mut Document) -> u32 {
+        doc.alloc_id()
+    }
+
+    /// Rectangular `w`×`h` plate with SW corner at origin (mirrors layout's test
+    /// helper; local so this module needn't reach into `layout::tests`).
+    fn layout_test_room(w: f64, h: f64) -> Document {
+        let mut doc = Document::new();
+        for (a, b) in [
+            ((0.0, 0.0), (w, 0.0)),
+            ((w, 0.0), (w, h)),
+            ((w, h), (0.0, h)),
+            ((0.0, h), (0.0, 0.0)),
+        ] {
+            let id = doc.alloc_id();
+            doc.walls.push(Wall {
+                id,
+                a: Point::new(a.0, a.1),
+                b: Point::new(b.0, b.1),
+                thickness: 0.1,
+                generated: false,
+                glazing: false,
+            });
+        }
+        doc
+    }
 }

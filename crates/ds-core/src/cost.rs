@@ -65,8 +65,19 @@ pub fn indicative_cost(doc: &Document) -> f64 {
 /// furniture capex* — reported as its own metrics line, NOT folded into
 /// [`indicative_cost`], whose zone rates already include a generic loose-
 /// furniture allowance (adding both would double-count).
+///
+/// **Reference furniture is excluded** (`c.reference`): imported/legacy CAD
+/// pieces are passive context, not part of the fit-out you'd buy (Laiout parity,
+/// see `docs/design/laiout-deep-research.md`). This is the same predicate the
+/// per-element BoQ (`stats.ts` `buildElements`) uses, so the Rust headline capex
+/// and the panel/BoQ agree, and flipping a bound desk to reference drops it from
+/// cost — the invariant `reference contributes 0 to cost`.
 pub fn specified_cost(doc: &Document) -> f64 {
-    doc.components.iter().filter_map(|c| c.price_inr).sum()
+    doc.components
+        .iter()
+        .filter(|c| !c.reference)
+        .filter_map(|c| c.price_inr)
+        .sum()
 }
 
 /// Total indicative embodied carbon of the document's zones (kgCO2e).
