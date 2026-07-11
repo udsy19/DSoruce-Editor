@@ -161,6 +161,31 @@ The qbiq-style flow: Project → Upload → Program → Generate → Editor → 
   face closed). `import/heal.ts` (+ heal.test.mjs, 10/10). E2E: toggle flips 78 m² loop ↔ 79 m² hull.
 - Decisions locked: upload **CAD-only v1** (raster/PDF deferred); Window/Core/Flexible = **soft bias**;
   Space step **re-editable** after generate; DB v2 forward-only upgrade accepted.
+- [~] **Batch 4 — "perfect it here" (user-reported from real use, 2026-07-11).** Root architecture finding
+  ([[laiout-parity-north-star]], `docs/design/laiout-deep-research.md`): DSource had TWO parallel truths —
+  the raw imported `Drawing` vs the core `Document` — so tabs rendered different floors, metrics disagreed
+  (113-vs-1 workstations), plans opened tiny. Laiout has ONE canonical model; every view is a read-only
+  projection. Sequenced builder→reviewer, each browser-verified:
+  1. **Metrics count only generated objects** — `Component` gains a passive `reference: bool` facet
+     (`#[serde(default)]` false); imported furniture stamps in as reference (visible, not counted).
+     `workstation_count()` = non-reference Desks seated in a Workspace zone ⇒ **Workstations == Pax**;
+     `area_per_workstation` guarded. Cost/CO2/BoQ (`cost.rs`, `stats.ts`, `takeoff.ts`) all skip reference.
+     Reviewer caught `specified_cost` still summing re-bound reference prices → `!c.reference` filter.
+  2. **Frame to the shell/plate on open, outlier-proof** — `frameContent` anchors to walls+components,
+     admits CAD entities only if they overlap the shell, retries until the canvas is measured. Reviewer
+     found shell-CROSSING entities (title-block borders, 900 m construction lines) still re-inflated the
+     span to the 8 px/m floor → now clips each admitted entity to shell+margin; also un-crippled the
+     retry budget (was only reset on success → a prior exhausted sequence stranded the next open).
+  3. **Unify views: 2D/3D project the ONE Document** — deleted the divergent raw-drawing 3D
+     (`DrawingScene3D` + dead `buildFromDrawing`) and the `planView` 2D/3D sub-toggle end-to-end; the
+     "Plan" tab is now staging-only (shows while empty/mid-import, retires once a fit exists). Saved-plan
+     restore never reopens a fitted plan into stale `import` mode. Verified live: 2D & 3D render the
+     identical floor with byte-identical stats (80 Pax == 80 Workstations, 703 m² NIA), 0 console errors.
+     *(reviewer hardening in progress.)*
+  4. **Zone-first clean reader + passive reference as a light underlay** — PENDING (next).
+  - Feasibility answered (research): an **agentic senior-designer** layer (Claude decides program/strategy/
+    adjacency/critique; the deterministic solver does geometry) is viable as a hybrid — build after the
+    core is perfected. Pure-LLM geometric placement is unreliable (misalignment/overlaps, even GPT-5).
 
 ## Track B — Test-fit generator quality (`docs/design/testfit-pro-quality.md`)
 Make generated plans read like a senior architect's work, not a diagram.
