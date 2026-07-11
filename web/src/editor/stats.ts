@@ -5,18 +5,20 @@
 // testable and reusable.
 //
 // TWO cost/carbon models coexist by design (different responsibility):
-//   • The Rust core (`cost.rs`) computes a *coarse, zone-area* total
-//     (`Σ area × per-m² rate`) — one number for the headline.
-//   • This module computes a *fine, per-element* decomposition — partitions by
-//     length, floor + lighting by area, furniture by unit (honouring Materio
-//     product bindings). The zone-area model can't produce per-element line
-//     items, so we fork intentionally. The panel shows this element model's own
-//     grand total everywhere it appears, so every view stays self-consistent
-//     (Σ lines = group total = grand total).
+//   • The Rust core (`cost.rs`) computes the *headline* fit-out total from the
+//     same element factors used here (base shell per m² + partitions per m +
+//     doors per leaf + enclosed-room premium per m² + furniture per unit).
+//   • This module computes the *fine, per-element* BoQ decomposition the panel
+//     renders, honouring Materio product bindings on furniture. It mirrors the
+//     core's rates so the sidebar total tracks the headline — **keep the two in
+//     lockstep** (rates live in `cost.rs` `BASE_SHELL`/`PARTITION_*`/`DOOR`/
+//     `ENCLOSURE_PREMIUM`/`furniture_rate`; change one, change both). The panel
+//     shows this element model's own grand total everywhere it appears, so every
+//     view stays self-consistent (Σ lines = group total = grand total).
 //
 // Currency is ₹ (India-first, matching the material bank + app convention).
 
-import type { DocState, DocWall, ZoneStat, ZoneType } from './EditorCanvas'
+import type { DocState, DocWall, DocZone, ZoneStat, ZoneType } from './EditorCanvas'
 import { searchBank } from '../materialBank/mock'
 import { searchOfficeBank } from '../materialBank/office'
 
@@ -145,38 +147,41 @@ export function buildZones(zoneStats: ZoneStat[]): ZonesBreakdown {
 // Furniture / Lighting), the source for both the CO2 and Costs tabs.
 // =========================================================================
 //
-// FACTORS (indicative planning figures, tunable in one place):
-//  Partition wall  — per LINEAR METRE (assumes a ~2.7 m storey height):
-//    Default (stud + board):  40 kgCO2e/m,  ₹1,800/m
-//    Glass (framed glazing):  95 kgCO2e/m,  ₹4,500/m
-//  Floor finish     — per m² NIA:  45 kgCO2e/m²,  ₹850/m²
-//  Lighting (custom)— per m² NIA:  12 kgCO2e/m²,  ₹350/m²
-//  Furniture        — per UNIT, by grouped category (cost falls back to these
-//    when a component has no Materio product binding; a bound product's real
-//    price overrides the default):
-//    Seating   45 kgCO2e,  ₹700    Table    90 kgCO2e,  ₹950
-//    Storage  110 kgCO2e,  ₹1,000  Privacy 160 kgCO2e,  ₹8,000 (pod/booth)
-//    Accessory 15 kgCO2e,  ₹300    Door     35 kgCO2e,  ₹1,200
-// Sources: fit-out embodied-carbon order-of-magnitude (partitioning/joinery/
-// services ~100–400 kgCO2e/m²; see cost.rs) apportioned to the element that
-// carries it. Costs kept in the same magnitude as cost.rs + the material bank.
+// FACTORS — **in lockstep with `cost.rs`** (India cat-B fit-out, ₹ INR;
+// embodied carbon per LETI/RICS ~100–400 kgCO2e/m²). Change here ⇒ change there.
+//  Base shell (Floor + Lighting) — per m² NIA, the open-plan area-driven scope
+//    (flooring, grid ceiling, ambient lighting, HVAC dist, power/data, fire):
+//    Floor    45 kgCO2e/m²,  ₹9,000/m²   Lighting  10 kgCO2e/m²,  ₹2,000/m²
+//    (Σ = cost.rs BASE_SHELL 55 kgCO2e/m², ₹11,000/m²)
+//  Partition wall — per LINEAR METRE (~2.7 m storey), GENERATED walls only
+//    (the fit-out enclosure; the architectural envelope is base-build):
+//    Default (boarded drywall): 55 kgCO2e/m,  ₹3,200/m
+//    Glass (framed glazing):   130 kgCO2e/m,  ₹9,000/m
+//  Enclosed-room premium — per m² of enclosed floor (Meeting / Closed Office):
+//    acoustic ceiling, dedicated HVAC, AV:  70 kgCO2e/m²,  ₹4,000/m²
+//  Furniture — per UNIT, by grouped category (cost falls back to these when a
+//    component has no Materio binding; a bound product's real price overrides):
+//    Seating   45 kgCO2e,  ₹8,000    Table   100 kgCO2e,  ₹15,000 (desk/table)
+//    Storage  110 kgCO2e,  ₹9,000    Privacy 250 kgCO2e,  ₹120,000 (pod/booth)
+//    Accessory 15 kgCO2e,  ₹2,000    Door     90 kgCO2e,  ₹22,000 (leaf+frame)
 
 const WALL = {
-  default: { co2PerM: 40, costPerM: 1_800 },
-  glass: { co2PerM: 95, costPerM: 4_500 },
+  default: { co2PerM: 55, costPerM: 3_200 },
+  glass: { co2PerM: 130, costPerM: 9_000 },
 }
-const FLOOR = { co2PerM2: 45, costPerM2: 850 }
-const LIGHTING = { co2PerM2: 12, costPerM2: 350 }
+const FLOOR = { co2PerM2: 45, costPerM2: 9_000 }
+const LIGHTING = { co2PerM2: 10, costPerM2: 2_000 }
+const ENCLOSURE = { co2PerM2: 70, costPerM2: 4_000 }
 
 type FurnGroup = 'Seating' | 'Table' | 'Storage' | 'Privacy' | 'Accessory' | 'Door'
 const FURN_ORDER: FurnGroup[] = ['Seating', 'Table', 'Storage', 'Privacy', 'Accessory', 'Door']
 const FURN: Record<FurnGroup, { co2: number; cost: number }> = {
-  Seating: { co2: 45, cost: 700 },
-  Table: { co2: 90, cost: 950 },
-  Storage: { co2: 110, cost: 1_000 },
-  Privacy: { co2: 160, cost: 8_000 },
-  Accessory: { co2: 15, cost: 300 },
-  Door: { co2: 35, cost: 1_200 },
+  Seating: { co2: 45, cost: 8_000 },
+  Table: { co2: 100, cost: 15_000 },
+  Storage: { co2: 110, cost: 9_000 },
+  Privacy: { co2: 250, cost: 120_000 },
+  Accessory: { co2: 15, cost: 2_000 },
+  Door: { co2: 90, cost: 22_000 },
 }
 
 /** Map a component category (native or imported) onto a furniture group. */
@@ -202,22 +207,13 @@ function buildPriceMap(): Map<string, number> {
 
 const wallLen = (w: DocWall) => Math.hypot(w.b.x - w.a.x, w.b.y - w.a.y)
 
-/** A wall is treated as GLASS when it runs along the edge of an enclosed room
- *  (Meeting / Breakout / Closed Office) — those fronts are glazed. */
-function isGlassWall(w: DocWall, state: DocState): boolean {
-  const mx = (w.a.x + w.b.x) / 2
-  const my = (w.a.y + w.b.y) / 2
-  const tol = 0.2
-  for (const z of state.zones ?? []) {
-    if (z.zone_type !== 'Meeting' && z.zone_type !== 'Collaboration' && z.zone_type !== 'ClosedOffice') continue
-    if (z.shape.kind !== 'Rect') continue
-    const { x, y, w: zw, h: zh } = z.shape
-    const l = x - zw / 2, r = x + zw / 2, t = y - zh / 2, b = y + zh / 2
-    const onV = (Math.abs(mx - l) < tol || Math.abs(mx - r) < tol) && my > t - tol && my < b + tol
-    const onH = (Math.abs(my - t) < tol || Math.abs(my - b) < tol) && mx > l - tol && mx < r + tol
-    if (onV || onH) return true
-  }
-  return false
+/** Net area of a zone from its shape, m². Enclosed rooms are `Rect` and lie
+ *  fully inside the plate, so unclipped shape area == the core's plate-clipped
+ *  area — the two enclosure premiums agree. */
+function zoneArea(z: DocZone): number {
+  const s = z.shape
+  if (s.kind === 'RectRing') return Math.max(0, s.w * s.h - s.in_w * s.in_h)
+  return Math.max(0, s.w * s.h)
 }
 
 export interface ElementLine {
@@ -252,11 +248,13 @@ const ELEMENT_COLOR = {
 export function buildElements(state: DocState, nia: number): ElementBreakdown {
   const groups: ElementGroup[] = []
 
-  // 1. Partition Wall — Default / Glass, by linear metre
-  const walls = state.walls ?? []
+  // 1. Partition Wall — GENERATED interior partitions only (the fit-out
+  //    enclosure; the architectural envelope is base-build). Solid vs glazed by
+  //    the `glazing` flag the generator sets on corridor glass fronts.
+  const walls = (state.walls ?? []).filter((w) => w.generated)
   if (walls.length > 0) {
     let defLen = 0, glassLen = 0
-    for (const w of walls) (isGlassWall(w, state) ? (glassLen += wallLen(w)) : (defLen += wallLen(w)))
+    for (const w of walls) (w.glazing ? (glassLen += wallLen(w)) : (defLen += wallLen(w)))
     const lines: ElementLine[] = []
     if (defLen > 0)
       lines.push({ label: 'Default', qty: defLen, unit: 'm', co2: defLen * WALL.default.co2PerM, cost: defLen * WALL.default.costPerM })
@@ -265,7 +263,7 @@ export function buildElements(state: DocState, nia: number): ElementBreakdown {
     if (lines.length) groups.push(makeGroup('Partition Wall', ELEMENT_COLOR.partition, lines))
   }
 
-  // 2. Floor — by area (NIA)
+  // 2. Floor + base shell — by area (NIA)
   if (nia > 0)
     groups.push(
       makeGroup('Floor', ELEMENT_COLOR.floor, [
@@ -273,7 +271,19 @@ export function buildElements(state: DocState, nia: number): ElementBreakdown {
       ]),
     )
 
-  // 3. Furniture — by grouped category, per unit (bound price overrides default)
+  // 3. Enclosed-room premium — acoustic ceiling / dedicated HVAC / AV, per m² of
+  //    enclosed floor (Meeting / Closed Office). Open plan never incurs it.
+  const enclosedArea = (state.zones ?? [])
+    .filter((z) => z.zone_type === 'Meeting' || z.zone_type === 'ClosedOffice')
+    .reduce((s, z) => s + zoneArea(z), 0)
+  if (enclosedArea > 0)
+    groups.push(
+      makeGroup('Room Fit-out', ELEMENT_COLOR.partition, [
+        { label: 'Ceiling + HVAC + AV', qty: enclosedArea, unit: 'm²', co2: enclosedArea * ENCLOSURE.co2PerM2, cost: enclosedArea * ENCLOSURE.costPerM2 },
+      ]),
+    )
+
+  // 4. Furniture — by grouped category, per unit (bound price overrides default)
   const priceMap = buildPriceMap()
   const fb = new Map<FurnGroup, { count: number; co2: number; cost: number }>()
   for (const c of state.components ?? []) {
