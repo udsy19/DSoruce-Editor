@@ -23,7 +23,6 @@ import { triggerDownload } from '../export/png'
 /** Best-effort UI restore hints (which view the plan was saved from). */
 export interface DSourceUi {
   mode?: string
-  planView?: string
 }
 
 /** Price/thumbnail of a bound bank product — keyed by productId in `bindings`.
@@ -190,7 +189,6 @@ export function parseProject(text: string): DSourceFile {
   const ui = isRecord(raw.ui)
     ? {
         ...(typeof raw.ui.mode === 'string' ? { mode: raw.ui.mode } : {}),
-        ...(typeof raw.ui.planView === 'string' ? { planView: raw.ui.planView } : {}),
       }
     : undefined
 

@@ -26,7 +26,6 @@ import { AgentPanel } from './ai/AgentPanel'
 import { suggestProgram, suggestProgramSummary } from './ai/suggestProgram'
 import { Scene3D } from './three/Scene3D'
 import { DrawingView } from './import/DrawingView'
-import { DrawingScene3D } from './three/DrawingScene3D'
 import { FurnitureInspector } from './import/FurnitureInspector'
 import { parseDrawing } from './import/dxf'
 import type { Drawing, FurnitureItem } from './import/types'
@@ -271,7 +270,6 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
   const [selItem, setSelItem] = useState<FurnitureItem | null>(null)
   const [importing, setImporting] = useState(false)
   const [importErr, setImportErr] = useState<string | null>(null)
-  const [planView, setPlanView] = useState<'2d' | '3d'>('2d')
   const [plateNotice, setPlateNotice] = useState<{
     variant: 'ok' | 'warn'
     msg: string
@@ -427,7 +425,7 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
   const onSave = () => {
     const ec = ecRef.current
     if (!ec) return
-    saveProject({ ec, drawing, bindings, ui: { mode, planView } })
+    saveProject({ ec, drawing, bindings, ui: { mode } })
   }
   const onSaveRef = useRef(onSave)
   onSaveRef.current = onSave
@@ -442,10 +440,15 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
     // restore (or clear) so a reopened import session keeps its ₹ data.
     setBindings(new Map(Object.entries(f.bindings ?? {})))
     setSelItem(null)
-    // Best-effort UI restore — fall back safely when hints are absent.
+    // Best-effort UI restore — fall back safely when hints are absent. The raw
+    // import-staging view (mode 'import') only exists while the document is empty;
+    // once a fit was placed, the plan lives in the ONE Document, so restore to 2D.
     const m = f.ui?.mode
-    setMode(m === '3d' ? '3d' : m === 'import' && f.drawing ? 'import' : '2d')
-    setPlanView(f.ui?.planView === '3d' ? '3d' : '2d')
+    const savedEmpty =
+      ec.getMetrics().wall_count === 0 &&
+      ec.getMetrics().component_count === 0 &&
+      ec.cad.store.entities.length === 0
+    setMode(m === '3d' ? '3d' : m === 'import' && f.drawing && savedEmpty ? 'import' : '2d')
   }
 
   const onOpenProject = async (file: File) => {
@@ -495,7 +498,7 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
     const ec = ecRef.current
     if (!ec) return
     const thumb = renderThumb(ec.getState(), 200, 140)
-    const saved = buildSavedPlan(ec, name, { drawing, bindings, ui: { mode, planView }, thumb })
+    const saved = buildSavedPlan(ec, name, { drawing, bindings, ui: { mode }, thumb })
     await putPlan(saved)
     setCurrentPlanId(saved.id) // the live doc IS this record now
     await refreshLibrary()
@@ -517,7 +520,7 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
       buildSavedPlan(ec, name, {
         drawing,
         bindings,
-        ui: { mode, planView },
+        ui: { mode },
         snapshot: c.snap as string,
         thumb: c.thumb,
       }),
@@ -528,7 +531,7 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
   /** Carry a chosen Generate-step candidate into the editor: make it live and
    *  save it as a project floor so it deep-links + persists. Mirrors
    *  saveCandidateToLibrary but sets the project link (workflow.md §2) and
-   *  returns the id. Kept in render scope (fresh drawing/bindings/planView) and
+   *  returns the id. Kept in render scope (fresh drawing/bindings) and
    *  reached from the memoized controller via a ref, like onSaveRef. */
   const openCandidateInEditor = async (
     c: Candidate,
@@ -540,7 +543,7 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
     const saved = buildSavedPlan(ec, proj ? `${proj.name} · ${proj.floor}` : `Option · seed ${c.seed}`, {
       drawing,
       bindings,
-      ui: { mode: '2d', planView },
+      ui: { mode: '2d' },
       snapshot: c.snap as string,
       thumb: c.thumb,
       project: proj ? { projectId: proj.id, projectName: proj.name, floor: { label: proj.floor, index: 0 } } : undefined,
@@ -950,7 +953,11 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
             <button className={mode === '3d' ? 'seg on' : 'seg'} onClick={() => setMode('3d')} data-testid="mode-3d">
               3D
             </button>
-            {drawing && (
+            {/* The raw import-staging view exists only BEFORE a fit is placed. Once
+                a test-fit exists, the plan lives entirely in the ONE Document (2D/3D
+                project it), so the raw-drawing tab is retired to avoid a second,
+                divergent truth. It reappears only while empty or mid-import. */}
+            {drawing && (docEmpty || mode === 'import') && (
               <button
                 className={mode === 'import' ? 'seg on' : 'seg'}
                 onClick={() => setMode('import')}
@@ -961,24 +968,6 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
               </button>
             )}
           </div>
-          {mode === 'import' && drawing && (
-            <div className="mode-toggle" role="group" aria-label="Plan view">
-              <button
-                className={planView === '2d' ? 'seg on' : 'seg'}
-                onClick={() => setPlanView('2d')}
-                data-testid="plan-2d"
-              >
-                Plan
-              </button>
-              <button
-                className={planView === '3d' ? 'seg on' : 'seg'}
-                onClick={() => setPlanView('3d')}
-                data-testid="plan-3d"
-              >
-                3D
-              </button>
-            </div>
-          )}
           {mode === 'import' && drawing && (
             <button className="export-btn" onClick={() => testFitPlan()} data-testid="testfit-plan">
               Test-fit this plan
@@ -1078,10 +1067,7 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
               </button>
             )}
             {mode === '3d' && ready && ec && <Scene3D state={ec.getState()} />}
-            {mode === 'import' && drawing && planView === '3d' && (
-              <DrawingScene3D drawing={drawing} />
-            )}
-            {mode === 'import' && drawing && planView === '2d' && (
+            {mode === 'import' && drawing && (
               <DrawingView
                 drawing={drawing}
                 onSelect={setSelItem}

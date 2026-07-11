@@ -2,8 +2,8 @@ import * as THREE from 'three'
 
 // Shared 3D-furniture contract. `buildFurniture3D` returns an Object3D sitting on
 // the floor (y=0 at its base), centered on X/Z, sized to fit within a w (X) × d (Z)
-// footprint, for a given category. Used by both the generated-plan viewer
-// (`Viewer3D`) and the imported-plan 3D builder (`buildFromDrawing`).
+// footprint, for a given category. Used by the plan viewer (`Viewer3D`) and the
+// section renderer (`sectionRender`).
 //
 // Models are Revit/Laiout-grade parametric procedural geometry — every part is a
 // mesh that SHARES a handful of module-level unit geometries + materials, so a

@@ -7,8 +7,8 @@ import type { DocState } from '../editor/EditorCanvas'
 
 /**
  * Minimal selection card for a 3D pick, anchored at the click position and
- * clamped inside the viewer container. Shared by {@link Scene3D} and
- * {@link DrawingScene3D}. NOTE: this deliberately mirrors the visual language
+ * clamped inside the viewer container. Used by {@link Scene3D}.
+ * NOTE: this deliberately mirrors the visual language
  * of ui/SelectionCard (white, 12px radius, soft shadow, ~240px, title/subtitle/
  * status chip) but is kept local because that component is owned by a parallel
  * change — merge the two once ui/SelectionCard stabilizes.
