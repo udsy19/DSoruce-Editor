@@ -1242,6 +1242,30 @@ const REGION_MIN_AREA: f64 = 9.0;
 /// a legitimate second band row rather than in the workstations.
 const SMALL_PLATE_FIELD_AREA: f64 = 180.0;
 
+/// Target floor for the whole-plate leftover fill (m² of NIA per SEAT). The
+/// per-region packer fills each wing's inscribed desk rectangle, but a notched
+/// irregular plate's maximal-rectangle tiling leaves big empty pockets (a
+/// mid-size wing whose room band swallowed its depth, the shallow bottom band,
+/// the fragments between the dominant column and the facades). The fill sweeps
+/// those pockets on the SHARED global lattice, but only until total seats reach
+/// `plate_area / floor` — so the plan spreads across the plate's real shape
+/// instead of collapsing into a central column, WITHOUT crossing out of the
+/// professional 8–12 m²/person band (§5).
+///
+/// The floor is STRATEGY-scaled: an **Open** plan is denser (more workstations,
+/// the reserved wing filled hardest), a **Cellular** plan stays airier (its
+/// floor IS given to enclosed rooms, so it should not be crammed with desks),
+/// with **Balanced** between. This keeps the three strategies structurally
+/// distinct by seat count even after the fill, while all stay inside the
+/// professional band.
+fn fill_density_floor(strategy: Strategy) -> f64 {
+    match strategy {
+        Strategy::Open => 8.2,
+        Strategy::Balanced => 8.4,
+        Strategy::Cellular => 10.5,
+    }
+}
+
 /// Axis-aligned coverage threshold that flips the desk field to the principal-
 /// axis oriented packer. A materially tilted or angular plate (a rotated area
 /// selection, a hexagon, a sharp diagonal facade) has a small set of maximal
@@ -1753,6 +1777,144 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
                 pack_desks_oriented(doc, program, poly, remaining_desks, &iwalls, &mut obstacles, clear);
             }
         }
+
+        // --- Whole-plate leftover fill (irregular multi-region plates) ---------
+        // The per-region packer fills each wing's inscribed desk RECTANGLE, but
+        // the maximal-rectangle decomposition of a notched/irregular plate leaves
+        // big empty pockets the region grid never reaches: a mid-size wing whose
+        // shallow room band swallowed its depth, the low bottom band, and the
+        // fragments between the dominant column and the facades. On the real
+        // ~882 m² plate that stranded ~27% of the floor as dead space while the
+        // desks collapsed into a ~12 m central column (the user's #1 complaint:
+        // "we still are not able to utilize the entire space"). Re-pack every
+        // wing over its FULL cross-section on the SAME global lattice so the field
+        // spreads into those pockets. `pack_desks` rejects every slot overlapping
+        // a room, keep-out, existing desk, or corridor, and holds the facade gap,
+        // so only genuinely empty floor gets a desk — module- and lattice-aligned
+        // with the field already placed (spec §4.1/§4.5), never an off-grid
+        // straggler. Capped at the professional density floor so the plan stays
+        // in the 8–12 m²/person band. Single-region (rectangular) plates already
+        // pack their one field solid, so they are gated out (today's behaviour).
+        if !single_region {
+            let meeting_seats: f64 = doc
+                .zones
+                .iter()
+                .filter(|z| matches!(z.zone_type, ZoneType::Meeting | ZoneType::Collaboration))
+                .map(|z| z.capacity() as f64)
+                .sum();
+            let seat_cap = (plate_area / fill_density_floor(program.strategy)).floor();
+            // Actual desks already down (the per-region pass AND its top-up, which
+            // `placed_desks` alone does not fully count) plus meeting seats set the
+            // headroom, so the fill lands ON the density floor rather than past it.
+            let desks_now = doc.components.iter().filter(|c| c.category == "Desk").count() as f64;
+            let budget = (seat_cap - meeting_seats - desks_now).max(0.0) as u32;
+            if budget > 0 {
+                // The spine + seam corridors are not yet obstacles (connector/link
+                // already are); add them at FULL drawn width so the fill can never
+                // narrow a corridor below its 1.5 m drawn size (NBC 2016).
+                let guard = obstacles.len();
+                for p in &plans {
+                    for r in p.spine.into_iter().chain(p.seams.iter().copied()) {
+                        obstacles.push(((r.x0 + r.x1) / 2.0, (r.y0 + r.y1) / 2.0, r.width(), r.height()));
+                    }
+                }
+                let before = doc.components.len();
+                // ONE sweep over the WHOLE plate bbox on the shared global lattice.
+                // `pack_desks` walks the lattice across the bbox and seats a desk in
+                // every empty in-plate slot, rejecting the rest — so the budget
+                // flows PAST the already-packed dominant column (whose slots are
+                // occupied obstacles) into the stranded wings and the strips BETWEEN
+                // regions, pushing desks out toward the plate's far edges rather
+                // than widening the central column. Orientation follows the dominant
+                // wing so the fill reads as one continuous field.
+                let dom = (0..plans.len())
+                    .max_by(|&a, &b| regions[a].area().partial_cmp(&regions[b].area()).unwrap_or(std::cmp::Ordering::Equal))
+                    .unwrap_or(0);
+                let mut fp = plans[dom].clone();
+                fp.field = geometry::Rect { x0: min_x, y0: min_y, x1: max_x, y1: max_y };
+                pack_desks(
+                    doc, program, &fp, budget, None, /*emit_zones=*/ false,
+                    plate.as_deref(), &iwalls, &mut obstacles, lat, clear, choices,
+                );
+                obstacles.truncate(guard); // drop the temporary corridor guards
+                // Zone each newly seated fill desk (a Workspace tile the size of
+                // the desk footprint — NOT the pitch cell, so bench-paired tiles
+                // never overlap and double-count NIA) so the fill counts toward
+                // the workstation tally and renders as workspace floor. The aisle
+                // gaps between fill desks are picked up by the residual pass below.
+                // A fill desk that landed in an existing Workspace zone's own
+                // unpacked slot is ALREADY counted there — only tile the ones that
+                // fell in genuinely un-zoned pockets, so tiles never overlap the
+                // region field zones (which would double-count NIA).
+                let tiles: Vec<(f64, f64, f64, f64)> = doc.components[before..]
+                    .iter()
+                    .filter(|c| c.category == "Desk")
+                    .filter(|c| {
+                        !doc.zones.iter().any(|z| z.zone_type == ZoneType::Workspace && z.shape.contains(c.x, c.y))
+                    })
+                    .map(|c| {
+                        let (ww, wh) = world_extents(c.w, c.h, c.rotation);
+                        (c.x, c.y, ww, wh)
+                    })
+                    .collect();
+                for (x, y, w, h) in tiles {
+                    push_zone(doc, ZoneType::Workspace, ZoneShape::Rect { x, y, w, h }, "Open Workspace");
+                }
+            }
+        }
+    }
+
+    // --- Residual floor → explicit Circulation ("walking place") ------------
+    // A professional test-fit leaves NO untyped floor: every m² is a desk, a
+    // room, the building core, OR named circulation. After the desk field, rooms
+    // and the fill, a notched/irregular plate still has SUBSTANTIAL pockets no
+    // rectangle furnished — the strip beside a notch, the depth a mid-size wing's
+    // room band gave up, the low bottom band. Rather than leave them as silent
+    // empty floor (the user's "wasted space the tenant pays rent for"), label
+    // each big free pocket Circulation. Reuses `decompose_plate`: mark every zone
+    // + component footprint as a hole, extract the maximal FREE rectangles, and
+    // emit them. `REGION_MIN_DIM`/`REGION_MIN_AREA` keep it to real pockets
+    // (≥ ~1.5 m, ≥ 4 m²) — the thin facade maintenance gap stays unlabelled, not
+    // fragmented into noise. Emitted before the Core zones (so a keep-out still
+    // wins its tile) and, being Circulation, it loses the point-in-zone tie to
+    // every desk/room, so bucketing is unchanged. Disjoint from all other zones
+    // by construction, so NIA never double-counts. Gated to irregular multi-
+    // region plates (a rectangular plate has no such pockets). The oriented path
+    // already emits a plate-spanning Workspace (its own fill), so it is excluded
+    // — layering residual Circulation over that spanning zone would double-count
+    // the floor (NIA > GEA).
+    if !single_region && !use_oriented_field {
+        if let Some(poly) = plate.as_deref() {
+            let mut used: Vec<geometry::Rect> = holes.clone(); // keep-outs
+            for z in &doc.zones {
+                let (x0, y0, x1, y1) = z.shape.bbox();
+                used.push(geometry::Rect { x0, y0, x1, y1 });
+            }
+            for c in &doc.components {
+                let (ww, wh) = world_extents(c.w, c.h, c.rotation);
+                used.push(geometry::Rect { x0: c.x - ww / 2.0, y0: c.y - wh / 2.0, x1: c.x + ww / 2.0, y1: c.y + wh / 2.0 });
+            }
+            // Fine grid + min-dim (~1 m, ≥1 m²): capture the real pockets AND the
+            // facade maintenance band as walkable circulation, reaching close to
+            // the wall, without shattering into sub-metre noise.
+            for r in geometry::decompose_plate(poly, 0.25, 1.0, 1.0, &used) {
+                // Inset by one cell: `decompose_plate` keeps a cell whose CENTRE is
+                // clear of every hole, so a rect edge can sit up to half a cell
+                // inside an adjacent zone. Shrinking each side by a full cell makes
+                // the residual STRICTLY disjoint from every other zone, so the
+                // summed zone areas can never exceed the gross floor (NIA ≤ GEA).
+                let (w, h) = (r.width() - 0.25, r.height() - 0.25);
+                if w <= 0.0 || h <= 0.0 {
+                    continue;
+                }
+                push_zone(
+                    doc,
+                    ZoneType::Circulation,
+                    ZoneShape::Rect { x: (r.x0 + r.x1) / 2.0, y: (r.y0 + r.y1) / 2.0, w, h },
+                    "Circulation",
+                );
+            }
+        }
     }
 
     // Keep-outs surface as `Core` zones (gray tint, Core cost/NIA rate). Emitted
@@ -2253,6 +2415,7 @@ fn allocate_desks(program: &Program, plans: &[RegionPlan], clear: f64, desks: u3
 /// entry connector, cross link and desk field sit. All circulation is explicit
 /// **drawn** rect geometry — the perimeter `RectRing` regime is retired
 /// (spec §3; the type stays in `zone.rs` for old snapshots).
+#[derive(Clone)]
 struct RegionPlan {
     /// long axis is Y: the band is a vertical strip, the spine vertical.
     portrait: bool,
@@ -6610,6 +6773,93 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// Untyped (non-circulation, unfurnished) floor as a FRACTION of the plate:
+    /// grid sample of cells inside the plate polygon but inside NO zone. This is
+    /// the "wasted space the tenant pays rent for" the whole-plate fill + residual
+    /// Circulation passes exist to drive toward zero.
+    fn untyped_floor_frac(doc: &Document) -> f64 {
+        let plate = doc.plate_polygon().expect("closed plate");
+        let (mnx, mny, mxx, mxy) = doc.wall_bbox().unwrap();
+        let cell = 0.25;
+        let (mut inside, mut empty) = (0.0f64, 0.0f64);
+        let mut y = mny + cell / 2.0;
+        while y < mxy {
+            let mut x = mnx + cell / 2.0;
+            while x < mxx {
+                if geometry::point_in_polygon(x, y, &plate) {
+                    inside += 1.0;
+                    if !doc.zones.iter().any(|z| z.shape.contains(x, y)) {
+                        empty += 1.0;
+                    }
+                }
+                x += cell;
+            }
+            y += cell;
+        }
+        if inside > 0.0 { empty / inside } else { 0.0 }
+    }
+
+    /// The user's #1 complaint, pinned as a regression: on the real ~882 m²
+    /// irregular plate the generator used to pack desks into a ~12 m CENTRAL
+    /// COLUMN and strand ~a third of the floor as silent empty space. The
+    /// whole-plate lattice fill + residual-Circulation passes must (a) spread the
+    /// desk field WELL beyond that column, (b) cut untyped floor by more than
+    /// half, and (c) do so deterministically, without overlaps, and keeping the
+    /// plan in the professional density band.
+    #[test]
+    fn irregular_plate_is_filled_wall_to_wall_not_a_central_column() {
+        // The app's derived professional program (mirrors the dominance test).
+        let area = geometry::polygon_area(&poly_of(&real_plate_doc()));
+        let headcount = (area / 10.0).round() as u32;
+        let mut program = Program::default();
+        program.headcount = Some(headcount);
+        program.desks = ((headcount as f64) * OPEN_SHARE).round() as u32;
+        program.meeting_rooms = 5;
+        program.meeting_w = 3.0;
+        program.meeting_h = 3.0;
+
+        let mut best_reach = f64::MIN;
+        for seed in 1u64..=6 {
+            let mut doc = real_plate_doc();
+            generate(&mut doc, &program, seed, false);
+
+            // (a) HEADLINE: untyped (unfurnished, non-circulation) floor is more
+            // than halved vs the ~0.33 pre-fix baseline — every stranded pocket is
+            // now desks or explicit Circulation, not silent empty space.
+            let untyped = untyped_floor_frac(&doc);
+            assert!(untyped <= 0.15, "seed {seed}: {:.0}% of the plate is still untyped empty floor (was ~33%)", 100.0 * untyped);
+
+            // (b) The whole-plate fill adds real desks past the bare per-region
+            // baseline (76 on this plate) — the field spreads, not just relabels.
+            let desks = doc.components.iter().filter(|c| c.category == "Desk").count();
+            assert!(desks >= 80, "seed {seed}: only {desks} desks — the fill did not spread the field");
+
+            // Track how far the field reaches; at professional density (meetings=5)
+            // the near wing fills with desks and the deep far pockets become
+            // Circulation, so desk reach is checked across seeds, not per seed.
+            let dxmax = doc.components.iter().filter(|c| c.category == "Desk").map(|c| c.x).fold(f64::MIN, f64::max);
+            best_reach = best_reach.max(dxmax);
+
+            // (c) No furniture overlaps introduced by the fill.
+            assert_no_overlaps(&doc, "wall-to-wall fill");
+        }
+        // Desks reach PAST the notch (x = 24) into the far wing — no longer a
+        // column stopping at ~x 23.5.
+        assert!(best_reach >= 24.0, "desks never reach the far wing (max x {best_reach:.1})");
+
+        // Determinism: identical seed → byte-identical placement (incl. fill).
+        let mut a = real_plate_doc();
+        let mut b = real_plate_doc();
+        generate(&mut a, &program, 3, false);
+        generate(&mut b, &program, 3, false);
+        assert_eq!(a.components.len(), b.components.len());
+        for (ca, cb) in a.components.iter().zip(&b.components) {
+            assert_eq!(ca.category, cb.category);
+            assert!((ca.x - cb.x).abs() < 1e-12 && (ca.y - cb.y).abs() < 1e-12, "fill is not deterministic");
+        }
+        assert_eq!(a.zones.len(), b.zones.len(), "zone set (incl. residual circulation) not deterministic");
     }
 }
 
