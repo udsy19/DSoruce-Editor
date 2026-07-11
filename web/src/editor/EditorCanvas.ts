@@ -1728,7 +1728,13 @@ export class EditorCanvas {
    *  2. **Viewport not yet measured on open.** A saved plan can open before layout
    *     has sized the canvas; a zero/tiny measurement would mis-frame. We retry on
    *     the next frame (capped) until the canvas has a real size. */
-  frameContent(padding = 0.08) {
+  frameContent(padding = 0.08, isRetry = false) {
+    // A fresh (non-retry) request must start with a full retry budget. The counter
+    // is instance state shared across every frame attempt and is only cleared on a
+    // SUCCESSFUL frame — so if a prior sequence exhausted it against a hidden canvas
+    // and never succeeded, it would stay saturated and make THIS open give up on its
+    // first tiny measurement and never frame (a permanent cripple). Reset on entry.
+    if (!isRetry) this.frameRetries = 0
     // Ensure the canvas is measured (may be freshly un-hidden from 3D/route change).
     this.resize()
     const w = this.canvas.width / this.dpr
@@ -1739,7 +1745,7 @@ export class EditorCanvas {
     if (w < FRAME_MIN_VIEWPORT_PX || h < FRAME_MIN_VIEWPORT_PX) {
       if (this.frameRetries < FRAME_MAX_RETRIES) {
         this.frameRetries++
-        requestAnimationFrame(() => this.frameContent(padding))
+        requestAnimationFrame(() => this.frameContent(padding, true))
       }
       return
     }
@@ -1784,8 +1790,16 @@ export class EditorCanvas {
       const gMaxY = aMaxY + margin
       for (const e of this.cad.store.entities) {
         const [ex0, ey0, ex1, ey1] = entityBBox(e)
-        if (ex1 < gMinX || ex0 > gMaxX || ey1 < gMinY || ey0 > gMaxY) continue // outlier
-        acc(ex0, ey0, ex1, ey1)
+        if (ex1 < gMinX || ex0 > gMaxX || ey1 < gMinY || ey0 > gMaxY) continue // outlier: no overlap
+        // Clip the admitted entity to the grown-anchor window before accumulating.
+        // Rejecting only entities that are ENTIRELY outside isn't enough: a single
+        // entity that OVERLAPS or ENCLOSES the shell — a title-block border around the
+        // whole sheet, a grid/match/construction line that starts on the plate and runs
+        // out to 900 m (both routine in imported DXFs) — passes the overlap test and,
+        // taken at full extent, re-inflates the span straight back to the 8 px/m floor
+        // and corners the plan (the very symptom this method guards against). Clipping
+        // caps each entity's contribution to shell + one span-margin: bounded and sane.
+        acc(Math.max(ex0, gMinX), Math.max(ey0, gMinY), Math.min(ex1, gMaxX), Math.min(ey1, gMaxY))
       }
     } else {
       // No shell — a hand-drawn CAD-only doc: frame to all its entities.
