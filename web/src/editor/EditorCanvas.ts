@@ -18,6 +18,7 @@ import {
 import { fmtMeters, parseDim, endpointForLength } from '../cad/dimEdit'
 import { evaluatorAvailable } from '../ai/evaluator'
 import { applyDelta, proposeAdjustment, refScore, type ProgramDelta } from '../ai/refine'
+import { proposeDesign, applyDesignSpec, type DesignSpec } from '../ai/designer'
 
 // Types mirroring the Rust core's serialized document (serde field names).
 export interface DocWall {
@@ -1691,6 +1692,25 @@ export class EditorCanvas {
 
     this.program = { ...curProgram }
     return { result: curResult, program: curProgram, steps, baseScore, finalScore: curScore, improved: curScore > baseScore + 1e-6, ranAI: true }
+  }
+
+  /**
+   * AGENTIC SENIOR DESIGNER (docs/design/agentic-designer.md, phase 1). Claude
+   * DESIGNS the fit from a brief — deciding the program, strategy, support-room mix
+   * and emphasis — and the deterministic generator PLACES it. A plate must already
+   * exist (walls); the design is sized to the net internal area. Returns the spec
+   * (incl. Claude's rationale) + the realized score, or `null` without a Claude key
+   * / on failure (generation is never blocked — callers fall back to Generate).
+   */
+  async designWithAI(brief: string, seed = 1, signal?: AbortSignal): Promise<{ spec: DesignSpec; score: LayoutScore } | null> {
+    const m = this.getMetrics()
+    if (m.wall_count === 0) return null // no plate to design for
+    const plateAreaM2 = m.net_internal_area ?? m.floor_area
+    const spec = await proposeDesign({ plateAreaM2, program: this.program, brief }, signal)
+    if (!spec) return null
+    this.program = applyDesignSpec(this.program, spec)
+    const score = this.generateOnce(this.program, seed)
+    return { spec, score }
   }
 
   /** True when two programs match on every lever the AI delta can touch. */
