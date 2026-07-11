@@ -22,12 +22,19 @@ export interface FurnitureOpts {
   mirror?: boolean
   stroke: string // base line color (e.g. '#8a9099')
   detail: string // secondary line color (e.g. '#b4b9c1')
+  /** Body fill for worktops/tables (a solid object reads better than a hollow
+   *  outline over a pastel zone). Undefined → no fill (passive reference furniture
+   *  stays plate-less so it recedes into context). */
+  fill?: string
+  /** Seat/upholstery fill for chairs (softer than the body fill). */
+  seat?: string
   accent: string // selected color
   selected: boolean
 }
 
-// Below this on-screen size (px) a symbol degrades to a plain rounded rect.
-const MIN_DETAIL = 18
+// Below this on-screen size (px) a symbol degrades to a filled rounded rect —
+// low enough that overview-zoom desks still show a worktop + chair, not a pill.
+const MIN_DETAIL = 11
 
 // Categories that keep their symbol at any size: FallCeiling is a grid over a
 // large footprint; Door/Window footprints are thin slabs (~0.15 m deep) whose
@@ -37,7 +44,9 @@ const ALWAYS_DETAIL = new Set(['FallCeiling', 'Door', 'Window'])
 export function drawFurnitureSymbol(ctx: CanvasRenderingContext2D, o: FurnitureOpts): void {
   const { cx, cy, w, h, rotation } = o
   const line = o.selected ? o.accent : o.stroke
-  const lw = o.selected ? 1.6 : 1.15
+  // Confident single-weight linework (was 1.15) — the biggest lever on the
+  // "faint / robotic" read. Selected bumps another notch.
+  const lw = o.selected ? 1.8 : 1.35
   const small = Math.min(w, h) < MIN_DETAIL
 
   ctx.save()
@@ -50,25 +59,28 @@ export function drawFurnitureSymbol(ctx: CanvasRenderingContext2D, o: FurnitureO
   ctx.lineCap = 'round'
 
   if (small && !ALWAYS_DETAIL.has(o.category)) {
-    // Too small to read as a real symbol — a clean rounded outline.
-    strokeRoundRect(ctx, -w / 2, -h / 2, w, h, Math.min(3, Math.min(w, h) * 0.2), line, lw)
+    // Too small to read as a real symbol — a FILLED rounded rect (a solid chip
+    // reads as furniture; a hollow outline read as faint clutter at overview zoom).
+    const r = Math.min(3, Math.min(w, h) * 0.2)
+    if (o.fill) fillRoundRect(ctx, -w / 2, -h / 2, w, h, r, o.fill)
+    strokeRoundRect(ctx, -w / 2, -h / 2, w, h, r, line, lw)
     ctx.restore()
     return
   }
 
   switch (o.category) {
     case 'Desk':
-      drawDesk(ctx, w, h, line, o.detail, lw)
+      drawDesk(ctx, w, h, line, o.detail, lw, o.fill, o.seat)
       break
     case 'Chair':
-      drawChair(ctx, w, h, line, o.detail, lw)
+      drawChair(ctx, w, h, line, o.detail, lw, o.seat)
       break
     case 'Table':
     // A user-placed catalog meeting pod draws as its conference table at full
     // footprint. Generated rooms stopped using this category in M1 — they are
     // real walls + Door + Table now (docs/design/testfit-pro-quality.md §2).
     case 'MeetingRoom':
-      drawTable(ctx, w, h, line, o.detail, lw)
+      drawTable(ctx, w, h, line, o.detail, lw, o.fill, o.seat)
       break
     case 'FallCeiling':
       drawFallCeiling(ctx, w, h, line, o.detail, lw, o.selected)
@@ -83,6 +95,7 @@ export function drawFurnitureSymbol(ctx: CanvasRenderingContext2D, o: FurnitureO
       drawColumn(ctx, w, h, line, lw)
       break
     default:
+      if (o.fill) fillRoundRect(ctx, -w / 2, -h / 2, w, h, Math.min(4, Math.min(w, h) * 0.14), o.fill)
       strokeRoundRect(ctx, -w / 2, -h / 2, w, h, Math.min(4, Math.min(w, h) * 0.14), line, lw)
   }
 
@@ -93,8 +106,10 @@ export function drawFurnitureSymbol(ctx: CanvasRenderingContext2D, o: FurnitureO
 // Symbols
 // ---------------------------------------------------------------------------
 
-// Desk workstation: worktop + monitor on the back edge + keyboard + a task
-// chair in front. "Back" is -y (top in local space), the user sits toward +y.
+// Desk workstation: a solid worktop + monitor on the back edge + keyboard + a
+// task chair in front. "Back" is -y (top in local space), the user sits toward
+// +y. Detail scales with size so an overview-zoom desk still reads (worktop +
+// chair) instead of degrading to a hollow pill.
 function drawDesk(
   ctx: CanvasRenderingContext2D,
   w: number,
@@ -102,60 +117,72 @@ function drawDesk(
   line: string,
   detail: string,
   lw: number,
+  fill?: string,
+  seatFill?: string,
 ): void {
   const L = -w / 2
   const T = -h / 2
   const B = h / 2
 
   // The chair sits in front and overhangs the worktop slightly, so the desk
-  // occupies the back ~70% of the footprint.
-  const deskB = T + h * 0.7
-  strokeRoundRect(ctx, L, T, w, deskB - T, Math.min(3, h * 0.08), line, lw)
+  // occupies the back ~68% of the footprint.
+  const deskB = T + h * 0.68
+  const dR = Math.min(3, h * 0.08)
+  if (fill) fillRoundRect(ctx, L, T, w, deskB - T, dR, fill)
+  strokeRoundRect(ctx, L, T, w, deskB - T, dR, line, lw)
 
-  // Monitor: a solid short bar centered on the back edge reads as a screen at a
+  const minDim = Math.min(w, h)
+
+  // Monitor: a solid dark bar centered on the back edge reads as a screen at a
   // glance; a tiny stand tick joins it to the worktop.
-  const monW = Math.min(w * 0.36, 30)
-  const monH = Math.max(2.2, h * 0.08)
-  const monY = T + h * 0.05
-  ctx.fillStyle = detail
-  ctx.strokeStyle = detail
+  const monW = Math.min(w * 0.4, 34)
+  const monH = Math.max(2.4, h * 0.1)
+  const monY = T + h * 0.06
+  ctx.fillStyle = line
+  ctx.strokeStyle = line
   ctx.lineWidth = lw
-  ctx.fillRect(-monW / 2, monY, monW, monH)
+  fillRoundRect(ctx, -monW / 2, monY, monW, monH, Math.min(1.5, monH * 0.4), line)
   ctx.beginPath()
   ctx.moveTo(0, monY + monH)
   ctx.lineTo(0, monY + monH + Math.min(3, h * 0.05))
   ctx.stroke()
 
-  // Keyboard: a thin rounded rect on the worktop in front of the monitor.
-  const kbW = Math.min(w * 0.44, 34)
+  // Keyboard: a thin rounded rect on the worktop in front of the monitor (only
+  // when the desk is large enough to carry the extra line without clutter).
+  const kbW = Math.min(w * 0.46, 36)
   const kbH = Math.max(2, h * 0.06)
-  if (kbW > 8) {
-    strokeRoundRect(ctx, -kbW / 2, deskB - kbH - h * 0.06, kbW, kbH, kbH * 0.4, detail, lw * 0.9)
+  if (kbW > 12 && minDim > 22) {
+    strokeRoundRect(ctx, -kbW / 2, deskB - kbH - h * 0.07, kbW, kbH, kbH * 0.4, detail, lw * 0.9)
   }
 
-  // Task chair in front: seat + curved backrest hugging the desk edge + arms.
-  const seat = Math.min(w * 0.42, (B - deskB) * 1.4, h * 0.42)
-  if (seat > 6) {
+  // Task chair in front: filled seat + curved backrest hugging the desk edge.
+  const seat = Math.min(w * 0.46, (B - deskB) * 1.5, h * 0.44)
+  if (seat > 4) {
     const seatT = B - seat
-    strokeRoundRect(ctx, -seat / 2, seatT, seat, seat, seat * 0.22, detail, lw)
-    ctx.strokeStyle = detail
+    const sR = seat * 0.24
+    if (seatFill) fillRoundRect(ctx, -seat / 2, seatT, seat, seat, sR, seatFill)
+    strokeRoundRect(ctx, -seat / 2, seatT, seat, seat, sR, line, lw)
+    ctx.strokeStyle = line
     ctx.lineWidth = lw
     // backrest arc between the seat and the desk (opens toward the desk, -y)
     ctx.beginPath()
     ctx.arc(0, seatT + seat * 0.08, seat * 0.6, Math.PI * 1.15, Math.PI * 1.85)
     ctx.stroke()
-    // short armrests down each side of the seat
-    const ax = seat * 0.5 + seat * 0.08
-    ctx.beginPath()
-    ctx.moveTo(-ax, seatT + seat * 0.28)
-    ctx.lineTo(-ax, seatT + seat * 0.78)
-    ctx.moveTo(ax, seatT + seat * 0.28)
-    ctx.lineTo(ax, seatT + seat * 0.78)
-    ctx.stroke()
+    // short armrests down each side of the seat (skip on small desks)
+    if (minDim > 22) {
+      const ax = seat * 0.5 + seat * 0.08
+      ctx.strokeStyle = detail
+      ctx.beginPath()
+      ctx.moveTo(-ax, seatT + seat * 0.28)
+      ctx.lineTo(-ax, seatT + seat * 0.78)
+      ctx.moveTo(ax, seatT + seat * 0.28)
+      ctx.lineTo(ax, seatT + seat * 0.78)
+      ctx.stroke()
+    }
   }
 }
 
-// Task chair top view: rounded seat + curved backrest (top) + two armrests.
+// Task chair top view: filled rounded seat + curved backrest (top) + armrests.
 function drawChair(
   ctx: CanvasRenderingContext2D,
   w: number,
@@ -163,13 +190,16 @@ function drawChair(
   line: string,
   detail: string,
   lw: number,
+  seatFill?: string,
 ): void {
-  const sw = w * 0.68
-  const sh = h * 0.62
+  const sw = w * 0.7
+  const sh = h * 0.64
   const T = -h / 2
   const seatT = T + h * 0.26
-  // seat
-  strokeRoundRect(ctx, -sw / 2, seatT, sw, sh, Math.min(sw, sh) * 0.22, line, lw)
+  const sR = Math.min(sw, sh) * 0.24
+  // seat (filled so it reads as an object, not a wire outline)
+  if (seatFill) fillRoundRect(ctx, -sw / 2, seatT, sw, sh, sR, seatFill)
+  strokeRoundRect(ctx, -sw / 2, seatT, sw, sh, sR, line, lw)
   // backrest arc across the top
   ctx.strokeStyle = line
   ctx.lineWidth = lw
@@ -186,8 +216,8 @@ function drawChair(
   ctx.stroke()
 }
 
-// Meeting table: rounded-rect top + small chair rects around the perimeter.
-// Chair count scales with the long side.
+// Meeting table: a solid rounded-rect top + small filled chair rects around the
+// perimeter. Chair count scales with the long side.
 function drawTable(
   ctx: CanvasRenderingContext2D,
   w: number,
@@ -195,38 +225,41 @@ function drawTable(
   line: string,
   detail: string,
   lw: number,
+  fill?: string,
+  seatFill?: string,
 ): void {
   const inset = Math.min(w, h) * 0.2
   const tw = w - inset * 2
   const th = h - inset * 2
-  strokeRoundRect(ctx, -tw / 2, -th / 2, tw, th, Math.min(tw, th) * 0.18, line, lw)
+  const tR = Math.min(tw, th) * 0.18
+  if (fill) fillRoundRect(ctx, -tw / 2, -th / 2, tw, th, tR, fill)
+  strokeRoundRect(ctx, -tw / 2, -th / 2, tw, th, tR, line, lw)
 
   // chairs along the two long edges — count from long-side length
   const longIsW = w >= h
   const longLen = longIsW ? tw : th
   const perSide = clampInt(Math.round(longLen / 22), 2, 3)
   const chair = Math.min(inset * 0.85, (longLen / perSide) * 0.6)
-  ctx.strokeStyle = detail
-  ctx.lineWidth = lw
+  const chSeat = seatFill ?? detail
   if (chair > 4) {
     for (let i = 0; i < perSide; i++) {
       const t = (i + 0.5) / perSide - 0.5 // -0.5..0.5
       if (longIsW) {
-        chairRect(ctx, t * tw, -h / 2 + inset * 0.42, chair, inset * 0.7, detail, lw)
-        chairRect(ctx, t * tw, h / 2 - inset * 0.42, chair, inset * 0.7, detail, lw)
+        chairRect(ctx, t * tw, -h / 2 + inset * 0.42, chair, inset * 0.7, line, lw, chSeat)
+        chairRect(ctx, t * tw, h / 2 - inset * 0.42, chair, inset * 0.7, line, lw, chSeat)
       } else {
-        chairRect(ctx, -w / 2 + inset * 0.42, t * th, inset * 0.7, chair, detail, lw)
-        chairRect(ctx, w / 2 - inset * 0.42, t * th, inset * 0.7, chair, detail, lw)
+        chairRect(ctx, -w / 2 + inset * 0.42, t * th, inset * 0.7, chair, line, lw, chSeat)
+        chairRect(ctx, w / 2 - inset * 0.42, t * th, inset * 0.7, chair, line, lw, chSeat)
       }
     }
     // one chair at each short end for a 4–6 total on larger tables
     if (Math.min(w, h) > 40) {
       if (longIsW) {
-        chairRect(ctx, -w / 2 + inset * 0.42, 0, inset * 0.7, chair, detail, lw)
-        chairRect(ctx, w / 2 - inset * 0.42, 0, inset * 0.7, chair, detail, lw)
+        chairRect(ctx, -w / 2 + inset * 0.42, 0, inset * 0.7, chair, line, lw, chSeat)
+        chairRect(ctx, w / 2 - inset * 0.42, 0, inset * 0.7, chair, line, lw, chSeat)
       } else {
-        chairRect(ctx, 0, -h / 2 + inset * 0.42, chair, inset * 0.7, detail, lw)
-        chairRect(ctx, 0, h / 2 - inset * 0.42, chair, inset * 0.7, detail, lw)
+        chairRect(ctx, 0, -h / 2 + inset * 0.42, chair, inset * 0.7, line, lw, chSeat)
+        chairRect(ctx, 0, h / 2 - inset * 0.42, chair, inset * 0.7, line, lw, chSeat)
       }
     }
   }
@@ -364,6 +397,24 @@ function drawFallCeiling(
 // Local helpers
 // ---------------------------------------------------------------------------
 
+function roundRectPath(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number,
+): void {
+  const rr = Math.max(0, Math.min(r, w / 2, h / 2))
+  ctx.beginPath()
+  ctx.moveTo(x + rr, y)
+  ctx.arcTo(x + w, y, x + w, y + h, rr)
+  ctx.arcTo(x + w, y + h, x, y + h, rr)
+  ctx.arcTo(x, y + h, x, y, rr)
+  ctx.arcTo(x, y, x + w, y, rr)
+  ctx.closePath()
+}
+
 function strokeRoundRect(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -374,20 +425,27 @@ function strokeRoundRect(
   stroke: string,
   lw: number,
 ): void {
-  const rr = Math.max(0, Math.min(r, w / 2, h / 2))
+  roundRectPath(ctx, x, y, w, h, r)
   ctx.strokeStyle = stroke
   ctx.lineWidth = lw
-  ctx.beginPath()
-  ctx.moveTo(x + rr, y)
-  ctx.arcTo(x + w, y, x + w, y + h, rr)
-  ctx.arcTo(x + w, y + h, x, y + h, rr)
-  ctx.arcTo(x, y + h, x, y, rr)
-  ctx.arcTo(x, y, x + w, y, rr)
-  ctx.closePath()
   ctx.stroke()
 }
 
-// A small chair rectangle centered at (cx,cy).
+function fillRoundRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number,
+  fill: string,
+): void {
+  roundRectPath(ctx, x, y, w, h, r)
+  ctx.fillStyle = fill
+  ctx.fill()
+}
+
+// A small chair rectangle centered at (cx,cy) — filled seat + outline.
 function chairRect(
   ctx: CanvasRenderingContext2D,
   cx: number,
@@ -396,8 +454,11 @@ function chairRect(
   h: number,
   stroke: string,
   lw: number,
+  fill?: string,
 ): void {
-  strokeRoundRect(ctx, cx - w / 2, cy - h / 2, w, h, Math.min(w, h) * 0.25, stroke, lw)
+  const r = Math.min(w, h) * 0.25
+  if (fill) fillRoundRect(ctx, cx - w / 2, cy - h / 2, w, h, r, fill)
+  strokeRoundRect(ctx, cx - w / 2, cy - h / 2, w, h, r, stroke, lw)
 }
 
 function clampInt(v: number, lo: number, hi: number): number {

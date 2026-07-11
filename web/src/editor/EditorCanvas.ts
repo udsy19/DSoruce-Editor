@@ -379,15 +379,22 @@ const RULER = 22 // px ruler gutter (top + left)
 // Light "floor-plate" palette — mirrors styles.css tokens (Laiout aesthetic).
 const C = {
   surface: '#ffffff', // floor plate
-  mat: '#f2f4f7', // outside the building footprint
-  gridMinor: 'rgba(23,26,30,0.06)',
-  gridMajor: 'rgba(23,26,30,0.12)',
-  axis: 'rgba(45,91,214,0.20)',
-  wall: '#2e343b',
-  wallExt: '#1e2329',
-  wallGen: '#4a525c', // generated partitions — lightest ink in the hierarchy
+  mat: '#eef0f4', // outside the building footprint (a touch deeper so the plate lifts)
+  gridMinor: 'rgba(23,26,30,0.035)',
+  gridMajor: 'rgba(23,26,30,0.075)',
+  axis: 'rgba(45,91,214,0.18)',
+  wall: '#2b313a', // interior partitions — medium
+  wallExt: '#1b1f25', // exterior/structural — darkest, but crisp (not a fat marker)
+  wallGen: '#525a65', // generated partitions — lightest ink in the hierarchy
   // Matches DrawingCanvas FURNITURE_LINE so generated + imported plans read alike.
-  furniture: '#5c6670',
+  furniture: '#565e69',
+  // Secondary furniture detail (keyboard, armrests, backrest ticks) — a mid gray
+  // that stays legible over the pastel zone (the old #b4b9c1 read as faint).
+  furnitureDetail: '#9aa1ab',
+  // Solid worktop/table fill so a desk reads as an object, not a hollow outline.
+  furnitureFill: 'rgba(255,255,255,0.86)',
+  // Chair/upholstery seat fill — a light cool neutral that sits on any pastel.
+  furnitureSeat: '#e7eaee',
   // Passive as-drawn reference furniture (imported, not counted): muted so the
   // generated fit reads as the primary content and context sits quietly behind it.
   furnitureRef: '#b7bdc5',
@@ -2465,12 +2472,16 @@ export class EditorCanvas {
   private wallStyle(w: DocWall): { color: string; width: number } {
     const t = w.thickness * this.scale
     if (w.generated ?? false) {
-      return { color: C.wallGen, width: clampN(t * 0.8, 1.4, 8) }
+      // Lightest tier: room partitions the generator drew.
+      return { color: C.wallGen, width: clampN(t * 0.85, 1.3, 3.2) }
     }
     if (this.exteriorIds.has(w.id)) {
-      return { color: C.wallExt, width: clampN(t * 1.15, 3, 14) }
+      // Heaviest tier — but capped tight so the boundary reads as a crisp
+      // architectural line, not the fat black marker it was before.
+      return { color: C.wallExt, width: clampN(t, 2.4, 5) }
     }
-    return { color: C.wall, width: clampN(t, 2, 10) }
+    // Medium tier: interior/user walls.
+    return { color: C.wall, width: clampN(t, 1.7, 3.8) }
   }
 
   /** Floor-plate polygon for zone clipping, cached on a cheap wall fingerprint
@@ -2541,7 +2552,9 @@ export class EditorCanvas {
         const w = s.w * this.scale
         const h = s.h * this.scale
         ctx.fillRect(p.x, p.y, w, h)
-        ctx.strokeStyle = pal.line
+        // Soft inset border (secondary to walls) — a refined architectural edge,
+        // not a saturated toy outline.
+        ctx.strokeStyle = hexToRgba(pal.line, 0.45)
         ctx.lineWidth = 1
         ctx.strokeRect(p.x + 0.5, p.y + 0.5, w - 1, h - 1)
 
@@ -2562,7 +2575,7 @@ export class EditorCanvas {
         }
         const cap = stat?.capacity ?? 0
         let metrics: string | null = `${fmtArea(area)} m²${cap > 0 ? ` · ${cap} pax` : ''}`
-        ctx.font = '9.5px "IBM Plex Mono", ui-monospace, monospace'
+        ctx.font = '500 9.5px "Hanken Grotesk", system-ui, sans-serif'
         if (h < 34 || ctx.measureText(metrics).width > maxW) metrics = null
         const c = this.toScreen(s.x, s.y)
         tags.push({ name, metrics, cx: c.x, cy: c.y, namePx, color: pal.line })
@@ -2572,28 +2585,50 @@ export class EditorCanvas {
     return tags
   }
 
-  /** Draw collected room tags (after furniture) with a soft paper halo. */
+  /** Draw collected room tags (after furniture) as clean soft-rounded label
+   *  pills — white with a subtle drop shadow and a hairline in the zone color —
+   *  so a room name reads over desks/linework without the cheap hard white box.
+   *  Numbers set in the UI sans (Hanken, tabular) to match the rest of the sheet;
+   *  see the CLAUDE.md typography note in the visual overhaul. */
   private drawZoneTags(tags: ZoneTag[]) {
     const ctx = this.ctx
+    const NAME_FONT = (px: number) => `600 ${px}px "Hanken Grotesk", system-ui, sans-serif`
+    const MET_FONT = '500 9.5px "Hanken Grotesk", system-ui, sans-serif'
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
     for (const t of tags) {
-      ctx.font = `600 ${t.namePx}px "Hanken Grotesk", system-ui, sans-serif`
+      ctx.font = NAME_FONT(t.namePx)
       const nameW = ctx.measureText(t.name).width
-      ctx.font = '9.5px "IBM Plex Mono", ui-monospace, monospace'
+      ctx.font = MET_FONT
       const metW = t.metrics ? ctx.measureText(t.metrics).width : 0
-      const halfW = Math.max(nameW, metW) / 2 + 5
-      const halfH = t.metrics ? 15 : 9
-      ctx.fillStyle = 'rgba(255,255,255,0.78)'
-      ctx.fillRect(t.cx - halfW, t.cy - halfH, halfW * 2, halfH * 2)
+      const padX = 8
+      const pillW = Math.max(nameW, metW) + padX * 2
+      const pillH = t.metrics ? 32 : 19
+      const px = t.cx - pillW / 2
+      const py = t.cy - pillH / 2
 
+      // Soft pill: drop shadow + near-white fill + hairline border in zone color.
+      ctx.save()
+      ctx.shadowColor = 'rgba(23,26,30,0.14)'
+      ctx.shadowBlur = 6
+      ctx.shadowOffsetY = 1
+      ctx.fillStyle = 'rgba(255,255,255,0.94)'
+      roundRect(ctx, px, py, pillW, pillH, pillH / 2)
+      ctx.fill()
+      ctx.restore()
+      ctx.strokeStyle = hexToRgba(t.color, 0.28)
+      ctx.lineWidth = 1
+      roundRect(ctx, px + 0.5, py + 0.5, pillW - 1, pillH - 1, (pillH - 1) / 2)
+      ctx.stroke()
+
+      // Name (zone-line color) over metrics (muted).
       ctx.fillStyle = t.color
-      ctx.font = `600 ${t.namePx}px "Hanken Grotesk", system-ui, sans-serif`
+      ctx.font = NAME_FONT(t.namePx)
       ctx.fillText(t.name, t.cx, t.metrics ? t.cy - 6 : t.cy)
       if (t.metrics) {
         ctx.fillStyle = C.labelSub
-        ctx.font = '9.5px "IBM Plex Mono", ui-monospace, monospace'
-        ctx.fillText(t.metrics, t.cx, t.cy + 7)
+        ctx.font = MET_FONT
+        ctx.fillText(t.metrics, t.cx, t.cy + 7.5)
       }
     }
   }
@@ -2742,19 +2777,10 @@ export class EditorCanvas {
     // dot / frozen styling — it carries no decision state.
     const ref = c.reference === true && !selected
 
-    // Very-light plate so the glyph sits cleanly on the pastel zone (skip for
-    // reference so it recedes into context rather than tiling white cards).
-    if (!ref) {
-      ctx.save()
-      ctx.translate(p.x, p.y)
-      ctx.rotate(c.rotation)
-      ctx.fillStyle = frozen ? hexA(DECISION_DOT.Confirmed, 0.12) : 'rgba(255,255,255,0.5)'
-      roundRect(ctx, -w / 2, -h / 2, w, h, Math.min(4, Math.min(w, h) * 0.14))
-      ctx.fill()
-      ctx.restore()
-    }
-
-    // Recognizable top-view CAD furniture line-symbol.
+    // Recognizable top-view CAD furniture line-symbol. The symbol carries its own
+    // solid worktop/seat fill (a filled object reads as furniture, where a hollow
+    // white plate under a hollow outline read as faint clutter over the pastel
+    // zone). Reference furniture gets no fill so it recedes into context.
     drawFurnitureSymbol(ctx, {
       category: c.category,
       cx: p.x,
@@ -2764,7 +2790,9 @@ export class EditorCanvas {
       rotation: c.rotation,
       mirror: c.mirror,
       stroke: ref ? C.furnitureRef : frozen ? DECISION_DOT.Confirmed : C.furniture,
-      detail: ref ? C.furnitureRef : '#b4b9c1',
+      detail: ref ? C.furnitureRef : C.furnitureDetail,
+      fill: ref ? undefined : frozen ? 'rgba(47,163,107,0.10)' : C.furnitureFill,
+      seat: ref ? undefined : frozen ? 'rgba(47,163,107,0.16)' : C.furnitureSeat,
       accent: C.accent,
       selected,
     })
@@ -3048,7 +3076,8 @@ function clip(text: string, boxW: number): string {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text
 }
 
-function hexA(hex: string, a: number): string {
+/** '#rrggbb' → 'rgba(r,g,b,a)' (zone-line hairlines on tag pills). */
+function hexToRgba(hex: string, a: number): string {
   const n = parseInt(hex.slice(1), 16)
   return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`
 }
