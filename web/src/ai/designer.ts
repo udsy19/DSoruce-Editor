@@ -188,8 +188,20 @@ export const DESIGN_TOOL = {
 
 const ANTHROPIC_DESIGN_TOOLS = openaiToolsToAnthropic([DESIGN_TOOL])
 
-/** The senior-designer persona + standards + design intelligence. India-first. */
-export const DESIGNER_SYSTEM = `You are a SENIOR WORKPLACE INTERIOR DESIGNER (15+ years, principal level) producing a real, code-compliant office test-fit inside DSource. You make the design decisions a principal makes; a deterministic engine then places the geometry. Units are meters. Design like a human designer — NOT a robot that tiles a uniform desk grid.
+/** The senior-designer persona + standards + design intelligence. India-first,
+ *  specialised for GCC (Global Capability Centre) workplaces. */
+export const DESIGNER_SYSTEM = `You are a SENIOR WORKPLACE INTERIOR DESIGNER (15+ years, principal level) who SPECIALISES in GCC (Global Capability Centre) fit-outs in India, producing a real, code-compliant office test-fit inside DSource. You make the design decisions a principal makes; a deterministic engine then places the geometry. Units are meters. Design like a human designer — NOT a robot that tiles a uniform desk grid.
+
+THE CLIENT — a GCC (Global Capability Centre): the India captive office of a multinational (technology, engineering, product, finance/ops, R&D, analytics). Its DNA drives the design:
+- SEAT EFFICIENCY is the headline KPI — cost per seat and seats per floor. Floors are large open BENCHING fields (India benching ~1.4–1.5 m runs, back-to-back). Density is high; some functions HOT-DESK under 24/7 shift operations.
+- CROSS-TIMEZONE COLLABORATION is constant (daily calls with HQ in the US/EU). So the plan is HEAVY on enclosed talk space: generous meeting + huddle rooms AND a lot of PHONE BOOTHS + focus rooms (plan ~1 booth per 6–8 seats — far more than a domestic office) so calls don't wreck the open floor acoustically.
+- AGILE DELIVERY: project/"war" rooms and team collaboration zones per squad; team neighbourhoods of ~8–12.
+- MANAGER CABINS: Indian org hierarchy means more private cabins for leads/managers than a Western open plan — but bias them to the core so they never wall the team off from daylight.
+- SHARED HEART & SCALE: a large CAFETERIA/pantry (people eat on-site across shifts), a TOWN-HALL / all-hands assembly zone, and TRAINING rooms (onboarding runs continuously).
+- INDIA STATUTORY & CULTURE (must-haves at scale): a wellness / MOTHER'S room, first-aid, a prayer/meditation quiet room, and recreation/breakout; a crèche for large headcounts. Reception with visitor management + security is front-of-house.
+- EXPERIENCE DRIVES RETENTION: attrition is the #1 GCC problem, so amenity, daylight for the many, biophilia and breakout are not luxuries — they are business-critical.
+
+Map these onto the available room kinds: use Collab for project/war rooms, breakout and recreation; Wellness for the mother's/first-aid/quiet room; Pantry for the cafeteria/tea-points (scale it up for the headcount); Boardroom/Meeting6P for training + town-hall-scale rooms; Cabin for manager offices; and MANY PhoneBooth + Focus for the call load.
 
 WHAT MAKES A GOOD WORKPLACE (design like this, not a grid):
 - Activity-based, not one-size: real offices are a MIX of settings — focus (quiet, enclosed), collaborate (open breakout, project tables), socialise (pantry/café as a heart), and privacy (phone booths, cabins). A wall of identical desks is a bad, dated design. Vary the settings to the work.
@@ -233,32 +245,32 @@ export const DESIGN_OBJECTIVES: readonly DesignObjective[] = [
   {
     id: 'balanced',
     label: 'Balanced',
-    tagline: 'A professional all-round fit',
-    lens: 'Optimise for a well-rounded professional workplace: a healthy mix of focus, collaborate and social settings at ~8–11 m²/person. No single metric dominates.',
+    tagline: 'A professional GCC all-rounder',
+    lens: 'Optimise for a well-rounded GCC floor: strong seat efficiency with enough enclosed talk-space for cross-timezone calls, a proper cafeteria and amenity, and manager cabins to the core. No single metric dominates.',
   },
   {
-    id: 'people',
-    label: 'Max people',
-    tagline: 'Highest headcount',
-    lens: 'Optimise for MAXIMUM headcount: push desk density (bench-pair benching on every daylight run), lean support rooms to the essential minimum, keep only code-required circulation. Still humane (≥ ~6 m²/person), but seats-first.',
+    id: 'seats',
+    label: 'Max seats',
+    tagline: 'Lowest cost per seat',
+    lens: 'Optimise for SEAT EFFICIENCY — the GCC KPI. Maximise seats/floor with dense back-to-back benching on every run (assume shift/hot-desk friendly), keep enclosure to the operational minimum (still enough phone booths that calls do not wreck the floor), only code-required circulation. Seats-first, but keep ≥ ~5.5–6 m²/seat so it stays workable.',
   },
   {
-    id: 'budget',
-    label: 'Budget',
-    tagline: 'Lowest fit-out cost',
-    lens: 'Optimise for LOWEST fit-out cost: minimise built partitions and enclosed rooms (walls + doors are the expensive items), favour an open plan, prefer fewer/simpler furniture types, reuse over new. Only build enclosure the brief truly needs.',
+    id: 'cost',
+    label: 'Cost-optimised',
+    tagline: 'Lowest fit-out capex',
+    lens: 'Optimise for LOWEST fit-out capex: partitions, doors and enclosed rooms are the expensive line items, so favour an open plan, cut cabins to the essential leads only, prefer standard modular furniture and reuse. Build enclosure only where operations demand it.',
   },
   {
-    id: 'carbon',
-    label: 'Low carbon',
-    tagline: 'Least embodied CO₂',
-    lens: 'Optimise for LOWEST embodied carbon: fewer partitions and less built material (partitions/ceilings dominate embodied carbon), an open and daylight-led plan (less artificial lighting), and reused/existing furniture where possible. Enclose sparingly.',
+    id: 'collaboration',
+    label: 'Collaboration',
+    tagline: 'Cross-timezone call & team heavy',
+    lens: 'Optimise for a talk-heavy delivery GCC: generous meeting + huddle rooms and a HIGH phone-booth/focus ratio (~1 booth per 5–6 seats) for constant HQ calls, plus project/war rooms (use Collab) per squad and clear team neighbourhoods. Accept slightly fewer seats to protect acoustics and collaboration.',
   },
   {
-    id: 'wellbeing',
-    label: 'Wellbeing',
-    tagline: 'Best human experience',
-    lens: 'Optimise for people’s EXPERIENCE: generous space per person (~12–15 m²), daylight and views for the many (desks on the facade), a real café/pantry heart, ample quiet focus rooms and phone booths, wellness and biophilia. Fewer, better-served seats.',
+    id: 'experience',
+    label: 'Experience',
+    tagline: 'Retention & wellbeing',
+    lens: 'Optimise for RETENTION (the #1 GCC problem): generous space per seat (~10–13 m²), daylight and views for the many, a large cafeteria heart, strong amenity — recreation/breakout (Collab), a wellness/mother’s + quiet room (Wellness), biophilia. Fewer, better-served seats that people want to come back to.',
   },
 ]
 
@@ -276,7 +288,7 @@ export interface DesignContext {
 
 function buildDesignerPrompt(ctx: DesignContext): string {
   const area = ctx.plateAreaM2 && ctx.plateAreaM2 > 0 ? `${Math.round(ctx.plateAreaM2)} m² usable floor area` : 'an unmeasured floor'
-  const brief = ctx.brief.trim() || '(no specific brief — design a professional general-purpose office for this floor)'
+  const brief = ctx.brief.trim() || '(no specific brief — design a professional GCC delivery floor for this plate, sized to the area)'
   const lens = ctx.objective
     ? ['', `OPTIMISATION LENS — "${ctx.objective.label}": ${ctx.objective.lens}`, 'Let this lens genuinely shape the design so it differs from other options; explain the tradeoff you are making in the rationale.']
     : []
@@ -298,27 +310,36 @@ function buildDesignerPrompt(ctx: DesignContext): string {
  * empty response. The only impure export; the parse+clamp it wraps is unit-tested.
  */
 export async function proposeDesign(ctx: DesignContext, signal?: AbortSignal): Promise<DesignSpec | null> {
-  try {
-    const resp = await fetch('/api/claude', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        system: DESIGNER_SYSTEM,
-        messages: [{ role: 'user', content: buildDesignerPrompt(ctx) }],
-        tools: ANTHROPIC_DESIGN_TOOLS,
-        // Generous: the model uses extended THINKING (which draws from this budget)
-        // before emitting the design_layout tool call with a full room mix + a
-        // multi-sentence rationale. 1024 truncated the tool call → null.
-        max_tokens: 3072,
-      }),
-      signal,
-    })
-    if (!resp.ok) return null
-    const data = (await resp.json()) as { content?: ClaudeContentBlock[] }
-    return parseDesignSpec(data.content ?? [])
-  } catch {
-    return null
+  const body = JSON.stringify({
+    system: DESIGNER_SYSTEM,
+    messages: [{ role: 'user', content: buildDesignerPrompt(ctx) }],
+    tools: ANTHROPIC_DESIGN_TOOLS,
+    // Generous: the model uses extended THINKING (which draws from this budget)
+    // before emitting the design_layout tool call with a full room mix + a
+    // multi-sentence rationale. 1024 truncated the tool call → null.
+    max_tokens: 3072,
+  })
+  // One retry: parallel option-generation can transiently trip the proxy's upstream
+  // rate/concurrency limit (500/429); a short backoff usually clears it.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const resp = await fetch('/api/claude', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body,
+        signal,
+      })
+      if (resp.ok) {
+        const data = (await resp.json()) as { content?: ClaudeContentBlock[] }
+        return parseDesignSpec(data.content ?? [])
+      }
+      if (resp.status !== 429 && resp.status < 500) return null // a real client error won't recover
+    } catch {
+      if (signal?.aborted) return null
+    }
+    if (attempt === 0) await new Promise((r) => setTimeout(r, 900 + attempt * 600))
   }
+  return null
 }
 
 /** One objective-optimised design option. */
@@ -338,11 +359,19 @@ export async function proposeDesignOptions(
   objectives: readonly DesignObjective[] = DESIGN_OBJECTIVES,
   signal?: AbortSignal,
 ): Promise<DesignOption[]> {
-  const results = await Promise.all(
-    objectives.map(async (objective) => {
+  // Bounded concurrency: firing every objective at once trips the proxy's upstream
+  // rate/concurrency limit (all return 500). Two in flight keeps it fast but safe.
+  const CONCURRENCY = 2
+  const out: (DesignOption | null)[] = new Array(objectives.length).fill(null)
+  let next = 0
+  const worker = async () => {
+    while (next < objectives.length) {
+      const i = next++
+      const objective = objectives[i]
       const spec = await proposeDesign({ ...ctx, objective }, signal)
-      return spec ? { objective, spec } : null
-    }),
-  )
-  return results.filter((o): o is DesignOption => o !== null)
+      out[i] = spec ? { objective, spec } : null
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, objectives.length) }, worker))
+  return out.filter((o): o is DesignOption => o !== null)
 }
