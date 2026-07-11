@@ -314,10 +314,11 @@ export async function proposeDesign(ctx: DesignContext, signal?: AbortSignal): P
     system: DESIGNER_SYSTEM,
     messages: [{ role: 'user', content: buildDesignerPrompt(ctx) }],
     tools: ANTHROPIC_DESIGN_TOOLS,
-    // Generous: the model uses extended THINKING (which draws from this budget)
-    // before emitting the design_layout tool call with a full room mix + a
-    // multi-sentence rationale. 1024 truncated the tool call → null.
-    max_tokens: 3072,
+    // FORCE the tool. This also disables extended thinking, so the entire budget
+    // goes to a COMPLETE design_layout call — no truncated `rooms` array (which was
+    // collapsing options to a default program under concurrent load), and faster.
+    tool_choice: { type: 'tool', name: 'design_layout' },
+    max_tokens: 2048,
   })
   // Retry with exponential backoff. Parallel option-generation trips the proxy's
   // upstream rate/token-per-minute limit two ways: a non-ok status (429/5xx), AND a

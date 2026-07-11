@@ -118,6 +118,10 @@ function claudeProxy(): Plugin {
             max_tokens: typeof body.max_tokens === 'number' ? body.max_tokens : 1024,
           }
           if (Array.isArray(body.tools)) payload.tools = body.tools
+          // Optional tool_choice (the designer FORCES design_layout). Forcing a tool
+          // also disables extended thinking, so the full budget goes to a complete
+          // tool call — no truncated JSON. (lockstep: deploy/server.ts handleClaude)
+          if (body.tool_choice) payload.tool_choice = body.tool_choice
           const upstream = await fetch('https://api.anthropic.com/v1/messages', {
             method: 'POST',
             headers: {

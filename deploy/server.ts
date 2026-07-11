@@ -131,6 +131,9 @@ async function handleClaude(req: IncomingMessage, res: ServerResponse): Promise<
     max_tokens: typeof body.max_tokens === 'number' ? body.max_tokens : 1024,
   }
   if (Array.isArray(body.tools)) payload.tools = body.tools
+  // Optional tool_choice (the designer FORCES design_layout → disables extended
+  // thinking → complete tool call). (lockstep: web/vite.config.ts claudeProxy)
+  if (body.tool_choice) payload.tool_choice = body.tool_choice
   const upstream = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
