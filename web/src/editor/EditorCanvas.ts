@@ -1974,7 +1974,37 @@ export class EditorCanvas {
         this.beginRoomResize(hi, this.selectedZoneId)
         return
       }
-      // 2. Directly on a piece of furniture → component selection (re-imagine).
+      // ROOM-FIRST selection (Laiout/Canva model). A room is furnished, so
+      // furniture-first hit-testing made rooms impossible to grab — every click
+      // landed on a desk, never the room (the reported "can't drag rooms"). Now a
+      // click inside a room selects and drags the ROOM, even over furniture.
+      // DRILL-IN: once that room is already selected, a click on its furniture
+      // selects the component (Materio re-imagine); a click on its empty floor
+      // re-grabs the room to drag.
+      const zid = this.ed.zone_at(w.x, w.y)
+      if (zid != null) {
+        if (zid === this.selectedZoneId) {
+          const furn = this.topFurnitureAt(w)
+          if (furn) {
+            this.ed.select_at(w.x, w.y) // drill into the piece under the cursor
+            this.dragging = true
+            this.commit()
+            return
+          }
+          this.ed.clear_selection() // empty floor of the selected room → drag it
+          this.beginRoomDrag(zid, w)
+          this.commit()
+          return
+        }
+        this.selectedZoneId = zid
+        this.ed.clear_selection()
+        this.beginRoomDrag(zid, w)
+        this.emitRoom(true)
+        this.commit()
+        return
+      }
+      // 3. Outside any room → a loose component (e.g. passive reference furniture),
+      //    else clear everything.
       const furn = this.topFurnitureAt(w)
       if (furn) {
         this.selectedZoneId = null
@@ -1984,17 +2014,6 @@ export class EditorCanvas {
         this.commit()
         return
       }
-      // 3. Inside a room → select the room and start dragging it.
-      const zid = this.ed.zone_at(w.x, w.y)
-      if (zid != null) {
-        this.selectedZoneId = zid
-        this.ed.clear_selection()
-        this.beginRoomDrag(zid, w)
-        this.emitRoom(true)
-        this.commit()
-        return
-      }
-      // 4. Empty plate → clear everything.
       this.selectedZoneId = null
       this.emitRoom()
       this.ed.clear_selection()
