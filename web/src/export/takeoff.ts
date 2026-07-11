@@ -209,6 +209,10 @@ export function buildTakeoffModel(state: DocState, opts: TakeoffOptions = {}): T
   const groups = new Map<string, TakeoffFurnitureRow>()
   for (const c of state.components) {
     if (NON_FURNITURE.has(c.category)) continue
+    // Passive imported/legacy furniture is reference-only — not part of the
+    // specified fit-out you'd buy, so it stays out of the BoQ (matches the
+    // cost/CO2 metric filter; laiout-deep-research.md: BoQ = generated only).
+    if (c.reference) continue
     const zone = zoneFor(c, zones)
     const roomId = zone ? (roomRefs?.get(zone.id) ?? zone.id) : 'OS'
     const roomType = zone ? ROOM_TYPE[zone.zone_type] : 'Open Space'
