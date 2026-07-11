@@ -56,12 +56,15 @@ export const ZONE_ORDER: ZoneType[] = [
   'Core',
 ]
 
-/** Occupancy per zone: desks seat 1 pax each; enclosed rooms use the core's
- *  area-based capacity estimate; corridors + service seat nobody. */
+/** Occupancy per zone, defining the panel's **Pax** == the core's **Workstations**
+ *  (see `metrics()` "ONE Workstations == Pax"). Pax is one coherent number: the
+ *  seated, non-reference desks in Workspace zones (the core's `seated`, which already
+ *  excludes imported reference furniture). Σ zonePax == `metrics().workstations` by
+ *  construction, so the chip, the Workstations row, the Zones-tab total, and the CSV
+ *  all show the identical figure. Enclosed rooms' area-capacity is intentionally NOT
+ *  folded in — that would make Pax disagree with Workstations. */
 function zonePax(z: ZoneStat): number {
-  if (z.zone_type === 'Workspace') return z.seated // 1 pax per placed desk
-  if (z.zone_type === 'Circulation' || z.zone_type === 'Core') return 0
-  return z.capacity // Meeting / Breakout / Closed Office / Amenity: area-based
+  return z.zone_type === 'Workspace' ? z.seated : 0
 }
 
 /** Coarse size class from net area — mirrors Laiout's S/M/L room templates. */
@@ -274,6 +277,7 @@ export function buildElements(state: DocState, nia: number): ElementBreakdown {
   const priceMap = buildPriceMap()
   const fb = new Map<FurnGroup, { count: number; co2: number; cost: number }>()
   for (const c of state.components ?? []) {
+    if (c.reference) continue // imported/legacy furniture isn't in the fit-out you'd buy (BoQ = generated only)
     const g = furnGroup(c.category)
     const acc = fb.get(g) ?? { count: 0, co2: 0, cost: 0 }
     acc.count += 1

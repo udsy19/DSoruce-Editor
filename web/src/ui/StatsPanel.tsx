@@ -45,6 +45,10 @@ export function StatsPanel({ ec }: { ec: EditorCanvas }) {
         <>
           <div className="chip-row">
             <ChipTile kind="efficiency" icon="bolt" value={`${Math.round(m.efficiency_pct ?? 0)}%`} label="Efficiency" />
+            {/* Pax == Workstations by construction: zones.totalPax sums the same
+                non-reference workspace `seated` desks the core's m.workstations counts
+                (see stats.ts zonePax + Rust workstation_count), so this chip and the
+                Workstations row below always show the identical number. */}
             <ChipTile kind="people" icon="people" value={intFmt(zones.totalPax)} label="Pax" />
             <ChipTile kind="carbon" icon="leaf" value={intFmt(elements.totalCo2)} label="kgCO₂e" />
             <ChipTile kind="cost" icon="dollar" value={inrShort(elements.totalCost)} label="Fit-out" />

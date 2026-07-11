@@ -34,7 +34,9 @@ struct Metrics {
     gross_external_area: f64,
     /// Σ zone areas (m²); the usable/tiled area the donut sums over.
     net_internal_area: f64,
-    /// Count of `Desk` components.
+    /// Non-reference `Desk`s seated in a Workspace zone — the ONE workstation
+    /// count that equals the panel's Pax (see `metrics()`); excludes imported
+    /// reference furniture.
     workstations: usize,
     /// NIA / workstations (m²); 0 when there are no workstations.
     area_per_workstation: f64,
@@ -57,7 +59,8 @@ struct ZoneStat {
     label: String,
     area: f64,
     capacity: u32,
-    /// Count of this zone's components whose category is "Desk".
+    /// Count of this zone's non-reference `Desk` components (imported reference
+    /// furniture excluded). Σ over Workspace zones == `Metrics::workstations` == Pax.
     seated: usize,
     /// area / NIA × 100 (0 when NIA is 0). Slices sum to ~100 because zones tile.
     pct_of_nia: f64,
@@ -95,6 +98,29 @@ pub struct Editor {
 /// open-plan field — the earlier `area ≥ 0.9·floor` heuristic mis-fired on large
 /// bare open-plan rectangles (a 100×60 field clips to 0.95·floor), silently
 /// rewriting a real rectangular plate's Workspace area + pax.
+/// A component that counts as a real placed **workstation seat**: a non-reference
+/// `Desk`. Imported/legacy furniture (`reference == true`) is passive context and
+/// is never counted — the single predicate behind `metrics().workstations`,
+/// `zone_stats().seated`, and (via `seated`) the panel's Pax, so they cannot
+/// disagree (see the "ONE Workstations == Pax" definition on `metrics()`).
+fn is_workstation(c: &Component) -> bool {
+    c.category == "Desk" && !c.reference
+}
+
+/// THE ONE workstation count == Pax: non-reference `Desk`s seated in a Workspace
+/// zone (Σ over Workspace zones of `zone_stats().seated`). Imported reference
+/// furniture and desks outside the workspace never count, so the headline can't
+/// re-inflate to the old "every desk-shaped block" tally. `metrics().workstations`
+/// and `stats.ts` `zonePax` both derive from this, so they are identical.
+fn workstation_count(doc: &Document) -> usize {
+    doc.zones
+        .iter()
+        .filter(|z| z.zone_type == ZoneType::Workspace)
+        .flat_map(|z| &z.component_ids)
+        .filter(|&&cid| doc.components.iter().any(|c| c.id == cid && is_workstation(c)))
+        .count()
+}
+
 fn effective_zone_areas(doc: &Document) -> (Vec<f64>, Option<usize>) {
     let plate = doc.plate_polygon();
     let plate_ref = plate.as_deref();
@@ -175,6 +201,7 @@ impl Editor {
             h,
             rotation: 0.0,
             mirror: false,
+            reference: false, // placed/generated content counts; only imported furniture is reference
             label,
             product_id: None,
             price_inr: None,
@@ -291,6 +318,17 @@ impl Editor {
         }
     }
 
+    /// Mark a component as **passive reference** (imported/legacy CAD furniture)
+    /// or back to counted. Reference components render but are excluded from every
+    /// metric (workstations, pax, cost, CO2) — see `Component::reference`. The
+    /// merge-stamp path (`App.stampBaseInto`) sets this `true` on imported
+    /// surroundings. Additive: leaves `add_component` (default `false`) untouched.
+    pub fn set_component_reference(&mut self, id: u32, reference: bool) {
+        if let Some(c) = self.doc.component_mut(id) {
+            c.reference = reference;
+        }
+    }
+
     /// Set a component's footprint (meters). Used by the object inspector's
     /// editable W/H fields; clamped to a small positive minimum so a degenerate
     /// zero-size box can't be created.
@@ -358,12 +396,10 @@ impl Editor {
         // Workspace is de-overlapped in `effective_zone_areas`, so the sum can no
         // longer exceed the gross floor. `.min` stays a cheap invariant guard.
         let nia: f64 = areas.iter().sum::<f64>().min(floor_area);
-        let workstations = self
-            .doc
-            .components
-            .iter()
-            .filter(|c| c.category == "Desk")
-            .count();
+        // THE ONE workstation definition (== Pax everywhere: chip, row, Zones tab,
+        // CSV) — see `workstation_count`. `stats.ts` `zonePax` sums the same per-zone
+        // `seated`, so the panel's Pax is identical to this number.
+        let workstations = workstation_count(&self.doc);
         let programmed: f64 = self
             .doc
             .zones
@@ -436,7 +472,7 @@ impl Editor {
                         self.doc
                             .components
                             .iter()
-                            .any(|c| c.id == cid && c.category == "Desk")
+                            .any(|c| c.id == cid && is_workstation(c))
                     })
                     .count();
                 let area = areas[i];
@@ -639,5 +675,90 @@ impl Editor {
 impl Default for Editor {
     fn default() -> Self {
         Editor::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::geometry::Point;
+    use crate::zone::Zone;
+
+    fn desk(id: u32, x: f64, y: f64, reference: bool) -> Component {
+        Component {
+            id,
+            category: "Desk".into(),
+            x,
+            y,
+            w: 1.4,
+            h: 0.7,
+            rotation: 0.0,
+            mirror: false,
+            reference,
+            label: format!("Desk {id}"),
+            product_id: None,
+            price_inr: None,
+            decision: DecisionState::Open,
+        }
+    }
+
+    /// The metrics count only GENERATED (non-reference) content: a doc with N
+    /// generated desks + M imported reference desks — all inside the Workspace —
+    /// reports `workstations == N` and `area_per_workstation == NIA / N`, never
+    /// the polluted N+M that the old "every `Desk` component" count produced.
+    #[test]
+    fn workstations_exclude_reference_and_drive_area_per_ws() {
+        let mut doc = Document::new();
+        // A 20×10 plate (wall bbox → floor area 200 m²).
+        for (a, b) in [
+            ((0.0, 0.0), (20.0, 0.0)),
+            ((20.0, 0.0), (20.0, 10.0)),
+            ((20.0, 10.0), (0.0, 10.0)),
+            ((0.0, 10.0), (0.0, 0.0)),
+        ] {
+            let id = doc.alloc_id();
+            doc.walls.push(Wall {
+                id,
+                a: Point::new(a.0, a.1),
+                b: Point::new(b.0, b.1),
+                thickness: 0.1,
+                generated: false,
+                glazing: false,
+            });
+        }
+        // One Workspace zone covering the whole plate.
+        let zid = doc.alloc_id();
+        doc.zones.push(Zone {
+            id: zid,
+            zone_type: ZoneType::Workspace,
+            shape: ZoneShape::Rect { x: 10.0, y: 5.0, w: 20.0, h: 10.0 },
+            label: "Open Workspace".into(),
+            component_ids: Vec::new(),
+            group: None,
+        });
+
+        let n_generated = 8;
+        let m_reference = 5;
+        for i in 0..n_generated {
+            let id = doc.alloc_id();
+            doc.components.push(desk(id, 2.0 + i as f64, 3.0, false));
+        }
+        for i in 0..m_reference {
+            let id = doc.alloc_id();
+            doc.components.push(desk(id, 2.0 + i as f64, 7.0, true)); // imported reference
+        }
+        doc.reassign_components(); // bucket all desks into the workspace zone
+
+        // Only the N generated desks count — the M reference desks are excluded.
+        assert_eq!(workstation_count(&doc), n_generated as usize);
+
+        // area_per_workstation == NIA / N (NIA == 200 here, so ~25 m²/ws), NOT
+        // NIA / (N+M) which would be the polluted, too-tight figure.
+        let (areas, _) = effective_zone_areas(&doc);
+        let floor_area = doc.floor_area();
+        let nia: f64 = areas.iter().sum::<f64>().min(floor_area);
+        let apw = nia / workstation_count(&doc) as f64;
+        assert!((apw - nia / n_generated as f64).abs() < 1e-9);
+        assert!(apw > nia / (n_generated + m_reference) as f64, "reference must not tighten m²/ws");
     }
 }

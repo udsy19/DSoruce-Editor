@@ -406,6 +406,7 @@ mod tests {
             h: 1.0,
             rotation: 0.0,
             mirror: false,
+            reference: false,
             label: format!("Desk {id}"),
             product_id: None,
             price_inr: None,

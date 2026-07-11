@@ -771,6 +771,7 @@ fn push_component(doc: &mut Document, category: &str, x: f64, y: f64, w: f64, h:
         h,
         rotation,
         mirror: false,
+        reference: false, // generated fit-out counts toward every metric
         label: format!("{} {}", category, id),
         product_id: None,
             price_inr: None,

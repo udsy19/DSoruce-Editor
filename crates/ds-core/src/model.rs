@@ -85,6 +85,13 @@ pub struct Component {
     /// `false`, so old `.dsource` blobs and the generator are unaffected.
     #[serde(default)]
     pub mirror: bool,
+    /// **Passive reference** facet (Laiout parity, see `docs/design/laiout-deep-research.md`).
+    /// `true` = imported/legacy CAD furniture that is drawn for context but is NOT
+    /// part of the generated fit-out: it is EXCLUDED from every count (workstations,
+    /// pax, cost, CO2). Only generated/placed content (`false`) counts. `serde(default)`
+    /// false keeps every pre-M snapshot, the generator, and `add_component` unaffected.
+    #[serde(default)]
+    pub reference: bool,
     pub label: String,
     /// bound product from the material bank (None until re-imagined)
     pub product_id: Option<String>,
@@ -136,8 +143,10 @@ mod tests {
             "rotation":0.0,"label":"Desk 3","product_id":null,"decision":"Open"}"#;
         let c: Component = serde_json::from_str(old).expect("old component JSON must parse");
         assert!(!c.mirror, "missing `mirror` defaults to false");
+        assert!(!c.reference, "missing `reference` defaults to false (counts by default)");
 
-        // A left-hand door round-trips with its recovered hinge hand intact.
+        // A left-hand door round-trips with its recovered hinge hand intact, and an
+        // imported REFERENCE desk round-trips carrying its non-counted flag.
         let door = Component {
             id: 9,
             category: "Door".to_string(),
@@ -147,6 +156,7 @@ mod tests {
             h: 0.15,
             rotation: std::f64::consts::FRAC_PI_2,
             mirror: true,
+            reference: true,
             label: "Door 9".to_string(),
             product_id: None,
             price_inr: None,
@@ -155,6 +165,7 @@ mod tests {
         let json = serde_json::to_string(&door).unwrap();
         let back: Component = serde_json::from_str(&json).unwrap();
         assert!(back.mirror, "mirror survives the round-trip");
+        assert!(back.reference, "reference survives the round-trip");
         assert_eq!(back.category, "Door");
     }
 }

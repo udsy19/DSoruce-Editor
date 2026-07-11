@@ -41,6 +41,10 @@ export interface DocComponent {
   /** Hinge handedness (doors only): reflect the symbol across its long axis. serde
    *  defaults false, so pre-mirror snapshots + generated components read as false. */
   mirror?: boolean
+  /** Passive REFERENCE facet: imported/legacy CAD furniture drawn for context but
+   *  NOT counted in any metric (workstations, pax, cost, CO2). serde defaults false,
+   *  so generated/placed content counts (see `Component::reference`, Rust core). */
+  reference?: boolean
   label: string
   product_id: string | null
   decision: 'Open' | 'InReview' | 'Confirmed'
