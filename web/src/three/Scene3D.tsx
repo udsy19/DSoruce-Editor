@@ -207,7 +207,17 @@ export function Scene3D({ state }: { state: DocState }) {
       let area: number | null = null
       if (z) {
         const s = z.shape
-        area = s.kind === 'Rect' ? s.w * s.h : s.w * s.h - s.in_w * s.in_h
+        if (s.kind === 'Poly') {
+          let a2 = 0
+          for (let i = 0; i < s.pts.length; i++) {
+            const [x0, y0] = s.pts[i]
+            const [x1, y1] = s.pts[(i + 1) % s.pts.length]
+            a2 += x0 * y1 - x1 * y0
+          }
+          area = Math.abs(a2) / 2
+        } else {
+          area = s.kind === 'Rect' ? s.w * s.h : s.w * s.h - s.in_w * s.in_h
+        }
       }
       return {
         title: picked.label || 'Zone',

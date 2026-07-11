@@ -96,6 +96,10 @@ export type ZoneType =
 export type ZoneShape =
   | { kind: 'Rect'; x: number; y: number; w: number; h: number }
   | { kind: 'RectRing'; x: number; y: number; w: number; h: number; in_w: number; in_h: number }
+  // Boundary-conforming filled polygon (world meters): a zone that hugs an
+  // angled/stepped wall edge-to-edge. Non-draggable/rotatable in v1 (edit guards
+  // gate on `kind !== 'Rect'`).
+  | { kind: 'Poly'; pts: [number, number][] }
 export interface DocZone {
   id: number
   zone_type: ZoneType
@@ -1386,6 +1390,19 @@ export class EditorCanvas {
   }
   private zoneWorldBBox(z: DocZone) {
     const s = z.shape
+    if (s.kind === 'Poly') {
+      let minX = Infinity
+      let minY = Infinity
+      let maxX = -Infinity
+      let maxY = -Infinity
+      for (const [px, py] of s.pts) {
+        minX = Math.min(minX, px)
+        minY = Math.min(minY, py)
+        maxX = Math.max(maxX, px)
+        maxY = Math.max(maxY, py)
+      }
+      return { minX, minY, maxX, maxY }
+    }
     return { minX: s.x - s.w / 2, minY: s.y - s.h / 2, maxX: s.x + s.w / 2, maxY: s.y + s.h / 2 }
   }
   /** Selected room box in screen px (top-left origin). */
@@ -2435,7 +2452,7 @@ export class EditorCanvas {
     ctx.setLineDash([])
     ctx.restore()
 
-    if (ring) return // no handles / dims for the non-rectangular Circulation ring
+    if (z.shape.kind !== 'Rect') return // no handles / dims for non-rect (ring/poly) zones
 
     // Live dimension badge (accent pill) centered under the room.
     const label = `${z.shape.w.toFixed(2)} × ${z.shape.h.toFixed(2)} m`
@@ -2538,7 +2555,48 @@ export class EditorCanvas {
     for (const z of zones) {
       const pal = ZONE[z.zone_type] ?? ZONE.Core
       ctx.fillStyle = this.presentation ? lighten(pal.fill, 0.4) : pal.fill
-      if (z.shape.kind === 'RectRing') {
+      if (z.shape.kind === 'Poly') {
+        // Boundary-conforming polygon: trace + fill + hairline; label at the
+        // area-weighted centroid.
+        const pts = z.shape.pts
+        if (pts.length < 3) continue
+        ctx.beginPath()
+        const s0 = this.toScreen(pts[0][0], pts[0][1])
+        ctx.moveTo(s0.x, s0.y)
+        for (let i = 1; i < pts.length; i++) {
+          const p = this.toScreen(pts[i][0], pts[i][1])
+          ctx.lineTo(p.x, p.y)
+        }
+        ctx.closePath()
+        ctx.fill()
+        ctx.strokeStyle = hexToRgba(pal.line, 0.45)
+        ctx.lineWidth = 1
+        ctx.stroke()
+        // Area-weighted centroid (world), then screen, for the room tag.
+        let a2 = 0
+        let cx = 0
+        let cy = 0
+        for (let i = 0; i < pts.length; i++) {
+          const [x0, y0] = pts[i]
+          const [x1, y1] = pts[(i + 1) % pts.length]
+          const cross = x0 * y1 - x1 * y0
+          a2 += cross
+          cx += (x0 + x1) * cross
+          cy += (y0 + y1) * cross
+        }
+        const stat = this.zoneStats.get(z.id)
+        const area = stat?.area ?? Math.abs(a2) / 2
+        if (area < 6 || Math.abs(a2) < 1e-6) continue
+        const wcx = cx / (3 * a2)
+        const wcy = cy / (3 * a2)
+        const c = this.toScreen(wcx, wcy)
+        const name = z.label.toUpperCase()
+        ctx.font = '600 10px "Hanken Grotesk", system-ui, sans-serif'
+        const cap = stat?.capacity ?? 0
+        const metrics: string | null =
+          area >= 12 ? `${fmtArea(area)} m²${cap > 0 ? ` · ${cap} pax` : ''}` : null
+        tags.push({ name, metrics, cx: c.x, cy: c.y, namePx: 10, color: pal.line })
+      } else if (z.shape.kind === 'RectRing') {
         const s = z.shape
         const o = this.toScreen(s.x - s.w / 2, s.y - s.h / 2)
         const io = this.toScreen(s.x - s.in_w / 2, s.y - s.in_h / 2)
@@ -2642,7 +2700,12 @@ export class EditorCanvas {
     let sum = 0
     for (const z of zones) {
       const s = z.shape
-      sum += z.id * 3 + s.x + s.y * 7 + s.w * 13 + s.h * 31
+      if (s.kind === 'Poly') {
+        sum += z.id * 3
+        for (const [px, py] of s.pts) sum += px * 13 + py * 31
+      } else {
+        sum += z.id * 3 + s.x + s.y * 7 + s.w * 13 + s.h * 31
+      }
     }
     const key = `${zones.length}:${sum.toFixed(4)}:${this.plateKey}`
     if (key === this.zoneStatsKey) return
@@ -2949,7 +3012,14 @@ export function renderThumb(st: DocState, w = 200, h = 140): string {
     const pal = ZONE[z.zone_type] ?? ZONE.Core
     ctx.fillStyle = pal.fill
     const s = z.shape
-    if (s.kind === 'RectRing') {
+    if (s.kind === 'Poly') {
+      if (s.pts.length < 3) continue
+      ctx.beginPath()
+      ctx.moveTo(X(s.pts[0][0]), Y(s.pts[0][1]))
+      for (let i = 1; i < s.pts.length; i++) ctx.lineTo(X(s.pts[i][0]), Y(s.pts[i][1]))
+      ctx.closePath()
+      ctx.fill()
+    } else if (s.kind === 'RectRing') {
       ctx.beginPath()
       ctx.rect(X(s.x - s.w / 2), Y(s.y - s.h / 2), s.w * k, s.h * k)
       ctx.rect(X(s.x - s.in_w / 2), Y(s.y - s.in_h / 2), s.in_w * k, s.in_h * k)

@@ -30,8 +30,8 @@ import {
   Metrics,
   ZoneStat,
   ZoneType,
-  ZoneShape,
 } from '../editor/EditorCanvas'
+import { pointInZoneShape } from '../util/zoneGeom'
 import {
   PAGE_W,
   PAGE_H,
@@ -136,15 +136,8 @@ const ZONE_LABEL: Record<ZoneType, string> = {
   Circulation: 'Circulation',
 }
 
-/** Is point p inside this (axis-aligned) zone shape? Rings exclude the hole. */
-function pointInZone(shape: ZoneShape, x: number, y: number): boolean {
-  const inRect = (cx: number, cy: number, w: number, h: number) =>
-    x >= cx - w / 2 && x <= cx + w / 2 && y >= cy - h / 2 && y <= cy + h / 2
-  if (shape.kind === 'RectRing') {
-    return inRect(shape.x, shape.y, shape.w, shape.h) && !inRect(shape.x, shape.y, shape.in_w, shape.in_h)
-  }
-  return inRect(shape.x, shape.y, shape.w, shape.h)
-}
+/** Is point p inside this zone shape? Rings exclude the hole; polys ray-cast. */
+const pointInZone = pointInZoneShape
 
 /** Deterministic 6-digit "Design #" from the snapshot (stands in for qbiq's). */
 function designId(snapshot: string): string {

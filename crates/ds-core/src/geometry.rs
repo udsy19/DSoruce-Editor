@@ -137,11 +137,16 @@ pub fn rect_segment_dist(cx: f64, cy: f64, w: f64, h: f64, a: Point, b: Point) -
     best
 }
 
-/// Area of `rect ∩ polygon`, m²: Sutherland–Hodgman clip of the polygon against
-/// the rect's four half-planes, then shoelace. Correct for non-convex subject
-/// polygons (degenerate connector edges cancel in the signed sum). Used to
-/// report honest zone areas where a rectangular zone overhangs a plate notch.
-pub fn rect_polygon_clip_area(poly: &[Point], x0: f64, y0: f64, x1: f64, y1: f64) -> f64 {
+/// Clip `poly` to the axis-aligned rect `[x0,x1]×[y0,y1]` (Sutherland–Hodgman
+/// against the rect's four half-planes) and return the **clipped polygon**.
+/// Correct for non-convex subject polygons — the rect is convex, so a single SH
+/// pass per edge is exact. Empty (`< 3` pts) when poly and rect are disjoint.
+///
+/// This is the core boundary-conforming primitive: clipping a zone's rect
+/// against the floor-plate polygon yields a wall-hugging polygon whose edge
+/// follows an angled/stepped wall exactly (no staircase). `rect_polygon_clip_area`
+/// is this + [`polygon_area`].
+pub fn clip_rect_to_polygon(poly: &[Point], x0: f64, y0: f64, x1: f64, y1: f64) -> Vec<Point> {
     let inside = |pass: usize, p: Point| match pass {
         0 => p.x >= x0,
         1 => p.x <= x1,
@@ -165,7 +170,7 @@ pub fn rect_polygon_clip_area(poly: &[Point], x0: f64, y0: f64, x1: f64, y1: f64
     let mut pts = poly.to_vec();
     for pass in 0..4 {
         if pts.is_empty() {
-            return 0.0;
+            return Vec::new();
         }
         let mut out = Vec::with_capacity(pts.len() + 4);
         for i in 0..pts.len() {
@@ -181,7 +186,13 @@ pub fn rect_polygon_clip_area(poly: &[Point], x0: f64, y0: f64, x1: f64, y1: f64
         }
         pts = out;
     }
-    polygon_area(&pts)
+    pts
+}
+
+/// Area of `rect ∩ polygon`, m²: [`clip_rect_to_polygon`] then shoelace. Used to
+/// report honest zone areas where a rectangular zone overhangs a plate notch.
+pub fn rect_polygon_clip_area(poly: &[Point], x0: f64, y0: f64, x1: f64, y1: f64) -> f64 {
+    polygon_area(&clip_rect_to_polygon(poly, x0, y0, x1, y1))
 }
 
 /// Trace the **floor-plate polygon**: the largest-area closed loop through the
@@ -503,6 +514,31 @@ mod tests {
         // Fully inside and fully in the notch void.
         assert!((rect_polygon_clip_area(&poly, 1.0, 1.0, 3.0, 3.0) - 4.0).abs() < 1e-9);
         assert!(rect_polygon_clip_area(&poly, 13.0, 9.0, 19.0, 13.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn clip_rect_to_polygon_follows_a_diagonal_edge_exactly() {
+        // A right triangle plate: the hypotenuse runs from (10,0) to (0,10), i.e.
+        // the line x + y = 10. A rect [0,8]×[0,8] overhangs that diagonal.
+        let tri: Vec<Point> = [(0.0, 0.0), (10.0, 0.0), (0.0, 10.0)]
+            .iter()
+            .map(|&(x, y)| Point::new(x, y))
+            .collect();
+        let poly = clip_rect_to_polygon(&tri, 0.0, 0.0, 8.0, 8.0);
+        // Clipped area == rect ∩ triangle: the square [0,8]² minus the corner
+        // triangle beyond x+y=10. Corner triangle has legs (8→2) = 6 → area 18.
+        // 64 − 18 = 46.
+        assert!(
+            (polygon_area(&poly) - 46.0).abs() < 1e-9,
+            "clipped area {} != 46",
+            polygon_area(&poly)
+        );
+        // Its clipped edge lies ON the diagonal: at least two vertices satisfy
+        // x + y ≈ 10 (the exact wall line — no staircase).
+        let on_diag = poly.iter().filter(|p| (p.x + p.y - 10.0).abs() < 1e-9).count();
+        assert!(on_diag >= 2, "poly must have an edge on the diagonal wall, got {poly:?}");
+        // Same points, same area as the AREA helper (refactor equivalence).
+        assert!((rect_polygon_clip_area(&tri, 0.0, 0.0, 8.0, 8.0) - polygon_area(&poly)).abs() < 1e-12);
     }
 
     #[test]

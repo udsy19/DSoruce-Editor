@@ -1929,8 +1929,223 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
         );
     }
 
+    // Boundary-conforming pass: every zone rect that sits along an angled/stepped
+    // plate wall stops short of it (a conservative raster drops the cut cells),
+    // leaving triangular "wedge" gaps of dead floor the tenant still pays rent
+    // for. Grow each such zone's WALL-FACING edges out to the wall and clip to the
+    // plate so its footprint follows the diagonal exactly — a trapezoid/polygon
+    // instead of a set-back rectangle. Interior rectangular rooms are untouched.
+    if let Some(poly) = plate.as_deref() {
+        conform_zones_to_plate(doc, poly);
+    }
+
     // Fill each zone's component_ids by point-in-zone on component centers.
     doc.reassign_components();
+}
+
+/// Replace boundary-touching **`Rect`** zones with plate-conforming **`Poly`**
+/// zones so they reach an angled/stepped wall edge-to-edge, closing the wedge
+/// gaps a rectangle leaves along a diagonal boundary (the user's flagged
+/// "negative space" along the stepped top-right wall).
+///
+/// Per candidate zone, only the edges that FACE the plate boundary are grown —
+/// an edge is "wall-facing" when a point `MAX_ZONE_GROW` metres straight out from
+/// it lands OUTSIDE the plate (a wall is there), not on the interior floor a
+/// neighbour occupies. Each wall-facing edge is pushed out (capped short of any
+/// neighbouring zone that overlaps its grown span, so zones never overlap), then
+/// the grown rect is clipped to the plate — the clip trims the overhang along the
+/// exact wall line, no staircase. Interior edges (bordering another zone, not a
+/// wall) are never grown, so the tiling stays disjoint and NIA ≤ GEA holds.
+/// Deterministic and seed-independent; a zone with no nearby wall (or no real
+/// area gain) keeps its `Rect`, so interior rooms and the plate-spanning
+/// oriented Workspace are left rectangular.
+fn conform_zones_to_plate(doc: &mut Document, plate: &[Point]) {
+    /// How far a wall-facing edge reaches outward before the plate clip trims it.
+    const MAX_ZONE_GROW: f64 = 1.5;
+    const EPS: f64 = 1e-6;
+    /// Minimum m² a conform must add to bother replacing the `Rect` with a `Poly`.
+    const MIN_GAIN: f64 = 0.25;
+
+    // Occupancy for the neighbour cap: every zone's outer AABB (a component always
+    // sits inside its own zone's bbox, so zone bboxes alone bound growth — no
+    // separate component pass, which would let a desk near the wall-facing edge of
+    // its OWN zone spuriously block that zone's growth).
+    let zone_rects: Vec<(f64, f64, f64, f64)> =
+        doc.zones.iter().map(|z| z.shape.bbox()).collect();
+
+    let mut updates: Vec<(usize, Vec<[f64; 2]>)> = Vec::new();
+    for (i, z) in doc.zones.iter().enumerate() {
+        // Only residual Circulation ("walking place") zones conform — they are
+        // the perimeter/leftover pockets that leave the visible wedge gaps along
+        // an irregular wall (the user's flagged negative space). Enclosed rooms
+        // (Meeting/ClosedOffice/…) have their own partition walls and are edited
+        // as rects; Workspace desk-field tiles trace the desks they carry and
+        // must not grow past them into a wall; Core keep-outs are exact
+        // building-core footprints. All keep `Rect`.
+        if !matches!(z.zone_type, ZoneType::Circulation) {
+            continue;
+        }
+        let ZoneShape::Rect { x, y, w, h } = z.shape else { continue };
+        let (x0, x1, y0, y1) = (x - w / 2.0, x + w / 2.0, y - h / 2.0, y + h / 2.0);
+        // dir: 0 left(−x), 1 right(+x), 2 bottom(−y), 3 top(+y).
+        let fr = [0.15, 0.5, 0.85];
+        let wall_facing = |dir: usize| -> bool {
+            fr.iter().any(|&f| {
+                let (px, py) = match dir {
+                    0 => (x0 - MAX_ZONE_GROW, y0 + f * (y1 - y0)),
+                    1 => (x1 + MAX_ZONE_GROW, y0 + f * (y1 - y0)),
+                    2 => (x0 + f * (x1 - x0), y0 - MAX_ZONE_GROW),
+                    _ => (x0 + f * (x1 - x0), y1 + MAX_ZONE_GROW),
+                };
+                !geometry::point_in_polygon(px, py, plate)
+            })
+        };
+        let mut g = [0.0f64; 4];
+        for dir in 0..4 {
+            if !wall_facing(dir) {
+                continue;
+            }
+            let mut grow = MAX_ZONE_GROW;
+            // Cap short of any OTHER zone overlapping this edge's grown
+            // perpendicular span (conservative span → no corner overlaps).
+            for (j, &(ox0, oy0, ox1, oy1)) in zone_rects.iter().enumerate() {
+                if j == i {
+                    continue;
+                }
+                match dir {
+                    0 => {
+                        if ox1 <= x0 + EPS
+                            && oy1 > y0 - MAX_ZONE_GROW - EPS
+                            && oy0 < y1 + MAX_ZONE_GROW + EPS
+                        {
+                            grow = grow.min((x0 - ox1).max(0.0));
+                        }
+                    }
+                    1 => {
+                        if ox0 >= x1 - EPS
+                            && oy1 > y0 - MAX_ZONE_GROW - EPS
+                            && oy0 < y1 + MAX_ZONE_GROW + EPS
+                        {
+                            grow = grow.min((ox0 - x1).max(0.0));
+                        }
+                    }
+                    2 => {
+                        if oy1 <= y0 + EPS
+                            && ox1 > x0 - MAX_ZONE_GROW - EPS
+                            && ox0 < x1 + MAX_ZONE_GROW + EPS
+                        {
+                            grow = grow.min((y0 - oy1).max(0.0));
+                        }
+                    }
+                    _ => {
+                        if oy0 >= y1 - EPS
+                            && ox1 > x0 - MAX_ZONE_GROW - EPS
+                            && ox0 < x1 + MAX_ZONE_GROW + EPS
+                        {
+                            grow = grow.min((oy0 - y1).max(0.0));
+                        }
+                    }
+                }
+            }
+            g[dir] = grow.max(0.0);
+        }
+        if g.iter().all(|&v| v <= EPS) {
+            continue;
+        }
+        let poly = geometry::clip_rect_to_polygon(plate, x0 - g[0], y0 - g[2], x1 + g[1], y1 + g[3]);
+        if poly.len() < 3 {
+            continue;
+        }
+        let gain = geometry::polygon_area(&poly) - geometry::rect_polygon_clip_area(plate, x0, y0, x1, y1);
+        if gain < MIN_GAIN {
+            continue;
+        }
+        // Only convert when the clip actually produced a boundary-following shape:
+        // a slanted edge (diagonal wall) or a stepped outline (> 4 vertices). On a
+        // straight axis-aligned wall the clip is just a bigger rectangle — leave
+        // the zone a `Rect` so nothing regresses on orthogonal plates.
+        let slanted = (0..poly.len()).any(|k| {
+            let a = poly[k];
+            let b = poly[(k + 1) % poly.len()];
+            (a.x - b.x).abs() > 1e-4 && (a.y - b.y).abs() > 1e-4
+        });
+        if poly.len() <= 4 && !slanted {
+            continue;
+        }
+        // Disjointness guard: the neighbour-bbox cap keeps the grown RECT off
+        // other zones, but a tilt/step can still let two zones' clipped polys
+        // share a wedge, or a pre-existing overlap (a Workspace tile already laid
+        // over a room) can be inherited and enlarged. Reject any conversion whose
+        // polygon overlaps another zone beyond a small tolerance, so the conform
+        // only ever claims genuinely EMPTY floor and NIA ≤ GEA holds. Real wedge
+        // fills sit in empty floor and pass; conflicting ones keep their `Rect`
+        // (that wall stays as-is, never double-counted).
+        if poly_overlaps_other_zones(&poly, &doc.zones, &zone_rects, i, 0.3) {
+            continue;
+        }
+        updates.push((i, poly.iter().map(|p| [p.x, p.y]).collect()));
+    }
+    for (i, pts) in updates {
+        doc.zones[i].shape = ZoneShape::Poly { pts };
+    }
+}
+
+/// True if `poly` overlaps some zone other than `self_idx` by more than `tol` m².
+/// A coarse 0.3 m grid over the poly's AABB, broad-phase culled by `zone_bboxes`
+/// (only zones whose AABB meets the poly's are point-tested) and early-exiting the
+/// instant the tolerance is crossed — enough to reject a conform that would
+/// double-count another zone's floor, cheap because polys and candidate sets are
+/// small (keeps `generate()` well inside its time budget).
+fn poly_overlaps_other_zones(
+    poly: &[Point],
+    zones: &[Zone],
+    zone_boxes: &[(f64, f64, f64, f64)],
+    self_idx: usize,
+    tol: f64,
+) -> bool {
+    if poly.len() < 3 {
+        return false;
+    }
+    let (mut minx, mut miny, mut maxx, mut maxy) =
+        (f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY);
+    for p in poly {
+        minx = minx.min(p.x);
+        miny = miny.min(p.y);
+        maxx = maxx.max(p.x);
+        maxy = maxy.max(p.y);
+    }
+    // Broad-phase: only zones whose AABB intersects the poly's can overlap.
+    let cand: Vec<usize> = (0..zones.len())
+        .filter(|&j| {
+            j != self_idx && {
+                let (a0, b0, a1, b1) = zone_boxes[j];
+                a0 < maxx && a1 > minx && b0 < maxy && b1 > miny
+            }
+        })
+        .collect();
+    if cand.is_empty() {
+        return false;
+    }
+    const STEP: f64 = 0.3;
+    let cell = STEP * STEP;
+    let mut overlap = 0.0;
+    let mut y = miny + STEP / 2.0;
+    while y < maxy {
+        let mut x = minx + STEP / 2.0;
+        while x < maxx {
+            if geometry::point_in_polygon(x, y, poly)
+                && cand.iter().any(|&j| zones[j].shape.contains(x, y))
+            {
+                overlap += cell;
+                if overlap > tol {
+                    return true;
+                }
+            }
+            x += STEP;
+        }
+        y += STEP;
+    }
+    false
 }
 
 // ---- Room jobs: the concrete rooms one generate() call tries to place ----
@@ -6729,11 +6944,58 @@ mod tests {
         );
     }
 
-    /// AXIS-ALIGNED plates must NEVER trigger de-overlap: the spanning index is
-    /// always `None`, so their reported zone areas are the raw clip (byte-
-    /// identical to pre-fix behaviour). Guards the mis-fire failure mode where a
-    /// large open workspace on a small rectangular plate is wrongly identified as
-    /// the oriented desk field and has its area rewritten.
+    /// Boundary-conforming zones: on a plate with a diagonal (chamfered) wall the
+    /// residual Circulation must reach that wall as a `Poly` whose edge lies ON
+    /// the diagonal — closing the wedge gap a rectangle would leave. Also pins
+    /// determinism: the same seed yields byte-identical zone shapes (polys too).
+    #[test]
+    fn circulation_conforms_to_a_diagonal_wall() {
+        // 24×16 plate with the top-right corner chamfered along x + y = 34
+        // (from (24,10) to (18,16)).
+        let corners = vec![
+            (0.0, 0.0), (24.0, 0.0), (24.0, 10.0), (18.0, 16.0), (0.0, 16.0),
+        ];
+        let program = Program::default();
+        let mut doc = room_from_corners(&corners);
+        generate(&mut doc, &program, 7, false);
+
+        // At least one Circulation zone became a boundary-conforming Poly.
+        let polys: Vec<&Zone> = doc
+            .zones
+            .iter()
+            .filter(|z| z.zone_type == ZoneType::Circulation && matches!(z.shape, ZoneShape::Poly { .. }))
+            .collect();
+        assert!(
+            !polys.is_empty(),
+            "no Circulation zone conformed to the diagonal wall"
+        );
+
+        // Some conforming poly has a vertex ON the chamfer line x + y = 34 — its
+        // edge follows the wall exactly (a small tolerance for the raster set-back
+        // the grow-and-clip closes).
+        let touches_diag = doc.zones.iter().any(|z| match &z.shape {
+            ZoneShape::Poly { pts } => pts.iter().any(|p| (p[0] + p[1] - 34.0).abs() < 1e-6),
+            _ => false,
+        });
+        assert!(touches_diag, "conforming poly never reached the diagonal wall line");
+
+        // Determinism: same seed → identical zone shapes (including Poly points).
+        let mut again = room_from_corners(&corners);
+        generate(&mut again, &program, 7, false);
+        assert_eq!(doc.zones.len(), again.zones.len());
+        for (a, b) in doc.zones.iter().zip(&again.zones) {
+            assert_eq!(a.shape, b.shape, "zone {} shape not deterministic", a.id);
+        }
+    }
+
+    /// AXIS-ALIGNED plates must NEVER trigger the *spanning* de-overlap (the
+    /// `spanning` index is always `None`), so a large open workspace on a small
+    /// rectangular plate is never mis-identified as the oriented desk field and
+    /// rewritten to `floor − others`. Honest accounting may still trim a
+    /// Workspace FIELD by the rooms nested inside it — a per-zone de-overlap that
+    /// only ever REMOVES double-counted floor (effective ≤ raw clip) and keeps
+    /// Σ areas ≤ GEA. This test pins all three: no spanning misfire, never
+    /// inflated above the raw clip, and NIA ≤ GEA.
     #[test]
     fn axis_aligned_plates_are_never_de_overlapped() {
         // Rectangles from tiny to large, plus an axis-aligned L the axis packer
@@ -6758,7 +7020,8 @@ mod tests {
                     spanning.is_none(),
                     "{name} seed {seed}: axis-aligned plate was WRONGLY de-overlapped (spanning={spanning:?})"
                 );
-                // Byte-identical to the raw per-zone clip.
+                // The per-zone de-overlap only REMOVES double-counted floor: every
+                // effective area is ≤ its raw clip, never inflated.
                 let plate = doc.plate_polygon();
                 let raw: Vec<f64> = doc.zones.iter().map(|z| z.area_on(plate.as_deref())).collect();
                 assert_eq!(
@@ -6767,10 +7030,17 @@ mod tests {
                 );
                 for (i, (a, b)) in areas_eff.iter().zip(&raw).enumerate() {
                     assert!(
-                        (a - b).abs() < 1e-12,
-                        "{name} seed {seed}: zone[{i}] area diverged from raw clip ({a} vs {b})"
+                        *a <= *b + 1e-9,
+                        "{name} seed {seed}: zone[{i}] effective area {a} exceeds raw clip {b}"
                     );
                 }
+                // NIA ≤ GEA: honest de-overlapped areas tile within the plate.
+                let gea = doc.floor_area();
+                let nia: f64 = areas_eff.iter().sum();
+                assert!(
+                    nia <= gea + 1e-6,
+                    "{name} seed {seed}: NIA {nia:.2} exceeds GEA {gea:.2}"
+                );
             }
         }
     }

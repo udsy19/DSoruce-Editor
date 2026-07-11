@@ -39,6 +39,7 @@ import {
 } from './sheet'
 import type { SheetSetMeta } from './sheetSet'
 import type { DocState } from '../editor/EditorCanvas'
+import { zoneCenter } from '../util/zoneGeom'
 import {
   ceilingLayout,
   powerLayout,
@@ -284,7 +285,8 @@ function roomLabelBoxes(state: DocState, map: (x: number, y: number) => { x: num
   const out: LabelBox[] = []
   for (const z of state.zones ?? []) {
     if (z.zone_type === 'Circulation' || !z.label) continue
-    const c = map(z.shape.x, z.shape.y)
+    const ctr = zoneCenter(z.shape)
+    const c = map(ctr.x, ctr.y)
     const text = z.label.toUpperCase()
     const w = textWidth(text, 7.5, false) + 6
     const h = 12

@@ -26,6 +26,7 @@
 // Item Descriptions carry W×L in cm ("Desk W70 X L140"), matching the sample.
 
 import type { DocState, DocComponent, DocWall, DocZone, ZoneType } from '../editor/EditorCanvas'
+import { pointInZoneShape } from '../util/zoneGeom'
 import { catByCategory } from '../editor/catalog'
 import { zipStore } from './zip'
 import { triggerDownload } from './png'
@@ -144,24 +145,12 @@ function len(w: DocWall): number {
   return Math.hypot(w.b.x - w.a.x, w.b.y - w.a.y)
 }
 
-function pointInRect(px: number, py: number, x: number, y: number, w: number, h: number): boolean {
-  return px >= x - w / 2 && px <= x + w / 2 && py >= y - h / 2 && py <= y + h / 2
-}
-
 /** The zone whose rect contains point (px,py) in EDITOR coords, or null.
  *  Exported so the room-marker → zone association (App.tsx) reuses the one
  *  point-in-zone test rather than forking it (no-bloat). */
 export function zoneAtPoint(px: number, py: number, zones: DocZone[]): DocZone | null {
   for (const z of zones) {
-    const s = z.shape
-    if (s.kind === 'Rect') {
-      if (pointInRect(px, py, s.x, s.y, s.w, s.h)) return z
-    } else {
-      // RectRing: inside the outer rect but outside the inner hole.
-      const inOuter = pointInRect(px, py, s.x, s.y, s.w, s.h)
-      const inHole = pointInRect(px, py, s.x, s.y, s.in_w, s.in_h)
-      if (inOuter && !inHole) return z
-    }
+    if (pointInZoneShape(z.shape, px, py)) return z
   }
   return null
 }
@@ -175,7 +164,15 @@ function zoneFor(c: DocComponent, zones: DocZone[]): DocZone | null {
 function zonePerimeter(z: DocZone): number {
   const s = z.shape
   if (s.kind === 'Rect') return 2 * (s.w + s.h)
-  return 2 * (s.w + s.h) + 2 * (s.in_w + s.in_h)
+  if (s.kind === 'RectRing') return 2 * (s.w + s.h) + 2 * (s.in_w + s.in_h)
+  // Poly: sum of edge lengths.
+  let per = 0
+  for (let i = 0; i < s.pts.length; i++) {
+    const [x0, y0] = s.pts[i]
+    const [x1, y1] = s.pts[(i + 1) % s.pts.length]
+    per += Math.hypot(x1 - x0, y1 - y0)
+  }
+  return per
 }
 
 /**

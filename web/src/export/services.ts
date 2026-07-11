@@ -9,7 +9,8 @@
 // other sheet reads — walls for the plate, zones for rooms, components for the
 // furniture the outlets serve. Nothing here mutates state.
 
-import type { DocState, DocComponent, ZoneShape } from '../editor/EditorCanvas'
+import type { DocState, DocComponent } from '../editor/EditorCanvas'
+import { zoneArea as zoneShapeArea, zoneBBox, zoneCenter } from '../util/zoneGeom'
 
 // ---------------------------------------------------------------------------
 // Derivation constants (grounded so the schedules read like a real MEP set)
@@ -101,9 +102,7 @@ interface Room {
   label?: string // zone name (for circuit numbering); absent on the plate fallback
 }
 
-function shapeArea(s: ZoneShape): number {
-  return s.kind === 'RectRing' ? s.w * s.h - s.in_w * s.in_h : s.w * s.h
-}
+const shapeArea = zoneShapeArea
 
 function plateBounds(state: DocState): { minX: number; minY: number; maxX: number; maxY: number } | null {
   let minX = Infinity
@@ -126,11 +125,16 @@ function rooms(state: DocState): Room[] {
   if (zones.length > 0) {
     return zones.map((z) => {
       const s = z.shape
+      // Rooms are modelled as an AABB with an optional ring hole; a boundary-
+      // conforming Poly is serviced by its bounding box (lighting/power grid is
+      // laid out over the room's extent, exact outline not needed here).
+      const bb = zoneBBox(s)
+      const c = zoneCenter(s)
       return {
-        cx: s.x,
-        cy: s.y,
-        hw: s.w / 2,
-        hh: s.h / 2,
+        cx: c.x,
+        cy: c.y,
+        hw: (bb.maxX - bb.minX) / 2,
+        hh: (bb.maxY - bb.minY) / 2,
         ring: s.kind === 'RectRing' ? { ihw: s.in_w / 2, ihh: s.in_h / 2 } : undefined,
         area: shapeArea(s),
         label: z.label || undefined,

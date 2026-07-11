@@ -28,8 +28,11 @@ pub enum ZoneType {
 }
 
 /// Footprint shape. `Rect` is the v1 workhorse; `RectRing` models the perimeter
-/// corridor (a rect with a rectangular hole) without a polygon library.
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+/// corridor (a rect with a rectangular hole); `Poly` is a boundary-conforming
+/// filled simple polygon — a zone that hugs an angled/stepped wall edge-to-edge
+/// (its wall-facing side follows the plate exactly, its other sides flex to
+/// absorb it). Not `Copy`: `Poly` carries a `Vec`; sites clone/borrow instead.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind")]
 pub enum ZoneShape {
     /// Filled axis-aligned rectangle, center-origin (matches Component).
@@ -44,16 +47,23 @@ pub enum ZoneShape {
         in_w: f64,
         in_h: f64,
     },
+    /// Filled simple polygon in **world coordinates** (absolute meters, same
+    /// units as `Rect`), CCW or CW winding. Built by clipping an expanded rect
+    /// to the floor-plate polygon so its footprint reaches an irregular wall
+    /// exactly, closing the triangular "wedge" gaps a rect leaves along a
+    /// diagonal boundary. Editing ops (cut/merge/resize) reject `Poly` in v1.
+    Poly { pts: Vec<[f64; 2]> },
 }
 
 impl ZoneShape {
     /// Net internal floor area of the shape, m².
     pub fn area(&self) -> f64 {
-        match *self {
+        match self {
             ZoneShape::Rect { w, h, .. } => w.max(0.0) * h.max(0.0),
             ZoneShape::RectRing { w, h, in_w, in_h, .. } => {
                 (w.max(0.0) * h.max(0.0) - in_w.max(0.0) * in_h.max(0.0)).max(0.0)
             }
+            ZoneShape::Poly { pts } => crate::geometry::polygon_area(&poly_points(pts)),
         }
     }
 
@@ -73,20 +83,41 @@ impl ZoneShape {
                 y + h / 2.0,
             )
         };
-        match *self {
-            ZoneShape::Rect { x, y, w, h } => clip(x, y, w, h),
+        match self {
+            ZoneShape::Rect { x, y, w, h } => clip(*x, *y, *w, *h),
             ZoneShape::RectRing { x, y, w, h, in_w, in_h } => {
-                (clip(x, y, w, h) - clip(x, y, in_w, in_h)).max(0.0)
+                (clip(*x, *y, *w, *h) - clip(*x, *y, *in_w, *in_h)).max(0.0)
             }
+            // A `Poly` is built by clipping to the plate, so it is already ⊆ plate
+            // and its own polygon area is the plate-clipped area. Returning
+            // `polygon_area` directly avoids a polygon-polygon clip against a
+            // possibly-non-convex plate (Sutherland–Hodgman only clips against a
+            // convex window). With no plate the raw area is likewise correct.
+            ZoneShape::Poly { pts } => crate::geometry::polygon_area(&poly_points(pts)),
         }
     }
 
     /// Outer AABB `(min_x, min_y, max_x, max_y)` for hit-testing / tiling checks.
     pub fn bbox(&self) -> (f64, f64, f64, f64) {
-        match *self {
+        match self {
             ZoneShape::Rect { x, y, w, h }
             | ZoneShape::RectRing { x, y, w, h, .. } => {
                 (x - w / 2.0, y - h / 2.0, x + w / 2.0, y + h / 2.0)
+            }
+            ZoneShape::Poly { pts } => {
+                let (mut minx, mut miny, mut maxx, mut maxy) =
+                    (f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY);
+                for p in pts {
+                    minx = minx.min(p[0]);
+                    miny = miny.min(p[1]);
+                    maxx = maxx.max(p[0]);
+                    maxy = maxy.max(p[1]);
+                }
+                if pts.is_empty() {
+                    (0.0, 0.0, 0.0, 0.0)
+                } else {
+                    (minx, miny, maxx, maxy)
+                }
             }
         }
     }
@@ -95,7 +126,7 @@ impl ZoneShape {
     /// `RectRing` the hole is excluded (a point in the central work zone is NOT
     /// in the perimeter corridor).
     pub fn contains(&self, px: f64, py: f64) -> bool {
-        match *self {
+        match self {
             ZoneShape::Rect { x, y, w, h } => {
                 (px - x).abs() <= w / 2.0 && (py - y).abs() <= h / 2.0
             }
@@ -104,8 +135,17 @@ impl ZoneShape {
                 let in_hole = (px - x).abs() < in_w / 2.0 && (py - y).abs() < in_h / 2.0;
                 in_outer && !in_hole
             }
+            ZoneShape::Poly { pts } => {
+                crate::geometry::point_in_polygon(px, py, &poly_points(pts))
+            }
         }
     }
+}
+
+/// View a `Poly`'s `[x, y]` pairs as `geometry::Point`s (the geometry helpers
+/// speak `Point`). Cheap allocation; polys are small (≤ ~12 pts).
+fn poly_points(pts: &[[f64; 2]]) -> Vec<crate::geometry::Point> {
+    pts.iter().map(|p| crate::geometry::Point::new(p[0], p[1])).collect()
 }
 
 /// A first-class region of the floor plate. `id` is stable across edits so the
@@ -212,6 +252,34 @@ mod tests {
         assert!(!s.contains(0.0, 0.0));
         // Point outside the outer rect.
         assert!(!s.contains(6.0, 0.0));
+    }
+
+    #[test]
+    fn poly_area_contains_and_bbox() {
+        // A right-triangle footprint (legs 4): area 8, bbox the full leg span.
+        let s = ZoneShape::Poly { pts: vec![[0.0, 0.0], [4.0, 0.0], [0.0, 4.0]] };
+        assert!((s.area() - 8.0).abs() < 1e-9);
+        // area_on with no plate == raw polygon area (a Poly is built ⊆ plate).
+        assert!((s.area_on(None) - 8.0).abs() < 1e-9);
+        assert_eq!(s.bbox(), (0.0, 0.0, 4.0, 4.0));
+        assert!(s.contains(1.0, 1.0)); // inside the triangle
+        assert!(!s.contains(3.0, 3.0)); // beyond the hypotenuse x + y = 4
+        assert!(!s.contains(-1.0, 1.0));
+    }
+
+    #[test]
+    fn poly_area_equals_clipped_polygon_area() {
+        // A Poly built by clipping a rect to a diagonal plate reports exactly the
+        // clipped polygon's area (the boundary-conforming invariant).
+        let tri: Vec<crate::geometry::Point> = [(0.0, 0.0), (10.0, 0.0), (0.0, 10.0)]
+            .iter()
+            .map(|&(x, y)| crate::geometry::Point::new(x, y))
+            .collect();
+        let clipped = crate::geometry::clip_rect_to_polygon(&tri, 0.0, 0.0, 8.0, 8.0);
+        let pts: Vec<[f64; 2]> = clipped.iter().map(|p| [p.x, p.y]).collect();
+        let s = ZoneShape::Poly { pts };
+        assert!((s.area() - crate::geometry::polygon_area(&clipped)).abs() < 1e-12);
+        assert!((s.area() - 46.0).abs() < 1e-9);
     }
 
     #[test]

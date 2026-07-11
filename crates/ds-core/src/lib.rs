@@ -151,6 +151,31 @@ fn effective_zone_areas(doc: &Document) -> (Vec<f64>, Option<usize>) {
                 )
         })
     });
+    // Non-spanning Workspace de-overlap. A Workspace *field* zone is the
+    // open-floor BACKGROUND of its band; the rooms/core placed within it are
+    // carved OUT of that floor, so its honest contribution is its clip MINUS the
+    // floor it shares with non-Workspace zones. Without this a band Workspace laid
+    // over its band's rooms double-counts their area (e.g. a 53 m² bottom-band
+    // field over four ~8 m² rooms = ~33 m² counted twice) — invisible while empty
+    // floor kept the total under GEA, but exposed the moment the boundary-
+    // conforming Circulation fill claims that empty floor. Rooms are disjoint from
+    // one another, so summing per-room overlaps is exact. The single plate-spanning
+    // field keeps its own `floor − others` rule below.
+    for i in 0..doc.zones.len() {
+        if doc.zones[i].zone_type != ZoneType::Workspace || Some(i) == spanning {
+            continue;
+        }
+        let ZoneShape::Rect { x, y, w, h } = doc.zones[i].shape else { continue };
+        let (rx0, ry0, rx1, ry1) = (x - w / 2.0, y - h / 2.0, x + w / 2.0, y + h / 2.0);
+        let mut sub = 0.0;
+        for j in 0..doc.zones.len() {
+            if j == i || doc.zones[j].zone_type == ZoneType::Workspace {
+                continue;
+            }
+            sub += zone_overlap_rect_on_plate(&doc.zones[j].shape, rx0, ry0, rx1, ry1, plate_ref);
+        }
+        areas[i] = (areas[i] - sub).max(0.0);
+    }
     if let Some(idx) = spanning {
         let others: f64 = areas
             .iter()
@@ -161,6 +186,43 @@ fn effective_zone_areas(doc: &Document) -> (Vec<f64>, Option<usize>) {
         areas[idx] = (floor_area - others).max(0.0);
     }
     (areas, spanning)
+}
+
+/// Area (m²) of `shape ∩ rect`, clipped to the plate — the floor a Workspace
+/// field shares with the zone `shape` sitting inside it. `Rect`/`RectRing` reduce
+/// to axis-aligned rect intersections; a `Poly` (a boundary-conforming zone) is
+/// already ⊆ plate, so clipping it to the rect gives the overlap directly.
+fn zone_overlap_rect_on_plate(
+    shape: &ZoneShape,
+    rx0: f64,
+    ry0: f64,
+    rx1: f64,
+    ry1: f64,
+    plate: Option<&[geometry::Point]>,
+) -> f64 {
+    let clip = |x0: f64, y0: f64, x1: f64, y1: f64| -> f64 {
+        let (ix0, iy0, ix1, iy1) = (x0.max(rx0), y0.max(ry0), x1.min(rx1), y1.min(ry1));
+        if ix0 >= ix1 || iy0 >= iy1 {
+            return 0.0;
+        }
+        match plate {
+            Some(p) => geometry::rect_polygon_clip_area(p, ix0, iy0, ix1, iy1),
+            None => (ix1 - ix0) * (iy1 - iy0),
+        }
+    };
+    match shape {
+        ZoneShape::Rect { x, y, w, h } => clip(x - w / 2.0, y - h / 2.0, x + w / 2.0, y + h / 2.0),
+        ZoneShape::RectRing { x, y, w, h, in_w, in_h } => {
+            (clip(x - w / 2.0, y - h / 2.0, x + w / 2.0, y + h / 2.0)
+                - clip(x - in_w / 2.0, y - in_h / 2.0, x + in_w / 2.0, y + in_h / 2.0))
+            .max(0.0)
+        }
+        ZoneShape::Poly { pts } => {
+            let poly: Vec<geometry::Point> =
+                pts.iter().map(|p| geometry::Point::new(p[0], p[1])).collect();
+            geometry::polygon_area(&geometry::clip_rect_to_polygon(&poly, rx0, ry0, rx1, ry1))
+        }
+    }
 }
 
 #[wasm_bindgen]

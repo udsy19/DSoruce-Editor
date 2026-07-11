@@ -462,7 +462,14 @@ export function renderPrintCanvas(
     for (const z of state.zones ?? []) {
       ctx.fillStyle = PRINT_ZONE_FILL[z.zone_type] ?? PRINT_ZONE_FILL.Core
       const s = z.shape
-      if (s.kind === 'RectRing') {
+      if (s.kind === 'Poly') {
+        if (s.pts.length < 3) continue
+        ctx.beginPath()
+        ctx.moveTo(X(s.pts[0][0]), Y(s.pts[0][1]))
+        for (let i = 1; i < s.pts.length; i++) ctx.lineTo(X(s.pts[i][0]), Y(s.pts[i][1]))
+        ctx.closePath()
+        ctx.fill()
+      } else if (s.kind === 'RectRing') {
         ctx.beginPath()
         ctx.rect(X(s.x - s.w / 2), Y(s.y - s.h / 2), s.w * k, s.h * k)
         ctx.rect(X(s.x - s.in_w / 2), Y(s.y - s.in_h / 2), s.in_w * k, s.in_h * k)

@@ -208,11 +208,11 @@ impl Document {
         if ia == ib {
             return Err(ZoneError::NotMergeable);
         }
-        let (ra, rb) = match (self.zones[ia].shape, self.zones[ib].shape) {
+        let (ra, rb) = match (&self.zones[ia].shape, &self.zones[ib].shape) {
             (ZoneShape::Rect { .. }, ZoneShape::Rect { .. }) => {
-                (self.zones[ia].shape, self.zones[ib].shape)
+                (self.zones[ia].shape.clone(), self.zones[ib].shape.clone())
             }
-            // A RectRing can't be merged in v1.
+            // A RectRing / Poly can't be merged in v1.
             _ => return Err(ZoneError::NotMergeable),
         };
 
@@ -256,7 +256,8 @@ impl Document {
         let i = self.zone_index(id).ok_or(ZoneError::NotFound)?;
         let (x, y, w, h) = match self.zones[i].shape {
             ZoneShape::Rect { x, y, w, h } => (x, y, w, h),
-            ZoneShape::RectRing { .. } => return Err(ZoneError::InvalidCut),
+            // A RectRing / Poly zone is not axis-cuttable in v1.
+            _ => return Err(ZoneError::InvalidCut),
         };
         let (first, second) = match axis {
             Axis::Vertical => {

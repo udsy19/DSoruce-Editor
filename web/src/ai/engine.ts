@@ -31,7 +31,9 @@ function applyCall(ed: Editor, call: ToolCall): void {
       const axis = call.args.axis === 'Horizontal' ? 'Horizontal' : 'Vertical'
       const z = ((ed.state() as DocState).zones ?? []).find((zz) => zz.id === zid)
       if (!z) throw new Error('no zone with that id')
-      // Cut through the zone's center along the chosen axis.
+      // Cut through the zone's center along the chosen axis. Only axis-aligned
+      // Rect zones are splittable (the core rejects RectRing/Poly).
+      if (z.shape.kind !== 'Rect') throw new Error('that zone cannot be split')
       const at = axis === 'Vertical' ? z.shape.x : z.shape.y
       ed.split_zone(zid, axis, at)
       break

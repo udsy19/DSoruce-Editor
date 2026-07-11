@@ -19,6 +19,7 @@
 // Currency is ₹ (India-first, matching the material bank + app convention).
 
 import type { DocState, DocWall, DocZone, ZoneStat, ZoneType } from './EditorCanvas'
+import { zoneArea as zoneShapeArea } from '../util/zoneGeom'
 import { searchBank } from '../materialBank/mock'
 import { searchOfficeBank } from '../materialBank/office'
 
@@ -211,9 +212,7 @@ const wallLen = (w: DocWall) => Math.hypot(w.b.x - w.a.x, w.b.y - w.a.y)
  *  fully inside the plate, so unclipped shape area == the core's plate-clipped
  *  area — the two enclosure premiums agree. */
 function zoneArea(z: DocZone): number {
-  const s = z.shape
-  if (s.kind === 'RectRing') return Math.max(0, s.w * s.h - s.in_w * s.in_h)
-  return Math.max(0, s.w * s.h)
+  return zoneShapeArea(z.shape)
 }
 
 export interface ElementLine {

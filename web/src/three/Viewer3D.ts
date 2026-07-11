@@ -1188,7 +1188,26 @@ export class Viewer3D {
       this.content.add(mesh)
     }
     const s = z.shape
-    if (s.kind === 'Rect') {
+    if (s.kind === 'Poly') {
+      // Boundary-conforming polygon: a single flat filled floor. The pts are
+      // already ⊆ plate, so no rect clip — build the Shape directly (same plan→
+      // world mapping as the clipped-rect path: local (px, −py), rotate −π/2).
+      if (s.pts.length >= 3) {
+        const shape = new THREE.Shape(s.pts.map(([px, py]) => new THREE.Vector2(px, -py)))
+        const mesh = new THREE.Mesh(new THREE.ShapeGeometry(shape), mat)
+        mesh.rotation.x = -Math.PI / 2
+        mesh.position.y = 0.006
+        mesh.userData.zonePlate = true
+        mesh.userData.pick = {
+          kind: 'zone',
+          id: z.id,
+          label: z.label,
+          zoneType: z.zone_type,
+        } satisfies PickInfo
+        mesh.receiveShadow = true
+        this.content.add(mesh)
+      }
+    } else if (s.kind === 'Rect') {
       add(s.x, s.y, s.w, s.h)
     } else {
       // RectRing: four border strips around the inner void.

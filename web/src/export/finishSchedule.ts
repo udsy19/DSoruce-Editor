@@ -47,7 +47,8 @@ import {
   type TitleBlockInfo,
 } from './sheet'
 import type { SheetSetMeta } from './sheetSet'
-import type { DocState, DocZone, ZoneShape } from '../editor/EditorCanvas'
+import type { DocState, DocZone } from '../editor/EditorCanvas'
+import { zoneArea as zoneShapeArea } from '../util/zoneGeom'
 import { CEILING_HEIGHT } from './services'
 
 export interface FinishScheduleOpts {
@@ -258,11 +259,8 @@ function finishTypeFor(z: DocZone): FinishKey {
   }
 }
 
-/** Enclosed area (m²) of an axis-aligned zone shape; rings exclude the hole.
- *  Local because sheetSet.ts's equivalent is private and that file is not ours. */
-function zoneArea(s: ZoneShape): number {
-  return s.kind === 'RectRing' ? s.w * s.h - s.in_w * s.in_h : s.w * s.h
-}
+/** Enclosed area (m²) of a zone shape; rings exclude the hole, polys shoelace. */
+const zoneArea = zoneShapeArea
 
 // ---------------------------------------------------------------------------
 // One schedule row — a resolved room ready to draw.

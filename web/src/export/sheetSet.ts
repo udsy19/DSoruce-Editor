@@ -38,7 +38,8 @@ import type { ProductCardInfo } from './sheet'
 import type { ReportMeta } from './report'
 import { buildTakeoffModel } from './takeoff'
 import type { TakeoffFurnitureRow, TakeoffSummaryRow } from './takeoff'
-import type { DocState, DocComponent, ZoneShape } from '../editor/EditorCanvas'
+import type { DocState, DocComponent } from '../editor/EditorCanvas'
+import { zoneArea as zoneShapeArea, zoneCenter as zoneShapeCenter } from '../util/zoneGeom'
 import type { Drawing } from '../import/types'
 import type { BindingInfo } from '../persist/file'
 import { extractPlate, extractInteriorWalls } from '../import/testfit'
@@ -88,15 +89,11 @@ function todayLabel(): string {
 // Geometry helpers
 // ---------------------------------------------------------------------------
 
-/** Enclosed area (m²) of an (axis-aligned) zone shape; rings exclude the hole. */
-function zoneArea(s: ZoneShape): number {
-  return s.kind === 'RectRing' ? s.w * s.h - s.in_w * s.in_h : s.w * s.h
-}
+/** Enclosed area (m²); rings exclude the hole, polys shoelace. */
+const zoneArea = zoneShapeArea
 
-/** Center point of a zone shape. */
-function zoneCenter(s: ZoneShape): { x: number; y: number } {
-  return { x: s.x, y: s.y }
-}
+/** Center point of a zone shape (polygon → area-weighted centroid). */
+const zoneCenter = zoneShapeCenter
 
 /** Shortest distance from point p to segment a→b (m). */
 function segDist(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
@@ -679,6 +676,7 @@ function roomDims(
   for (const z of state.zones ?? []) {
     if (z.zone_type === 'Circulation') continue
     const s = z.shape // Rect or RectRing — both centred at (x,y) with outer w×h
+    if (s.kind === 'Poly') continue // boundary-conforming (Circulation-only): no orthogonal dim string
     const x0 = s.x - s.w / 2
     const x1 = s.x + s.w / 2
     const y0 = s.y - s.h / 2
