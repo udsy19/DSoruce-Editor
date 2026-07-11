@@ -144,10 +144,15 @@ The qbiq-style flow: Project → Upload → Program → Generate → Editor → 
   Circulation ring (its outer box == the plate); resizing it via handles is meaningless/confusing.
   Genuine L/T-shaped rooms need a richer zone model (multi-rect / polygon zones) — a larger design
   decision, not a quick polish. Revisit if arbitrary room shapes are wanted.
-- [ ] **(f) Door mirror facet** — doors lose BOTH swing orientation (normalize emits rotation 0) and
-  hinge handedness (no mirror facet). Add a `mirror` facet to the Rust Component model, recover door
-  rotation+hand in `normalize.ts`, render it in `drawFurnitureSymbol`/`drawComponent`, carry it through
-  merge — so door swings match the source drawing and the merged plan exactly.
+- [x] **(f) Door orientation + mirror** — builder+reviewer. `Component` gains `mirror: bool`
+  (`#[serde(default)]` false → all existing callers/blobs unaffected) + additive `set_component_mirror`.
+  `normalize.ts::recoverDoorPose` recovers a door's opening axis + hinge hand from the SWING ARC's
+  geometry (circumcenter=hinge, endpoints=leaf tip/strike, cross-product=hand) — 17/17 real doors;
+  `drawDoor` reflects on mirror; merge carries it (a door is a true reflection under the import↔editor
+  Y-flip → `rotation` w/o `+π` + inverted `mirror`). Reviewer found the product code correct but the
+  merge-equivalence TEST stale (still pinned Door as unmirrorable) → rewrote `mergeOrient.test.mjs` to
+  prove Door merge==mirror(import) across 4 axes×2 hands + a pose robustness matrix (degenerate/off-
+  cardinal/reversed-winding/double-door). 106 Rust tests.
 - [x] **S4 — Wall healing.** `healWalls(drawing)` bridges near-miss partition gaps (degree-1 wall ends
   within 0.25 m that are near-collinear or perpendicular, + endpoint→segment T-junctions; doorway guard
   at 0.8 m). Space-step **Heal gaps / As drawn** toggle (default heal on; testids space-heal-toggle/on/off)
