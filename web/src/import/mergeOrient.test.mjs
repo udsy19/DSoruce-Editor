@@ -11,17 +11,28 @@
 // (relative to its walls), its on-screen glyph must therefore equal the VERTICAL
 // MIRROR of the import-view glyph.
 //
-// mergeFit stamps `rotation = norm.rotation + π` and footprint `odd?[h,w]:[w,h]`.
-// A pure +π rotation reproduces a vertical mirror ONLY for a LEFT-RIGHT-symmetric
-// symbol (x → −x invariant). This harness renders every canonical imported-
-// furniture symbol through a transform-recording fake ctx in BOTH paths and
-// asserts, per category × authored quadrant:
+// TWO carries, one invariant:
+//   • SYMMETRIC symbols (Desk/Chair/Table/Window/Furniture) are left-right
+//     invariant (x → −x), so mergeFit reproduces the vertical mirror with a pure
+//     `rotation = norm.rotation + π` (no mirror facet). A +π turn == a y-flip for
+//     these because the x-flip half of the mirror is a no-op on a symmetric glyph.
+//   • The DOOR is handed (a genuine reflection — no rotation can map a left-hand
+//     door onto a right-hand one), so mergeFit carries it as a real reflection:
+//     `rotation = norm.rotation` (NO +π) with the hinge hand INVERTED
+//     (`mirror = !norm.mirror`). The renderer reflects the leaf+arc on `mirror`
+//     (furniture.ts drawDoor, `ctx.scale(1,-1)`).
+//
+// This harness renders every canonical imported-furniture symbol through a
+// transform-recording fake ctx in BOTH paths — WITH the `mirror` facet threaded
+// through exactly as DrawingCanvas.drawItemSymbol / EditorCanvas.drawComponent do
+// — and asserts, per category × pose:
 //
 //     merged_glyph  ==  verticalMirror( import_glyph )
 //
-// It PASSES for the symmetric symbols (Desk/Chair/Table/Window/Furniture) — proof
-// the +π is exact — and it PINS the one asymmetric symbol (Door) as a rotation-
-// vs-reflection limitation (documented; a rotation-only facet cannot mirror it).
+// It PASSES for the symmetric symbols at all 4 authored quadrants (proof the +π is
+// exact) AND for the Door at all 4 opening axes × BOTH hinge hands (proof the
+// reflection carry is exact — the door survives the merge facing the same way it
+// swung in the import view, hinge side and swing direction both preserved).
 
 import fs from 'node:fs'
 import path from 'node:path'
@@ -49,11 +60,10 @@ const { drawFurnitureSymbol } = await bundle('../editor/furniture.ts')
 // --- transform-recording fake CanvasRenderingContext2D -----------------------
 // Tracks the CTM (2D affine) across save/restore/translate/rotate/scale and maps
 // every drawing primitive into device space. It records the glyph as a set of
-// SUBPATHS (polylines) + arc-center MARKERS. We compare glyphs by their UNDIRECTED
-// EDGE MULTISET (+ marker multiset) — an invariant that ignores the arbitrary path
-// START VERTEX and traversal direction (a rounded rect drawn from a rotated start
-// corner is the SAME shape, so it must compare equal). A naive point-cloud compare
-// would spuriously differ on the start vertex; edges are the honest orientation.
+// SUBPATHS (polylines) + arc-center MARKERS. We compare glyphs by rasterizing to
+// a 1px bitmap — an invariant that ignores the arbitrary path START VERTEX and
+// traversal direction (a rounded rect drawn from a rotated start corner is the
+// SAME shape, so it must compare equal).
 class RecordingCtx {
   constructor() {
     this.m = [1, 0, 0, 1, 0, 0] // a,b,c,d,e,f
@@ -174,26 +184,60 @@ const mkItem = (name, bw, bh, rotDeg, extra = {}) => ({
   id: 1, name, raw: name, category: 'furniture',
   bbox: [0, 0, bw, bh], origin: [bw / 2, bh / 2], rotation: (rotDeg * Math.PI) / 180, entities: [], ...extra,
 })
+
+// A synthetic DOOR block carrying a real swing arc so recoverDoorPose recovers a
+// definite opening axis + hinge hand (an empty-entities door would fall back to
+// upright/unmirrored and never exercise the mirror carry). Hinge at origin; the
+// strike jamb runs along `axisDeg`; the leaf swings CCW (+90°, hand 'L' → the
+// canonical unmirrored hand) or CW (−90°, hand 'R' → mirrored). Arc = a quarter
+// circle tessellated to a polyline; a straight leaf line marks the open tip.
+const arcPts = (cx, cy, r, a0, a1) => {
+  const pts = []
+  const n = 16
+  for (let i = 0; i <= n; i++) { const t = a0 + ((a1 - a0) * i) / n; pts.push([cx + r * Math.cos(t), cy + r * Math.sin(t)]) }
+  return pts
+}
+const mkDoor = (axisDeg, hand) => {
+  const A = (axisDeg * Math.PI) / 180
+  const strikeA = A
+  const openA = A + (hand === 'L' ? Math.PI / 2 : -Math.PI / 2)
+  const r = 0.9
+  const arc = arcPts(0, 0, r, strikeA, openA)
+  const open = [r * Math.cos(openA), r * Math.sin(openA)]
+  const xs = arc.map((p) => p[0]).concat(0, open[0])
+  const ys = arc.map((p) => p[1]).concat(0, open[1])
+  return {
+    id: 1, name: 'DOOR SINGLE LEAF', raw: 'DOOR SINGLE LEAF', category: 'door',
+    bbox: [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)],
+    origin: [0, 0], rotation: A,
+    entities: [
+      { kind: 'polyline', layer: '0', category: 'door', pts: arc },
+      { kind: 'polyline', layer: '0', category: 'door', pts: [[0, 0], open] },
+    ],
+  }
+}
 const emptyDrawing = (item) => ({ units: 'm', bounds: [0, 0, 1, 1], layers: [], entities: [], furniture: [item] })
 const FAR = [[1e5, 1e5], [1e5 + 1, 1e5], [1e5 + 1, 1e5 + 1], [1e5, 1e5 + 1]] // selection far away → item kept
 
 // Render the IMPORT-VIEW glyph exactly as DrawingCanvas.drawItemSymbol does
-// (un-swap aspect-baked w/h to natural, rotate by −norm.rotation).
+// (un-swap aspect-baked w/h to natural, rotate by −norm.rotation, apply the
+// recovered `mirror` facet — a door's hinge hand).
 function importGlyph(item) {
   const n = normalizeFurniture(item)
   const odd = Math.round(n.rotation / (Math.PI / 2)) % 2 !== 0
   const nw = odd ? n.h : n.w
   const nh = odd ? n.w : n.h
-  return record({ category: n.category, cx: 0, cy: 0, w: nw * SCALE, h: nh * SCALE, rotation: -n.rotation })
+  return record({ category: n.category, cx: 0, cy: 0, w: nw * SCALE, h: nh * SCALE, rotation: -n.rotation, mirror: n.mirror })
 }
 
 // Render the MERGED glyph exactly as EditorCanvas.drawComponent does, from the
-// component mergeFit actually produces (baseStampAround → StampComp).
+// component mergeFit actually produces (baseStampAround → StampComp): its
+// rotation + inverted-for-doors `mirror` facet are both honored.
 function mergedGlyph(item) {
   const { comps } = baseStampAround(emptyDrawing(item), FAR, { x: 0, y: 0 })
   if (comps.length !== 1) throw new Error(`expected 1 comp, got ${comps.length}`)
   const c = comps[0]
-  return { comp: c, glyph: record({ category: c.category, cx: 0, cy: 0, w: c.w * SCALE, h: c.h * SCALE, rotation: c.rotation }) }
+  return { comp: c, glyph: record({ category: c.category, cx: 0, cy: 0, w: c.w * SCALE, h: c.h * SCALE, rotation: c.rotation, mirror: c.mirror }) }
 }
 
 // Axis-aligned bbox [w,h] of a glyph's device geometry — the on-screen extent.
@@ -206,15 +250,17 @@ function extent({ subpaths, markers }) {
 }
 
 // --- cases -------------------------------------------------------------------
-// name keyword → category, and whether the symbol is left-right symmetric (so a
-// vertical mirror IS reproducible by a pure rotation). Door is the lone exception.
-const CASES = [
-  { label: 'Desk (WORKSTATION)', name: 'WORKSTATION BENCH', symmetric: true },
-  { label: 'Chair (TASK CHAIR)', name: 'TASK CHAIR', symmetric: true },
-  { label: 'Table (CONF TABLE)', name: 'CONF TABLE', symmetric: true },
-  { label: 'Window (GLAZED)', name: 'GLAZED PANEL', symmetric: true },
-  { label: 'Furniture (SOFA)', name: 'SOFA LOUNGE UNIT', symmetric: true },
-  { label: 'Door (DOOR LEAF)', name: 'DOOR SINGLE LEAF', symmetric: false },
+let failures = 0
+const check = (label, cond) => { console.log(`${cond ? 'PASS' : 'FAIL'}  ${label}`); if (!cond) failures++ }
+
+// (A) SYMMETRIC symbols: a pure +π carry reproduces the vertical mirror at every
+//     authored quadrant (left-right invariance makes the x-flip half a no-op).
+const SYMMETRIC = [
+  { label: 'Desk (WORKSTATION)', name: 'WORKSTATION BENCH' },
+  { label: 'Chair (TASK CHAIR)', name: 'TASK CHAIR' },
+  { label: 'Table (CONF TABLE)', name: 'CONF TABLE' },
+  { label: 'Window (GLAZED)', name: 'GLAZED PANEL' },
+  { label: 'Furniture (SOFA)', name: 'SOFA LOUNGE UNIT' },
 ]
 // authored quadrants, with a footprint that keeps the aspect sane for each turn
 const QUADS = [
@@ -224,71 +270,66 @@ const QUADS = [
   { deg: 270, bw: 0.7, bh: 1.5 },
 ]
 
-let failures = 0
-const check = (label, cond) => { console.log(`${cond ? 'PASS' : 'FAIL'}  ${label}`); if (!cond) failures++ }
-
 console.log('=== orientation equivalence: merged glyph  vs  verticalMirror(import glyph) ===')
-for (const cse of CASES) {
+for (const cse of SYMMETRIC) {
   let allMatch = true
   const detail = []
   for (const q of QUADS) {
     const item = mkItem(cse.name, q.bw, q.bh, q.deg)
-    const imp = importGlyph(item)
-    const { glyph: mrg } = mergedGlyph(item)
-    const match = eq(mrg, mirrorY(imp))
+    const match = eq(mergedGlyph(item).glyph, mirrorY(importGlyph(item)))
     if (!match) allMatch = false
     detail.push(`${q.deg}°:${match ? 'ok' : 'MISMATCH'}`)
   }
   console.log(`  ${cse.label.padEnd(22)}  ${detail.join('  ')}`)
-  if (cse.symmetric) {
-    check(`${cse.label}: merged == verticalMirror(import) at all 4 quadrants`, allMatch)
-  } else {
-    // Door: a rotation-only facet cannot express the reflection, so it must NOT
-    // match a pure mirror — this pins the documented limitation (and would flag
-    // if someone made it accidentally symmetric or "fixed" it silently).
-    check(`${cse.label}: rotation-only stamp CANNOT mirror an asymmetric symbol (documented limitation)`, !allMatch)
-  }
+  check(`${cse.label}: merged == verticalMirror(import) at all 4 quadrants`, allMatch)
 }
 
-// The +π is a real turn: a directional glyph at authored 0° must differ from its
-// merged form (else the mirror/turn is a silent no-op and desks face wrong).
+// (B) DOOR — the handed symbol — now carried as a genuine reflection (rotation,
+//     mirror inverted). It must match the vertical mirror at every opening AXIS
+//     and BOTH hinge HANDS (hinge side + swing direction both preserved on merge).
+for (const hand of ['L', 'R']) {
+  let allMatch = true
+  const detail = []
+  for (const axisDeg of [0, 90, 180, 270]) {
+    const item = mkDoor(axisDeg, hand)
+    const match = eq(mergedGlyph(item).glyph, mirrorY(importGlyph(item)))
+    if (!match) allMatch = false
+    detail.push(`${axisDeg}°:${match ? 'ok' : 'MISMATCH'}`)
+  }
+  console.log(`  ${`Door (${hand === 'L' ? 'left' : 'right'}-hand)`.padEnd(22)}  ${detail.join('  ')}`)
+  check(`Door (${hand === 'L' ? 'left' : 'right'}-hand): merged == verticalMirror(import) at all 4 opening axes`, allMatch)
+}
+
+// (C) A left-hand door and a right-hand door must NOT stamp to the same glyph —
+//     the hand is a real, carried facet, not a silent drop (else every door would
+//     face one way, the very bug the mirror facet fixes).
+{
+  const l = mergedGlyph(mkDoor(0, 'L')).glyph
+  const r = mergedGlyph(mkDoor(0, 'R')).glyph
+  check('Door: left-hand and right-hand stamp to DISTINCT glyphs (hand is carried, not dropped)', !eq(l, r))
+}
+
+// (D) The +π is a real turn: a directional glyph at authored 0° must differ from
+//     its merged form (else the mirror/turn is a silent no-op and desks face wrong).
 {
   const item = mkItem('WORKSTATION BENCH', 1.5, 0.7, 0)
-  const imp = importGlyph(item)
-  const { glyph: mrg } = mergedGlyph(item)
-  check('Desk: merged glyph is NOT identical to the raw import glyph (the turn is applied)', !eq(mrg, imp))
+  check('Desk: merged glyph is NOT identical to the raw import glyph (the turn is applied)', !eq(mergedGlyph(item).glyph, importGlyph(item)))
 }
 
-// Footprint invariant: the merged glyph's ON-SCREEN extent equals the import
-// view's (both derive from the same aspect-baked w/h), so positions/sizes never
-// drift on merge — only facing changes.
+// (E) Footprint invariant: the merged glyph's ON-SCREEN extent equals the import
+//     view's (both derive from the same aspect-baked w/h), so positions/sizes never
+//     drift on merge — only facing changes. Covers symmetric pieces AND doors.
 {
   let ok = true
-  for (const cse of CASES) {
-    for (const q of QUADS) {
-      const item = mkItem(cse.name, q.bw, q.bh, q.deg)
-      const [iw, ih] = extent(importGlyph(item))
-      const [mw, mh] = extent(mergedGlyph(item).glyph)
-      if (Math.abs(iw - mw) > 1e-6 || Math.abs(ih - mh) > 1e-6) ok = false
-    }
+  const items = []
+  for (const cse of SYMMETRIC) for (const q of QUADS) items.push(mkItem(cse.name, q.bw, q.bh, q.deg))
+  for (const hand of ['L', 'R']) for (const axisDeg of [0, 90, 180, 270]) items.push(mkDoor(axisDeg, hand))
+  for (const item of items) {
+    const [iw, ih] = extent(importGlyph(item))
+    const [mw, mh] = extent(mergedGlyph(item).glyph)
+    if (Math.abs(iw - mw) > 1e-6 || Math.abs(ih - mh) > 1e-6) ok = false
   }
-  check('every category: merged on-screen extent equals the import view (no size drift)', ok)
-}
-
-// Door limitation, characterized: the component model has only a ROTATION facet
-// (no mirror flag), so a door — the one handed symbol — cannot be perfectly
-// mirrored. But the stamped `+π` is still the BEST rotation-only choice: it maps
-// the swing to the correct HEMISPHERE (into vs out of the room), only the hinge
-// hand is off. Prove `+π` is strictly closer to the true mirror than upright (0).
-{
-  const item = mkItem('DOOR SINGLE LEAF', 1.0, 0.15, 0)
-  const target = rasterize(mirrorY(importGlyph(item)))
-  const n = normalizeFurniture(item)
-  const glyphAt = (rot) => rasterize(record({ category: n.category, cx: 0, cy: 0, w: n.w * SCALE, h: n.h * SCALE, rotation: rot }))
-  const rPi = mismatchRatio(glyphAt(n.rotation + Math.PI), target) // the stamped choice
-  const r0 = mismatchRatio(glyphAt(n.rotation), target) // upright (no turn)
-  console.log(`  Door: mirror-mismatch  +π=${rPi.toFixed(3)}  vs  upright=${r0.toFixed(3)}`)
-  check('Door: +π is the best rotation-only approximation of the mirror (< upright)', rPi < r0)
+  check('every category (incl. Door): merged on-screen extent equals the import view (no size drift)', ok)
 }
 
 if (failures > 0) { console.log(`\n${failures} assertion(s) failed`); process.exit(1) }

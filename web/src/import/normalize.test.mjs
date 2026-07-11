@@ -190,6 +190,45 @@ check('synthetic vertical door: axis 90, portrait leaf-slab', quarterTurns(dV.ro
 const dNull = normalizeFurniture({ id: 3, name: 'Door', raw: 'DOOR', category: 'door', bbox: [0, 0, 0.9, 0.2], origin: [0, 0], rotation: 0, entities: [] })
 check('door without a swing arc falls back to upright + unmirrored', dNull.rotation === 0 && dNull.mirror === false)
 
+// (4d) ROBUSTNESS MATRIX: pose recovery is a TOTAL function over the pose space.
+//      Every opening AXIS × both HANDS yields the expected cardinal axis + a
+//      definite hand (CCW swing → left/unmirrored, CW → right/mirrored); the arc's
+//      winding order is irrelevant (the hand is a cross-product, not a traversal);
+//      a double door (two hinges) reads symmetric (mirror false); and degenerate
+//      swing geometry never throws or emits a non-finite / non-thin footprint.
+const axisRad = { 0: 0, 90: HALF_PI, 180: Math.PI, 270: 3 * HALF_PI }
+let matrixOk = true
+for (const base of Object.values(axisRad)) {
+  const L = normalizeFurniture(mkDoor(base, base + HALF_PI)) // CCW → left hand
+  const R = normalizeFurniture(mkDoor(base, base - HALF_PI)) // CW  → right hand
+  const wantQ = quarterTurns(base)
+  if (!(quarterTurns(L.rotation) === wantQ && L.mirror === false)) matrixOk = false
+  if (!(quarterTurns(R.rotation) === wantQ && R.mirror === true)) matrixOk = false
+  for (const n of [L, R]) if (!(Number.isFinite(n.w) && Number.isFinite(n.h) && Math.min(n.w, n.h) <= 0.2 && Math.max(n.w, n.h) >= 0.4)) matrixOk = false
+}
+check('door pose: all 4 axes × both hands recover the cardinal axis + definite hand + thin leaf-slab', matrixOk)
+
+// Arc winding is irrelevant: reversing the tessellated arc point order leaves the
+// recovered hand unchanged (cross-product of the endpoints, not their order).
+const revArc = (a0, a1) => { const d = mkDoor(a0, a1); d.entities[0].pts.reverse(); return normalizeFurniture(d) }
+check('door hand is winding-invariant (reversed arc → same mirror)', revArc(0, HALF_PI).mirror === false && revArc(0, -HALF_PI).mirror === true)
+
+// Double door: two leaves hinged at OPPOSITE jambs → a symmetric opening, no hand.
+// Second hinge placed 2 m along +x so the two arc centers are distinct.
+const leafB = mkDoor(Math.PI, HALF_PI) // hinge at origin, leaf toward +y
+leafB.entities = leafB.entities.map((e) => ({ ...e, pts: e.pts.map(([x, y]) => [x + 2, y]) }))
+const dblN = normalizeFurniture({ ...mkDoor(0, HALF_PI), entities: [...mkDoor(0, HALF_PI).entities, ...leafB.entities], bbox: [0, -0.9, 2.9, 0.9] })
+check('double door (two hinges) recovers symmetric (mirror false) + a finite cardinal axis', dblN.mirror === false && Number.isFinite(dblN.rotation) && isCardinal(dblN.rotation))
+
+// Degenerate swing arcs (too few tessellation points to be recognized as an arc)
+// never throw and never emit a non-finite footprint — they fall back cleanly.
+const fewPt = { id: 4, name: 'Door', raw: 'DOOR', category: 'door', bbox: [0, 0, 0.9, 0.2], origin: [0, 0], rotation: 0,
+  entities: [{ kind: 'polyline', layer: '0', category: 'door', pts: arcPts(0, 0, 0.9, 0, HALF_PI).slice(0, 3) }, { kind: 'polyline', layer: '0', category: 'door', pts: [[0, 0], [0, 0.9]] }] }
+check('degenerate few-point door arc falls back without throwing / non-finite footprint', (() => {
+  try { const n = normalizeFurniture(fewPt); return Number.isFinite(n.w) && Number.isFinite(n.h) && n.mirror === false }
+  catch { return false }
+})())
+
 // (5) SYNTHETIC pure contract: fabricate desks at each cardinal authored angle and
 //     assert the recovered orientation — independent of the sample DWG. A landscape
 //     block flips 0↔180; a portrait block turns 90↔270.
