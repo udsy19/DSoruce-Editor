@@ -319,9 +319,13 @@ export async function proposeDesign(ctx: DesignContext, signal?: AbortSignal): P
     // multi-sentence rationale. 1024 truncated the tool call → null.
     max_tokens: 3072,
   })
-  // One retry: parallel option-generation can transiently trip the proxy's upstream
-  // rate/concurrency limit (500/429); a short backoff usually clears it.
-  for (let attempt = 0; attempt < 2; attempt++) {
+  // Retry with exponential backoff. Parallel option-generation trips the proxy's
+  // upstream rate/token-per-minute limit two ways: a non-ok status (429/5xx), AND a
+  // 200 whose tool call came back truncated/incomplete under token pressure (parses
+  // to null). Retry BOTH — a design must not silently drop just because it was one
+  // of several fired together.
+  const MAX_ATTEMPTS = 4
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     try {
       const resp = await fetch('/api/claude', {
         method: 'POST',
@@ -331,13 +335,17 @@ export async function proposeDesign(ctx: DesignContext, signal?: AbortSignal): P
       })
       if (resp.ok) {
         const data = (await resp.json()) as { content?: ClaudeContentBlock[] }
-        return parseDesignSpec(data.content ?? [])
+        const spec = parseDesignSpec(data.content ?? [])
+        if (spec) return spec // otherwise fall through to a retry (truncated tool call)
+      } else if (resp.status !== 429 && resp.status < 500) {
+        return null // a real client error (400/401/403) won't recover
       }
-      if (resp.status !== 429 && resp.status < 500) return null // a real client error won't recover
     } catch {
       if (signal?.aborted) return null
     }
-    if (attempt === 0) await new Promise((r) => setTimeout(r, 900 + attempt * 600))
+    if (attempt < MAX_ATTEMPTS - 1) {
+      await new Promise((r) => setTimeout(r, 800 * 2 ** attempt + Math.round(200 * attempt))) // ~0.8s,1.8s,3.6s
+    }
   }
   return null
 }
