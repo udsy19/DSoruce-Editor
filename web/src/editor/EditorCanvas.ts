@@ -368,6 +368,9 @@ const C = {
   wallGen: '#4a525c', // generated partitions — lightest ink in the hierarchy
   // Matches DrawingCanvas FURNITURE_LINE so generated + imported plans read alike.
   furniture: '#5c6670',
+  // Passive as-drawn reference furniture (imported, not counted): muted so the
+  // generated fit reads as the primary content and context sits quietly behind it.
+  furnitureRef: '#b7bdc5',
   labelSub: '#5f6771', // zone-tag metrics line (area · pax)
   preview: 'rgba(45,91,214,0.70)',
   accent: '#2d5bd6',
@@ -2593,15 +2596,22 @@ export class EditorCanvas {
     const w = c.w * this.scale
     const h = c.h * this.scale
     const frozen = c.decision === 'Confirmed'
+    // Passive as-drawn reference (imported furniture that isn't counted): draw it
+    // muted and plate-less so the generated fit stays the primary read. No decision
+    // dot / frozen styling — it carries no decision state.
+    const ref = c.reference === true && !selected
 
-    // Very-light plate so the glyph sits cleanly on the pastel zone.
-    ctx.save()
-    ctx.translate(p.x, p.y)
-    ctx.rotate(c.rotation)
-    ctx.fillStyle = frozen ? hexA(DECISION_DOT.Confirmed, 0.12) : 'rgba(255,255,255,0.5)'
-    roundRect(ctx, -w / 2, -h / 2, w, h, Math.min(4, Math.min(w, h) * 0.14))
-    ctx.fill()
-    ctx.restore()
+    // Very-light plate so the glyph sits cleanly on the pastel zone (skip for
+    // reference so it recedes into context rather than tiling white cards).
+    if (!ref) {
+      ctx.save()
+      ctx.translate(p.x, p.y)
+      ctx.rotate(c.rotation)
+      ctx.fillStyle = frozen ? hexA(DECISION_DOT.Confirmed, 0.12) : 'rgba(255,255,255,0.5)'
+      roundRect(ctx, -w / 2, -h / 2, w, h, Math.min(4, Math.min(w, h) * 0.14))
+      ctx.fill()
+      ctx.restore()
+    }
 
     // Recognizable top-view CAD furniture line-symbol.
     drawFurnitureSymbol(ctx, {
@@ -2612,8 +2622,8 @@ export class EditorCanvas {
       h,
       rotation: c.rotation,
       mirror: c.mirror,
-      stroke: frozen ? DECISION_DOT.Confirmed : C.furniture,
-      detail: '#b4b9c1',
+      stroke: ref ? C.furnitureRef : frozen ? DECISION_DOT.Confirmed : C.furniture,
+      detail: ref ? C.furnitureRef : '#b4b9c1',
       accent: C.accent,
       selected,
     })
@@ -2629,7 +2639,8 @@ export class EditorCanvas {
     }
 
     // decision dot (top-right) — only for non-Open, to keep the plate clean
-    if (c.decision !== 'Open') {
+    // (reference furniture carries no decision state, so never dot it).
+    if (c.decision !== 'Open' && !ref) {
       ctx.fillStyle = DECISION_DOT[c.decision]
       ctx.beginPath()
       ctx.arc(p.x + w / 2 - 5.5, p.y - h / 2 + 5.5, 3, 0, Math.PI * 2)
