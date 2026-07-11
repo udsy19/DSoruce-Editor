@@ -181,8 +181,31 @@ The qbiq-style flow: Project → Upload → Program → Generate → Editor → 
      "Plan" tab is now staging-only (shows while empty/mid-import, retires once a fit exists). Saved-plan
      restore never reopens a fitted plan into stale `import` mode. Verified live: 2D & 3D render the
      identical floor with byte-identical stats (80 Pax == 80 Workstations, 703 m² NIA), 0 console errors.
-     *(reviewer hardening in progress.)*
-  4. **Zone-first clean reader + passive reference as a light underlay** — PENDING (next).
+  4. **Passive reference drawn lightly** — reference furniture renders muted/plate-less so the generated
+     fit is the primary read (`00976ed`).
+- [x] **Batch 4b — reproduced the user's EXACT path (2026-07-11).** The "opens tiny" + "can't drag rooms"
+  bugs only reproduce via the **candidate gallery → "Open in editor"** flow (not the shortcut editor path
+  I'd tested). Both root-caused + fixed + browser-verified on that path:
+  1. **Framing (`723f1d1`).** Opening a candidate mounts the editor before its container lays out;
+     `resize()` bails on the 0-size container leaving the `<canvas>` at its **300×150 intrinsic default**,
+     and the retry guard checked the CANVAS (300×150 ≥ 40px floor) so it never retried → framed the plan
+     into an 8 px/m corner. Now framing gates on the real **container** (`viewportReady()`), and a
+     **ResizeObserver** finishes a pending frame the instant the container reaches a real size (robust on
+     any route, no rAF budget to expire). Verified: candidate opens at 35.5 px/m, centered (was 8, cornered).
+  2. **Room drag-drop (`696c131`).** Dragging worked, but furniture-first hit-testing meant a click in a
+     furnished room grabbed a desk, never the room. Now **room-first (Laiout/Canva)**: click a room →
+     select+drag the whole room even over furniture; second click drills into a desk (Materio preserved).
+     Verified: click on a desk selects its ROOM; second click drills to the desk; room drags.
+- [ ] **Batch 4c — STILL OPEN (user-reported, 2026-07-11):**
+  - **Space utilization** — generator packs desks into a ~11.8 m central column, leaving big empty regions
+    of the irregular plate. "Our product should be the designer that takes those calls." → Rust `layout.rs`
+    fill-the-plate fix IN PROGRESS (agent).
+  - **Reader too "cheap" vs Laiout/qbiq** — user flagged ALL of: furniture faint/cluttered, zones/labels
+    unclear, walls/linework weak, overall polish. Needs a premium visual overhaul of `furniture.ts` +
+    `EditorCanvas` zone/wall/label rendering against `laiout-visual-system.md` (hard white label boxes →
+    soft pills, stronger linework hierarchy, clearer furniture, crisper labels). Do WITH browser iteration
+    on top of the space-fill fix. PENDING (next).
+  - Then: build the **agentic designer** Phase 1 (`agentic-designer.md`), per user request.
   - Feasibility answered (research): an **agentic senior-designer** layer (Claude decides program/strategy/
     adjacency/critique; the deterministic solver does geometry) is viable as a hybrid — build after the
     core is perfected. Pure-LLM geometric placement is unreliable (misalignment/overlaps, even GPT-5).
