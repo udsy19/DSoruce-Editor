@@ -304,8 +304,7 @@ export class Viewer3D {
   })
   // Glazed partitions (glass fronts of generated rooms). Cheap transparency,
   // not physical transmission: a test-fit can carry one glass front per room,
-  // and each transmissive material would multiply full-scene render passes
-  // (same trade-off as buildFromDrawing's imported-shell glazing).
+  // and each transmissive material would multiply full-scene render passes.
   private glassWallMat = new THREE.MeshStandardMaterial({
     color: 0xbfd9e6,
     roughness: 0.08,
@@ -522,7 +521,7 @@ export class Viewer3D {
     this.scene.add(this.sun.target)
 
     // Carpet map for the zone floors — cloned so its repeat is independent of
-    // the furniture floors buildFromDrawing clones. UVs on the plates are in
+    // the shared furniture floor texture. UVs on the plates are in
     // plan meters, so a sub-unit repeat tiles the fine speckle every ~2 m.
     this.floorTex.repeat.set(0.5, 0.5)
     this.floorTex.needsUpdate = true

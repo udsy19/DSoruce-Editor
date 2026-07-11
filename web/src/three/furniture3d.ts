@@ -76,7 +76,7 @@ const BLOB = new THREE.IcosahedronGeometry(0.5, 1) // organic foliage lump, r=0.
 
 // ── Procedural texture kit ───────────────────────────────────────────────────
 // Small canvas-generated textures created ONCE at module scope and shared by
-// every material (and by buildFromDrawing via `TEXTURES`) — no network assets,
+// every material (and by `Viewer3D` via `TEXTURES`) — no network assets,
 // no per-item allocation. Color maps are sRGB; roughness/bump maps stay linear.
 
 const TEX_SIZE = 256
@@ -201,7 +201,7 @@ const TEX = {
   }),
 } as const
 
-/** Shared procedural textures, reused by buildFromDrawing (walls/floor/doors/casework). */
+/** Shared procedural textures, reused by `Viewer3D` (walls/floor/doors/casework). */
 export const TEXTURES: Readonly<Record<keyof typeof TEX, THREE.CanvasTexture>> = TEX
 
 // ── Shared materials (natural furniture tones on cool content colors) ────────
@@ -210,7 +210,7 @@ const std = (color: number, roughness: number, metalness: number) =>
 
 /**
  * Clearcoated oak — worktops, cabinet caps, door leaves, imported casework.
- * Color tints the shared grain map. Exported so buildFromDrawing shares the
+ * Color tints the shared grain map. Exported so the plan viewer shares the
  * same PBR recipe (create once per scene-build, not per item).
  */
 export const woodPhysical = (color: number) =>
