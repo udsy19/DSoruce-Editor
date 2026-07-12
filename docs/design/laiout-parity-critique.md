@@ -51,8 +51,16 @@ determinism, tests + timing green — verified in-browser on the real plate befo
   **52% → 60%** on the real plate; added an honest Usable/Circulation/Core rollup + aisle note to
   the Statistics panel. The residual gap to Laiout's ~78% is the generator's 34% circulation share
   (queued generator work) — the formula is now correct. 129 tests.
-- `2026-07-12` — **[running]** generator core: make enclosed ROOMS on the perimeter conform to the
-  angled walls (rooms dynamic, > 2/19) — the user's repeated ask; guardrailed (workstations ≥ 80).
+- `2026-07-12` — **[done `a1dc853`]** generator core: conformed enclosed ROOMS now re-emit their shell
+  to follow the grown polygon (`reenclose_conformed_room`) — solid partitions on interior edges, glazed
+  front + door on the unchanged front line, **nothing** on plate-boundary edges (the building wall
+  encloses those). Fixes the latent **floating-wall bug** (a room that conformed `Rect→Poly` kept its
+  walls at the old rectangle). **Seat-neutral by construction** (only walls + door move): workstations
+  A:90·B:87·C:80 unchanged, scores unchanged, NIA ≤ GEA, byte-deterministic, 131 tests (+1), tsc clean.
+  Honest caveat: the conforming-room **count did not rise** (1 on the real 882 m² plate) — it's
+  **placement-limited**, not a fix limitation (other rooms sit behind corridors, not tight to an angled
+  wall). The mechanism is proven safe for N wall-abutting rooms (`conformed_rooms_reenclose_to_the_wall_seat_neutral`);
+  raising the count needs a separate, riskier placement change (parked under the seats-first decision).
 - **[queued after]** workstation neighbourhoods + honest open-plan aisle→circulation carve (both
   trade against the density guardrail / lower the efficiency number honestly — attempt with care).
 - **[done]** furniture (`6f01817`), cost/carbon India CAT-B (`f49248a`), residual sub-metre
