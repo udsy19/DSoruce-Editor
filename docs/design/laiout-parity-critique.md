@@ -9,7 +9,7 @@ circulation, clustered workstations, refined furniture) + `laiout-visual-system.
 
 | Dimension | Ours now | Laiout | Root cause | Fix / owner |
 |---|---|---|---|---|
-| **Efficiency** | 52% | 78% | `metrics()` efficiency = (Workspace+Meeting+Collab)/NIA — **excludes ClosedOffice + Amenity from "usable"** (a formula bug); plus genuinely too much leftover→circulation | **(1) fix the formula** (usable = everything except Circulation+Core) → *metrics agent*; **(2) fill the plate better** → *generator* |
+| **Efficiency** | ~~52%~~ **60%** | 78% | formula bug FIXED (`9392293`); remaining gap = genuinely too much leftover→circulation (34%) | **fill the plate better** → *generator* |
 | **Circulation coherence** | fragmented into many rects/polys | one flowing network | residual-fill + conform emit many separate Circulation zones | **unify contiguous walking area into one poly** → *circulation agent (running)* |
 | **White / negative space** | 7.4% / 65 m² wedges | ~0 | axis-aligned rectangles can't fill a diagonal wedge | **polygon sweep of untyped floor** → *circulation agent (running)* |
 | **Workspace accounting** | "Open Workspace 342 m²" bundles desks **and** the walking aisles between them | desk neighbourhoods vs circulation kept separate | open-plan aisles bucketed as Workspace | **carve open-plan aisles into circulation** → *generator* (visual + honest split) |
@@ -44,8 +44,11 @@ determinism, tests + timing green — verified in-browser on the real plate befo
 
 - `2026-07-12` — **[running]** circulation agent: unify walking area into one network + polygon
   sweep to kill the 65 m² white wedges (`layout.rs`).
-- `2026-07-12` — **[running]** metrics agent: fix efficiency formula (usable excludes only
-  Circulation+Core) + Laiout-depth Areas/Zones/CO₂/Costs panel (`lib.rs`, `stats.ts`, `StatsPanel.tsx`).
+- `2026-07-12` — **[done `9392293`]** metrics agent: fixed the efficiency-formula bug — `usable`
+  now = every zone except Circulation+Core (was excluding private offices + amenity). Efficiency
+  **52% → 60%** on the real plate; added an honest Usable/Circulation/Core rollup + aisle note to
+  the Statistics panel. The residual gap to Laiout's ~78% is the generator's 34% circulation share
+  (queued generator work) — the formula is now correct. 129 tests.
 - **[queued]** generator core: workstation neighbourhoods + rooms conform to angled walls +
   carve open-plan aisles into circulation → higher genuine efficiency. Runs after the circulation
   agent frees `layout.rs`.
