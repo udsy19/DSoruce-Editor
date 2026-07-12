@@ -1433,30 +1433,46 @@ export class EditorCanvas {
     return null
   }
 
-  /** Interior walls strictly inside a room's bbox (they travel with the room). */
+  /** Walls that belong to a room and travel with it on drag/resize. Test is
+   *  boundary-INCLUSIVE (bbox expanded by `eps`): a room's own enclosing/partition
+   *  walls sit ON its bbox edges (endpoints at x≈minX/maxX or y≈minY/maxY), so a
+   *  strict interior test dropped them and they stayed behind on drag. The
+   *  expanded box still excludes a neighbour room's far wall (it lies beyond the
+   *  room's own perimeter by more than `eps`). */
   private interiorWalls(bb: { minX: number; minY: number; maxX: number; maxY: number }) {
-    const eps = 0.05
+    const eps = 0.15
     const inside = (p: { x: number; y: number }) =>
-      p.x > bb.minX + eps && p.x < bb.maxX - eps && p.y > bb.minY + eps && p.y < bb.maxY - eps
+      p.x >= bb.minX - eps && p.x <= bb.maxX + eps && p.y >= bb.minY - eps && p.y <= bb.maxY + eps
     return this.getState().walls.filter((wl) => inside(wl.a) && inside(wl.b))
   }
 
   // ---- room drag / resize (called from pointer handlers) ----
   private beginRoomDrag(zoneId: number, w: { x: number; y: number }) {
     const z = this.zoneById(zoneId)
-    if (!z || z.shape.kind !== 'Rect') return // rings aren't draggable
-    const s = z.shape
+    // Rect and Poly rooms drag; a RectRing (perimeter circulation) doesn't.
+    // A Poly is dragged via its bounding box — the core exposes no Poly-preserving
+    // move (`resize_zone`/`add_zone` build only `Rect`), so the first grid-step of
+    // movement re-homes it as its rectangular footprint (honest limit; see
+    // updateRoomDrag). Seeding zone0 from the bbox makes both paths identical.
+    if (!z || (z.shape.kind !== 'Rect' && z.shape.kind !== 'Poly')) return
+    const bb = this.zoneWorldBBox(z)
+    const zone0 = {
+      x: (bb.minX + bb.maxX) / 2,
+      y: (bb.minY + bb.maxY) / 2,
+      w: bb.maxX - bb.minX,
+      h: bb.maxY - bb.minY,
+    }
     const comps = this.getState()
       .components.filter((c) => z.component_ids.includes(c.id))
       .map((c) => ({ id: c.id, x0: c.x, y0: c.y }))
-    const walls = this.interiorWalls(this.zoneWorldBBox(z)).map((wl) => ({
+    const walls = this.interiorWalls(bb).map((wl) => ({
       id: wl.id,
       ax0: wl.a.x,
       ay0: wl.a.y,
       bx0: wl.b.x,
       by0: wl.b.y,
     }))
-    this.roomDrag = { zoneId, start: w, zone0: { x: s.x, y: s.y, w: s.w, h: s.h }, comps, walls }
+    this.roomDrag = { zoneId, start: w, zone0, comps, walls }
   }
 
   private updateRoomDrag(screen: { x: number; y: number }) {
@@ -1472,6 +1488,9 @@ export class EditorCanvas {
     }
     dx = Math.round(dx / SNAP_M) * SNAP_M
     dy = Math.round(dy / SNAP_M) * SNAP_M
+    // No net movement → don't touch the document. Keeps a plain select-click on a
+    // Poly non-destructive (a jittered sub-grid drag never re-homes it to a Rect).
+    if (dx === 0 && dy === 0) return
     for (const c of rd.comps) this.ed.move_component(c.id, c.x0 + dx, c.y0 + dy)
     for (const wl of rd.walls) this.ed.set_wall(wl.id, wl.ax0 + dx, wl.ay0 + dy, wl.bx0 + dx, wl.by0 + dy)
     this.ed.resize_zone(rd.zoneId, rd.zone0.x + dx, rd.zone0.y + dy, rd.zone0.w, rd.zone0.h)
@@ -2528,6 +2547,40 @@ export class EditorCanvas {
     }
   }
 
+  /**
+   * Fine 45° architectural poché hatch, clipped to a zone's screen path. The
+   * standard drawing convention for a solid service core (shafts / stairs / WC /
+   * MEP) so a `Core` zone reads as built poché instead of an unfinished gray
+   * block. Deliberately restrained (Laiout/qbiq): thin light lines in the zone's
+   * own ink over its pale fill. `tracePath` re-lays the fill path (we begin it)
+   * so the hatch is clipped to Rect AND Poly cores identically.
+   */
+  private drawPoche(
+    tracePath: () => void,
+    bb: { minX: number; minY: number; maxX: number; maxY: number },
+    line: string,
+    evenOdd = false,
+  ) {
+    const ctx = this.ctx
+    ctx.save()
+    ctx.beginPath()
+    tracePath()
+    ctx.clip(evenOdd ? 'evenodd' : 'nonzero')
+    ctx.strokeStyle = hexToRgba(line, 0.34)
+    ctx.lineWidth = 0.6
+    const step = 6 // px between hatch lines (screen space; fixed density, not zoom-scaled)
+    const span = bb.maxY - bb.minY
+    ctx.beginPath()
+    // Parallel 45° lines (slope +1): start far enough left that down-right
+    // diagonals cover the whole clip rect.
+    for (let x = bb.minX - span; x <= bb.maxX; x += step) {
+      ctx.moveTo(x, bb.minY)
+      ctx.lineTo(x + span, bb.maxY)
+    }
+    ctx.stroke()
+    ctx.restore()
+  }
+
   private drawZones(zones?: DocZone[]): ZoneTag[] {
     if (!zones || zones.length === 0) return []
     const ctx = this.ctx
@@ -2572,6 +2625,28 @@ export class EditorCanvas {
         ctx.strokeStyle = hexToRgba(pal.line, 0.45)
         ctx.lineWidth = 1
         ctx.stroke()
+        if (z.zone_type === 'Core') {
+          let bminX = Infinity
+          let bminY = Infinity
+          let bmaxX = -Infinity
+          let bmaxY = -Infinity
+          const sp = pts.map((pt) => this.toScreen(pt[0], pt[1]))
+          for (const q of sp) {
+            bminX = Math.min(bminX, q.x)
+            bminY = Math.min(bminY, q.y)
+            bmaxX = Math.max(bmaxX, q.x)
+            bmaxY = Math.max(bmaxY, q.y)
+          }
+          this.drawPoche(
+            () => {
+              ctx.moveTo(sp[0].x, sp[0].y)
+              for (let i = 1; i < sp.length; i++) ctx.lineTo(sp[i].x, sp[i].y)
+              ctx.closePath()
+            },
+            { minX: bminX, minY: bminY, maxX: bmaxX, maxY: bmaxY },
+            pal.line,
+          )
+        }
         // Area-weighted centroid (world), then screen, for the room tag.
         let a2 = 0
         let cx = 0
@@ -2604,6 +2679,17 @@ export class EditorCanvas {
         ctx.rect(o.x, o.y, s.w * this.scale, s.h * this.scale)
         ctx.rect(io.x, io.y, s.in_w * this.scale, s.in_h * this.scale)
         ctx.fill('evenodd')
+        if (z.zone_type === 'Core') {
+          this.drawPoche(
+            () => {
+              ctx.rect(o.x, o.y, s.w * this.scale, s.h * this.scale)
+              ctx.rect(io.x, io.y, s.in_w * this.scale, s.in_h * this.scale)
+            },
+            { minX: o.x, minY: o.y, maxX: o.x + s.w * this.scale, maxY: o.y + s.h * this.scale },
+            pal.line,
+            true,
+          )
+        }
       } else {
         const s = z.shape
         const p = this.toScreen(s.x - s.w / 2, s.y - s.h / 2)
@@ -2615,6 +2701,13 @@ export class EditorCanvas {
         ctx.strokeStyle = hexToRgba(pal.line, 0.45)
         ctx.lineWidth = 1
         ctx.strokeRect(p.x + 0.5, p.y + 0.5, w - 1, h - 1)
+        if (z.zone_type === 'Core') {
+          this.drawPoche(
+            () => ctx.rect(p.x, p.y, w, h),
+            { minX: p.x, minY: p.y, maxX: p.x + w, maxY: p.y + h },
+            pal.line,
+          )
+        }
 
         // Centered room tag: NAME over "area m² · N pax" (architect's sheet
         // style). Skip when the zone is tiny (< 6 m²) or the tag can't fit;
