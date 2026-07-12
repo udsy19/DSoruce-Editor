@@ -1894,15 +1894,17 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
                 let (ww, wh) = world_extents(c.w, c.h, c.rotation);
                 used.push(geometry::Rect { x0: c.x - ww / 2.0, y0: c.y - wh / 2.0, x1: c.x + ww / 2.0, y1: c.y + wh / 2.0 });
             }
-            // Fine grid + min-dim (~1 m, ≥1 m²): capture the real pockets AND the
-            // facade maintenance band as walkable circulation, reaching close to
-            // the wall, without shattering into sub-metre noise.
-            for r in geometry::decompose_plate(poly, 0.25, 1.0, 1.0, &used) {
-                // Inset by one cell: `decompose_plate` keeps a cell whose CENTRE is
-                // clear of every hole, so a rect edge can sit up to half a cell
-                // inside an adjacent zone. Shrinking each side by a full cell makes
-                // the residual STRICTLY disjoint from every other zone, so the
-                // summed zone areas can never exceed the gross floor (NIA ≤ GEA).
+            // Finer grid + smaller min pocket (min-dim 0.5 m, ≥ 0.3 m²): capture the
+            // sub-metre wedges against angled/stepped walls that a 1 m floor left as
+            // untyped WHITE floor (measured ~8.5%/75 m² of the plate). These become
+            // named circulation the conform pass then grows to the wall — so the
+            // plate reads fully typed, never a wasted white gap. Still filtered so it
+            // doesn't shatter into sub-half-metre noise.
+            for r in geometry::decompose_plate(poly, 0.25, 0.5, 0.3, &used) {
+                // Inset a half cell per side: `decompose_plate` keeps a cell whose
+                // CENTRE is clear of every hole, so a rect edge can overshoot an
+                // adjacent zone by at most half a cell. Pulling back that much keeps
+                // the residual STRICTLY disjoint (NIA ≤ GEA) without widening the gap.
                 let (w, h) = (r.width() - 0.25, r.height() - 0.25);
                 if w <= 0.0 || h <= 0.0 {
                     continue;
