@@ -37,3 +37,17 @@ live in `layout.rs` → they must run **one agent at a time**, and the circulati
 owns it now. The **metrics/insights** work (`lib.rs` efficiency formula + `stats.ts` +
 `StatsPanel.tsx`) is a separate lane → runs in parallel today. Generator core follows the
 circulation agent as a careful, guardrailed pass (workstations ≥ 80, NIA ≤ GEA, determinism).
+
+## Progress log (living tracker)
+Guardrail for every generator change: workstations ≥ 80 on all A/B/C candidates, NIA ≤ GEA,
+determinism, tests + timing green — verified in-browser on the real plate before merge.
+
+- `2026-07-12` — **[running]** circulation agent: unify walking area into one network + polygon
+  sweep to kill the 65 m² white wedges (`layout.rs`).
+- `2026-07-12` — **[running]** metrics agent: fix efficiency formula (usable excludes only
+  Circulation+Core) + Laiout-depth Areas/Zones/CO₂/Costs panel (`lib.rs`, `stats.ts`, `StatsPanel.tsx`).
+- **[queued]** generator core: workstation neighbourhoods + rooms conform to angled walls +
+  carve open-plan aisles into circulation → higher genuine efficiency. Runs after the circulation
+  agent frees `layout.rs`.
+- **[done]** furniture (`6f01817`), cost/carbon India CAT-B (`f49248a`), residual sub-metre
+  pockets (`2af78e8`).
