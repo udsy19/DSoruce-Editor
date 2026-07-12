@@ -42,15 +42,18 @@ circulation agent as a careful, guardrailed pass (workstations ≥ 80, NIA ≤ G
 Guardrail for every generator change: workstations ≥ 80 on all A/B/C candidates, NIA ≤ GEA,
 determinism, tests + timing green — verified in-browser on the real plate before merge.
 
-- `2026-07-12` — **[running]** circulation agent: unify walking area into one network + polygon
-  sweep to kill the 65 m² white wedges (`layout.rs`).
+- `2026-07-12` — **[done `1e65e62`]** circulation agent: `fill_untyped_as_circulation` — merges the
+  whole walking area into **7 circulation polygons (was ~18 fragments), 0 stray rects**, hugging the
+  angled walls; white wedges gone (untyped 7.4% → ~4%, residual is hairline wall-thickness seams, not
+  triangles). Workstations at baseline (85/87), NIA ≤ GEA, deterministic, 130 tests, timing in budget.
 - `2026-07-12` — **[done `9392293`]** metrics agent: fixed the efficiency-formula bug — `usable`
   now = every zone except Circulation+Core (was excluding private offices + amenity). Efficiency
   **52% → 60%** on the real plate; added an honest Usable/Circulation/Core rollup + aisle note to
   the Statistics panel. The residual gap to Laiout's ~78% is the generator's 34% circulation share
   (queued generator work) — the formula is now correct. 129 tests.
-- **[queued]** generator core: workstation neighbourhoods + rooms conform to angled walls +
-  carve open-plan aisles into circulation → higher genuine efficiency. Runs after the circulation
-  agent frees `layout.rs`.
+- `2026-07-12` — **[running]** generator core: make enclosed ROOMS on the perimeter conform to the
+  angled walls (rooms dynamic, > 2/19) — the user's repeated ask; guardrailed (workstations ≥ 80).
+- **[queued after]** workstation neighbourhoods + honest open-plan aisle→circulation carve (both
+  trade against the density guardrail / lower the efficiency number honestly — attempt with care).
 - **[done]** furniture (`6f01817`), cost/carbon India CAT-B (`f49248a`), residual sub-metre
   pockets (`2af78e8`).
