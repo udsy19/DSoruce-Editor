@@ -211,8 +211,9 @@ The qbiq-style flow: Project → Upload → Program → Generate → Editor → 
     Claude designs program/strategy/room-mix/emphasis (GCC-curated), solver places; multi-objective option
     cards (Max seats/Cost/Collaboration/Experience/Balanced) with pax·₹·CO₂ headline + click-to-apply. See
     [[gcc-niche-and-agentic-designer]].
-  - [ ] **Reader too "cheap" vs Laiout/qbiq** — premium visual overhaul of `furniture.ts` + `EditorCanvas`
-    zone/wall/label rendering against `laiout-visual-system.md`. Agent IN PROGRESS.
+  - [x] **Reader premium visual pass** (`cce2120`) — filled desks/monitors/chairs (not hollow pills), soft
+    rounded label pills, crisp exterior→interior→generated wall hierarchy, calmer grid, per
+    `laiout-visual-system.md`. (Core/service poché hatch is a small remaining nicety — agent in flight.)
   - [x] **Boundary-conforming polygon zones — rooms too** (`ZoneShape::Poly`, `e9f0827`+`4fa0da2`) — added a real polygon zone shape
     (removed `Copy`), an exact `clip_rect_to_polygon` (Sutherland–Hodgman, no staircase on the wall edge), and
     a `conform_zones_to_plate` pass that grows CIRCULATION zones to the wall + clips to the plate → 19 polygons
@@ -383,14 +384,14 @@ User showed Rayon drawing-set PDFs as the output bar (`docs/reference/rayon-outp
   converge (cap 3). "Refine with AI" button in GenerateCard; clean no-op without a key. Live-verified
   (Claude proposed a corridor/weight tweak, loop scored it below base, reverted, converged).
 - [x] **Regenerate variety** — each press slides to a disjoint seed window (was deterministic-identical).
-- [ ] Workflow-aware AI: reference rooms by number ("tell me about room 502"), program-from-brief.
-- [ ] **Agentic senior designer** (`docs/design/agentic-designer.md`, feasibility confirmed 2026-07-11) —
-  Claude DRIVES the design (brief → program/strategy/zoning/adjacency/anchors → generate → evaluate →
-  critique → refine, autonomously) while the Rust solver owns geometry (hybrid; pure-LLM placement is
-  unreliable). Extends the existing `AgentDriver`/`OPENAI_TOOLS` vocabulary + `refineWithAI` loop +
-  `evaluator.ts` judge; adds a senior-designer system prompt (NBC 2016/BCO/RICS/ergo) + a soft adjacency
-  hint into `layout::score`. Ship phased: (1) one-shot designer, (2) the loop, (3) adjacency graph,
-  (4) accountability polish, (5) product intent. Sequenced AFTER the Batch-4 core is perfected.
+- [~] Workflow-aware AI: reference rooms by number ("tell me about room 502"), program-from-brief. Agent in flight.
+- [x] **Agentic senior designer — SHIPPED** (`ai/designer.ts`, `ui/DesignWithAI.tsx`; `docs/design/agentic-designer.md`).
+  Claude designs the program/strategy/room-mix/emphasis (GCC-curated, NBC 2016/BCO/RICS), the Rust solver
+  places geometry (hybrid — no LLM coordinates). Multi-objective option cards (Max seats / Cost / Collaboration
+  / Experience / Balanced) with pax·₹·CO₂ + rationale + click-to-apply; forced tool call (no truncation),
+  bounded-concurrency + retry. Verified live vs real Claude on the real plate. See
+  [[gcc-niche-and-agentic-designer]]. Follow-up (Agent A, in flight): generator honoring the explicit room
+  mix so options differentiate more.
 
 ## Track H — 3D / visualization
 - [x] Three.js 2D↔3D viewer, walkthrough, Enscape-like render tier (sky/GTAO/bloom), glass/PBR,
