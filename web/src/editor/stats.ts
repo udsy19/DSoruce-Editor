@@ -143,6 +143,45 @@ export function buildZones(zoneStats: ZoneStat[]): ZonesBreakdown {
   }
 }
 
+// Zone types that are NOT usable/occupiable — the "loss" against NIA. Usable =
+// every other type. Mirrors the core's `usable_area` (lib.rs): efficiency =
+// usable / NIA, the standard workplace space-efficiency ratio (BCO 2023 / RICS
+// IPMS / JLL), where the loss is circulation aisles + core/service.
+const CIRCULATION_TYPES: ZoneType[] = ['Circulation']
+const CORE_TYPES: ZoneType[] = ['Core']
+
+export interface AreaSplit {
+  usable: number
+  circulation: number
+  core: number
+  nia: number
+  usablePct: number
+  circulationPct: number
+  corePct: number
+}
+
+/** Honest usable-vs-circulation-vs-core rollup of NIA (Laiout-style), derived
+ *  from the already-grouped zones so it never disagrees with the donut. Its
+ *  `usablePct` IS `metrics.efficiency_pct` by construction (same numerator). */
+export function buildAreaSplit(zones: ZonesBreakdown): AreaSplit {
+  const nia = zones.totalArea
+  const sum = (types: ZoneType[]) =>
+    zones.groups.filter((g) => types.includes(g.type)).reduce((s, g) => s + g.area, 0)
+  const circulation = sum(CIRCULATION_TYPES)
+  const core = sum(CORE_TYPES)
+  const usable = Math.max(0, nia - circulation - core)
+  const pct = (a: number) => (nia > 0 ? (a / nia) * 100 : 0)
+  return {
+    usable,
+    circulation,
+    core,
+    nia,
+    usablePct: pct(usable),
+    circulationPct: pct(circulation),
+    corePct: pct(core),
+  }
+}
+
 // =========================================================================
 // ELEMENTS — per-element CO2 + Cost decomposition (Partition Wall / Floor /
 // Furniture / Lighting), the source for both the CO2 and Costs tabs.

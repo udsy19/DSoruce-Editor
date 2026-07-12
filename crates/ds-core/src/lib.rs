@@ -40,7 +40,10 @@ struct Metrics {
     workstations: usize,
     /// NIA / workstations (m²); 0 when there are no workstations.
     area_per_workstation: f64,
-    /// (Workspace + Meeting + Collaboration area) / NIA × 100; 0 when NIA is 0.
+    /// Space efficiency = usable area / NIA × 100; 0 when NIA is 0. "Usable" is
+    /// every occupiable zone (Workspace + Meeting + Collaboration + ClosedOffice
+    /// + Amenity); the loss is Circulation + Core/service. Standard workplace
+    /// space-efficiency definition (BCO 2023 / RICS IPMS / JLL), target ~70–85%.
     efficiency_pct: f64,
     /// Indicative fit-out cost (currency units) — see `cost.rs`.
     indicative_cost: f64,
@@ -186,6 +189,22 @@ fn effective_zone_areas(doc: &Document) -> (Vec<f64>, Option<usize>) {
         areas[idx] = (floor_area - others).max(0.0);
     }
     (areas, spanning)
+}
+
+/// Usable (occupiable) area — the numerator of the workplace space-efficiency
+/// ratio (usable / NIA; see `Metrics::efficiency_pct`). "Usable" is every zone
+/// EXCEPT `Circulation` (corridors/aisles) and `Core` (WC, stairs, lifts, MEP,
+/// service): all workstations, private offices, meeting, collab AND amenity are
+/// occupiable space, not overhead. `areas` are the de-overlapped effective zone
+/// areas from `effective_zone_areas`, in zone order. Standard definition per
+/// BCO 2023 / RICS IPMS / JLL; a good fit-out lands ~70–85%.
+fn usable_area(doc: &Document, areas: &[f64]) -> f64 {
+    doc.zones
+        .iter()
+        .zip(areas)
+        .filter(|(z, _)| !matches!(z.zone_type, ZoneType::Circulation | ZoneType::Core))
+        .map(|(_, a)| *a)
+        .sum()
 }
 
 /// Area (m²) of `shape ∩ rect`, clipped to the plate — the floor a Workspace
@@ -462,26 +481,19 @@ impl Editor {
         // CSV) — see `workstation_count`. `stats.ts` `zonePax` sums the same per-zone
         // `seated`, so the panel's Pax is identical to this number.
         let workstations = workstation_count(&self.doc);
-        let programmed: f64 = self
-            .doc
-            .zones
-            .iter()
-            .zip(&areas)
-            .filter(|(z, _)| {
-                matches!(
-                    z.zone_type,
-                    ZoneType::Workspace | ZoneType::Meeting | ZoneType::Collaboration
-                )
-            })
-            .map(|(_, a)| *a)
-            .sum();
+        // Space efficiency (BCO 2023 / RICS IPMS / JLL): usable / NIA, where
+        // usable = every occupiable zone and the "loss" is Circulation +
+        // Core/service (WC, stairs, lifts, MEP). Private offices (ClosedOffice)
+        // and amenity (reception/pantry/café) ARE usable space, not overhead —
+        // excluding them (the old bug) understated efficiency by ~25 pts.
+        let usable = usable_area(&self.doc, &areas);
         let area_per_workstation = if workstations > 0 {
             nia / workstations as f64
         } else {
             0.0
         };
         let efficiency_pct = if nia > 0.0 {
-            programmed / nia * 100.0
+            usable / nia * 100.0
         } else {
             0.0
         };
@@ -1053,7 +1065,7 @@ mod tests {
         assert!(area_per_ws(&doc) > 0.0 && area_per_ws(&doc).is_finite());
     }
 
-    /// INV4: GEA (floor_area), NIA (Σ effective zone areas) and the programmed
+    /// INV4: GEA (floor_area), NIA (Σ effective zone areas) and the usable
     /// area that drives efficiency are floor-plate/zone based and NEVER move when
     /// component `reference` flags flip — the counts change, the areas don't.
     #[test]
@@ -1082,6 +1094,61 @@ mod tests {
         assert!((nia0 - nia1).abs() < 1e-12, "NIA unaffected by reference");
         // …while the workstation count DID collapse (proving the flip took effect).
         assert_eq!(workstation_count(&doc), 0);
+    }
+
+    /// Space efficiency counts every OCCUPIABLE zone — workstations, private
+    /// offices (ClosedOffice), meeting, collab AND amenity — and treats ONLY
+    /// Circulation + Core/service as the "loss". This is the fix for the bug
+    /// that excluded ClosedOffice + Amenity, understating efficiency ~25 pts.
+    #[test]
+    fn efficiency_usable_excludes_only_circulation_and_core() {
+        // 70×10 plate = 700 m². Seven disjoint 10×10 (=100 m²) bands, one per
+        // zone type, none equal to the wall bbox (no plate-spanning de-overlap)
+        // and mutually non-overlapping (effective area == raw area).
+        let mut doc = Document::new();
+        for (a, b) in [
+            ((0.0, 0.0), (70.0, 0.0)),
+            ((70.0, 0.0), (70.0, 10.0)),
+            ((70.0, 10.0), (0.0, 10.0)),
+            ((0.0, 10.0), (0.0, 0.0)),
+        ] {
+            let id = doc.alloc_id();
+            doc.walls.push(Wall {
+                id,
+                a: Point::new(a.0, a.1),
+                b: Point::new(b.0, b.1),
+                thickness: 0.1,
+                generated: false,
+                glazing: false,
+            });
+        }
+        for (i, zt) in [
+            ZoneType::Workspace,
+            ZoneType::Meeting,
+            ZoneType::Collaboration,
+            ZoneType::ClosedOffice,
+            ZoneType::Amenity,
+            ZoneType::Circulation,
+            ZoneType::Core,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            add_rect_zone(&mut doc, zt, 5.0 + 10.0 * i as f64, 5.0, 10.0, 10.0);
+        }
+
+        let (areas, _) = effective_zone_areas(&doc);
+        let nia: f64 = areas.iter().sum::<f64>().min(doc.floor_area());
+        let usable = usable_area(&doc, &areas);
+
+        // Five occupiable bands (500 m²); Circulation + Core (200 m²) excluded.
+        assert!((usable - 500.0).abs() < 1e-9, "usable = {usable}, want 500");
+        assert!((nia - 700.0).abs() < 1e-9, "NIA = {nia}, want 700");
+        let eff = usable / nia * 100.0;
+        assert!((eff - 500.0 / 7.0).abs() < 1e-9, "efficiency = {eff}%, want ~71.4");
+        // The old (buggy) formula summed only Workspace+Meeting+Collab = 300 m²
+        // → 42.9%; the fix must NOT reproduce that.
+        assert!(eff > 60.0, "ClosedOffice + Amenity must count as usable");
     }
 
     /// INV5: a clean full test-fit is byte-identical to the pre-fix semantics —

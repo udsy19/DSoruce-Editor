@@ -3,6 +3,7 @@ import { EditorCanvas } from '../editor/EditorCanvas'
 import {
   buildZones,
   buildElements,
+  buildAreaSplit,
   ZONE_META,
   intFmt,
   inr,
@@ -85,8 +86,10 @@ export function StatsPanel({ ec }: { ec: EditorCanvas }) {
   )
 }
 
-// ---- Areas: donut + legend rollup by room type ----
+// ---- Areas: donut + legend rollup by room type + usable/circulation/core split ----
 function AreasTab({ zones, nia }: { zones: ReturnType<typeof buildZones>; nia: number }) {
+  const split = buildAreaSplit(zones)
+  const hasWorkspace = zones.groups.some((g) => g.type === 'Workspace')
   return (
     <>
       <Donut segments={zones.segments} center={intFmt(nia)} unit="m² NIA" />
@@ -104,7 +107,35 @@ function AreasTab({ zones, nia }: { zones: ReturnType<typeof buildZones>; nia: n
         <span className="bd-total-label">Net Internal Area</span>
         <span className="bd-total-val">{intFmt(nia)} m²</span>
       </div>
+
+      {/* Honest usable-vs-circulation-vs-core rollup (Laiout parity). Usable is
+          the efficiency numerator — the three rows sum to NIA. */}
+      <div className="split-block">
+        <SplitRow label="Usable" hint="workstations · offices · meeting · collab · amenity" area={split.usable} pct={split.usablePct} tone="usable" />
+        <SplitRow label="Circulation" hint="corridors · aisles" area={split.circulation} pct={split.circulationPct} tone="circ" />
+        <SplitRow label="Core / Service" hint="WC · stairs · lifts · MEP" area={split.core} pct={split.corePct} tone="core" />
+      </div>
+      {hasWorkspace && (
+        <p className="split-note">
+          Open Workspace area includes the walking aisles between desk neighbourhoods; only
+          enclosed corridors count as Circulation.
+        </p>
+      )}
     </>
+  )
+}
+
+function SplitRow({ label, hint, area, pct, tone }: { label: string; hint: string; area: number; pct: number; tone: string }) {
+  return (
+    <div className="split-row">
+      <span className={`split-dot ${tone}`} />
+      <span className="split-label">
+        {label}
+        <span className="split-hint">{hint}</span>
+      </span>
+      <span className="split-pct">{pct.toFixed(0)}%</span>
+      <span className="split-area">{intFmt(area)} m²</span>
+    </div>
   )
 }
 
