@@ -73,6 +73,8 @@ import {
 } from './persist/plans'
 import type { ProjectRecord } from './persist/projects'
 import { syncPlans, type SyncResult } from './persist/sync'
+import { cloudEnabled } from './cloud'
+import { CloudSyncPanel } from './cloud/CloudSyncPanel'
 import { noteChange, listHistory, restoreEntry, type HistoryEntry } from './persist/history'
 import { comparePlans, snapshotThumb, type PlanComparison } from './plans/compare'
 import { commitCadToPlan } from './cad/commit'
@@ -1185,6 +1187,7 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
                 </button>
               </div>
               {panelTab === 'library' ? (
+                <>
                 <LibraryPanel
                   plans={plans}
                   onLoad={openSavedPlan}
@@ -1222,6 +1225,8 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
                   syncState={syncState}
                   syncing={syncing}
                 />
+                {cloudEnabled() && <CloudSyncPanel onChanged={refreshLibrary} />}
+                </>
               ) : (
                 <>
                   <ObjectInspector ec={ec} />
