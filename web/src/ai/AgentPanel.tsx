@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { EditorCanvas } from '../editor/EditorCanvas'
-import { useAgent, Msg } from './useAgent'
+import { useAgent, Msg, RoomRefs } from './useAgent'
 import { PreviewDiff, ToolCall } from './contract'
 import { LocalDriver } from './intentParser'
 import { LlmDriver } from './llmDriver'
@@ -9,7 +9,17 @@ import { Icon } from '../ui/icons'
 
 type DriverKind = 'local' | 'llm' | 'claude'
 
-export function AgentPanel({ ec, onClose }: { ec: EditorCanvas; onClose: () => void }) {
+export function AgentPanel({
+  ec,
+  onClose,
+  roomRefs,
+}: {
+  ec: EditorCanvas
+  onClose: () => void
+  /** { zone.id → room number } provider so the assistant can resolve a spoken
+   *  room reference (e.g. "room 502") to a zone. Optional. */
+  roomRefs?: RoomRefs
+}) {
   const localDriver = useMemo(() => new LocalDriver(), [])
   const llmDriver = useMemo(() => new LlmDriver(), [])
   const claudeDriver = useMemo(() => new ClaudeDriver(), [])
@@ -45,7 +55,7 @@ export function AgentPanel({ ec, onClose }: { ec: EditorCanvas; onClose: () => v
       : kind === 'claude' && claudeAvailable
         ? claudeDriver
         : localDriver
-  const { messages, busy, canUndo, send, approve, reject, undo } = useAgent(ec, driver)
+  const { messages, busy, canUndo, send, approve, reject, undo } = useAgent(ec, driver, roomRefs)
   const [input, setInput] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
 

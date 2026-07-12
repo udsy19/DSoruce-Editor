@@ -2,6 +2,8 @@ import type { Drawing, DrawEntity, FurnitureItem, Category } from './types'
 import { CATEGORY_COLOR } from './types'
 import { collectWallSegments, type Pt, type Segment } from './testfit'
 import type { RoomMarker, RoomType } from './markers'
+import type { Backdrop } from './rasterImport'
+import { backdropBounds } from './rasterImport'
 import { normalizeFurniture } from './normalize'
 import { drawFurnitureSymbol } from '../editor/furniture'
 
@@ -162,6 +164,15 @@ export class DrawingCanvas {
   private anchorArm: { label: string } | null = null
   private anchors: { x: number; y: number; label: string }[] = []
 
+  // Raster backdrop + scale calibration (rasterImport.ts). `backdrop` is the
+  // image underlay; the scale tool draws a two-point reference line (world m)
+  // over a known dimension — completing it fires onScaleReady, and applyScale
+  // rescales the backdrop so that line equals the real length the user typed.
+  private backdrop: Backdrop | null = null
+  private scaleTool = false
+  private scaleFirst: Pt | null = null // first click of the reference line
+  private scaleLine: [Pt, Pt] | null = null // completed reference line (world m)
+
   private ro: ResizeObserver | null = null
 
   /** Fired on click: the furniture item under the cursor, or null on empty space. */
@@ -180,6 +191,13 @@ export class DrawingCanvas {
   /** Fired when a marker is dropped, at the click point (drawing coords). The
    *  owner assigns the id/ref and re-arms the tool for the next drop. */
   onMarkerDrop: ((x: number, y: number) => void) | null = null
+  /** Fired when the scale reference line's two points are placed, with its
+   *  current world length (m). The owner prompts for the real length, then
+   *  calls {@link applyScale}. */
+  onScaleReady: ((worldLengthM: number) => void) | null = null
+  /** Fired after {@link applyScale} recalibrates the backdrop, with the new
+   *  meters-per-pixel (so the owner can persist / display the scale). */
+  onScaleChange: ((mpp: number) => void) | null = null
   /** Fired when an anchor pin is dropped, at the click point (drawing coords).
    *  The owner assigns the id/kind and re-arms the tool for the next drop. */
   onAnchorDrop: ((x: number, y: number) => void) | null = null
@@ -214,6 +232,10 @@ export class DrawingCanvas {
     this.markers = []
     this.anchorArm = null
     this.anchors = []
+    this.scaleTool = false
+    this.scaleFirst = null
+    this.scaleLine = null
+    this.backdrop = null
     this.toolCursor = null
     // Precompute adaptive-snap targets: wall/glazing endpoints and segments.
     this.snapSegs = collectWallSegments(d)
@@ -269,10 +291,12 @@ export class DrawingCanvas {
    */
   beginPlace(spec: PlaceSpec): void {
     if (!this.drawing || !(spec.w > 0) || !(spec.h > 0)) return
-    // Disarm the area/marker/anchor tools (committed polygon + pins are kept).
+    // Disarm the area/marker/anchor/scale tools (committed polygon + pins are kept).
     this.areaTool = false
     this.markerArm = null
     this.anchorArm = null
+    this.scaleTool = false
+    this.scaleFirst = null
     this.areaDragVertex = null
     this.placing = spec
     this.placeCursor = null
@@ -309,6 +333,8 @@ export class DrawingCanvas {
     this.cancelPlace()
     this.markerArm = null
     this.anchorArm = null
+    this.scaleTool = false
+    this.scaleFirst = null
     this.areaTool = true
     if (!this.areaClosed) this.area = []
     this.areaDragVertex = null
@@ -357,6 +383,8 @@ export class DrawingCanvas {
     this.areaTool = false
     this.areaDragVertex = null
     this.anchorArm = null
+    this.scaleTool = false
+    this.scaleFirst = null
     this.markerArm = { type, ref }
     this.toolCursor = null
     if (this.selected) {
@@ -383,6 +411,8 @@ export class DrawingCanvas {
     this.areaTool = false
     this.areaDragVertex = null
     this.markerArm = null
+    this.scaleTool = false
+    this.scaleFirst = null
     this.anchorArm = { label }
     this.toolCursor = null
     if (this.selected) {
@@ -400,11 +430,68 @@ export class DrawingCanvas {
   }
 
   /** Disarm the area, marker and anchor tools (keeps committed pins/polygon). */
+  // ---- raster backdrop + scale calibration (rasterImport.ts) ----
+
+  /** Attach (or clear) a raster underlay. The drawing bounds are kept in sync
+   *  with the backdrop's world rect so fit/plate tracing frame it correctly. */
+  setBackdrop(b: Backdrop | null): void {
+    this.backdrop = b
+    this.scaleLine = null
+    this.scaleFirst = null
+    if (b && this.drawing) this.drawing.bounds = backdropBounds(b)
+    this.fitToView()
+  }
+
+  hasBackdrop(): boolean {
+    return this.backdrop !== null
+  }
+
+  /** Arm the scale tool: click two points over a known dimension to lay a
+   *  reference line; completing it fires onScaleReady with its world length. */
+  beginScale(): void {
+    this.cancelPlace()
+    this.areaTool = false
+    this.markerArm = null
+    this.anchorArm = null
+    this.areaDragVertex = null
+    this.scaleTool = true
+    this.scaleFirst = null
+    this.toolCursor = null
+    if (this.selected) {
+      this.selected = null
+      this.onSelect?.(null)
+    }
+    this.canvas.style.cursor = 'crosshair'
+    this.render()
+  }
+
+  /** Recalibrate the backdrop so the pending reference line equals `realMeters`.
+   *  Rescales meters-per-pixel, reframes, clears the line, and disarms the tool. */
+  applyScale(realMeters: number): void {
+    const b = this.backdrop
+    const line = this.scaleLine
+    if (!b || !line || !(realMeters > 0)) return
+    const worldLen = Math.hypot(line[1][0] - line[0][0], line[1][1] - line[0][1])
+    if (!(worldLen > 1e-6)) return
+    b.mpp *= realMeters / worldLen
+    if (this.drawing) {
+      this.drawing.bounds = backdropBounds(b)
+    }
+    this.scaleTool = false
+    this.scaleFirst = null
+    this.scaleLine = null
+    this.canvas.style.cursor = 'default'
+    this.fitToView()
+    this.onScaleChange?.(b.mpp)
+  }
+
   cancelTool(): void {
     this.areaTool = false
     this.markerArm = null
     this.anchorArm = null
     this.areaDragVertex = null
+    this.scaleTool = false
+    this.scaleFirst = null
     this.toolCursor = null
     this.canvas.style.cursor = 'default'
     this.render()
@@ -627,6 +714,12 @@ export class DrawingCanvas {
       this.moveCandidate = null
       return
     }
+    // Scale tool: clicks place the reference-line endpoints (in onUp so a drag
+    // still pans the backdrop while positioning).
+    if (this.scaleTool) {
+      this.moveCandidate = null
+      return
+    }
     // Hitting a furniture item selects it and arms a MOVE (started once we drag
     // past the threshold). Empty space stays a pan.
     const hit = this.pickFurniture(s.x, s.y)
@@ -712,6 +805,14 @@ export class DrawingCanvas {
       this.render()
       return
     }
+    // Scale tool: the reference line rubber-bands from its first point.
+    if (this.scaleTool) {
+      const w = this.toWorld(s.x, s.y)
+      this.toolCursor = withinCanvas ? [w.x, w.y] : null
+      this.canvas.style.cursor = 'crosshair'
+      this.render()
+      return
+    }
     // Hover hit-test only when not dragging.
     const within = s.x >= 0 && s.y >= 0 && s.x <= this.cssSize().w && s.y <= this.cssSize().h
     const hit = within ? this.pickFurniture(s.x, s.y) : null
@@ -771,6 +872,29 @@ export class DrawingCanvas {
       this.onAnchorDrop?.(w.x, w.y)
       return
     }
+    // Scale tool: first click sets the reference line's start, second click
+    // completes it — measure its world length + let the owner enter the real one.
+    if (this.scaleTool) {
+      const s = this.screenFromEvent(e)
+      const w = this.toWorld(s.x, s.y)
+      if (!this.scaleFirst) {
+        this.scaleFirst = [w.x, w.y]
+        this.scaleLine = null
+        this.render()
+      } else {
+        this.scaleLine = [this.scaleFirst, [w.x, w.y]]
+        this.scaleFirst = null
+        this.scaleTool = false // line is placed; owner now asks for its length
+        this.canvas.style.cursor = 'default'
+        this.render()
+        const len = Math.hypot(
+          this.scaleLine[1][0] - this.scaleLine[0][0],
+          this.scaleLine[1][1] - this.scaleLine[0][1],
+        )
+        this.onScaleReady?.(len)
+      }
+      return
+    }
     // Placement mode: a plain click stamps the armed spec at the snapped point.
     if (this.placing) {
       const s = this.screenFromEvent(e)
@@ -793,7 +917,7 @@ export class DrawingCanvas {
       this.placeCursor = null
       this.render()
     }
-    if ((this.areaTool || this.markerArm) && this.toolCursor) {
+    if ((this.areaTool || this.markerArm || this.scaleTool) && this.toolCursor) {
       this.toolCursor = null
       this.render()
     }
@@ -842,6 +966,12 @@ export class DrawingCanvas {
       }
     }
     if ((this.markerArm || this.anchorArm) && !mod && key === 'escape') {
+      e.preventDefault()
+      this.cancelTool()
+      return
+    }
+    // Scale tool: Escape cancels the reference line (drops any first point).
+    if (this.scaleTool && !mod && key === 'escape') {
       e.preventDefault()
       this.cancelTool()
       return
@@ -1139,6 +1269,24 @@ export class DrawingCanvas {
     ctx.fillStyle = '#ffffff'
     ctx.fillRect(p0.x, p0.y, p1.x - p0.x, p1.y - p0.y)
 
+    // Raster backdrop under the linework: draw the image across its world rect
+    // (image top → world top; no flip since we map top-to-top). Slightly faded
+    // so drawn overlays (area ring, reference line) read clearly over it.
+    if (this.backdrop) {
+      const [bx0, by0, bx1, by1] = backdropBounds(this.backdrop)
+      const tl = this.toScreen(bx0, by1)
+      const br = this.toScreen(bx1, by0)
+      ctx.save()
+      ctx.globalAlpha = 0.92
+      ctx.imageSmoothingEnabled = true
+      try {
+        ctx.drawImage(this.backdrop.image, tl.x, tl.y, br.x - tl.x, br.y - tl.y)
+      } catch {
+        /* image not yet decodable — skip this frame */
+      }
+      ctx.restore()
+    }
+
     // Style-batched linework: architecture buckets, with furniture woven in at
     // its rank so walls/glazing/doors sit on top.
     let furnitureDrawn = false
@@ -1163,7 +1311,70 @@ export class DrawingCanvas {
     this.drawArea()
     this.drawMarkers()
     this.drawAnchors()
+    this.drawScaleLine()
     this.onViewChange?.()
+  }
+
+  /** Scale reference line: the placed line (solid amber, endpoint ticks + a
+   *  live length label), or the in-progress rubber-band from the first click to
+   *  the cursor (dashed). Drawn on top so it reads over the backdrop. */
+  private drawScaleLine(): void {
+    const ctx = this.ctx
+    let a: Pt | null = null
+    let b: Pt | null = null
+    if (this.scaleLine) {
+      a = this.scaleLine[0]
+      b = this.scaleLine[1]
+    } else if (this.scaleTool && this.scaleFirst && this.toolCursor) {
+      a = this.scaleFirst
+      b = this.toolCursor
+    } else if (this.scaleTool && this.scaleFirst) {
+      const p = this.toScreen(this.scaleFirst[0], this.scaleFirst[1])
+      ctx.fillStyle = ACCENT
+      ctx.beginPath()
+      ctx.arc(p.x, p.y, 4, 0, Math.PI * 2)
+      ctx.fill()
+      return
+    }
+    if (!a || !b) return
+    const pa = this.toScreen(a[0], a[1])
+    const pb = this.toScreen(b[0], b[1])
+    ctx.save()
+    ctx.strokeStyle = ACCENT
+    ctx.fillStyle = ACCENT
+    ctx.lineWidth = 2
+    ctx.setLineDash(this.scaleLine ? [] : [6, 4])
+    ctx.beginPath()
+    ctx.moveTo(pa.x, pa.y)
+    ctx.lineTo(pb.x, pb.y)
+    ctx.stroke()
+    ctx.setLineDash([])
+    // Perpendicular end ticks.
+    const dx = pb.x - pa.x
+    const dy = pb.y - pa.y
+    const len = Math.hypot(dx, dy) || 1
+    const nx = (-dy / len) * 6
+    const ny = (dx / len) * 6
+    ctx.beginPath()
+    ctx.moveTo(pa.x - nx, pa.y - ny)
+    ctx.lineTo(pa.x + nx, pa.y + ny)
+    ctx.moveTo(pb.x - nx, pb.y - ny)
+    ctx.lineTo(pb.x + nx, pb.y + ny)
+    ctx.stroke()
+    // Length label at the midpoint.
+    const lenM = Math.hypot(b[0] - a[0], b[1] - a[1])
+    const text = `${lenM.toFixed(2)} m`
+    ctx.font = '11px ui-monospace, monospace'
+    const tw = ctx.measureText(text).width
+    const mx = (pa.x + pb.x) / 2
+    const my = (pa.y + pb.y) / 2
+    ctx.fillStyle = 'rgba(20,24,33,0.85)'
+    ctx.fillRect(mx - tw / 2 - 4, my - 9, tw + 8, 16)
+    ctx.fillStyle = '#fff'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(text, mx, my)
+    ctx.restore()
   }
 
   /** Area-select overlay: a committed ring dims everything outside it (even-odd

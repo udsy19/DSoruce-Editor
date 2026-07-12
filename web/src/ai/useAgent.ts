@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { EditorCanvas, Program } from '../editor/EditorCanvas'
+import { EditorCanvas, Program, DocZone } from '../editor/EditorCanvas'
 import { AgentDriver, DriverContext, PreviewDiff, ToolCall } from './contract'
 import { applyLive, preview } from './engine'
 
@@ -16,9 +16,37 @@ export type Msg =
       status: 'pending' | 'applied' | 'discarded'
     }
 
-function buildContext(ec: EditorCanvas): DriverContext {
+/** Provider of the { zone.id → room number } map, resolved fresh per call
+ *  (markers stay pinned to points while zones regenerate). Optional — without
+ *  it rooms simply carry no `ref`. */
+export type RoomRefs = () => Map<number, string>
+
+function buildContext(ec: EditorCanvas, roomRefs?: RoomRefs): DriverContext {
   const st = ec.getState()
-  const zones = (st.zones ?? []).map((z) => ({ id: z.id, zone_type: z.zone_type, label: z.label }))
+  const refs = roomRefs?.() ?? new Map<number, string>()
+  const stats = new Map(ec.getZoneStats().map((s) => [s.id, s]))
+  // Furniture inside each zone, grouped by category (for "what's in room 502").
+  const byZone = (z: DocZone) => {
+    const counts = new Map<string, number>()
+    for (const id of z.component_ids) {
+      const c = st.components.find((x) => x.id === id)
+      if (c) counts.set(c.category, (counts.get(c.category) ?? 0) + 1)
+    }
+    return [...counts.entries()].map(([category, count]) => ({ category, count }))
+  }
+  const zones = (st.zones ?? []).map((z) => {
+    const s = stats.get(z.id)
+    return {
+      id: z.id,
+      zone_type: z.zone_type,
+      label: z.label,
+      ref: refs.get(z.id),
+      area: s?.area,
+      capacity: s?.capacity,
+      seated: s?.seated,
+      components: byZone(z),
+    }
+  })
   const m = ec.getMetrics()
   let selectionZoneId: number | null = null
   let selection: { id: number; category: string } | null = null
@@ -44,7 +72,7 @@ function buildContext(ec: EditorCanvas): DriverContext {
 }
 
 /** The agent loop: interpret → clarify/plan → preview → approve/reject → undo. */
-export function useAgent(ec: EditorCanvas, driver: AgentDriver) {
+export function useAgent(ec: EditorCanvas, driver: AgentDriver, roomRefs?: RoomRefs) {
   const [messages, setMessages] = useState<Msg[]>([
     {
       id: 0,
@@ -75,7 +103,7 @@ export function useAgent(ec: EditorCanvas, driver: AgentDriver) {
     push({ role: 'user', text: trimmed })
     setBusy(true)
     try {
-      const res = await Promise.resolve(driver.interpret(trimmed, buildContext(ec)))
+      const res = await Promise.resolve(driver.interpret(trimmed, buildContext(ec, roomRefs)))
       if (res.kind === 'chat') push({ role: 'assistant', text: res.say })
       else if (res.kind === 'clarify') push({ role: 'clarify', text: res.say, options: res.options })
       else {

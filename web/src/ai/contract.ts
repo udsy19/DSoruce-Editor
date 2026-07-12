@@ -1,4 +1,5 @@
 import type { Program, ZoneType } from '../editor/EditorCanvas'
+import type { RoomInfo } from './roomResolver'
 
 // The tool vocabulary the agent (local parser now, Claude later) speaks. Each
 // ToolCall maps to a wasm Editor mutation. ZoneType strings byte-match the Rust
@@ -51,10 +52,13 @@ export type DriverResult =
   | { kind: 'plan'; say: string; calls: ToolCall[] }
   | { kind: 'chat'; say: string }
 
-/** Context the driver reads to interpret a message ("the two meeting rooms"). */
+/** Context the driver reads to interpret a message ("the two meeting rooms").
+ *  `zones` carries the workflow-aware {@link RoomInfo} facets (room number,
+ *  area, pax, contents) so a driver can resolve a spoken room reference and
+ *  describe it — the base id/type/label are always present. */
 export interface DriverContext {
   program: Program
-  zones: { id: number; zone_type: ZoneType; label: string }[]
+  zones: RoomInfo[]
   selectionZoneId: number | null
   selection: { id: number; category: string } | null
   walls: number

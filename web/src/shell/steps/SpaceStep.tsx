@@ -30,6 +30,7 @@ import { getProject, updateDraft, type SpaceReadoutsSummary } from '../../persis
 import { Icon } from '../../ui/icons'
 import type { DrawingCanvas } from '../../import/DrawingCanvas'
 import type { Drawing } from '../../import/types'
+import { isRasterFile, loadRasterBackdrop, type Backdrop } from '../../import/rasterImport'
 
 const SF_PER_M2 = 10.7639
 /** Heal gap (m) persisted with the toggle — the healWalls default (a hairline
@@ -158,7 +159,13 @@ export function SpaceStep({
   // partitions (test-fit pushes them as packing obstacles). Persisted to
   // draft.keepExisting; threaded into testFit like heal.
   const [keepExisting, setKeepExisting] = useState(false)
-  const [activeTool, setActiveTool] = useState<'none' | 'area' | 'marker'>('none')
+  const [activeTool, setActiveTool] = useState<'none' | 'area' | 'marker' | 'scale'>('none')
+  // Raster backdrop (image import) + scale calibration. `backdrop` underlays the
+  // canvas; `scalePrompt` holds the reference line's current world length while
+  // the user types its real length; `scaleLenM` is the entered value.
+  const [backdrop, setBackdrop] = useState<Backdrop | null>(null)
+  const [scalePrompt, setScalePrompt] = useState<{ worldLen: number } | null>(null)
+  const [scaleLenM, setScaleLenM] = useState('')
   const [markerType, setMarkerType] = useState<RoomType>('IT-Storage')
   const [markerRef, setMarkerRef] = useState('501')
   // Live mirrors so the (once-bound) canvas drop callback reads current values.
@@ -245,6 +252,11 @@ export function SpaceStep({
     dcRef.current?.setMarkers(markers)
   }, [markers])
 
+  // Push the raster backdrop onto the preview canvas when it changes.
+  useEffect(() => {
+    dcRef.current?.setBackdrop(backdrop)
+  }, [backdrop])
+
   // Re-arm the marker tool when its type/ref changes (ghost shows the next ref).
   useEffect(() => {
     if (activeTool === 'marker') dcRef.current?.beginMarkerPlace(markerType, markerRef)
@@ -266,8 +278,16 @@ export function SpaceStep({
         { id: crypto.randomUUID(), ref: markerRefLive.current, type: markerTypeLive.current, x, y },
       ])
     }
+    // Scale calibration: when the reference line is placed, surface the length
+    // prompt; applyScale runs when the user confirms the real length.
+    c.onScaleReady = (worldLen) => {
+      setScalePrompt({ worldLen })
+      setScaleLenM('')
+      setActiveTool('none')
+    }
     c.setArea(areaPolygon)
     c.setMarkers(markers)
+    c.setBackdrop(backdrop)
   }
 
   const toggleAreaTool = () => {
@@ -293,17 +313,71 @@ export function SpaceStep({
     setActiveTool('marker')
     dcRef.current?.beginMarkerPlace(markerType, markerRef)
   }
+  const toggleScaleTool = () => {
+    if (activeTool === 'scale') {
+      dcRef.current?.cancelTool()
+      setActiveTool('none')
+      return
+    }
+    setScalePrompt(null)
+    setActiveTool('scale')
+    dcRef.current?.beginScale()
+  }
+  const applyScale = () => {
+    const len = parseFloat(scaleLenM)
+    if (!(len > 0)) return
+    dcRef.current?.applyScale(len)
+    setScalePrompt(null)
+    setScaleLenM('')
+  }
   const deleteMarker = (id: string) => setMarkers((prev) => prev.filter((m) => m.id !== id))
   const editMarkerRef = (id: string, ref: string) =>
     setMarkers((prev) => prev.map((m) => (m.id === id ? { ...m, ref } : m)))
   const editMarkerType = (id: string, type: RoomType) =>
     setMarkers((prev) => prev.map((m) => (m.id === id ? { ...m, type } : m)))
 
+  /** Image import (rasterImport.ts): decode to a backdrop + empty drawing, push
+   *  it into the (hidden) editor, and show it for calibration + area-select. */
+  const acceptImage = (file: File) => {
+    setBusy(true)
+    setErr(null)
+    void (async () => {
+      try {
+        const { backdrop: bd, drawing: d } = await loadRasterBackdrop(file)
+        controller.current?.loadDrawing(d)
+        setDrawing(d)
+        setBackdrop(bd)
+        setAreaPolygon((cur) => (cur === null ? cur : null))
+        setMarkers((cur) => (cur.length === 0 ? cur : []))
+        setActiveTool('none')
+        setScalePrompt(null)
+        const r = computeReadouts(d, null)
+        await updateDraft(projectId, {
+          drawing: d,
+          readouts: toSummary(r),
+          areaPolygon: undefined,
+          markers: [],
+          anchors: [],
+        })
+        hydratedRef.current = true
+        readyRef.current?.(true)
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : 'Could not read that image.')
+      } finally {
+        setBusy(false)
+      }
+    })()
+  }
+
   const accept = (file: File | undefined) => {
     if (!file || busy) return
+    if (isRasterFile(file)) {
+      acceptImage(file)
+      return
+    }
     const name = file.name.toLowerCase()
     if (!name.endsWith('.dxf') && !name.endsWith('.dwg')) {
-      setErr('CAD only for now — upload a .dxf or .dwg floor plan.')
+      setErr('Upload a .dxf / .dwg, or an image (.png / .jpg) floor plan.')
       return
     }
     setBusy(true)
@@ -316,6 +390,7 @@ export function SpaceStep({
         return
       }
       setDrawing(d)
+      setBackdrop(null) // a CAD upload supersedes any prior image backdrop
       // A fresh upload supersedes any prior sub-area / markers. Use identity-
       // preserving resets: emitting a NEW [] here would fire the persist effect
       // concurrently with the awaited drawing write below and clobber it.
@@ -361,12 +436,14 @@ export function SpaceStep({
           <span className="space-drop-lead">
             {busy ? 'Reading drawing…' : drawing ? 'Replace floor plan' : 'Drop a CAD floor plan'}
           </span>
-          <span className="space-drop-sub">DXF or DWG · the plate is traced from the linework</span>
+          <span className="space-drop-sub">
+            DXF / DWG (traced from linework) · or PNG / JPG (set the scale, then trace)
+          </span>
         </span>
         <input
           ref={inputRef}
           type="file"
-          accept=".dxf,.dwg"
+          accept=".dxf,.dwg,.png,.jpg,.jpeg,.webp,image/*"
           data-testid="space-upload-input"
           style={{ display: 'none' }}
           onChange={(e) => accept(e.target.files?.[0])}
@@ -383,6 +460,21 @@ export function SpaceStep({
         <div className="space-readouts" data-testid="space-readouts">
           <div className="space-preview">
             <div className="space-tools" role="toolbar" aria-label="Plan tools">
+              {backdrop && (
+                <>
+                  <button
+                    type="button"
+                    className={`space-tool${activeTool === 'scale' ? ' on' : ''}`}
+                    data-testid="space-scale-tool"
+                    aria-pressed={activeTool === 'scale'}
+                    onClick={toggleScaleTool}
+                    title="Draw a line over a known dimension, then type its real length"
+                  >
+                    <Icon name="dimension" size={13} /> Set scale
+                  </button>
+                  <span className="space-tool-sep" aria-hidden />
+                </>
+              )}
               <button
                 type="button"
                 className={`space-tool${activeTool === 'area' ? ' on' : ''}`}
@@ -508,6 +600,63 @@ export function SpaceStep({
                 ? 'Keep existing walls fits new furniture around your current partitions.'
                 : 'Fresh fit clears the old fit-out and lays out the base shell; Keep existing walls fits new furniture around your current partitions.'}
             </p>
+            {activeTool === 'scale' && (
+              <p className="space-tool-hint" data-testid="space-scale-hint">
+                Click the two ends of a known dimension (a wall, a door) — then type its real
+                length to scale the whole image.
+              </p>
+            )}
+            {scalePrompt && (
+              <div
+                className="space-tool-hint"
+                data-testid="space-scale-prompt"
+                role="group"
+                style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}
+              >
+                <span>This line is</span>
+                <input
+                  className="space-marker-ref num"
+                  data-testid="space-scale-input"
+                  value={scaleLenM}
+                  onChange={(e) => setScaleLenM(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') applyScale()
+                  }}
+                  inputMode="decimal"
+                  placeholder="5"
+                  aria-label="Real length in meters"
+                  size={5}
+                  autoFocus
+                />
+                <span>m</span>
+                <button
+                  type="button"
+                  className="space-tool on"
+                  data-testid="space-scale-apply"
+                  onClick={applyScale}
+                  disabled={!(parseFloat(scaleLenM) > 0)}
+                >
+                  <Icon name="check" size={12} /> Set scale
+                </button>
+                <button
+                  type="button"
+                  className="space-tool ghost"
+                  data-testid="space-scale-cancel"
+                  onClick={() => {
+                    setScalePrompt(null)
+                    dcRef.current?.cancelTool()
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+            {backdrop && !scalePrompt && activeTool !== 'scale' && (
+              <p className="space-tool-hint" data-testid="space-backdrop-hint">
+                Image backdrop loaded. Use <strong>Set scale</strong> to calibrate real
+                dimensions, then <strong>Select area</strong> to trace the usable plate.
+              </p>
+            )}
             {activeTool === 'area' && (
               <p className="space-tool-hint" data-testid="space-area-hint">
                 Click to lay the boundary — snaps to nearby walls. Click the first point (or

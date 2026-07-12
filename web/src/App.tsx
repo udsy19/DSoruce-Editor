@@ -1295,7 +1295,11 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
               first to give it a floor plate.
             </div>
           )}
-          <AgentPanel ec={ec} onClose={() => setAiOpen(false)} />
+          <AgentPanel
+            ec={ec}
+            roomRefs={() => buildRoomRefs(ec.getState().zones ?? [], roomMarkersRef.current)}
+            onClose={() => setAiOpen(false)}
+          />
         </div>
       )}
 

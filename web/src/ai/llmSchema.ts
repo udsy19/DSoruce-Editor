@@ -140,8 +140,18 @@ export const ADJUST_PROGRAM_TOOL = {
 
 export function buildSystem(ctx: DriverContext): string {
   const zones =
-    ctx.zones.map((z) => `  - id ${z.id}: "${z.label}" (${z.zone_type})`).join('\n') ||
-    '  (none yet — the user must generate a fit first)'
+    ctx.zones
+      .map((z) => {
+        const facets = [
+          z.ref ? `room #${z.ref}` : null,
+          z.area ? `${z.area.toFixed(0)} m²` : null,
+          z.capacity ? `~${z.capacity} pax` : null,
+        ]
+          .filter(Boolean)
+          .join(', ')
+        return `  - id ${z.id}: "${z.label}" (${z.zone_type})${facets ? ` — ${facets}` : ''}`
+      })
+      .join('\n') || '  (none yet — the user must generate a fit first)'
   return `You are the space-planning assistant inside DSource, a browser office floor-plan editor. You reshape the live plan by calling tools. All units are meters.
 
 Current plan state:
@@ -154,6 +164,8 @@ ${zones}
 
 Guidelines:
 - Prefer calling a tool over chatting whenever the intent is clear.
+- The user refers to rooms by their label ("the boardroom", "Meeting Room 3"), their room number ("room 502", shown as "room #…" above), or a spoken synonym ("the kitchen" = Amenity, "the open plan" = Workspace). Map any such reference to the matching zone id above.
+- If the user only ASKS about a room ("what's in room 502", "how big is the boardroom", "tell me about Meeting Room 3"), answer in plain text from the state above (type, area, pax) — do NOT call a tool.
 - For desk count / meeting-room count / corridor width, call "regenerate" with only the changed fields.
 - For merging or reclassifying rooms, use the exact zone ids listed above.
 - If the request is ambiguous (e.g. more than two merge candidates), ask ONE short clarifying question in plain text instead of guessing.

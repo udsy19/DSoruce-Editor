@@ -1,5 +1,6 @@
 import { AgentDriver, DriverContext, DriverResult, ToolCall } from './contract'
 import { Program, ZoneType } from '../editor/EditorCanvas'
+import { resolveRoomRef, describeRoom } from './roomResolver'
 
 // Keyword → ZoneType. Longest phrase wins so "meeting room" beats "room".
 const ZONE_WORDS: [string, ZoneType][] = [
@@ -37,6 +38,40 @@ export class LocalDriver implements AgentDriver {
     const numAfter = (re: RegExp) => {
       const m = t.match(re)
       return m ? parseFloat(m[1]) : null
+    }
+
+    // Workflow-aware room talk. A question about a room ("what's in room 502",
+    // "tell me about the boardroom") is answered by resolving the reference and
+    // describing it — but ONLY when it's not an action ("make X a…", "merge…").
+    const isAction =
+      /\b(make|turn|convert|change|reclassify|merge|split|add|more|extra|another|remove|delete|drop|cut|reduce|clear|widen|narrow|regenerate|generate|re-?fit|set|fit|seat|need|house|accommodate)\b/.test(
+        t,
+      )
+    const isQuery =
+      /\b(what|whats|which|where|tell me|describe|show me|how (?:big|large|small|many)|info|inside|contain|about)\b/.test(
+        t,
+      ) || t.endsWith('?')
+    if (isQuery && !isAction) {
+      const room = resolveRoomRef(t, ctx.zones)
+      if (room) return { kind: 'chat', say: describeRoom(room) }
+      if (/\broom\b|\bboardroom\b|\bkitchen\b|\boffice\b/.test(t) && ctx.zones.length > 0)
+        return {
+          kind: 'chat',
+          say: `I couldn't match that to a room. I can see: ${roomList(ctx)}.`,
+        }
+    }
+
+    // "Make Meeting Room 3 bigger" — no single-room resize tool yet, but still
+    // resolve the reference and offer what I CAN do (graceful, shows resolution).
+    if (/\b(bigger|larger|smaller|expand|shrink|grow|resize|enlarge)\b/.test(t)) {
+      const room = resolveRoomRef(t, ctx.zones)
+      if (room)
+        return {
+          kind: 'chat',
+          say: `I found ${room.ref ? `“${room.label}” (Room ${room.ref})` : `“${room.label}”`}${
+            room.area ? `, about ${room.area.toFixed(0)} m²` : ''
+          }. I can't resize a single room yet, but I can merge, split, or reclassify it — or regenerate the whole fit.`,
+        }
     }
 
     if (/\bmerge\b/.test(t)) return this.merge(t, ctx)
@@ -142,8 +177,10 @@ export class LocalDriver implements AgentDriver {
     const type = lastZoneType(t)!
     let zoneId = ctx.selectionZoneId
     if (zoneId == null) {
-      const byLabel = ctx.zones.find((z) => z.label && t.includes(z.label.toLowerCase()))
-      if (byLabel) zoneId = byLabel.id
+      // Resolve the SUBJECT room, excluding the target type so "make the open
+      // workspace a Collaboration zone" resolves the workspace, not a collab room.
+      const room = resolveRoomRef(t, ctx.zones, { excludeType: type })
+      if (room) zoneId = room.id
     }
     if (zoneId == null) {
       const opts = ctx.zones.filter((z) => z.zone_type !== 'Circulation')
@@ -193,13 +230,8 @@ export class LocalDriver implements AgentDriver {
     const axis = /\b(horizontal|top|bottom|across|rows?)\b/.test(t) ? 'Horizontal' : 'Vertical'
     let zoneId = ctx.selectionZoneId
     if (zoneId == null) {
-      const byLabel = ctx.zones.find((z) => z.label && t.includes(z.label.toLowerCase()))
-      if (byLabel) zoneId = byLabel.id
-      else {
-        const type = lastZoneType(t)
-        const z = type && ctx.zones.find((zz) => zz.zone_type === type && zz.zone_type !== 'Circulation')
-        if (z) zoneId = z.id
-      }
+      const room = resolveRoomRef(t, ctx.zones)
+      if (room && room.zone_type !== 'Circulation') zoneId = room.id
     }
     if (zoneId == null) {
       const opts = ctx.zones.filter((z) => z.zone_type !== 'Circulation')
@@ -221,6 +253,17 @@ export class LocalDriver implements AgentDriver {
       calls: [{ name: 'merge_zones', args: { zone_a: a.id, zone_b: b.id }, summary: `merge ${a.label} + ${b.label}` }],
     }
   }
+}
+
+/** Short, human list of the current rooms (with numbers) for a "not found" reply. */
+function roomList(ctx: DriverContext): string {
+  return (
+    ctx.zones
+      .filter((z) => z.zone_type !== 'Circulation')
+      .slice(0, 8)
+      .map((z) => (z.ref ? `${z.label} (${z.ref})` : z.label))
+      .join(', ') || 'no rooms yet'
+  )
 }
 
 /** The zone type of the LAST zone-word mention (target of "make X a <type>"). */
