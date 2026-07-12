@@ -148,41 +148,43 @@ export function buildZones(zoneStats: ZoneStat[]): ZonesBreakdown {
 // Furniture / Lighting), the source for both the CO2 and Costs tabs.
 // =========================================================================
 //
-// FACTORS — **in lockstep with `cost.rs`** (India cat-B fit-out, ₹ INR;
-// embodied carbon per LETI/RICS ~100–400 kgCO2e/m²). Change here ⇒ change there.
-//  Base shell (Floor + Lighting) — per m² NIA, the open-plan area-driven scope
-//    (flooring, grid ceiling, ambient lighting, HVAC dist, power/data, fire):
-//    Floor    45 kgCO2e/m²,  ₹9,000/m²   Lighting  10 kgCO2e/m²,  ₹2,000/m²
-//    (Σ = cost.rs BASE_SHELL 55 kgCO2e/m², ₹11,000/m²)
+// FACTORS — **in lockstep with `cost.rs`** (India metro CAT-B fit-out, ₹ INR,
+// 2024–25; embodied carbon anchored to the ~190 kgCO2e/m² CAT-B benchmark,
+// SpecFinish / UK NZC Buildings Standard 2024). Change here ⇒ change there.
+//  Base shell (Floor + Lighting) — per m² NIA, the area-driven CAT-B scope
+//    (carpet-tile flooring, grid ceiling, lighting, HVAC dist, power/data, fire,
+//    BMS); Holzbox 2024 component rates × 10.764 sqft/m²:
+//    Floor    90 kgCO2e/m²,  ₹11,000/m²   Lighting  20 kgCO2e/m²,  ₹3,000/m²
+//    (Σ = cost.rs BASE_SHELL 110 kgCO2e/m², ₹14,000/m²)
 //  Partition wall — per LINEAR METRE (~2.7 m storey), GENERATED walls only
 //    (the fit-out enclosure; the architectural envelope is base-build):
-//    Default (boarded drywall): 55 kgCO2e/m,  ₹3,200/m
-//    Glass (framed glazing):   130 kgCO2e/m,  ₹9,000/m
+//    Default (boarded drywall, ₹120–200/sqft): 35 kgCO2e/m,  ₹4,600/m
+//    Glass (framed aluminium, ₹350–1,000/sqft): 140 kgCO2e/m,  ₹15,000/m
 //  Enclosed-room premium — per m² of enclosed floor (Meeting / Closed Office):
-//    acoustic ceiling, dedicated HVAC, AV:  70 kgCO2e/m²,  ₹4,000/m²
+//    acoustic ceiling, dedicated HVAC, AV:  40 kgCO2e/m²,  ₹6,000/m²
 //  Furniture — per UNIT, by grouped category (cost falls back to these when a
 //    component has no Materio binding; a bound product's real price overrides):
-//    Seating   45 kgCO2e,  ₹8,000    Table   100 kgCO2e,  ₹15,000 (desk/table)
-//    Storage  110 kgCO2e,  ₹9,000    Privacy 250 kgCO2e,  ₹120,000 (pod/booth)
-//    Accessory 15 kgCO2e,  ₹2,000    Door     90 kgCO2e,  ₹22,000 (leaf+frame)
+//    Seating   55 kgCO2e,  ₹12,000    Table   110 kgCO2e,  ₹20,000 (desk/table)
+//    Storage  120 kgCO2e,  ₹12,000    Privacy 300 kgCO2e,  ₹120,000 (pod/booth)
+//    Accessory 15 kgCO2e,  ₹2,500     Door     80 kgCO2e,  ₹25,000 (leaf+frame)
 
 const WALL = {
-  default: { co2PerM: 55, costPerM: 3_200 },
-  glass: { co2PerM: 130, costPerM: 9_000 },
+  default: { co2PerM: 35, costPerM: 4_600 },
+  glass: { co2PerM: 140, costPerM: 15_000 },
 }
-const FLOOR = { co2PerM2: 45, costPerM2: 9_000 }
-const LIGHTING = { co2PerM2: 10, costPerM2: 2_000 }
-const ENCLOSURE = { co2PerM2: 70, costPerM2: 4_000 }
+const FLOOR = { co2PerM2: 90, costPerM2: 11_000 }
+const LIGHTING = { co2PerM2: 20, costPerM2: 3_000 }
+const ENCLOSURE = { co2PerM2: 40, costPerM2: 6_000 }
 
 type FurnGroup = 'Seating' | 'Table' | 'Storage' | 'Privacy' | 'Accessory' | 'Door'
 const FURN_ORDER: FurnGroup[] = ['Seating', 'Table', 'Storage', 'Privacy', 'Accessory', 'Door']
 const FURN: Record<FurnGroup, { co2: number; cost: number }> = {
-  Seating: { co2: 45, cost: 8_000 },
-  Table: { co2: 100, cost: 15_000 },
-  Storage: { co2: 110, cost: 9_000 },
-  Privacy: { co2: 250, cost: 120_000 },
-  Accessory: { co2: 15, cost: 2_000 },
-  Door: { co2: 90, cost: 22_000 },
+  Seating: { co2: 55, cost: 12_000 },
+  Table: { co2: 110, cost: 20_000 },
+  Storage: { co2: 120, cost: 12_000 },
+  Privacy: { co2: 300, cost: 120_000 },
+  Accessory: { co2: 15, cost: 2_500 },
+  Door: { co2: 80, cost: 25_000 },
 }
 
 /** Map a component category (native or imported) onto a furniture group. */
