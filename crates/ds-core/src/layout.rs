@@ -2146,7 +2146,7 @@ fn conform_zones_to_plate(doc: &mut Document, plate: &[Point]) {
         }
         owner[r as usize * cols + c as usize]
     };
-    let mut updates: Vec<(usize, Vec<[f64; 2]>)> = Vec::new();
+    let mut updates: Vec<(usize, (f64, f64, f64, f64), Vec<[f64; 2]>)> = Vec::new();
     for &zi in &order {
         let ZoneShape::Rect { x, y, w, h } = doc.zones[zi].shape else { continue };
         let (x0, x1, y0, y1) = (x - w / 2.0, x + w / 2.0, y - h / 2.0, y + h / 2.0);
@@ -2222,7 +2222,7 @@ fn conform_zones_to_plate(doc: &mut Document, plate: &[Point]) {
         if poly.len() <= 4 && !slanted {
             continue;
         }
-        updates.push((zi, poly.iter().map(|p| [p.x, p.y]).collect()));
+        updates.push((zi, (x, y, w, h), poly.iter().map(|p| [p.x, p.y]).collect()));
     }
     // Apply, LARGEST candidate first so the biggest wall gets claimed and later
     // rivals yield. The ownership cap bounds growth against OTHER-zone cells, but
@@ -2237,16 +2237,221 @@ fn conform_zones_to_plate(doc: &mut Document, plate: &[Point]) {
         let area = |p: &[[f64; 2]]| {
             geometry::polygon_area(&p.iter().map(|q| Point::new(q[0], q[1])).collect::<Vec<_>>())
         };
-        area(&b.1).partial_cmp(&area(&a.1)).unwrap_or(std::cmp::Ordering::Equal)
+        area(&b.2).partial_cmp(&area(&a.2)).unwrap_or(std::cmp::Ordering::Equal)
     });
-    for (zi, pts) in updates {
+    for (zi, orig, pts) in updates {
         let poly: Vec<Point> = pts.iter().map(|p| Point::new(p[0], p[1])).collect();
         let boxes: Vec<(f64, f64, f64, f64)> = doc.zones.iter().map(|z| z.shape.bbox()).collect();
         if poly_overlaps_other_zones(&poly, &doc.zones, &boxes, zi, 0.08, 0.2) {
             continue;
         }
+        // A conformed ENCLOSED room's rectangular shell (partitions + glazed
+        // front + door) no longer bounds it — the grown sides leave the old walls
+        // floating INSIDE the polygon. Rebuild the shell to follow the polygon
+        // (the user's flagged floating-wall bug). Non-room zones (circulation,
+        // workspace residual) carry no shell and just take the new shape.
+        let is_room = matches!(
+            doc.zones[zi].zone_type,
+            ZoneType::Meeting | ZoneType::ClosedOffice | ZoneType::Collaboration | ZoneType::Amenity
+        );
+        if is_room {
+            match reenclose_conformed_room(doc, orig, &poly, plate) {
+                // Couldn't safely re-enclose: keep the room a Rect — its original
+                // shell still bounds it exactly, never a floating wall.
+                Reenclose::Fail => continue,
+                Reenclose::Done | Reenclose::NoShell => {}
+            }
+        }
         doc.zones[zi].shape = ZoneShape::Poly { pts };
     }
+}
+
+/// Result of re-enclosing a conformed room. `Done` = shell rebuilt to bound the
+/// polygon; `NoShell` = the room is an OPEN setting (breakout/print — no
+/// partitions to rebuild), so the polygon shape is safe to apply as-is; `Fail` =
+/// the polygon can't be validly enclosed (no recoverable front, or the door
+/// won't fit the front edge), so the caller keeps the room a `Rect`.
+enum Reenclose {
+    Done,
+    NoShell,
+    Fail,
+}
+
+/// Sides of a room's rectangular shell, indexed L(0)/R(1)/B(2)/T(3): each side's
+/// generated-wall indices. Buckets exactly like the enclosure test, so the two
+/// agree on what "this room's walls" are. Second tuple = all of them flattened.
+fn room_shell_sides(doc: &Document, x0: f64, x1: f64, y0: f64, y1: f64) -> ([Vec<usize>; 4], Vec<usize>) {
+    const EPS: f64 = 1e-6;
+    let on = |v: f64, t: f64| (v - t).abs() < EPS;
+    let mut sides: [Vec<usize>; 4] = [vec![], vec![], vec![], vec![]];
+    for (i, wl) in doc.walls.iter().enumerate() {
+        if !wl.generated {
+            continue;
+        }
+        let in_y = wl.a.y >= y0 - EPS && wl.a.y <= y1 + EPS && wl.b.y >= y0 - EPS && wl.b.y <= y1 + EPS;
+        let in_x = wl.a.x >= x0 - EPS && wl.a.x <= x1 + EPS && wl.b.x >= x0 - EPS && wl.b.x <= x1 + EPS;
+        if on(wl.a.x, x0) && on(wl.b.x, x0) && in_y {
+            sides[0].push(i);
+        } else if on(wl.a.x, x1) && on(wl.b.x, x1) && in_y {
+            sides[1].push(i);
+        } else if on(wl.a.y, y0) && on(wl.b.y, y0) && in_x {
+            sides[2].push(i);
+        } else if on(wl.a.y, y1) && on(wl.b.y, y1) && in_x {
+            sides[3].push(i);
+        }
+    }
+    let all: Vec<usize> = sides.iter().flatten().copied().collect();
+    (sides, all)
+}
+
+/// Rebuild a conformed room's enclosure to bound its wall-hugging polygon.
+///
+/// Conform only grows a room's WALL-FACING edges (the corridor-facing front,
+/// which probes INSIDE the plate, never grows), so the front glass + door keep
+/// their line; it is the grown side/perpendicular partitions that the old
+/// rectangular shell leaves floating. This removes the old shell + door, then
+/// re-emits: a solid partition along every polygon edge that faces the interior,
+/// the glazed front + a single door on the (unchanged) front line, and NOTHING
+/// along edges that lie on the plate boundary — the building's own wall already
+/// encloses those. Walls sit ON the polygon edges (they meet exactly at the
+/// polygon vertices, so the room is closed by construction). Deterministic (pure
+/// geometry, no RNG). All validation happens BEFORE any mutation, so a `Fail`
+/// leaves the document byte-identical.
+fn reenclose_conformed_room(
+    doc: &mut Document,
+    orig: (f64, f64, f64, f64),
+    poly: &[Point],
+    plate: &[Point],
+) -> Reenclose {
+    let (cx, cy, w, h) = orig;
+    let t2 = PARTITION_T / 2.0;
+    // Old shell centerline rectangle (inset), for bucketing this room's walls.
+    let (sx0, sx1, sy0, sy1) =
+        (cx - w / 2.0 + t2, cx + w / 2.0 - t2, cy - h / 2.0 + t2, cy + h / 2.0 - t2);
+    let (sides, wall_idxs) = room_shell_sides(doc, sx0, sx1, sy0, sy1);
+    if wall_idxs.is_empty() {
+        // No shell walls: this is an OPEN setting (breakout/print) — nothing to
+        // rebuild, the polygon is safe to apply as-is.
+        return Reenclose::NoShell;
+    }
+    // Recover the door + front from the existing shell before removing it.
+    let Some(di) = doc.components.iter().position(|c| {
+        c.category == "Door"
+            && (c.x - cx).abs() <= w / 2.0 + 1e-6
+            && (c.y - cy).abs() <= h / 2.0 + 1e-6
+    }) else {
+        return Reenclose::Fail;
+    };
+    let door_w = doc.components[di].w;
+    let (dcx, dcy) = (doc.components[di].x, doc.components[di].y);
+    // Front side index from the door's position on the shell perimeter.
+    let front = if (dcx - sx0).abs() < 1e-3 {
+        0
+    } else if (dcx - sx1).abs() < 1e-3 {
+        1
+    } else if (dcy - sy0).abs() < 1e-3 {
+        2
+    } else if (dcy - sy1).abs() < 1e-3 {
+        3
+    } else {
+        return Reenclose::Fail;
+    };
+    let glass_front = sides[front].iter().any(|&i| doc.walls[i].glazing);
+    // The room's OUTER front face (poly edges sit on outer faces; conform never
+    // moved the front, so it is still the original outer-face line).
+    let front_line = match front {
+        0 => cx - w / 2.0,
+        1 => cx + w / 2.0,
+        2 => cy - h / 2.0,
+        _ => cy + h / 2.0,
+    };
+    let vertical_front = front <= 1; // Left/Right fronts run along y.
+
+    // Classify each polygon edge: on the plate boundary (building wall encloses
+    // it — emit nothing), the front (glazed + door), or an interior side
+    // (partition). Validate EVERYTHING before mutating so a Fail is inert.
+    const BND_TOL: f64 = 0.06;
+    let on_boundary = |a: Point, b: Point| -> bool {
+        (0..plate.len()).any(|k| {
+            let (p, q) = (plate[k], plate[(k + 1) % plate.len()]);
+            geometry::point_segment_dist(a, p, q) < BND_TOL
+                && geometry::point_segment_dist(b, p, q) < BND_TOL
+        })
+    };
+    let mut front_span: Option<(f64, f64)> = None;
+    let mut partitions: Vec<(Point, Point)> = Vec::new();
+    for i in 0..poly.len() {
+        let a = poly[i];
+        let b = poly[(i + 1) % poly.len()];
+        if (a.x - b.x).abs() < 1e-9 && (a.y - b.y).abs() < 1e-9 {
+            continue; // degenerate
+        }
+        let is_front = if vertical_front {
+            (a.x - front_line).abs() < 1e-3 && (b.x - front_line).abs() < 1e-3
+        } else {
+            (a.y - front_line).abs() < 1e-3 && (b.y - front_line).abs() < 1e-3
+        };
+        if is_front {
+            if front_span.is_some() {
+                return Reenclose::Fail; // two fronts — ambiguous, bail
+            }
+            front_span = Some(if vertical_front {
+                (a.y.min(b.y), a.y.max(b.y))
+            } else {
+                (a.x.min(b.x), a.x.max(b.x))
+            });
+        } else if on_boundary(a, b) {
+            // Plate boundary wall already encloses this edge — no partition.
+        } else {
+            partitions.push((a, b));
+        }
+    }
+    let Some((flo, fhi)) = front_span else { return Reenclose::Fail };
+    // Door gap on the front, near the HIGH corner (matches `emit_room`). Bail if
+    // the front is too short to seat the door — keep the room a Rect.
+    let run = fhi - flo;
+    if run < door_w + 0.1 {
+        return Reenclose::Fail;
+    }
+    let g_hi = if run >= door_w + 2.0 * DOOR_JAMB {
+        fhi - DOOR_JAMB
+    } else {
+        (flo + fhi) / 2.0 + door_w / 2.0
+    };
+    let (g_lo, g_hi) = (g_hi - door_w, g_hi);
+
+    // ---- Validated. Now mutate: drop the old shell + door, emit the new one. --
+    let mut drop = wall_idxs;
+    drop.sort_unstable();
+    for &i in drop.iter().rev() {
+        doc.walls.remove(i);
+    }
+    doc.components.remove(di);
+
+    // Solid partitions along every interior (non-front, non-boundary) edge.
+    for (a, b) in partitions {
+        push_gen_wall(doc, a.x, a.y, b.x, b.y, PARTITION_T, false);
+    }
+    // Glazed (or solid) front, split by the door gap, + the door leaf.
+    let front_t = if glass_front { GLAZING_T } else { PARTITION_T };
+    let (door_x, door_y, rot);
+    if vertical_front {
+        push_gen_wall(doc, front_line, flo, front_line, g_lo, front_t, glass_front);
+        push_gen_wall(doc, front_line, g_hi, front_line, fhi, front_t, glass_front);
+        door_x = front_line;
+        door_y = (g_lo + g_hi) / 2.0;
+        // Right front: leaf swings into the room (−x). Left front: (+x).
+        rot = if front == 1 { -std::f64::consts::FRAC_PI_2 } else { std::f64::consts::FRAC_PI_2 };
+    } else {
+        push_gen_wall(doc, flo, front_line, g_lo, front_line, front_t, glass_front);
+        push_gen_wall(doc, g_hi, front_line, fhi, front_line, front_t, glass_front);
+        door_x = (g_lo + g_hi) / 2.0;
+        door_y = front_line;
+        // Bottom front: leaf swings into the room (+y) → π. Top front: (−y) → 0.
+        rot = if front == 2 { std::f64::consts::PI } else { 0.0 };
+    }
+    push_component(doc, "Door", door_x, door_y, door_w, DOOR_D, rot);
+    Reenclose::Done
 }
 
 /// Unify the whole walking area into coherent merged **`Circulation`** polygons.
@@ -4605,6 +4810,89 @@ mod tests {
         assert_eq!(tables, 1, "{ctx}: room at ({x:.1},{y:.1}) needs its table");
     }
 
+    /// Enclosure check for a room that CONFORMED to a wall (a `Poly`): the shell
+    /// no longer sits on a rectangle, so verify the polygon directly. Every edge
+    /// that faces the interior must be covered by generated walls (minus exactly
+    /// one door-width gap, on a single glazed front carrying one Door); every
+    /// edge on the plate boundary is left to the building's own wall; and NO
+    /// generated wall may float loose INSIDE the polygon (the bug being fixed).
+    fn assert_poly_room_enclosed(doc: &Document, pts: &[[f64; 2]], plate: &[Point], ctx: &str) {
+        let poly: Vec<Point> = pts.iter().map(|p| Point::new(p[0], p[1])).collect();
+        let eps = 1e-4;
+        let on_boundary = |a: Point, b: Point| {
+            (0..plate.len()).any(|k| {
+                let (p, q) = (plate[k], plate[(k + 1) % plate.len()]);
+                geometry::point_segment_dist(a, p, q) < 0.06
+                    && geometry::point_segment_dist(b, p, q) < 0.06
+            })
+        };
+        // Walls that lie ON edge (a,b): both endpoints within eps of the segment.
+        let walls_on = |a: Point, b: Point| -> Vec<&Wall> {
+            doc.walls
+                .iter()
+                .filter(|wl| {
+                    wl.generated
+                        && geometry::point_segment_dist(wl.a, a, b) < eps
+                        && geometry::point_segment_dist(wl.b, a, b) < eps
+                })
+                .collect()
+        };
+        let mut gaps = 0;
+        for i in 0..poly.len() {
+            let a = poly[i];
+            let b = poly[(i + 1) % poly.len()];
+            let len = a.dist(&b);
+            if len < eps || on_boundary(a, b) {
+                continue; // plate wall encloses boundary edges; skip degenerate
+            }
+            let on = walls_on(a, b);
+            let cov: f64 = on.iter().map(|wl| wl.a.dist(&wl.b)).sum();
+            if (cov - len).abs() < 1e-3 {
+                continue; // fully covered interior side (a solid/glazed partition)
+            }
+            // Otherwise it must be THE front: covered minus one door leaf, glazed,
+            // with exactly one Door sitting in the gap.
+            assert!(
+                (cov - (len - 0.9)).abs() < 1e-2 || (cov - (len - 1.0)).abs() < 1e-2,
+                "{ctx}: interior edge {a:?}->{b:?} covered {cov:.3} of {len:.3} — not a single door gap (floating/missing wall)"
+            );
+            assert!(on.iter().all(|wl| wl.glazing), "{ctx}: the door side must be the glass front");
+            gaps += 1;
+        }
+        assert_eq!(gaps, 1, "{ctx}: conformed room must have exactly one door gap");
+        // Exactly one Door, sitting inside the polygon.
+        let doors = doc
+            .components
+            .iter()
+            .filter(|c| c.category == "Door" && geometry::point_in_polygon(c.x, c.y, &poly))
+            .count();
+        assert_eq!(doors, 1, "{ctx}: conformed room needs exactly one door");
+        // NO generated wall floats loose inside the polygon: every generated wall
+        // whose midpoint is inside must lie ON a polygon edge.
+        for wl in doc.walls.iter().filter(|w| w.generated) {
+            let mid = Point::new((wl.a.x + wl.b.x) / 2.0, (wl.a.y + wl.b.y) / 2.0);
+            if !geometry::point_in_polygon(mid.x, mid.y, &poly) {
+                continue;
+            }
+            let on_edge = (0..poly.len()).any(|i| {
+                geometry::point_segment_dist(mid, poly[i], poly[(i + 1) % poly.len()]) < 0.02
+            });
+            assert!(on_edge, "{ctx}: generated wall {:?}->{:?} floats inside the conformed room", wl.a, wl.b);
+        }
+    }
+
+    /// Shape-dispatching enclosure check: a `Rect` room is verified against its
+    /// rectangle; a room that conformed to a wall (`Poly`) against its polygon.
+    fn assert_zone_enclosed(doc: &Document, z: &Zone, plate: &[Point], ctx: &str) {
+        match &z.shape {
+            ZoneShape::Poly { pts } => assert_poly_room_enclosed(doc, pts, plate, ctx),
+            _ => {
+                let (x0, y0, x1, y1) = z.shape.bbox();
+                assert_room_enclosed(doc, (x0 + x1) / 2.0, (y0 + y1) / 2.0, x1 - x0, y1 - y0, ctx);
+            }
+        }
+    }
+
     #[test]
     fn generate_is_deterministic_for_same_seed() {
         let program = Program::default();
@@ -5712,10 +6000,11 @@ mod tests {
                 assert!(footprint_in_plate(c, &poly), "seed {seed}: {} escapes", c.label);
             }
             assert_no_overlaps(&doc, "real plate");
-            // M1 rigor extension: every room on the real plate is a true
-            // enclosure — partitions + one 0.9 m door gap + glazed front.
-            for &(x, y, w, h) in &meeting_rects(&doc) {
-                assert_room_enclosed(&doc, x, y, w, h, &format!("real plate seed {seed}"));
+            // M1 rigor extension: every meeting room on the real plate is a true
+            // enclosure — partitions + one door gap + glazed front — whether it
+            // stayed a Rect or CONFORMED to a wall (Poly, shell re-emitted).
+            for z in doc.zones.iter().filter(|z| z.zone_type == ZoneType::Meeting) {
+                assert_zone_enclosed(&doc, z, &poly, &format!("real plate seed {seed}"));
             }
 
             // Circulation stays walkable. The narrowest passage is plate-inherent
@@ -7721,6 +8010,90 @@ mod tests {
         }
     }
 
+    /// The floating-wall fix: several ENCLOSED rooms (with real shells — glazed
+    /// front + partitions + door) placed rear-against a diagonal wall must ALL
+    /// (a) conform to a wall-hugging `Poly` (N > 2, up from the ~1 a plain rect
+    /// shell allowed), (b) stay a VALID enclosure afterwards — the re-emitted
+    /// shell follows the polygon, no wall floats loose, one door each — while
+    /// (c) leaving the desk field untouched (seat-neutral) and (d) keeping the
+    /// zone partition within the plate (NIA ≤ GEA). Deterministic per run.
+    #[test]
+    fn conformed_rooms_reenclose_to_the_wall_seat_neutral() {
+        // Tall right-trapezoid: left/bottom/top axis-aligned, right edge slants
+        // from (20,0) to (12,30) — the diagonal the rooms must hug.
+        let corners = [(0.0, 0.0), (20.0, 0.0), (12.0, 30.0), (0.0, 30.0)];
+        let plate: Vec<Point> = corners.iter().map(|&(x, y)| Point::new(x, y)).collect();
+        let gea = geometry::polygon_area(&plate);
+
+        let build = || -> Document {
+            let mut doc = room_from_corners(&corners);
+            // Two desks in the interior — the field the fix must NOT disturb.
+            push_component(&mut doc, "Desk", 4.0, 8.0, 1.6, 0.8, 0.0);
+            push_component(&mut doc, "Desk", 4.0, 20.0, 1.6, 0.8, 0.0);
+            // Three meeting rooms, front facing LEFT (into the interior corridor),
+            // right side ~1.2 m short of the diagonal so it grows to the wall.
+            for &(cx, cy) in &[(14.5, 6.0), (12.6, 13.0), (10.8, 20.0)] {
+                emit_room(
+                    &mut doc, cx, cy, 4.0, 5.0, CorridorSide::Left,
+                    &RoomSpec {
+                        zone_type: ZoneType::Meeting,
+                        label: "Meeting".into(),
+                        glass_front: true,
+                        door_w: 0.9,
+                        furniture: RoomFurniture::ConferenceTable,
+                    },
+                );
+            }
+            doc
+        };
+
+        let mut doc = build();
+        let desks_before = doc.components.iter().filter(|c| c.category == "Desk").count();
+        conform_zones_to_plate(&mut doc, &plate);
+
+        // (a) N > 2 rooms conformed to the wall.
+        let conformed: Vec<&Zone> = doc
+            .zones
+            .iter()
+            .filter(|z| z.zone_type == ZoneType::Meeting && matches!(z.shape, ZoneShape::Poly { .. }))
+            .collect();
+        assert!(conformed.len() > 2, "only {} meeting rooms conformed (want > 2)", conformed.len());
+
+        // (b) every conformed room is a valid enclosure (no floating walls).
+        for z in &conformed {
+            if let ZoneShape::Poly { pts } = &z.shape {
+                assert_poly_room_enclosed(&doc, pts, &plate, "conformed diagonal room");
+            }
+        }
+
+        // (c) seat-neutral: the desk field is byte-untouched by conform/re-emit.
+        let desks_after: Vec<_> = doc.components.iter().filter(|c| c.category == "Desk").collect();
+        assert_eq!(desks_before, 2);
+        assert_eq!(desks_after.len(), 2, "conform/re-emit changed the desk count");
+        for d in &desks_after {
+            assert!(
+                (d.y == 8.0 || d.y == 20.0) && d.x == 4.0,
+                "a desk moved during conform/re-emit"
+            );
+        }
+
+        // (d) NIA ≤ GEA: the zone partition tiles within the plate.
+        let nia: f64 = doc.zones.iter().map(|z| z.area_on(Some(&plate))).sum();
+        assert!(nia <= gea + 1e-6, "NIA {nia:.2} exceeds GEA {gea:.2}");
+
+        // Determinism: a second identical build conforms to byte-identical walls.
+        let mut doc2 = build();
+        conform_zones_to_plate(&mut doc2, &plate);
+        assert_eq!(doc.walls.len(), doc2.walls.len(), "wall count not deterministic");
+        for (wa, wb) in doc.walls.iter().zip(&doc2.walls) {
+            assert_eq!(
+                (wa.a.x.to_bits(), wa.a.y.to_bits(), wa.b.x.to_bits(), wa.b.y.to_bits(), wa.glazing),
+                (wb.a.x.to_bits(), wb.a.y.to_bits(), wb.b.x.to_bits(), wb.b.y.to_bits(), wb.glazing),
+                "conformed shell not deterministic"
+            );
+        }
+    }
+
     /// AXIS-ALIGNED plates must NEVER trigger the *spanning* de-overlap (the
     /// `spanning` index is always `None`), so a large open workspace on a small
     /// rectangular plate is never mis-identified as the oriented desk field and
@@ -7937,5 +8310,6 @@ mod tests {
             assert!((za.area() - zb.area()).abs() < 1e-9, "zone areas differ across identical seeds");
         }
     }
+
 }
 
