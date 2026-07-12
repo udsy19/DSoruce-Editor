@@ -1939,6 +1939,14 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
     // instead of a set-back rectangle. Interior rectangular rooms are untouched.
     if let Some(poly) = plate.as_deref() {
         conform_zones_to_plate(doc, poly);
+        // Unify the walking area: melt every untyped wedge AND the many scattered
+        // residual-Circulation fragments into ONE merged wall-following polygon per
+        // contiguous region (same gate as the residual fill — the oriented spanning
+        // Workspace already covers the floor, so layering circulation would double-
+        // count; a single/axis-aligned plate has no wedges).
+        if !single_region && !use_oriented_field {
+            fill_untyped_as_circulation(doc, poly);
+        }
     }
 
     // Fill each zone's component_ids by point-in-zone on component centers.
@@ -2234,25 +2242,430 @@ fn conform_zones_to_plate(doc: &mut Document, plate: &[Point]) {
     for (zi, pts) in updates {
         let poly: Vec<Point> = pts.iter().map(|p| Point::new(p[0], p[1])).collect();
         let boxes: Vec<(f64, f64, f64, f64)> = doc.zones.iter().map(|z| z.shape.bbox()).collect();
-        if poly_overlaps_other_zones(&poly, &doc.zones, &boxes, zi, 0.08) {
+        if poly_overlaps_other_zones(&poly, &doc.zones, &boxes, zi, 0.08, 0.2) {
             continue;
         }
         doc.zones[zi].shape = ZoneShape::Poly { pts };
     }
 }
 
+/// Unify the whole walking area into coherent merged **`Circulation`** polygons.
+///
+/// After the desk field, rooms, residual fill and `conform_zones_to_plate`, the
+/// walking area is FRAGMENTED: many little residual `Circulation` rects/polys
+/// (label `"Circulation"`) scattered across the floor, PLUS triangular wedges
+/// against angled/stepped walls left as untyped WHITE floor. Laiout renders
+/// circulation as one flowing space; this pass melts BOTH classes together.
+///
+/// 1. Raster the plate bbox at `CELL`. A cell is **WALKING** if its centre is
+///    inside the plate and NOT covered by any non-circulation zone
+///    (desk-field/room/workspace/core) nor any furniture footprint — i.e. it is
+///    untyped OR already owned by a residual `"Circulation"` zone. The DRAWN
+///    corridor network (spine `"Corridor"`, `"Entry"` connector, `"Aisle"` link,
+///    seam `"Corridor"`) is a real designed corridor the score/entry logic
+///    anchors on, so its cells stay OWNED (blocked) and it is left untouched.
+/// 2. 4-connected flood-fill the WALKING cells into regions (row-major discovery
+///    → deterministic ids, ordered by (min-y, min-x)).
+/// 3. Each region ≥ `MIN_AREA` with a single simple boundary loop → one merged
+///    `Poly`: trace the cell-set outline, SNAP each boundary vertex within `SNAP`
+///    of the plate onto the nearest plate edge (so the wall-facing side is the
+///    clean diagonal, not a grid staircase), simplify near-collinear runs.
+/// 4. Guard against the non-circulation zones (`poly_overlaps_other_zones`, strict
+///    tol) — a rejected region is simply left as its original residual zones
+///    (never a coverage regression, never a disjointness break). The residual
+///    `"Circulation"` zones a merged poly REPLACES are removed so they don't
+///    double up; residual zones in un-merged regions are kept as-is.
+///
+/// Disjoint by construction (WALKING excludes every owned cell → NIA ≤ GEA;
+/// separate components never share a cell → merged polys mutually disjoint).
+/// Deterministic (grid + flood-fill + ascending-id emit, no RNG). Touches ONLY
+/// Circulation — desks, rooms, workspace and Core are never read for growth nor
+/// removed, so the workstation count and NIA are unchanged.
+fn fill_untyped_as_circulation(doc: &mut Document, plate: &[Point]) {
+    /// Raster cell (m): coarse enough to stay O(cells) inside the time budget,
+    /// fine enough to catch a wedge; wall edges are exact via the vertex snap.
+    const CELL: f64 = 0.25;
+    /// Skip regions below this — sub-visible wall-thickness slivers; merging them
+    /// only adds noise.
+    const MIN_AREA: f64 = 0.5;
+    /// Snap a boundary vertex this close to the plate wall onto that edge.
+    const SNAP: f64 = 0.3;
+    /// Drop a boundary vertex within this of the line through its neighbours.
+    const SIMPLIFY: f64 = 0.02;
+    /// Strict disjointness guard (~one sample cell of shared-edge quantization).
+    const OVERLAP_TOL: f64 = 0.08;
+
+    // A residual "Circulation" zone is the fragmentation we melt; the drawn
+    // network (Corridor/Entry/Aisle) carries other labels and is preserved.
+    let is_residual =
+        |z: &Zone| z.zone_type == ZoneType::Circulation && z.label == "Circulation";
+
+    let (mut minx, mut miny, mut maxx, mut maxy) =
+        (f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY);
+    for p in plate {
+        minx = minx.min(p.x);
+        miny = miny.min(p.y);
+        maxx = maxx.max(p.x);
+        maxy = maxy.max(p.y);
+    }
+    if !(maxx > minx && maxy > miny) {
+        return;
+    }
+    let cols = (((maxx - minx) / CELL).ceil() as usize).max(1);
+    let rows = (((maxy - miny) / CELL).ceil() as usize).max(1);
+
+    // Blocking geometry: non-circulation zones (rooms/workspace/core) + the drawn
+    // corridor network + every furniture footprint. A cell over any of these is
+    // OWNED (not walking). Broad-phased by bbox.
+    let block_zones: Vec<((f64, f64, f64, f64), usize)> = (0..doc.zones.len())
+        .filter(|&i| !is_residual(&doc.zones[i]))
+        .map(|i| (doc.zones[i].shape.bbox(), i))
+        .collect();
+    // Furniture footprints are stamped ONCE into a half-cell occupancy bitmap so
+    // the per-cell/per-corner blocked test is an O(1) lookup, not a scan over
+    // every component (that scan blew the debug time budget). Component bboxes are
+    // axis-aligned, so a bbox stamp is exact. Zones stay an exact `contains` test
+    // (there are far fewer of them, and `Poly` needs exact edges).
+    const FCELL: f64 = 0.125;
+    let fcols = (((maxx - minx) / FCELL).ceil() as usize).max(1);
+    let frows = (((maxy - miny) / FCELL).ceil() as usize).max(1);
+    let mut comp_occ = vec![false; fcols * frows];
+    for c in &doc.components {
+        let (ww, wh) = world_extents(c.w, c.h, c.rotation);
+        let (x0, y0, x1, y1) = (c.x - ww / 2.0, c.y - wh / 2.0, c.x + ww / 2.0, c.y + wh / 2.0);
+        let c0 = (((x0 - minx) / FCELL).floor().max(0.0)) as usize;
+        let r0 = (((y0 - miny) / FCELL).floor().max(0.0)) as usize;
+        let c1 = ((((x1 - minx) / FCELL).ceil()) as usize).min(fcols);
+        let r1 = ((((y1 - miny) / FCELL).ceil()) as usize).min(frows);
+        for r in r0..r1 {
+            for cc in c0..c1 {
+                comp_occ[r * fcols + cc] = true;
+            }
+        }
+    }
+    let blocked = |cx: f64, cy: f64| -> bool {
+        let fc = ((cx - minx) / FCELL).floor();
+        let fr = ((cy - miny) / FCELL).floor();
+        if fc >= 0.0 && fr >= 0.0 && (fc as usize) < fcols && (fr as usize) < frows
+            && comp_occ[fr as usize * fcols + fc as usize]
+        {
+            return true;
+        }
+        for &((a0, b0, a1, b1), i) in &block_zones {
+            if cx >= a0 && cx <= a1 && cy >= b0 && cy <= b1 && doc.zones[i].shape.contains(cx, cy) {
+                return true;
+            }
+        }
+        false
+    };
+
+    // ---- Walking mask + connected components ---------------------------------
+    // In-plate test by SCANLINE (one set of edge crossings per row, not a full
+    // point-in-polygon per cell) — keeps the sweep O(cells) with a tiny constant
+    // so it stays inside the generate time budget.
+    //
+    // A cell is WALKING only when its CENTRE is inside the plate AND its centre
+    // and all four CORNERS are clear of every owned zone/furniture footprint.
+    // Corner clearance (not just the centre) is what makes the merged poly
+    // STRICTLY disjoint: a zone edge that clips a cell puts a corner inside the
+    // zone → the cell is dropped → the cell-aligned poly never shares floor with
+    // a zone. Centre-only would leave sub-cell slivers along every border that
+    // sum past the disjointness tol (NIA > GEA). Corners a hair OUTSIDE the plate
+    // do NOT block — that's the wall-facing side, snapped onto the wall later.
+    let h = CELL / 2.0;
+    let mut walk = vec![false; cols * rows];
+    let mut xs: Vec<f64> = Vec::new();
+    for r in 0..rows {
+        let cy = miny + (r as f64 + 0.5) * CELL;
+        xs.clear();
+        for i in 0..plate.len() {
+            let a = plate[i];
+            let b = plate[(i + 1) % plate.len()];
+            if (a.y <= cy && b.y > cy) || (b.y <= cy && a.y > cy) {
+                xs.push(a.x + (cy - a.y) / (b.y - a.y) * (b.x - a.x));
+            }
+        }
+        xs.sort_by(|p, q| p.partial_cmp(q).unwrap_or(std::cmp::Ordering::Equal));
+        for c in 0..cols {
+            let cx = minx + (c as f64 + 0.5) * CELL;
+            if xs.iter().filter(|&&x| x < cx).count() % 2 == 1
+                && !blocked(cx, cy)
+                && !blocked(cx - h, cy - h)
+                && !blocked(cx + h, cy - h)
+                && !blocked(cx - h, cy + h)
+                && !blocked(cx + h, cy + h)
+            {
+                walk[r * cols + c] = true;
+            }
+        }
+    }
+    let mut comp = vec![-1i32; cols * rows];
+    let mut comp_cells: Vec<Vec<(usize, usize)>> = Vec::new();
+    let mut stack: Vec<(usize, usize)> = Vec::new();
+    for r0 in 0..rows {
+        for c0 in 0..cols {
+            if !walk[r0 * cols + c0] || comp[r0 * cols + c0] >= 0 {
+                continue;
+            }
+            let id = comp_cells.len() as i32;
+            let mut cells = Vec::new();
+            comp[r0 * cols + c0] = id;
+            stack.push((c0, r0));
+            while let Some((c, r)) = stack.pop() {
+                cells.push((c, r));
+                let nb = |nc: i64, nr: i64, st: &mut Vec<(usize, usize)>, comp: &mut Vec<i32>| {
+                    if nc < 0 || nr < 0 || nc >= cols as i64 || nr >= rows as i64 {
+                        return;
+                    }
+                    let (nc, nr) = (nc as usize, nr as usize);
+                    if walk[nr * cols + nc] && comp[nr * cols + nc] < 0 {
+                        comp[nr * cols + nc] = id;
+                        st.push((nc, nr));
+                    }
+                };
+                nb(c as i64 - 1, r as i64, &mut stack, &mut comp);
+                nb(c as i64 + 1, r as i64, &mut stack, &mut comp);
+                nb(c as i64, r as i64 - 1, &mut stack, &mut comp);
+                nb(c as i64, r as i64 + 1, &mut stack, &mut comp);
+            }
+            comp_cells.push(cells);
+        }
+    }
+
+    // The merged poly is kept STRICTLY DISJOINT from every zone: `effective_zone_
+    // areas` reconciles Workspace/room overlaps with rect-clip math that mis-
+    // measures a big non-convex circulation `Poly`, so ANY real penetration risks
+    // NIA > GEA. Corner-clearance already keeps the cell set a ~half-cell margin
+    // clear of every zone; this guard is the belt-and-braces backstop, rejecting
+    // any poly that still double-counts (a rejected region keeps its residuals).
+    let guard_zones: Vec<Zone> =
+        doc.zones.iter().filter(|z| !is_residual(z)).cloned().collect();
+    let guard_boxes: Vec<(f64, f64, f64, f64)> =
+        guard_zones.iter().map(|z| z.shape.bbox()).collect();
+
+    let min_cells = (MIN_AREA / (CELL * CELL)).ceil() as usize;
+    let mut emit: Vec<Vec<[f64; 2]>> = Vec::new();
+    for (id, cells) in comp_cells.iter().enumerate() {
+        let id = id as i32;
+        if cells.len() < min_cells {
+            continue;
+        }
+        // Trace the cell-set outline into boundary loops; a simply-connected
+        // region yields exactly one. More than one → a hole/pinch a single
+        // simple `Poly` can't represent: skip (its residual zones stay).
+        let loops = trace_cell_boundary(cells, &comp, id, cols, rows, minx, miny, CELL);
+        if loops.len() != 1 {
+            continue;
+        }
+        let mut pts = loops.into_iter().next().unwrap();
+        // Collapse the long axis-aligned collinear runs BEFORE snapping — the
+        // per-vertex plate projection is the pass's hot loop, and a raw cell
+        // outline is mostly straight interior borders that simplify to a handful
+        // of vertices. (The diagonal wall's staircase survives this pass — its
+        // steps aren't collinear — then snaps onto the wall and simplifies away.)
+        simplify_collinear(&mut pts, SIMPLIFY);
+        snap_poly(&mut pts, plate, SNAP);
+        simplify_collinear(&mut pts, SIMPLIFY);
+        if pts.len() < 3 {
+            continue;
+        }
+        // Coarse guard step (0.4 m): corner-clearance already makes the poly
+        // disjoint by construction, so this is pure insurance and needn't sample
+        // finely — a real double-cover would be gross, not a hairline. (Conform,
+        // which has no corner-clearance, keeps the fine 0.2 m step.)
+        if poly_overlaps_other_zones(&pts, &guard_zones, &guard_boxes, guard_zones.len(), OVERLAP_TOL, 0.4)
+        {
+            continue;
+        }
+        emit.push(pts.iter().map(|p| [p.x, p.y]).collect());
+    }
+
+    // Remove every OLD residual "Circulation" zone so the walking area reads as
+    // the merged polys, not a pile of little rects: one whose centre falls inside
+    // a merged poly is now represented by it, and any that stayed un-merged is a
+    // sub-`MIN_AREA` sliver the merge pass deliberately skips as noise (its floor
+    // is negligible). Larger un-merged regions cannot occur — a residual zone
+    // ≥ `MIN_AREA` forms its own walking component that merges. (`emit` was pushed
+    // AFTER this filter, so it is untouched.)
+    let emitted: Vec<Vec<Point>> = emit
+        .iter()
+        .map(|p| p.iter().map(|q| Point::new(q[0], q[1])).collect())
+        .collect();
+    doc.zones.retain(|z| {
+        if !is_residual(z) {
+            return true;
+        }
+        let (x0, y0, x1, y1) = z.shape.bbox();
+        let (cx, cy) = ((x0 + x1) / 2.0, (y0 + y1) / 2.0);
+        let absorbed = emitted.iter().any(|poly| geometry::point_in_polygon(cx, cy, poly));
+        !(absorbed || z.shape.area() < MIN_AREA)
+    });
+    for pts in emit {
+        push_zone(doc, ZoneType::Circulation, ZoneShape::Poly { pts }, "Circulation");
+    }
+}
+
+/// Trace the outline(s) of the cells of `comp == id` as CCW loops of world
+/// points. Emits the directed cell-edges not shared with another in-component
+/// cell (interior on the left), then stitches them into closed loops by matching
+/// integer lattice endpoints — a simply-connected region gives exactly one loop.
+fn trace_cell_boundary(
+    cells: &[(usize, usize)],
+    comp: &[i32],
+    id: i32,
+    cols: usize,
+    rows: usize,
+    minx: f64,
+    miny: f64,
+    cell: f64,
+) -> Vec<Vec<Point>> {
+    use std::collections::HashMap;
+    let inside = |c: i64, r: i64| -> bool {
+        c >= 0 && r >= 0 && c < cols as i64 && r < rows as i64 && comp[r as usize * cols + c as usize] == id
+    };
+    // Directed edges (start → end) as integer lattice corners.
+    let mut adj: HashMap<(i64, i64), Vec<(i64, i64)>> = HashMap::new();
+    for &(c, r) in cells {
+        let (c, r) = (c as i64, r as i64);
+        // BL,BR,TR,TL corners of the cell.
+        let (bl, br, tr, tl) = ((c, r), (c + 1, r), (c + 1, r + 1), (c, r + 1));
+        if !inside(c, r - 1) {
+            adj.entry(bl).or_default().push(br); // bottom, →
+        }
+        if !inside(c + 1, r) {
+            adj.entry(br).or_default().push(tr); // right, ↑
+        }
+        if !inside(c, r + 1) {
+            adj.entry(tr).or_default().push(tl); // top, ←
+        }
+        if !inside(c - 1, r) {
+            adj.entry(tl).or_default().push(bl); // left, ↓
+        }
+    }
+    let to_world = |p: (i64, i64)| Point::new(minx + p.0 as f64 * cell, miny + p.1 as f64 * cell);
+    let mut loops: Vec<Vec<Point>> = Vec::new();
+    // Walk edges, consuming each once. Deterministic start: smallest key.
+    let mut starts: Vec<(i64, i64)> = adj.keys().copied().collect();
+    starts.sort();
+    for s in starts {
+        while let Some(nexts) = adj.get(&s) {
+            if nexts.is_empty() {
+                break;
+            }
+            let mut loop_pts: Vec<Point> = Vec::new();
+            let mut cur = s;
+            loop {
+                let next = match adj.get_mut(&cur).and_then(|v| v.pop()) {
+                    Some(n) => n,
+                    None => break,
+                };
+                loop_pts.push(to_world(cur));
+                cur = next;
+                if cur == s {
+                    break;
+                }
+            }
+            if loop_pts.len() >= 3 {
+                loops.push(loop_pts);
+            }
+        }
+    }
+    loops
+}
+
+/// Snap each boundary vertex onto the nearest `plate` wall or neighbouring
+/// `zone_edges` border within `snap` m. Closes BOTH gaps a grid-aligned trace
+/// leaves: the wall-facing side lands on the exact diagonal/step wall, and the
+/// interior side lands on the shared zone border (the half-cell corner-clearance
+/// seam collapses to a zero-area shared edge → no untyped white AND no double-
+/// count). A vertex OUTSIDE the plate (a wall-facing cell overshoots the wall by
+/// up to half a cell) is pulled onto the WALL, never a nearer zone edge — so the
+/// merged poly can't bulge past the boundary (`area_on` doesn't clip a `Poly`).
+fn snap_poly(pts: &mut [Point], plate: &[Point], snap: f64) {
+    let plate_segs: Vec<(Point, Point)> =
+        (0..plate.len()).map(|i| (plate[i], plate[(i + 1) % plate.len()])).collect();
+    for p in pts.iter_mut() {
+        let mut best = f64::INFINITY;
+        let mut pp = *p;
+        for &(a, b) in &plate_segs {
+            let q = geometry::closest_point_on_segment(*p, a, b);
+            let d = p.dist(&q);
+            if d < best {
+                best = d;
+                pp = q;
+            }
+        }
+        // A wall-facing vertex overshooting the boundary (a corner-clearance cell
+        // overshoots by ≤ ~0.18 m) is pulled onto the wall UNCONDITIONALLY so the
+        // merged poly stays ⊆ plate (its unclipped `area_on` can't overcount floor
+        // the plate lacks); an interior vertex snaps only within `snap`.
+        if !geometry::point_in_polygon(p.x, p.y, plate) || best <= snap {
+            *p = pp;
+        }
+    }
+}
+
+/// Drop each vertex within `tol` m of the segment through its neighbours (a
+/// near-collinear run — the many grid steps a snapped diagonal leaves, and the
+/// straight interior edges). Keeps at least a triangle.
+fn simplify_collinear(pts: &mut Vec<Point>, tol: f64) {
+    if pts.len() <= 3 {
+        return;
+    }
+    let mut changed = true;
+    while changed && pts.len() > 3 {
+        changed = false;
+        let n = pts.len();
+        let mut keep = vec![true; n];
+        let mut removed = 0;
+        for i in 0..n {
+            if n - removed <= 3 {
+                break;
+            }
+            let prev = {
+                let mut j = (i + n - 1) % n;
+                while !keep[j] {
+                    j = (j + n - 1) % n;
+                }
+                j
+            };
+            let next = {
+                let mut j = (i + 1) % n;
+                while !keep[j] {
+                    j = (j + 1) % n;
+                }
+                j
+            };
+            if prev == i || next == i || prev == next {
+                continue;
+            }
+            if geometry::point_segment_dist(pts[i], pts[prev], pts[next]) <= tol {
+                keep[i] = false;
+                removed += 1;
+                changed = true;
+            }
+        }
+        if removed > 0 {
+            *pts = pts.iter().zip(keep).filter(|(_, k)| *k).map(|(p, _)| *p).collect();
+        }
+    }
+}
+
 /// True if `poly` overlaps some zone other than `self_idx` by more than `tol` m².
-/// A coarse 0.3 m grid over the poly's AABB, broad-phase culled by `zone_bboxes`
-/// (only zones whose AABB meets the poly's are point-tested) and early-exiting the
-/// instant the tolerance is crossed — enough to reject a conform that would
-/// double-count another zone's floor, cheap because polys and candidate sets are
-/// small (keeps `generate()` well inside its time budget).
+/// A coarse 0.2 m grid, broad-phase culled by `zone_bboxes` (only zones whose AABB
+/// meets the poly's are tested) and early-exiting the instant the tolerance is
+/// crossed — enough to reject a conform/fill that would double-count another
+/// zone's floor. Sampling is confined to each candidate zone's own bbox (∩ the
+/// poly's), NOT the poly's full AABB: a big non-convex circulation poly can have a
+/// vast, mostly-empty AABB, so per-zone sampling keeps this near-free (the sample
+/// count is bounded by the small zones' areas, not the poly's bounding box).
 fn poly_overlaps_other_zones(
     poly: &[Point],
     zones: &[Zone],
     zone_boxes: &[(f64, f64, f64, f64)],
     self_idx: usize,
     tol: f64,
+    step: f64,
 ) -> bool {
     if poly.len() < 3 {
         return false;
@@ -2265,36 +2678,28 @@ fn poly_overlaps_other_zones(
         maxx = maxx.max(p.x);
         maxy = maxy.max(p.y);
     }
-    // Broad-phase: only zones whose AABB intersects the poly's can overlap.
-    let cand: Vec<usize> = (0..zones.len())
-        .filter(|&j| {
-            j != self_idx && {
-                let (a0, b0, a1, b1) = zone_boxes[j];
-                a0 < maxx && a1 > minx && b0 < maxy && b1 > miny
-            }
-        })
-        .collect();
-    if cand.is_empty() {
-        return false;
-    }
-    const STEP: f64 = 0.2;
-    let cell = STEP * STEP;
+    let (step, cell) = (step, step * step);
     let mut overlap = 0.0;
-    let mut y = miny + STEP / 2.0;
-    while y < maxy {
-        let mut x = minx + STEP / 2.0;
-        while x < maxx {
-            if geometry::point_in_polygon(x, y, poly)
-                && cand.iter().any(|&j| zones[j].shape.contains(x, y))
-            {
-                overlap += cell;
-                if overlap > tol {
-                    return true;
-                }
-            }
-            x += STEP;
+    for (j, &(a0, b0, a1, b1)) in zone_boxes.iter().enumerate() {
+        if j == self_idx || !(a0 < maxx && a1 > minx && b0 < maxy && b1 > miny) {
+            continue;
         }
-        y += STEP;
+        // Sample only this zone's bbox clipped to the poly's — the shared band.
+        let (sx0, sy0, sx1, sy1) = (a0.max(minx), b0.max(miny), a1.min(maxx), b1.min(maxy));
+        let mut y = sy0 + step / 2.0;
+        while y < sy1 {
+            let mut x = sx0 + step / 2.0;
+            while x < sx1 {
+                if zones[j].shape.contains(x, y) && geometry::point_in_polygon(x, y, poly) {
+                    overlap += cell;
+                    if overlap > tol {
+                        return true;
+                    }
+                }
+                x += step;
+            }
+            y += step;
+        }
     }
     false
 }
@@ -7458,6 +7863,79 @@ mod tests {
             assert!((ca.x - cb.x).abs() < 1e-12 && (ca.y - cb.y).abs() < 1e-12, "fill is not deterministic");
         }
         assert_eq!(a.zones.len(), b.zones.len(), "zone set (incl. residual circulation) not deterministic");
+    }
+
+    /// The walking area is UNIFIED, not fragmented, and the white floor collapses
+    /// to a hairline. `fill_untyped_as_circulation` melts every untyped wedge AND
+    /// the many scattered residual `Circulation` rects into a MERGED wall-following
+    /// `Poly` per contiguous walking region. Pins, on the real ~843 m² plate:
+    ///   (a) untyped white floor drops from ~7.4% to ≤ 5% (hairline zone-border
+    ///       seams; the big wall wedges are gone),
+    ///   (b) NIA ≤ GEA (the merged polys are disjoint from every other zone),
+    ///   (c) the residual fragments collapse into a handful of merged `Poly`s (a
+    ///       few rects survive only in rare hole-containing regions),
+    ///   (d) determinism (seed → identical zone set).
+    #[test]
+    fn walking_area_is_unified_no_white_floor() {
+        let area = geometry::polygon_area(&poly_of(&real_plate_doc()));
+        let headcount = (area / 10.0).round() as u32;
+        let mut program = Program::default();
+        program.headcount = Some(headcount);
+        program.desks = ((headcount as f64) * OPEN_SHARE).round() as u32;
+        program.meeting_rooms = 5;
+        program.meeting_w = 3.0;
+        program.meeting_h = 3.0;
+
+        for seed in 1u64..=6 {
+            let mut doc = real_plate_doc();
+            generate(&mut doc, &program, seed, false);
+
+            // (a) White floor drops from ~7.4% to a hairline: the untyped wedges
+            // against angled/stepped walls are absorbed into wall-following
+            // circulation. What remains is only the ~half-cell corner-clearance
+            // seam along interior zone borders (wall-thickness scale).
+            let untyped = untyped_floor_frac(&doc);
+            assert!(
+                untyped <= 0.05,
+                "seed {seed}: {:.1}% untyped white floor remains (was ~7.4%)",
+                100.0 * untyped
+            );
+
+            // (b) NIA ≤ GEA — the merged walking polys are disjoint from every
+            // other zone, so they never double-count floor.
+            let gea = doc.floor_area();
+            let (areas, _) = crate::effective_zone_areas(&doc);
+            let nia: f64 = areas.iter().sum();
+            assert!(nia <= gea + 1e-6, "seed {seed}: NIA {nia:.2} > GEA {gea:.2}");
+
+            // (c) The walking area is UNIFIED, not fragmented: the residual fill's
+            // many little rects collapse into a HANDFUL of merged `Poly`s. A few
+            // residual rects may survive ONLY where a walking region wraps interior
+            // islands (a hole-containing region a single simple `Poly` can't
+            // represent) — capped well below the pre-pass fragment count.
+            let circ: Vec<_> = doc
+                .zones
+                .iter()
+                .filter(|z| z.zone_type == ZoneType::Circulation && z.label == "Circulation")
+                .collect();
+            let merged_polys =
+                circ.iter().filter(|z| matches!(z.shape, ZoneShape::Poly { .. })).count();
+            let stray_rects =
+                circ.iter().filter(|z| matches!(z.shape, ZoneShape::Rect { .. })).count();
+            assert!(merged_polys >= 3, "seed {seed}: only {merged_polys} merged circulation polys — not unified");
+            assert!(stray_rects <= 6, "seed {seed}: {stray_rects} un-merged residual Circulation rects (fragmentation)");
+        }
+
+        // (d) Determinism incl. the unified circulation.
+        let mut a = real_plate_doc();
+        let mut b = real_plate_doc();
+        generate(&mut a, &program, 4, false);
+        generate(&mut b, &program, 4, false);
+        assert_eq!(a.zones.len(), b.zones.len(), "unified circulation not deterministic");
+        for (za, zb) in a.zones.iter().zip(&b.zones) {
+            assert_eq!(za.label, zb.label);
+            assert!((za.area() - zb.area()).abs() < 1e-9, "zone areas differ across identical seeds");
+        }
     }
 }
 

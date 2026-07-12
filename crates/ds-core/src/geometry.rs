@@ -19,9 +19,10 @@ impl Point {
     }
 }
 
-/// Shortest distance from point `p` to segment `ab`. Used for wall hit-testing
-/// and slot-clearance checks (`rect_segment_dist`).
-pub fn point_segment_dist(p: Point, a: Point, b: Point) -> f64 {
+/// Closest point on segment `ab` to `p` (the projection of `p`, clamped to the
+/// segment endpoints). Shared by `point_segment_dist` and the circulation-poly
+/// wall snap.
+pub fn closest_point_on_segment(p: Point, a: Point, b: Point) -> Point {
     let abx = b.x - a.x;
     let aby = b.y - a.y;
     let apx = p.x - a.x;
@@ -32,9 +33,13 @@ pub fn point_segment_dist(p: Point, a: Point, b: Point) -> f64 {
     } else {
         ((apx * abx + apy * aby) / len2).clamp(0.0, 1.0)
     };
-    let cx = a.x + t * abx;
-    let cy = a.y + t * aby;
-    ((p.x - cx).powi(2) + (p.y - cy).powi(2)).sqrt()
+    Point::new(a.x + t * abx, a.y + t * aby)
+}
+
+/// Shortest distance from point `p` to segment `ab`. Used for wall hit-testing
+/// and slot-clearance checks (`rect_segment_dist`).
+pub fn point_segment_dist(p: Point, a: Point, b: Point) -> f64 {
+    p.dist(&closest_point_on_segment(p, a, b))
 }
 
 // ---------------------------------------------------------------------------
