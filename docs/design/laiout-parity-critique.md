@@ -38,6 +38,53 @@ owns it now. The **metrics/insights** work (`lib.rs` efficiency formula + `stats
 `StatsPanel.tsx`) is a separate lane → runs in parallel today. Generator core follows the
 circulation agent as a careful, guardrailed pass (workstations ≥ 80, NIA ≤ GEA, determinism).
 
+## Root-cause audit (2026-07-14, three parallel agents: generator · visual · agentic-designer)
+The perceived gap has **three layers**; only the middle one is free (no seat trade).
+
+**A. The generator's geometric vocabulary is the ceiling — [parked by seats-first].** Laiout composes an
+irregular, boundary-conforming, neighbourhood plan; we compose *one* grid-packed bench field + a band of
+**rectangular** rooms + a corridor (`layout.rs:9-16`, `pack_desks:3985`). The two dominant "boxy/robotic"
+tells — (1) monolithic desk grid, not 6–12 team neighbourhoods (cluster aisles are 1-D and `max_aisles`
+silently drops to 0 to protect density, `:4147-4152`), and (2) rooms placed in interior bands so only ~1
+conforms to an angled wall (placement-limited, not a conform bug) — **both cost desks to close, so both are
+correctly parked.** You cannot reach Laiout's *look* without spending seats.
+
+**B. The efficiency NUMBER is dragged below what the geometry deserves — by two seat-neutral accounting facts
+[genuinely fixable, no guardrail risk].** This is the free tier:
+  - **b1. Facade ribbon taxed as circulation.** The 0.9 m `FACADE_GAP` clearance behind window-line desks
+    (`:1303,:828`) is un-zoned → `fill_untyped_as_circulation` types it Circulation (~12% of an 882 m² plate).
+    `conform_zones_to_plate` **refuses to reclaim it on straight/orthogonal walls** — it early-returns on
+    axis-aligned geometry and rejects non-slanted growth (`:2021-2031,:2216-2224`). Growing Workspace to the
+    straight wall (no desk moves) plausibly recovers **~8–12 efficiency pts, seat-neutral.**
+  - **b2. Axis vs oriented path bucket leftover into opposite zones.** The oriented path lets Workspace absorb
+    `floor − others` as **usable** (`lib.rs:182-190`); the axis path types the *same* open-floor leftover as
+    **Circulation** (`:1886-1920`). Our real plate (`axis_cover ~0.80` > `ORIENTED_COVER_FRAC 0.70`) takes the
+    pessimistic branch → reports ~15 pts worse than an identical-quality plate. Make the axis path absorb honest
+    open-floor leftover like the oriented path → higher **and** consistent efficiency, **no desk moved.**
+  - **b3. Circulation is 3 disjoint families** (drawn spine/seam rects + ~7 merged residual polys), never one
+    loop — `fill_untyped` only melts zones labelled exactly `"Circulation"` (`:2505`), preserving the drawn net.
+    Relabel + re-merge all circulation is mechanical + seat-neutral; a coherent *loop* is harder.
+
+**C. The agentic designer is neutered on the exact path users run — [wiring bug, cheap to fix].** Whenever
+Claude emits an explicit `rooms[]` (its prompt makes this near-certain), the generator **silently drops
+`strategy` and the `meeting_rooms` override** (`layout.rs:156-181,1560-1561`) — Claude's two most spatial levers.
+The options path uses a **single fixed seed** (`EditorCanvas.ts:1798`), so all `*_emphasis` weights are inert
+and the 5 objective cards differ only in *counts*, not spatial character; cost/carbon barely move because a
+fixed base-shell term is ~70% of both (`cost.rs:72,161`). Claude genuinely improves the *program* (GCC room-mix
+sizing) but has **zero lever on spatial quality** — adding it is not moving geometry toward Laiout.
+
+**Visual layer (renderer-only, compounds A).** Walls are single **round-capped centerlines, not architectural
+poché** (`EditorCanvas.ts:2832-2848`) — the #1 "not a real drawing" tell, seat-neutral, medium effort. Furniture
+**collapses to plain chips at plan-framing zoom** (`furniture.ts:37,61-69`) — the very first impression, low
+effort. No plants/sofas/casework in 2D (generator never places them; the 3D models already exist in
+`furniture3d.ts:430-519`). Monochrome grid + heavy solid monitor bars read robotic.
+
+**Verdict.** The two things that most make it "not Laiout" are **parked by your own seats-first call** — a
+deliberate GCC tradeoff (our dense fit is arguably *more* correct than Laiout's lower-density showcase), not a
+bug. The free wins that close perceived gap with **no seat trade**: **b1 + b2** (efficiency accounting), **b3**
+(unify circulation), the **AI-path un-neutering** (honor strategy/emphasis with explicit rooms; seed-search the
+options), **wall poché**, and **furniture LOD**.
+
 ## Progress log (living tracker)
 Guardrail for every generator change: workstations ≥ 80 on all A/B/C candidates, NIA ≤ GEA,
 determinism, tests + timing green — verified in-browser on the real plate before merge.
