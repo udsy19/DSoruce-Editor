@@ -1,0 +1,16 @@
+{
+  "name": "ds-core",
+  "type": "module",
+  "description": "DSource Editor core: geometry, document model, and (future) layout engine, compiled to WebAssembly.",
+  "version": "0.1.0",
+  "files": [
+    "ds_core_bg.wasm",
+    "ds_core.js",
+    "ds_core.d.ts"
+  ],
+  "main": "ds_core.js",
+  "types": "ds_core.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

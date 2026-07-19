@@ -24,13 +24,18 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
-import { OPENAI_TOOLS, buildSystem } from '../web/src/ai/llmSchema'
+import {
+  agentInfo,
+  agentComplete,
+  claudeInfo,
+  claudeComplete,
+  bankFetch,
+} from './apiCore'
 
 const PORT = Number(process.env.PORT || 8790)
 const HOST = process.env.HOST || '127.0.0.1'
 const STATIC_DIR = path.resolve(process.env.STATIC_DIR || 'dist')
 const PLANS_DIR = path.resolve(process.env.PLANS_DIR || 'plans')
-const BANK_UPSTREAM = (process.env.BANK_UPSTREAM || 'https://46.202.179.28.sslip.io').replace(/\/$/, '')
 const MAX_BODY = 25 * 1024 * 1024 // request-body cap, all endpoints
 
 // ---------------------------------------------------------------------------
@@ -70,82 +75,29 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
 }
 
 // ---------------------------------------------------------------------------
-// /api/agent — port of agentProxy() in web/vite.config.ts (dev source; lockstep)
+// /api/agent — Node adapter over apiCore.agent* (dev source: web/vite.config.ts)
 
 async function handleAgent(req: IncomingMessage, res: ServerResponse): Promise<void> {
-  const baseUrl = process.env.LLM_BASE_URL || 'https://api.openai.com/v1'
-  const apiKey = process.env.LLM_API_KEY || process.env.OPENAI_API_KEY || ''
-  const model = process.env.LLM_MODEL || 'gpt-4o-mini'
-
-  // A local server (Ollama/LM Studio) needs no key; a cloud one does.
-  const localish = /localhost|127\.0\.0\.1/.test(baseUrl)
-  const configured = !!apiKey || localish
-
-  if (req.method === 'GET') return sendJson(res, 200, { configured, model })
+  if (req.method === 'GET') {
+    const r = agentInfo()
+    return sendJson(res, r.status, r.json)
+  }
   if (req.method !== 'POST') return sendJson(res, 405, {})
-  if (!configured) return sendJson(res, 503, { error: 'No LLM endpoint configured' })
-
-  const body = await readJson(req)
-  const messages = [
-    { role: 'system', content: buildSystem(body.context as Parameters<typeof buildSystem>[0]) },
-    ...(Array.isArray(body.history) ? body.history : []),
-    { role: 'user', content: String(body.text ?? '') },
-  ]
-  const headers: Record<string, string> = { 'content-type': 'application/json' }
-  if (apiKey) headers.authorization = `Bearer ${apiKey}`
-  const upstream = await fetch(`${baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ model, messages, tools: OPENAI_TOOLS, tool_choice: 'auto', temperature: 0.2 }),
-  })
-  const data = await upstream.json()
-  if (!upstream.ok) return sendJson(res, 502, { error: data?.error ?? data })
-  const msg = data.choices?.[0]?.message ?? {}
-  const tool_calls = (msg.tool_calls ?? []).map(
-    (tc: { function?: { name?: string; arguments?: string } }) => ({
-      name: tc.function?.name,
-      arguments: tc.function?.arguments,
-    }),
-  )
-  sendJson(res, 200, { content: msg.content ?? null, tool_calls })
+  const r = await agentComplete(await readJson(req))
+  sendJson(res, r.status, r.json)
 }
 
 // ---------------------------------------------------------------------------
-// /api/claude — port of claudeProxy() in web/vite.config.ts (dev source; lockstep)
+// /api/claude — Node adapter over apiCore.claude* (dev source: web/vite.config.ts)
 
 async function handleClaude(req: IncomingMessage, res: ServerResponse): Promise<void> {
-  const apiKey = process.env.ANTHROPIC_API_KEY || ''
-  const model = process.env.ANTHROPIC_MODEL || 'claude-sonnet-5'
-
-  if (req.method === 'GET') return sendJson(res, 200, { configured: !!apiKey, model })
-  if (req.method !== 'POST') return sendJson(res, 405, {})
-  if (!apiKey) return sendJson(res, 503, { error: 'No ANTHROPIC_API_KEY configured' })
-
-  const body = await readJson(req)
-  // Optional Anthropic-format tools (the ClaudeDriver sends them; the
-  // evaluator doesn't) — passed through to the API body verbatim.
-  const payload: Record<string, unknown> = {
-    model,
-    system: body.system,
-    messages: body.messages,
-    max_tokens: typeof body.max_tokens === 'number' ? body.max_tokens : 1024,
+  if (req.method === 'GET') {
+    const r = claudeInfo()
+    return sendJson(res, r.status, r.json)
   }
-  if (Array.isArray(body.tools)) payload.tools = body.tools
-  // Optional tool_choice (the designer FORCES design_layout → disables extended
-  // thinking → complete tool call). (lockstep: web/vite.config.ts claudeProxy)
-  if (body.tool_choice) payload.tool_choice = body.tool_choice
-  const upstream = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify(payload),
-  })
-  const data = await upstream.json()
-  if (!upstream.ok) return sendJson(res, 502, { error: data?.error ?? data })
-  sendJson(res, 200, data)
+  if (req.method !== 'POST') return sendJson(res, 405, {})
+  const r = await claudeComplete(await readJson(req))
+  sendJson(res, r.status, r.json)
 }
 
 // ---------------------------------------------------------------------------
@@ -199,23 +151,16 @@ async function handleDwg(req: IncomingMessage, res: ServerResponse): Promise<voi
 }
 
 // ---------------------------------------------------------------------------
-// /api/bank/* — port of server.proxy['/api/bank'] in web/vite.config.ts (dev
-// source; lockstep). The upstream sends no CORS headers, so same-origin
-// proxying stays mandatory in prod. Rewrite /api/bank → /api, stream both ways.
+// /api/bank/* — Node adapter over apiCore.bankFetch (dev source: web/vite.config.ts).
+// The upstream sends no CORS headers, so same-origin proxying stays mandatory.
 
 async function handleBank(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
-  const target = BANK_UPSTREAM + url.pathname.replace(/^\/api\/bank/, '/api') + url.search
-  const headers: Record<string, string> = {}
-  for (const h of ['content-type', 'accept', 'authorization']) {
-    const v = req.headers[h]
-    if (typeof v === 'string') headers[h] = v
-  }
-  const init: RequestInit & { duplex?: 'half' } = { method: req.method, headers }
-  if (req.method !== 'GET' && req.method !== 'HEAD') {
-    init.body = Readable.toWeb(req) as unknown as BodyInit
-    init.duplex = 'half'
-  }
-  const upstream = await fetch(target, init)
+  const method = req.method ?? 'GET'
+  const body =
+    method !== 'GET' && method !== 'HEAD'
+      ? (Readable.toWeb(req) as unknown as BodyInit)
+      : undefined
+  const upstream = await bankFetch(method, url.pathname, url.search, req.headers, body)
   res.statusCode = upstream.status
   for (const h of ['content-type', 'cache-control', 'etag']) {
     const v = upstream.headers.get(h)

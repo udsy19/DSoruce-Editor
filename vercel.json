@@ -1,0 +1,10 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "cd web && pnpm install --no-frozen-lockfile && pnpm build",
+  "installCommand": "cd web && pnpm install --no-frozen-lockfile",
+  "outputDirectory": "web/dist",
+  "functions": {
+    "api/**/*.ts": { "maxDuration": 60 }
+  },
+  "rewrites": [{ "source": "/((?!api/).*)", "destination": "/index.html" }]
+}

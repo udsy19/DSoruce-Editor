@@ -1,0 +1,17 @@
+# Rust source + build artifacts — Vercel builds from the committed wasm in
+# web/src/wasm, so the toolchain and crates aren't needed in the deployment.
+target
+crates
+# Large test fixtures (the sample DWG/DXF, ~18 MB) — not used by the build.
+samples
+# Docs/research/agent scratch — not part of the deployment.
+docs
+research
+.claude
+# Local installs / build outputs.
+web/node_modules
+web/dist
+deploy/node_modules
+deploy/dist-server
+deploy/plans
+*.log

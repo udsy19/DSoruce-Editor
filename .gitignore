@@ -11,8 +11,12 @@ deploy/dist-server
 web/.dev-plans
 deploy/plans
 
-# Generated wasm bindings (built via `make wasm`)
-web/src/wasm
+# Generated wasm bindings (built via `make wasm`). The build artifacts are
+# force-tracked (see below) so Vercel — which has no Rust toolchain — can build
+# the SPA from them. wasm-pack drops a `web/src/wasm/.gitignore` containing `*`;
+# the specific artifacts are committed with `git add -f` and stay tracked, so a
+# `make wasm` rebuild shows them as modified (commit the new wasm to redeploy).
+web/src/wasm/.gitignore
 
 # Env / secrets (LLM keys live here — never commit)
 .env

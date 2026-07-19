@@ -70,11 +70,19 @@ cd web && pnpm dev               # frontend only (uses existing wasm bindings)
 
 ## Deployment (`deploy/`)
 
-One Node service (`dsource-api`) serves the built SPA + all `/api/*` routes (agent/claude/dwg/bank
-proxy/plans), behind Caddy at `app.46.202.179.28.sslip.io`. `./deploy/deploy.sh` builds, rsyncs,
-and starts everything (idempotent; needs SSH to the VPS). The prod API logic is a **port of the
-dev middlewares in `web/vite.config.ts`** — change one, change both (lockstep comments in
-`deploy/server.ts`).
+Two deploy targets share the API logic via **`deploy/apiCore.ts`** — the single, env-agnostic
+implementation of `/api/agent`, `/api/claude`, `/api/bank` (imported by both servers below).
+
+- **VPS** (`deploy/server.ts`): one Node service (`dsource-api`) serves the built SPA + all `/api/*`
+  routes (agent/claude/dwg/bank/plans), behind Caddy at `app.46.202.179.28.sslip.io`.
+  `./deploy/deploy.sh` builds, rsyncs, starts everything (idempotent; needs SSH). Full backend.
+- **Vercel** (`vercel.json` + `api/*.ts`): SPA on the CDN + `/api/*` as serverless functions.
+  `web/src/wasm/` is **committed** so Vercel builds without Rust (rebuild + commit after Rust changes).
+  Two routes degrade gracefully: `/api/dwg` → 503 (needs the LibreDWG binary; DXF still works),
+  `/api/plans` → 501 (needs disk; plan library is IndexedDB). Full guide: `deploy/VERCEL.md`.
+
+**Lockstep:** the dev middlewares in `web/vite.config.ts` remain the dev source of truth for
+agent/claude/bank — change them and `deploy/apiCore.ts` together.
 
 ## Status
 
