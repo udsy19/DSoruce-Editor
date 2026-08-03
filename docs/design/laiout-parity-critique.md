@@ -5,6 +5,11 @@ against laiout.co's output, with the root cause and the fix owner for each gap. 
 the user's Laiout screenshots (108 pax, 10.8 m²/employee, 78% efficiency, one flowing
 circulation, clustered workstations, refined furniture) + `laiout-visual-system.md`.
 
+**Code anchors:** `layout::generate` / `layout::score` (`crates/ds-core/src/layout.rs`) ·
+`crates/ds-core/src/zone.rs` · `circulation::evaluate` (`crates/ds-core/src/circulation.rs`) ·
+polygon helpers `web/src/util/zoneGeom.ts` + `web/src/util/clip.ts` · 2D render `EditorCanvas`
+(`web/src/editor/EditorCanvas.ts`).
+
 ## Scorecard
 
 | Dimension | Ours now | Laiout | Root cause | Fix / owner |

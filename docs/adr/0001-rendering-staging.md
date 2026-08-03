@@ -2,6 +2,10 @@
 
 **Status:** Accepted · 2026-07-06
 
+**Code anchors:** `EditorCanvas` (`web/src/editor/EditorCanvas.ts`) — the staged TS 2D canvas ·
+`Viewer3D` (`web/src/three/Viewer3D.ts`) + `Scene3D` (`web/src/three/Scene3D.tsx`) — the Three.js 3D
+tier · `Editor` (`crates/ds-core/src/lib.rs`) — the wasm boundary both renderers read through.
+
 ## Context
 
 We committed to a Rayon-style **Rust → WebAssembly core** (`research/08-open-questions.md`). Rayon's

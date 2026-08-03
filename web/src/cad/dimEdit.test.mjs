@@ -3,6 +3,8 @@
 // dimEdit.ts is dependency-free (types-only import), so we bundle it with esbuild
 // (same pattern as dynamicInput.test.mjs) and assert the length/format contract.
 
+// @covers: web/src/cad/dimEdit.ts
+
 import path from 'node:path'
 import os from 'node:os'
 import assert from 'node:assert/strict'

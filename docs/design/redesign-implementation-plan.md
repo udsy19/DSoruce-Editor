@@ -11,6 +11,13 @@ addressable region primitive. So Zones land first (data), then the visual pivot
 renders them, then the AI operates on them, then consequence-preview reasons
 about them. Every Rust slice ends with `make wasm`.
 
+**Code anchors:** zones `crates/ds-core/src/zone.rs` plus the `Editor` zone surface (`zones`,
+`zone_stats`, `zone_at`, `add_zone`, `delete_zone`, `rename_zone`, `merge_zones`, `split_zone`,
+`set_zone_type`, `resize_zone` — `crates/ds-core/src/lib.rs`) · visual tokens `web/src/styles.css`
+rendered by `EditorCanvas` (`web/src/editor/EditorCanvas.ts`) · AI layer `web/src/ai/`
+(`contract.ts`, `engine.ts`, `llmSchema.ts`, `roomResolver.ts`) · derived stats
+`web/src/editor/stats.ts`.
+
 ---
 
 ## 0. Cross-cutting rules (apply to every slice)

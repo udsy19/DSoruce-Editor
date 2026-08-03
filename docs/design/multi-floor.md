@@ -3,6 +3,11 @@
 Status: **decided + M1 implemented**. Builds directly on the plan library
 (`docs/design/plan-library.md`, `web/src/persist/{plans,db,file,history}.ts`).
 
+**Code anchors:** `web/src/persist/plans.ts` (`SavedPlan`, `groupPlans`, `listProjects`,
+`resolveProject`, `assignToProject`, `buildSavedPlan`) · `web/src/persist/projects.ts` ·
+`web/src/persist/db.ts` · `web/src/persist/file.ts` · `web/src/persist/history.ts` · library UI
+`web/src/shell/ProjectLibrary.tsx`.
+
 ## Decision
 
 **A project is a library-level grouping; each floor is an ordinary `SavedPlan`.**

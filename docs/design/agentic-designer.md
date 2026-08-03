@@ -6,6 +6,12 @@
 `consequence-reasoning.md` (dry-run preview/approve). This doc is the **orchestration
 layer above all three** — it does not restate them.
 
+**Code anchors:** `web/src/ai/designer.ts` (`DesignSpec`, `parseDesignSpec`, `applyDesignSpec`,
+`DESIGN_TOOL`, `DESIGNER_SYSTEM`) · `web/src/ai/roomResolver.ts` (`resolveRoomRef`, `describeRoom`) ·
+`web/src/ai/useAgent.ts` (`useAgent`) · `web/src/ai/AgentPanel.tsx` · program resolution
+`web/src/program/spec.ts` (`programSpecToProgram`) · geometry from `layout::generate`
+(`crates/ds-core/src/layout.rs`).
+
 ---
 
 ## 0. What this is, in one paragraph

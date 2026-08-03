@@ -5,6 +5,13 @@ Status: **design only** (nothing implemented). Builds on `.dsource` persistence
 and `Editor.snapshot()/restore()` (`crates/ds-core/src/lib.rs:377-394`, lossless incl.
 CAD layer + keepouts).
 
+**Code anchors:** `web/src/persist/plans.ts` · `web/src/persist/db.ts` · `web/src/persist/file.ts`
+(`sanitizeProgram`, `parseProject`, `buildProjectFile`) · version history
+`web/src/persist/history.ts` (`noteChange`, `listHistory`, `restoreEntry`) · scenario compare
+`web/src/plans/compare.ts` (`comparePlans`) · cloud mirror `web/src/persist/sync.ts` ·
+`Editor::snapshot` / `Editor::restore` / `Editor::from_snapshot` (`crates/ds-core/src/lib.rs`) ·
+gallery `web/src/ui/CandidateGallery.tsx`.
+
 ## 1. Product framing
 
 How comparable products handle this (training knowledge; confidence noted):

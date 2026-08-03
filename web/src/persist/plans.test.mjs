@@ -6,6 +6,9 @@
 // Editor is only touched on the parked-candidate path, which these tests
 // avoid); db.ts detects the absence of `indexedDB` and runs on in-memory Maps.
 
+// @covers: web/src/persist/plans.ts
+// @covers: web/src/persist/db.ts
+
 import assert from 'node:assert/strict'
 import path from 'node:path'
 import os from 'node:os'

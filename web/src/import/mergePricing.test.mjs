@@ -25,6 +25,10 @@
 // non-reference binding arithmetic that `specified_cost` still performs on the
 // generated/adopted content that DOES count.
 
+// @covers: web/src/import/mergeFit.ts
+// @covers: crates/ds-core/src/lib.rs
+// @covers: crates/ds-core/src/cost.rs
+
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'

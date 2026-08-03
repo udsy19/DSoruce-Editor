@@ -4,6 +4,8 @@
 // with esbuild (same pattern as dimEdit.test.mjs) and assert the clip + area
 // contract that makes a lassoed sub-area's plate match the selection.
 
+// @covers: web/src/import/testfit.ts
+
 import path from 'node:path'
 import os from 'node:os'
 import assert from 'node:assert/strict'

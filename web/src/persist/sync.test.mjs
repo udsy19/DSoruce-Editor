@@ -7,6 +7,11 @@
 // deploy/server.ts's /api/plans routes over an in-memory Map. The wasm Editor
 // is stubbed; sanitizeSavedPlan only touches parseProject (pure), never wasm.
 
+// @covers: web/src/persist/sync.ts
+// @covers: web/src/persist/plans.ts
+// @covers: web/src/persist/db.ts
+// @covers: web/src/persist/file.ts
+
 import assert from 'node:assert/strict'
 import path from 'node:path'
 import os from 'node:os'

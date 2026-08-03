@@ -11,6 +11,9 @@
 // Bundling of takeoff.ts mirrors dxf.test.mjs (esbuild resolved through vite);
 // the wasm module is loaded directly from src/wasm and instantiated from bytes.
 
+// @covers: web/src/export/takeoff.ts
+// @covers: crates/ds-core/src/lib.rs
+
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'

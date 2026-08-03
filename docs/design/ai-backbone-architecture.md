@@ -4,6 +4,13 @@
 > Owner: AI-systems. Target models: `claude-opus-4-8` (driver), `claude-sonnet-5`
 > (high-volume), `claude-haiku-4-5-20251001` (cheap intent / classification).
 
+**Code anchors:** tool contract `web/src/ai/contract.ts` (`ToolCall`, `PreviewDiff`, `DriverResult`) ·
+tool schemas `web/src/ai/llmSchema.ts` (`OPENAI_TOOLS`, `buildSystem`) · drivers
+`web/src/ai/intentParser.ts` (`LocalDriver`), `web/src/ai/llmDriver.ts` (`LlmDriver`),
+`web/src/ai/claudeDriver.ts` (`ClaudeDriver`) · execution `web/src/ai/engine.ts` (`preview`,
+`applyLive`, `delta`) · UI `web/src/ai/useAgent.ts` + `web/src/ai/AgentPanel.tsx` · server relays
+`api/agent.ts` / `api/claude.ts` (shared implementation in `deploy/apiCore.ts`).
+
 ## 0. What this is and why
 
 The #1 product priority is an **AI framework as a backbone** that controls every

@@ -18,6 +18,10 @@
 // This is the wasm end-to-end companion to the Rust unit tests in lib.rs and to
 // mergePricing.test.mjs (which pins the Rust cost engine's binding math).
 
+// @covers: web/src/editor/stats.ts
+// @covers: crates/ds-core/src/lib.rs
+// @covers: crates/ds-core/src/cost.rs
+
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'

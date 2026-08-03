@@ -8,6 +8,9 @@
 // initSync the compiled ds_core_bg.wasm. No canvas is touched (the model layer
 // is pure), so it runs headless.
 
+// @covers: web/src/export/report.ts
+// @covers: crates/ds-core/src/lib.rs
+
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'

@@ -10,6 +10,11 @@ IndexedDB store (`web/src/persist/db.ts`), and a homegrown single-user REST loop
 (`web/src/persist/sync.ts` → `/api/plans`, served by `deploy/server.ts:237`) mirrors them to the VPS
 with **no auth and no per-user isolation**. This document specifies the auth + multi-user cloud layer.
 
+**Code anchors:** local store `web/src/persist/plans.ts` + `web/src/persist/db.ts` · sync engine
+`web/src/persist/sync.ts` (`syncPlans`) · project grouping `web/src/persist/projects.ts` · cloud
+layer `web/src/cloud/` (`auth.ts`, `client.ts`, `provider.ts`, `supabaseProvider.ts`,
+`CloudSyncPanel.tsx`) · server routes `api/plans/` and `deploy/server.ts`.
+
 ---
 
 ## 0. Ground truth (verified constraints)

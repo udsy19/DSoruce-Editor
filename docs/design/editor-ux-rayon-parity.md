@@ -13,6 +13,12 @@ full CAD tool registry, grips, undo) but the *feel* is click-click-click with a
 tiny status-bar readout and a tall tool rail — the precision lives in the code,
 not under the cursor.
 
+**Code anchors:** `EditorCanvas` (`web/src/editor/EditorCanvas.ts`) — transforms, cursor input,
+grips, rendering · CAD layer `web/src/cad/` (OSNAP `snap.ts`, tool loop `controller.ts`, live typed
+entry `dynamicInput.ts`, click-to-edit dimensions `dimEdit.ts`) · command palette + shortcuts
+`web/src/editor/commands.ts` (`buildCommands`, `letterShortcuts`) · theme tokens
+`web/src/styles.css`.
+
 ---
 
 ## 1. What makes Rayon feel better (the 5-line essence)

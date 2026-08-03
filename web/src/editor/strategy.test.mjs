@@ -9,6 +9,8 @@
 // order, and disjoint per-strategy seed ranges so the search below never mints
 // two candidates with the same (gallery-key) seed.
 
+// @covers: web/src/editor/strategy.ts
+
 import path from 'node:path'
 import os from 'node:os'
 import assert from 'node:assert/strict'

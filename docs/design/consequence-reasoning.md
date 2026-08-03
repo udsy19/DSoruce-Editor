@@ -15,6 +15,13 @@ Builds on the two evaluators that already exist:
 `crates/ds-core/src/layout.rs::score` → `LayoutScore`. It adds only two small models
 (indicative cost + carbon) and one wasm method (`preview_action`).
 
+**Code anchors:** dry-run + diff `web/src/ai/engine.ts` (`preview`, `delta`, `applyLive`) · types
+`web/src/ai/contract.ts` (`MetricDelta`, `Consequence`, `PreviewDiff`) · evaluators
+`circulation::evaluate` (`crates/ds-core/src/circulation.rs`), `cost::indicative_cost` /
+`cost::indicative_carbon` (`crates/ds-core/src/cost.rs`), `layout::score`
+(`crates/ds-core/src/layout.rs`) · document snapshotting `Editor::snapshot` / `Editor::restore` /
+`Editor::from_snapshot` and `Editor::metrics` (`crates/ds-core/src/lib.rs`).
+
 ---
 
 ## 0. The shape of the flow

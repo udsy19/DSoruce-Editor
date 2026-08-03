@@ -9,6 +9,11 @@ fills, hairline borders, one restrained blue accent, and a clean humanist sans f
 text and numbers (numbers use tabular figures — never monospace). The plan is the hero;
 chrome recedes.
 
+**Code anchors:** CSS custom properties `web/src/styles.css` · 2D canvas palette + zone fills
+`EditorCanvas` (`web/src/editor/EditorCanvas.ts`) · 3D palette `web/src/three/theme.ts` · the zone
+types the fills key off `crates/ds-core/src/zone.rs` (`ZoneType`) · stats surfaces
+`web/src/editor/stats.ts`.
+
 ---
 
 ## 1. Palette — CSS custom properties

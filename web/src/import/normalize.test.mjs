@@ -9,6 +9,9 @@
 // size-snap contract (all Desks share one footprint, all Chairs one footprint)
 // and that no block leaks through as raw geometry / an unknown category.
 
+// @covers: web/src/import/normalize.ts
+// @covers: web/src/import/dxf.ts
+
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'

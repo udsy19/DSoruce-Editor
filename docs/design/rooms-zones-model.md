@@ -22,6 +22,13 @@ sub-rectangles this design turns into zones (perimeter inset, meeting-room
 column `col_x0..x1`, desk field `dz_x0..dz_x1 × dz_y0..dz_y1`). `circulation.rs`
 and `Document::floor_area()` are the stat sources the Statistics panel reads.
 
+**Code anchors:** `crates/ds-core/src/zone.rs` (`Zone`, `ZoneType`, `ZoneShape`, `Axis`,
+`ZoneError`) · wasm surface on `Editor`: `zones`, `zone_stats`, `zone_at`, `add_zone`,
+`delete_zone`, `rename_zone`, `merge_zones`, `split_zone`, `set_zone_type`, `resize_zone`
+(`crates/ds-core/src/lib.rs`) · zone emission from `layout::generate`
+(`crates/ds-core/src/layout.rs`) · TS consumers `web/src/editor/stats.ts` (`buildZones`),
+`web/src/util/zoneGeom.ts`, `web/src/ai/roomResolver.ts` (`ZONE_TYPE_NAME`, `resolveRoomRef`).
+
 ---
 
 ## 1. The `Zone` struct

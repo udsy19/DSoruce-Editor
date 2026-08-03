@@ -4,6 +4,8 @@
 // silently drop them like every non-scalar Program field before it.
 // Run from web/:  node src/persist/file.test.mjs   (bundling mirrors dxf.test.mjs)
 
+// @covers: web/src/persist/file.ts
+
 import path from 'node:path'
 import os from 'node:os'
 import assert from 'node:assert/strict'

@@ -24,6 +24,14 @@ reference in the table below.
   `.../getting-started/plans-and-pricing`; AEC Magazine
   `aecmag.com/cad/laiout-enhances-automated-floor-planning-software/`.
 
+**Code anchors:** app shell + routing `web/src/shell/` (`AppShell.tsx`, `route.ts`,
+`WizardChrome.tsx`, `CreateProject.tsx`, `ProjectLibrary.tsx`, `steps/`) · program builder
+`web/src/program/spec.ts` (`ProgramSpec`, `TEMPLATES`, `programSpecToProgram`) +
+`web/src/program/anchors.ts` · import steps `web/src/import/area.ts` (`restrictDrawing`) and
+`web/src/import/heal.ts` (`healWalls`) · generate `EditorCanvas#autoGenerate`
+(`web/src/editor/EditorCanvas.ts`) over `layout::generate` (`crates/ds-core/src/layout.rs`) ·
+persistence `web/src/persist/file.ts` · export `web/src/export/`.
+
 ---
 
 ## 0. The flow, mapped to what exists vs what's new

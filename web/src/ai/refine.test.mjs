@@ -10,6 +10,9 @@
 // because refine.ts / claudeDriver.ts import EditorCanvas types via `import
 // type`, so nothing pulls the wasm module at runtime.
 
+// @covers: web/src/ai/refine.ts
+// @covers: web/src/editor/strategy.ts
+
 import path from 'node:path'
 import os from 'node:os'
 import assert from 'node:assert/strict'

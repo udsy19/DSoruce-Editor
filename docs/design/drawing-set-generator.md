@@ -3,6 +3,12 @@
 Status: **design target**, not yet built. Trigger: turn a finished test-fit into a professional,
 multi-sheet architectural drawing set that matches the quality bar of Rayon / Studio-Nova output.
 
+**Code anchors:** `web/src/export/` — sheet composition `sheet.ts`, set assembly `sheetSet.ts`,
+sheet index `sheetManifest.ts`, sections `section.ts` (+ `web/src/three/sectionRender.ts`), services
+sheets `services.ts` / `servicesSheets.ts`, finish schedule `finishSchedule.ts`, quantity takeoff
+`takeoff.ts` (`buildTakeoffModel`), report model `report.ts` (`buildReportModel`), and the emitters
+`pdf.ts`, `dxf.ts`, `png.ts`, `ifc.ts`, `obj.ts`, `zip.ts`.
+
 ## What "the bar" looks like (grounded in two real deliverables)
 
 Two Rayon-lineage sets were studied page-by-page and are the reference throughout:

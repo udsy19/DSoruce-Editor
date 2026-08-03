@@ -10,6 +10,9 @@
 //   • the outer wall ring goes from OPEN (no traced loop) to CLOSED with heal
 // Bundling mirrors area.test.mjs (esbuild resolved through vite).
 
+// @covers: web/src/import/heal.ts
+// @covers: web/src/import/testfit.ts
+
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'

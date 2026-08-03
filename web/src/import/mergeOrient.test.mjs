@@ -34,6 +34,10 @@
 // reflection carry is exact — the door survives the merge facing the same way it
 // swung in the import view, hinge side and swing direction both preserved).
 
+// @covers: web/src/import/mergeFit.ts
+// @covers: web/src/import/normalize.ts
+// @covers: web/src/editor/furniture.ts
+
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'

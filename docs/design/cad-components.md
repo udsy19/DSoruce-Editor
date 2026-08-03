@@ -3,6 +3,13 @@
 Goal: turn DSource's 2D editor into a real CAD drafting tool (Rayon/Revit-grade),
 not just a generative + import viewer. Grounded in the standard AutoCAD/DXF model.
 
+**Code anchors:** `web/src/cad/` — entity model `model.ts` (+ `web/src/types/cad.ts`), OSNAP engine
+`snap.ts`, tool registry / input loop `controller.ts`, draw tools `geomTools.ts`, modify tools
+`editTools.ts`, architectural tools `archTools.ts`, annotation + dimension tools `annoTools.ts`,
+dimension editing `dimEdit.ts`, dynamic input `dynamicInput.ts`, rendering `render.ts`, document
+store `store.ts`, core commit `commit.ts` (persisted via `Editor::set_cad_json` /
+`Editor::get_cad_json`, `crates/ds-core/src/lib.rs`).
+
 ## The standard CAD taxonomy (researched)
 
 **Draw entities (DXF ENTITIES):** LINE, LWPOLYLINE/POLYLINE, ARC, CIRCLE, ELLIPSE,

@@ -10,6 +10,13 @@ prioritized fix list mapped to our files.
 Sources are cited inline. Everything marked **[Unverified]** could not be
 confirmed from public material and should be treated as a hypothesis.
 
+**Code anchors:** generator + objective `layout::generate` / `layout::score`
+(`crates/ds-core/src/layout.rs`) · zone primitive `crates/ds-core/src/zone.rs` (`Zone`, `ZoneType`,
+`ZoneShape`) · circulation `circulation::evaluate` (`crates/ds-core/src/circulation.rs`) · 2D render
+`EditorCanvas` (`web/src/editor/EditorCanvas.ts`) · derived stats `web/src/editor/stats.ts`
+(`buildZones`, `buildElements`) · 3D `Viewer3D` (`web/src/three/Viewer3D.ts`) · tokens
+`web/src/styles.css`.
+
 ---
 
 ## 0. TL;DR

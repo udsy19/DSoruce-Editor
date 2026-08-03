@@ -20,6 +20,13 @@ desks + meeting rooms), and disciplined alignment. Neither qbiq nor Laiout publi
 widths or named codes ("clearances," generic "regulation") — grounding ours in NBC 2016 (India-first)
 is a citable differentiator, not just parity.
 
+**Code anchors:** `layout::generate` + `layout::score` (`crates/ds-core/src/layout.rs`) with
+`Program`, `SpaceProgram`, `SpaceKind`, `SpaceReq`, `RoomReq`, `Placement`, `Strategy`,
+`LayoutScore` · `circulation::evaluate` (`crates/ds-core/src/circulation.rs`) · zones
+`crates/ds-core/src/zone.rs` · costing `crates/ds-core/src/cost.rs` · wasm entry
+`Editor::generate` / `Editor::layout_score` (`crates/ds-core/src/lib.rs`) · strategy wiring
+`web/src/editor/strategy.ts`.
+
 ---
 
 ## 1. Space program mix — what rooms a professional test-fit contains

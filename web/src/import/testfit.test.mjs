@@ -8,6 +8,9 @@
 // plate, all ≥ 0.5 m, count capped. Bundling mirrors dxf.test.mjs (esbuild
 // resolved through vite).
 
+// @covers: web/src/import/testfit.ts
+// @covers: web/src/import/dxf.ts
+
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'

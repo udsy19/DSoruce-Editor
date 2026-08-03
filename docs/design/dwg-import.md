@@ -5,6 +5,14 @@ furniture plan) and render them with true CAD fidelity — real walls, doors,
 glazing, and **actual furniture blocks** (Steelcase chairs, workstation benches,
 …) — not gray rectangles. This is what closes the gap to Rayon / Revit / Laiout.
 
+**Code anchors:** DWG→DXF conversion `web/src/import/dwgConvert.ts` + `api/dwg.ts` · DXF parse
+`web/src/import/dxf.ts` (`parseDrawing`) · block → editor vocabulary `web/src/import/normalize.ts`
+(`normalizeFurniture`, `inferCategory`) · plate + interior walls `web/src/import/testfit.ts`
+(`extractPlate`, `extractInteriorWalls`, `plateFromArea`) · wall healing `web/src/import/heal.ts`
+(`healWalls`) · area restriction `web/src/import/area.ts` (`restrictDrawing`) · review canvas
+`DrawingCanvas` (`web/src/import/DrawingCanvas.ts`) + `web/src/import/DrawingView.tsx` · merge into
+the plan `web/src/import/mergeFit.ts` (`baseStampAround`).
+
 ## The sample (samples/furniture-plan.dwg)
 
 - Real AutoCAD 2018 DWG, 2.6 MB. Level-06 furniture plan, **units = inches**

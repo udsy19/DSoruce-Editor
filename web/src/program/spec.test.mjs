@@ -4,6 +4,8 @@
 // count, placement, and desk type/size.
 // Run from web/:  node src/program/spec.test.mjs
 
+// @covers: web/src/program/spec.ts
+
 import path from 'node:path'
 import os from 'node:os'
 import assert from 'node:assert/strict'

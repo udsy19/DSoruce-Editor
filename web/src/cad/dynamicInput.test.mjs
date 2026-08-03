@@ -5,6 +5,8 @@
 // bundle it with esbuild (resolved through vite, same pattern as strategy.test.mjs)
 // and assert the polar/resolve contract the drawing loop depends on.
 
+// @covers: web/src/cad/dynamicInput.ts
+
 import path from 'node:path'
 import os from 'node:os'
 import assert from 'node:assert/strict'

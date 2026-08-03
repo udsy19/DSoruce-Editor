@@ -15,6 +15,15 @@ The v1 generator + objective live in `crates/ds-core/src/layout.rs`. Circulation
 **separate** evaluator a teammate is building in `crates/ds-core/src/circulation.rs`;
 this design references it but does not implement it.
 
+**Code anchors:** generator `layout::generate` + objective `layout::score`
+(`crates/ds-core/src/layout.rs`) · circulation `circulation::evaluate`
+(`crates/ds-core/src/circulation.rs`) · wasm boundary `Editor::generate`, `Editor::layout_score`,
+`Editor::circulation` (`crates/ds-core/src/lib.rs`) · the TS search loop
+`EditorCanvas#autoGenerate` (`web/src/editor/EditorCanvas.ts`) driving
+`web/src/editor/strategy.ts` (`STRATEGIES`, `seedWindowOffset`) · refinement
+`web/src/ai/refine.ts` · soft-goal gate `web/src/ai/evaluator.ts` (`gateCandidates`,
+`evaluateCandidates`).
+
 ---
 
 ## 1. Input schema — Program / Criteria (what the user sets)

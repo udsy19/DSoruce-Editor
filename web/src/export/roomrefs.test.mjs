@@ -8,6 +8,8 @@
 // the Room ID column instead of the generated zone id. Bundling mirrors
 // testfit.test.mjs (esbuild resolved through vite).
 
+// @covers: web/src/export/takeoff.ts
+
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'

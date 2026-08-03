@@ -8,6 +8,8 @@
 // the old code set meeting_rooms=11, which (with the derived support program)
 // produced ~31 rooms against ~14 desks. Bundling mirrors dxf.test.mjs.
 
+// @covers: web/src/ai/suggestProgram.ts
+
 import path from 'node:path'
 import os from 'node:os'
 import assert from 'node:assert/strict'

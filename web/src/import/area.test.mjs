@@ -8,6 +8,8 @@
 //   • left-half polygon            → keeps exactly the left-half blocks
 // Bundling mirrors testfit.test.mjs (esbuild resolved through vite).
 
+// @covers: web/src/import/area.ts
+
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'

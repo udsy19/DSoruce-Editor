@@ -5,6 +5,8 @@
 // resolved from node_modules at runtime), then import + exercise it against
 // the real furniture-plan sample.
 
+// @covers: web/src/import/dxf.ts
+
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
