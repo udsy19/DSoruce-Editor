@@ -135,6 +135,16 @@ export class Editor {
      */
     restore(snap: any): void;
     /**
+     * Monotonic mutation counter. Every `&mut self` method bumps it exactly
+     * once (enforced by `tests::every_mutator_bumps_the_revision`), so a caller
+     * that remembers the last value it saw can skip a `state()` re-read — and
+     * the full-document serialize behind it — when nothing has changed.
+     *
+     * Deliberately coarse: it reports *that* the document changed, never what.
+     * Rendering stays correct if a caller ignores it entirely.
+     */
+    revision(): bigint;
+    /**
      * Hit-test components at (x,y) in world coords, topmost first. Sets and
      * returns the selection (undefined in JS if nothing was hit).
      */
@@ -255,6 +265,7 @@ export interface InitOutput {
     readonly editor_rename_zone: (a: number, b: number, c: number, d: number) => [number, number];
     readonly editor_resize_zone: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number];
     readonly editor_restore: (a: number, b: any) => [number, number];
+    readonly editor_revision: (a: number) => bigint;
     readonly editor_select_at: (a: number, b: number, c: number) => number;
     readonly editor_set_cad_json: (a: number, b: number, c: number) => void;
     readonly editor_set_component_category: (a: number, b: number, c: number, d: number) => void;

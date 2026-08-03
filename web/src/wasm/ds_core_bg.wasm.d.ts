@@ -30,6 +30,7 @@ export const editor_plate: (a: number) => [number, number, number];
 export const editor_rename_zone: (a: number, b: number, c: number, d: number) => [number, number];
 export const editor_resize_zone: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number];
 export const editor_restore: (a: number, b: any) => [number, number];
+export const editor_revision: (a: number) => bigint;
 export const editor_select_at: (a: number, b: number, c: number) => number;
 export const editor_set_cad_json: (a: number, b: number, c: number) => void;
 export const editor_set_component_category: (a: number, b: number, c: number, d: number) => void;

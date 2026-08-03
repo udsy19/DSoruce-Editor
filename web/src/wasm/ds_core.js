@@ -343,6 +343,20 @@ export class Editor {
         }
     }
     /**
+     * Monotonic mutation counter. Every `&mut self` method bumps it exactly
+     * once (enforced by `tests::every_mutator_bumps_the_revision`), so a caller
+     * that remembers the last value it saw can skip a `state()` re-read — and
+     * the full-document serialize behind it — when nothing has changed.
+     *
+     * Deliberately coarse: it reports *that* the document changed, never what.
+     * Rendering stays correct if a caller ignores it entirely.
+     * @returns {bigint}
+     */
+    revision() {
+        const ret = wasm.editor_revision(this.__wbg_ptr);
+        return BigInt.asUintN(64, ret);
+    }
+    /**
      * Hit-test components at (x,y) in world coords, topmost first. Sets and
      * returns the selection (undefined in JS if nothing was hit).
      * @param {number} x

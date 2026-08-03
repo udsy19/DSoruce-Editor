@@ -74,6 +74,10 @@ struct ZoneStat {
 #[wasm_bindgen]
 pub struct Editor {
     doc: Document,
+    /// Bumped by [`Editor::touch`] on every mutation, so the frontend can tell
+    /// "nothing changed" from "changed back to an equal value" without
+    /// serializing the document. See [`Editor::revision`].
+    rev: u64,
 }
 
 /// Per-zone floor areas (m², clipped to the plate polygon) with the oriented
@@ -251,11 +255,30 @@ impl Editor {
         console_error_panic_hook::set_once();
         Editor {
             doc: Document::new(),
+            rev: 0,
         }
+    }
+
+    /// Monotonic mutation counter. Every `&mut self` method bumps it exactly
+    /// once (enforced by `tests::every_mutator_bumps_the_revision`), so a caller
+    /// that remembers the last value it saw can skip a `state()` re-read — and
+    /// the full-document serialize behind it — when nothing has changed.
+    ///
+    /// Deliberately coarse: it reports *that* the document changed, never what.
+    /// Rendering stays correct if a caller ignores it entirely.
+    pub fn revision(&self) -> u64 {
+        self.rev
+    }
+
+    /// Record a mutation. Called at the top of every mutating method; wrapping
+    /// is fine, callers only ever compare for equality.
+    fn touch(&mut self) {
+        self.rev = self.rev.wrapping_add(1);
     }
 
     /// Add a wall segment a→b. Returns the new wall id.
     pub fn add_wall(&mut self, ax: f64, ay: f64, bx: f64, by: f64, thickness: f64) -> u32 {
+        self.touch();
         let id = self.doc.alloc_id();
         self.doc.walls.push(Wall {
             id,
@@ -271,6 +294,7 @@ impl Editor {
     /// Place a component (footprint centered at x,y). Returns the new component id
     /// and makes it the current selection.
     pub fn add_component(&mut self, category: String, x: f64, y: f64, w: f64, h: f64) -> u32 {
+        self.touch();
         let id = self.doc.alloc_id();
         let label = format!("{} {}", category, id);
         self.doc.components.push(Component {
@@ -297,6 +321,7 @@ impl Editor {
     /// always avoids regardless of freeze state, and render as `Core` zones.
     /// Returns the new keep-out id. Serializes with the doc via `state()`.
     pub fn add_keepout(&mut self, x: f64, y: f64, w: f64, h: f64, label: String) -> u32 {
+        self.touch();
         let id = self.doc.alloc_id();
         self.doc.keepouts.push(KeepOut { id, x, y, w, h, label });
         id
@@ -304,6 +329,7 @@ impl Editor {
 
     /// Remove all keep-outs.
     pub fn clear_keepouts(&mut self) {
+        self.touch();
         self.doc.keepouts.clear();
     }
 
@@ -311,11 +337,13 @@ impl Editor {
     /// its primary circulation spine to the first entry (spec §3). Serializes
     /// with the doc via `state()`/`snapshot()`.
     pub fn add_entry(&mut self, x: f64, y: f64) {
+        self.touch();
         self.doc.entries.push(Point::new(x, y));
     }
 
     /// Remove all entry points.
     pub fn clear_entries(&mut self) {
+        self.touch();
         self.doc.entries.clear();
     }
 
@@ -325,6 +353,7 @@ impl Editor {
     /// ("Reception"/"Cabin"/"Meeting"/…); an unknown kind is ignored. Serializes
     /// with the doc via `state()`/`snapshot()`, mirroring `add_entry`.
     pub fn add_anchor(&mut self, kind: String, x: f64, y: f64) {
+        self.touch();
         if let Some(kind) = SpaceKind::from_wire(&kind) {
             self.doc.anchors.push(Anchor { kind, x, y });
         }
@@ -332,12 +361,14 @@ impl Editor {
 
     /// Remove all anchor pins (mirrors `clear_entries`).
     pub fn clear_anchors(&mut self) {
+        self.touch();
         self.doc.anchors.clear();
     }
 
     /// Hit-test components at (x,y) in world coords, topmost first. Sets and
     /// returns the selection (undefined in JS if nothing was hit).
     pub fn select_at(&mut self, x: f64, y: f64) -> Option<u32> {
+        self.touch();
         let mut hit = None;
         for c in self.doc.components.iter().rev() {
             let dx = (c.x - x).abs();
@@ -352,11 +383,13 @@ impl Editor {
     }
 
     pub fn clear_selection(&mut self) {
+        self.touch();
         self.doc.selection = None;
     }
 
     /// Translate the current selection by (dx,dy) meters.
     pub fn move_selected(&mut self, dx: f64, dy: f64) {
+        self.touch();
         if let Some(id) = self.doc.selection {
             if let Some(c) = self.doc.component_mut(id) {
                 c.x += dx;
@@ -366,6 +399,7 @@ impl Editor {
     }
 
     pub fn delete_selected(&mut self) {
+        self.touch();
         if let Some(id) = self.doc.selection.take() {
             self.doc.components.retain(|c| c.id != id);
         }
@@ -374,6 +408,7 @@ impl Editor {
     /// Move a component **by id** to absolute center `(x, y)` meters. The by-id
     /// primitive the AI uses; complements the selection-based `move_selected`.
     pub fn move_component(&mut self, id: u32, x: f64, y: f64) {
+        self.touch();
         if let Some(c) = self.doc.component_mut(id) {
             c.x = x;
             c.y = y;
@@ -384,6 +419,7 @@ impl Editor {
     /// Doors/windows placed along angled walls need this; renderers already
     /// honor `Component::rotation`.
     pub fn set_component_rotation(&mut self, id: u32, radians: f64) {
+        self.touch();
         if let Some(c) = self.doc.component_mut(id) {
             c.rotation = radians;
         }
@@ -394,6 +430,7 @@ impl Editor {
     /// reflect the leaf+arc when set. Additive: complements `set_component_rotation`
     /// and leaves `add_component` (default `mirror: false`) untouched.
     pub fn set_component_mirror(&mut self, id: u32, mirror: bool) {
+        self.touch();
         if let Some(c) = self.doc.component_mut(id) {
             c.mirror = mirror;
         }
@@ -405,6 +442,7 @@ impl Editor {
     /// merge-stamp path (`App.stampBaseInto`) sets this `true` on imported
     /// surroundings. Additive: leaves `add_component` (default `false`) untouched.
     pub fn set_component_reference(&mut self, id: u32, reference: bool) {
+        self.touch();
         if let Some(c) = self.doc.component_mut(id) {
             c.reference = reference;
         }
@@ -414,6 +452,7 @@ impl Editor {
     /// editable W/H fields; clamped to a small positive minimum so a degenerate
     /// zero-size box can't be created.
     pub fn set_component_size(&mut self, id: u32, w: f64, h: f64) {
+        self.touch();
         if let Some(c) = self.doc.component_mut(id) {
             c.w = w.max(0.05);
             c.h = h.max(0.05);
@@ -423,6 +462,7 @@ impl Editor {
     /// Change a component's category (which slice of the material bank + which
     /// top-view symbol it uses). The object inspector's category picker.
     pub fn set_component_category(&mut self, id: u32, category: String) {
+        self.touch();
         if let Some(c) = self.doc.component_mut(id) {
             c.category = category;
         }
@@ -431,6 +471,7 @@ impl Editor {
     /// Delete a component **by id** (complements `delete_selected`). Clears the
     /// selection if it pointed at the deleted component.
     pub fn delete_component(&mut self, id: u32) {
+        self.touch();
         self.doc.components.retain(|c| c.id != id);
         if self.doc.selection == Some(id) {
             self.doc.selection = None;
@@ -447,6 +488,7 @@ impl Editor {
         product_name: String,
         price_inr: Option<f64>,
     ) {
+        self.touch();
         if let Some(c) = self.doc.component_mut(id) {
             c.product_id = Some(product_id);
             c.label = product_name;
@@ -457,6 +499,7 @@ impl Editor {
     /// Advance a component's decision lifecycle. `state` is one of
     /// "Open" | "InReview" | "Confirmed".
     pub fn set_decision(&mut self, id: u32, state: &str) {
+        self.touch();
         if let Some(c) = self.doc.component_mut(id) {
             c.decision = DecisionState::from_str(state);
         }
@@ -583,6 +626,7 @@ impl Editor {
         seed: u64,
         keep_confirmed: bool,
     ) -> Result<JsValue, JsValue> {
+        self.touch();
         let program: layout::Program =
             serde_wasm_bindgen::from_value(program).map_err(|e| JsValue::from_str(&e.to_string()))?;
         layout::generate(&mut self.doc, &program, seed, keep_confirmed);
@@ -608,6 +652,7 @@ impl Editor {
     /// Store the frontend CAD drafting-layer blob (opaque JSON; the core never
     /// parses it). It rides in snapshots, so undo/save round-trip it.
     pub fn set_cad_json(&mut self, json: String) {
+        self.touch();
         self.doc.cad_json = if json.is_empty() { None } else { Some(json) };
     }
 
@@ -635,6 +680,7 @@ impl Editor {
 
     /// Replace the current document with a previously taken `snapshot`.
     pub fn restore(&mut self, snap: JsValue) -> Result<(), JsValue> {
+        self.touch();
         let s = snap
             .as_string()
             .ok_or_else(|| JsValue::from_str("snapshot must be a string"))?;
@@ -649,7 +695,7 @@ impl Editor {
             .ok_or_else(|| JsValue::from_str("snapshot must be a string"))?;
         let doc: Document =
             serde_json::from_str(&s).map_err(|e| JsValue::from_str(&e.to_string()))?;
-        Ok(Editor { doc })
+        Ok(Editor { doc, rev: 0 })
     }
 
     // ----- Zone ops — thin wrappers over `Document` methods. Each returns the
@@ -658,6 +704,7 @@ impl Editor {
     /// Merge zones `a` and `b`; returns the resulting zone id (a clean rect union
     /// reuses `a`'s id) or the shared group id (logical L-room) as a number.
     pub fn merge_zones(&mut self, a: u32, b: u32) -> Result<JsValue, JsValue> {
+        self.touch();
         let id = self
             .doc
             .merge_zones(a, b)
@@ -668,6 +715,7 @@ impl Editor {
     /// Split zone `id` along `axis` ("Vertical" | "Horizontal") at world coord
     /// `at`; returns `[id1, id2]`.
     pub fn split_zone(&mut self, id: u32, axis: &str, at: f64) -> Result<JsValue, JsValue> {
+        self.touch();
         let axis = match axis {
             "Vertical" => Axis::Vertical,
             "Horizontal" => Axis::Horizontal,
@@ -683,6 +731,7 @@ impl Editor {
     /// Reclassify zone `id` to `zone_type` (one of the serde `ZoneType` tags,
     /// e.g. "Workspace"). Distinct from the component-level `set_decision`.
     pub fn set_zone_type(&mut self, id: u32, zone_type: &str) -> Result<(), JsValue> {
+        self.touch();
         let t: ZoneType = serde_json::from_str(&format!("\"{}\"", zone_type))
             .map_err(|_| JsValue::from_str("unknown zone type"))?;
         self.doc
@@ -693,6 +742,7 @@ impl Editor {
     /// Resize/move zone `id` to a `Rect` (center `x,y`, size `w,h`). Rejected if
     /// the new bbox exceeds the wall bbox.
     pub fn resize_zone(&mut self, id: u32, x: f64, y: f64, w: f64, h: f64) -> Result<(), JsValue> {
+        self.touch();
         self.doc
             .resize_zone(id, ZoneShape::Rect { x, y, w, h })
             .map_err(|e| JsValue::from_str(&e.to_string()))
@@ -715,6 +765,7 @@ impl Editor {
         h: f64,
         label: String,
     ) -> Result<JsValue, JsValue> {
+        self.touch();
         let t: ZoneType = serde_json::from_str(&format!("\"{}\"", zone_type))
             .map_err(|_| JsValue::from_str("unknown zone type"))?;
         let id = self.doc.add_zone(t, ZoneShape::Rect { x, y, w, h }, label);
@@ -723,6 +774,7 @@ impl Editor {
 
     /// Delete a room by zone id: removes the zone and the furniture it contains.
     pub fn delete_zone(&mut self, id: u32) -> Result<(), JsValue> {
+        self.touch();
         self.doc
             .delete_zone(id)
             .map_err(|e| JsValue::from_str(&e.to_string()))
@@ -730,6 +782,7 @@ impl Editor {
 
     /// Rename a zone's label (e.g. to match a reclassified type).
     pub fn rename_zone(&mut self, id: u32, label: String) -> Result<(), JsValue> {
+        self.touch();
         self.doc
             .rename_zone(id, label)
             .map_err(|e| JsValue::from_str(&e.to_string()))
@@ -739,6 +792,7 @@ impl Editor {
     /// No-op if the id is unknown. Lets an interior partition wall travel with a
     /// room during drag/resize (generated plans have none; hand-drawn walls do).
     pub fn set_wall(&mut self, id: u32, ax: f64, ay: f64, bx: f64, by: f64) {
+        self.touch();
         if let Some(w) = self.doc.walls.iter_mut().find(|w| w.id == id) {
             w.a = Point::new(ax, ay);
             w.b = Point::new(bx, by);
@@ -757,6 +811,65 @@ mod tests {
     use super::*;
     use crate::geometry::Point;
     use crate::zone::Zone;
+
+    /// The revision counter is only safe to cache against if EVERY mutator bumps
+    /// it — one that forgets makes the frontend render a stale document, and the
+    /// bug would surface as "the canvas didn't update", far from its cause.
+    ///
+    /// Rather than trust review, scan our own source: every `pub fn` taking
+    /// `&mut self` must open its body with `self.touch()`. A new mutator added
+    /// without one fails here, at the moment it is written. (Signatures wrap
+    /// across lines, so this matches the whole parameter list, not one line —
+    /// the miss that this test was written to catch.)
+    #[test]
+    fn every_mutator_bumps_the_revision() {
+        let src = include_str!("lib.rs");
+        let mut missing: Vec<&str> = Vec::new();
+        let mut checked = 0usize;
+        for (idx, _) in src.match_indices("pub fn ") {
+            let after = &src[idx + "pub fn ".len()..];
+            let Some(open) = after.find('(') else { continue };
+            let name = after[..open].trim();
+            let Some(close) = after.find(')') else { continue };
+            if close < open || !after[open..close].contains("&mut self") {
+                continue;
+            }
+            let Some(brace) = after[close..].find('{') else { continue };
+            let body = &after[close + brace + 1..];
+            checked += 1;
+            if !body.trim_start().starts_with("self.touch();") {
+                missing.push(name);
+            }
+        }
+        assert!(checked >= 30, "expected to find the mutator set, saw {checked}");
+        assert!(
+            missing.is_empty(),
+            "these &mut self methods do not bump the revision counter — add \
+             `self.touch();` as the first statement of each: {missing:?}"
+        );
+    }
+
+    #[test]
+    fn revision_advances_on_mutation_and_holds_still_on_reads() {
+        let mut ed = Editor::new();
+        let start = ed.revision();
+        // Reads must never advance it, or the cache invalidates on every frame.
+        let _ = ed.revision();
+        assert_eq!(ed.revision(), start, "revision() itself must not mutate");
+
+        ed.add_wall(0.0, 0.0, 5.0, 0.0, 0.2);
+        let after_wall = ed.revision();
+        assert_ne!(after_wall, start, "add_wall must bump the revision");
+
+        let id = ed.add_component("Desk".into(), 1.0, 1.0, 1.4, 0.7);
+        assert_ne!(ed.revision(), after_wall, "add_component must bump the revision");
+        let after_add = ed.revision();
+
+        // A no-op-looking mutation still counts: the frontend needs to re-read
+        // rather than guess whether the write changed anything.
+        ed.move_component(id, 1.0, 1.0);
+        assert_ne!(ed.revision(), after_add, "move_component must bump the revision");
+    }
 
     fn desk(id: u32, x: f64, y: f64, reference: bool) -> Component {
         Component {

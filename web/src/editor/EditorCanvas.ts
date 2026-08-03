@@ -755,9 +755,32 @@ export class EditorCanvas {
   }
 
   // ---- API consumed by React ----
+  /**
+   * Memoised `state()`. Every read crosses the wasm boundary and serializes the
+   * WHOLE document, and a single frame does it many times — render() plus every
+   * derived helper (getSelected, selectedInfo, zones, roomAt, …) and every React
+   * consumer. The core's `revision()` is a u64 bumped by every mutator (and by
+   * nothing else), so an unchanged revision means the previous object is still
+   * exactly what `state()` would return.
+   *
+   * Keyed on the `Editor` INSTANCE as well as the revision: `clearAll` swaps in
+   * a fresh `Editor` whose revision restarts at 0, which would otherwise look
+   * like "unchanged" and serve the cleared document's predecessor.
+   *
+   * Safe because the result is treated as read-only everywhere (verified across
+   * all call sites) — callers derive from it, never mutate it. If that ever
+   * stops being true, this must return a copy instead.
+   */
   getState(): DocState {
-    return this.ed.state() as DocState
+    const ed = this.ed
+    const rev = ed.revision()
+    const cached = this.stateCache
+    if (cached && cached.ed === ed && cached.rev === rev) return cached.state
+    const state = ed.state() as DocState
+    this.stateCache = { ed, rev, state }
+    return state
   }
+  private stateCache: { ed: Editor; rev: bigint; state: DocState } | null = null
   getMetrics(): Metrics {
     return this.ed.metrics() as Metrics
   }
