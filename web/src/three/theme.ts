@@ -1,5 +1,4 @@
-import type { ZoneType } from '../editor/EditorCanvas'
-
+import type { ZoneType } from '../types/doc'
 /**
  * 3D viewer material themes. A theme is a palette that the {@link Viewer3D}
  * maps onto the scene's fabric: a per-zone floor tint (so the plan reads by

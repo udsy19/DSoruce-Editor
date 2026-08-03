@@ -14,7 +14,7 @@
 // rotated with the same matrix EditorCanvas uses (ctx.translate + ctx.rotate),
 // keeping the exported geometry consistent with what is drawn on screen.
 
-import type { DocState } from '../editor/EditorCanvas'
+import type { DocState } from '../types/doc'
 import type { CadEntity, Vec2 } from '../cad/model'
 import type { Drawing, DrawEntity } from '../import/types'
 import { triggerDownload } from './png'

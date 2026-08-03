@@ -17,7 +17,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { EditorController } from '../../App'
-import type { Candidate, GenResult } from '../../editor/EditorCanvas'
+import type { Candidate, GenResult } from '../../types/program'
 import { STRATEGY_LABEL, STRATEGY_BLURB } from '../../editor/EditorCanvas'
 import { buildReportModel, computeWinners, type AltKpis } from '../../export/report'
 import { evaluateCandidates, evaluatorAvailable, type SoftVerdict } from '../../ai/evaluator'

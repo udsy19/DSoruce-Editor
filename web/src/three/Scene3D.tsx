@@ -3,8 +3,7 @@ import { Viewer3D, type ViewerMode, type PickHit } from './Viewer3D'
 import { Minimap, type MinimapHandle, type MinimapProps } from './Minimap'
 import { ViewerToolbar, DEFAULT_SUN, type Quality, type ViewerWithExtras } from './ViewerToolbar'
 import { DEFAULT_THEME, type ThemeId } from './theme'
-import type { DocState } from '../editor/EditorCanvas'
-
+import type { DocState } from '../types/doc'
 /**
  * Minimal selection card for a 3D pick, anchored at the click position and
  * clamped inside the viewer container. Used by {@link Scene3D}.

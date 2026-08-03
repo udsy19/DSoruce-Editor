@@ -23,14 +23,9 @@
 // costing).
 
 import { Editor } from '../wasm/ds_core'
-import {
-  distToPoly,
-  DocState,
-  DocZone,
-  Metrics,
-  ZoneStat,
-  ZoneType,
-} from '../editor/EditorCanvas'
+import type { DocState, DocZone, ZoneType } from '../types/doc'
+import type { Metrics, ZoneStat } from '../types/metrics'
+import { distToPoly } from '../editor/EditorCanvas'
 import { pointInZoneShape } from '../util/zoneGeom'
 import {
   PAGE_W,

@@ -14,7 +14,9 @@
 // via `openaiToolsToAnthropic`, tool_use decoded by `parseClaudeContent`, and a
 // pure validator (`clampDesignSpec`) that is unit-tested without the live API.
 
-import type { Program, RoomReq, SpaceKind, Placement, Strategy } from '../editor/EditorCanvas'
+import type { SpaceKind, Placement } from '../types/doc'
+import type { Program, RoomReq } from '../types/program'
+import type { Strategy } from '../editor/EditorCanvas'
 import { openaiToolsToAnthropic, parseClaudeContent, type ClaudeContentBlock } from './claudeDriver'
 
 /** Every room kind the Rust generator understands (mirrors `layout::SpaceKind`). */

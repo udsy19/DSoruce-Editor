@@ -33,7 +33,7 @@
 // `f v//vn` (no texture coordinates). The .obj references `mtllib
 // <basename>.mtl`; the MTL carries a small category palette.
 
-import type { DocState } from '../editor/EditorCanvas'
+import type { DocState } from '../types/doc'
 import { triggerDownload } from './png'
 
 // Same height heuristics as ifc.ts (duplicated because ifc.ts keeps them

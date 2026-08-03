@@ -14,8 +14,7 @@ import {
   pdfSafeText,
   canvasToJpeg,
 } from './pdf'
-import type { DocState } from '../editor/EditorCanvas'
-
+import type { DocState } from '../types/doc'
 /** Outer page margin (pt), shared by report + drawing-set pages. */
 export const MARGIN = 40
 /** RES px per pt for embedded rasters — ~187 dpi, crisp line-work. */

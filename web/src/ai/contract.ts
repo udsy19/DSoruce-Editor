@@ -1,4 +1,5 @@
-import type { Program, ZoneType } from '../editor/EditorCanvas'
+import type { ZoneType } from '../types/doc'
+import type { Program } from '../types/program'
 import type { RoomInfo } from './roomResolver'
 
 // The tool vocabulary the agent (local parser now, Claude later) speaks. Each

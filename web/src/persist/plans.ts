@@ -6,7 +6,8 @@
 // posts the same JSON. Metrics are denormalized for list/compare without wasm.
 
 import { Editor } from '../wasm/ds_core'
-import type { EditorCanvas, Metrics, CirculationScore } from '../editor/EditorCanvas'
+import type { Metrics, CirculationScore } from '../types/metrics'
+import type { EditorCanvas } from '../editor/EditorCanvas'
 import type { Drawing } from '../import/types'
 import type { BindingInfo, DSourceFile, DSourceUi } from './file'
 import { applyProject, buildProjectFile, isRecord, parseProject } from './file'

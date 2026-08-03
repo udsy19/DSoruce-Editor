@@ -6,12 +6,9 @@
 // relative to A.
 
 import { Editor } from '../wasm/ds_core'
-import {
-  renderThumb,
-  DocState,
-  Metrics,
-  CirculationScore,
-} from '../editor/EditorCanvas'
+import type { DocState } from '../types/doc'
+import type { Metrics, CirculationScore } from '../types/metrics'
+import { renderThumb } from '../editor/EditorCanvas'
 import { delta } from '../ai/engine'
 import { MetricDelta } from '../ai/contract'
 import { PlanMetricsSummary } from '../persist/plans'

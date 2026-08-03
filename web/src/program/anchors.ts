@@ -9,8 +9,7 @@
 // anchor of kind K consumes one of K's requested count, or adds one if the
 // program didn't ask for K (Rust `layout::generate` / `Editor.add_anchor`).
 
-import type { SpaceKind } from '../editor/EditorCanvas'
-
+import type { SpaceKind } from '../types/doc'
 export interface AnchorPin {
   id: string
   /** Core room type forced onto the plan (mirrors Rust `SpaceKind`). */

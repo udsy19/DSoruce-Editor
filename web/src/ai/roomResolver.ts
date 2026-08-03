@@ -8,8 +8,7 @@
 // inside). Both the deterministic LocalDriver and the LLM system prompt speak
 // through it, so the vocabulary is defined once.
 
-import type { ZoneType } from '../editor/EditorCanvas'
-
+import type { ZoneType } from '../types/doc'
 /** A zone enriched with everything the assistant needs to talk about it: the
  *  user's room number (from a dropped marker), its measured area/pax, and the
  *  furniture inside it. All facets past id/type/label are optional so a caller

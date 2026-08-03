@@ -1,6 +1,5 @@
 import { AgentDriver, DriverContext, DriverResult, ToolCall } from './contract'
-import { Program } from '../editor/EditorCanvas'
-
+import type { Program } from '../types/program'
 interface ProxyResponse {
   content: string | null
   tool_calls: { name: string; arguments: string | Record<string, unknown> }[]

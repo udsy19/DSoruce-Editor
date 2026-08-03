@@ -4,8 +4,7 @@
 // handles `Poly` zones identically instead of re-deriving x/w/h per file.
 // Meters, plan convention. Pure TS, no deps.
 
-import type { ZoneShape } from '../editor/EditorCanvas'
-
+import type { ZoneShape } from '../types/doc'
 /** Absolute shoelace area of a polygon ring (first vertex not repeated). */
 function polyArea(pts: [number, number][]): number {
   let a = 0

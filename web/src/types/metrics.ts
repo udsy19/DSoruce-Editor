@@ -1,0 +1,65 @@
+/**
+ * Scores and statistics read back from the Rust core.
+ *
+ * `Metrics`/`ZoneStat` come from `Editor.metrics()`/`Editor.zone_stats()`,
+ * `LayoutScore` from `Editor.generate()`/`layout_score()`, and
+ * `CirculationScore` from `Editor.circulation()` — all computed in Rust, never
+ * derived TS-side (CLAUDE.md: core is the source of truth).
+ */
+
+import type { ZoneType } from './doc'
+
+export interface Metrics {
+  floor_area: number
+  wall_count: number
+  component_count: number
+  confirmed: number
+  // Slice 2 additive Statistics-panel fields (optional for backward-compat).
+  gross_external_area?: number
+  net_internal_area?: number
+  workstations?: number
+  area_per_workstation?: number
+  efficiency_pct?: number
+  indicative_cost?: number
+  /** Σ observed ₹ prices of bank-bound components (specified furniture capex). */
+  specified_cost?: number
+  indicative_carbon?: number
+}
+export interface ZoneStat {
+  id: number
+  zone_type: ZoneType
+  label: string
+  area: number
+  capacity: number
+  seated: number
+  pct_of_nia: number
+}
+export interface LayoutScore {
+  capacity: number
+  adjacency: number
+  circulation: number
+  /** m²/person NIA density, peaking in the professional 8–12 band (M5). */
+  density: number
+  /** Delivered vs derived room program, 0..100 (M3/M4). */
+  program_fit: number
+  /** % of workstations within reach of the facade (M5). */
+  daylight: number
+  /** Entry narrative: reception near the entry, pantry far (M5). */
+  entry_adjacency: number
+  total: number
+  placed_desks: number
+}
+export interface CirculationScore {
+  score: number
+  reachable_free_area: number
+  floor_area: number
+  circulation_ratio: number
+  min_corridor_width: number
+  mean_clearance: number
+  pct_corridors_below_min: number
+  largest_connected_free_region: number
+  enclosed: boolean
+  grid_cols: number
+  grid_rows: number
+  cell_size: number
+}

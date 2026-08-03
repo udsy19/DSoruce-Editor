@@ -1,17 +1,9 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useReducer, useRef, useState } from 'react'
-import {
-  EditorCanvas,
-  DocComponent,
-  DocZone,
-  Metrics,
-  Program,
-  GenResult,
-  Candidate,
-  RefineOutcome,
-  RoomSelection,
-  DEFAULT_PROGRAM,
-  STRATEGY_LABEL,
-} from './editor/EditorCanvas'
+import type { DocComponent, DocZone, RoomSelection } from './types/doc'
+import type { Metrics } from './types/metrics'
+import type { Program, GenResult, Candidate } from './types/program'
+import { DEFAULT_PROGRAM } from './types/program'
+import { EditorCanvas, RefineOutcome, STRATEGY_LABEL } from './editor/EditorCanvas'
 import { CATALOG, catByCategory } from './editor/catalog'
 import { searchBank } from './materialBank/mock'
 import { searchBankLive, bankQueryFor, formatINR, type BankProduct } from './materialBank/client'

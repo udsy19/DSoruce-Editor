@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import type { DocState, DocWall, DocComponent } from '../editor/EditorCanvas'
+import type { DocState, DocWall, DocComponent } from '../types/doc'
 import { catByCategory } from '../editor/catalog'
 import { WALL_HEIGHT, CEILING_HEIGHT } from './Viewer3D'
 import { buildFurniture3D, furnitureHeight } from './furniture3d'

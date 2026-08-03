@@ -18,7 +18,8 @@
 //
 // Currency is ₹ (India-first, matching the material bank + app convention).
 
-import type { DocState, DocWall, DocZone, ZoneStat, ZoneType } from './EditorCanvas'
+import type { DocState, DocWall, DocZone, ZoneType } from '../types/doc'
+import type { ZoneStat } from '../types/metrics'
 import { zoneArea as zoneShapeArea } from '../util/zoneGeom'
 import { searchBank } from '../materialBank/mock'
 import { searchOfficeBank } from '../materialBank/office'

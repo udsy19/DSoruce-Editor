@@ -40,8 +40,7 @@ import {
 } from './sheet'
 import type { SheetSetMeta } from './sheetSet'
 import { renderSection, defaultCuts, type SectionCut } from '../three/sectionRender'
-import type { DocState } from '../editor/EditorCanvas'
-
+import type { DocState } from '../types/doc'
 export interface SectionSheetsOpts {
   meta: SheetSetMeta
   /** Cut planes to draw. Default: a longitudinal + a cross cut through centre

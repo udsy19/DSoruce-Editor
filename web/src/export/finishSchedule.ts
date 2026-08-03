@@ -47,7 +47,7 @@ import {
   type TitleBlockInfo,
 } from './sheet'
 import type { SheetSetMeta } from './sheetSet'
-import type { DocState, DocZone } from '../editor/EditorCanvas'
+import type { DocState, DocZone } from '../types/doc'
 import { zoneArea as zoneShapeArea } from '../util/zoneGeom'
 import { CEILING_HEIGHT } from './services'
 

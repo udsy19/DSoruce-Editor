@@ -8,7 +8,7 @@
 // wasm, no DOM.
 
 import type { Drawing } from '../import/types'
-import type { Program } from '../editor/EditorCanvas'
+import type { Program } from '../types/program'
 import { bankCategoryForItem } from '../materialBank/office'
 
 /** Bank-categories that ARE a workstation (one item = one desk position). */

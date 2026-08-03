@@ -13,8 +13,9 @@
 //
 // Pure module: no DOM, no wasm — unit-testable in Node.
 
-import type { Placement, Program, RoomReq, SpaceKind } from '../editor/EditorCanvas'
-import { DEFAULT_PROGRAM } from '../editor/EditorCanvas'
+import type { Placement, SpaceKind } from '../types/doc'
+import type { Program, RoomReq } from '../types/program'
+import { DEFAULT_PROGRAM } from '../types/program'
 import { headcountForArea } from '../ai/suggestProgram'
 
 export type ProgramMode = 'concept' | 'detailed'

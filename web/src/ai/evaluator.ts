@@ -1,5 +1,4 @@
-import type { Candidate, Program } from '../editor/EditorCanvas'
-
+import type { Candidate, Program } from '../types/program'
 /**
  * Claude-in-the-loop soft-goal evaluator (the vision's "judge the aesthetic
  * goals a metric can't"). Takes the autonomous search's top-K candidates and

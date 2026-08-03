@@ -1,5 +1,6 @@
 import { AgentDriver, DriverContext, DriverResult, ToolCall } from './contract'
-import { Program, ZoneType } from '../editor/EditorCanvas'
+import type { ZoneType } from '../types/doc'
+import type { Program } from '../types/program'
 import { resolveRoomRef, describeRoom } from './roomResolver'
 
 // Keyword → ZoneType. Longest phrase wins so "meeting room" beats "room".

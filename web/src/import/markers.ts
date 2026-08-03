@@ -12,8 +12,7 @@
 // `zoneAtPoint` (export/takeoff.ts) — re-run on every regenerate, since zones
 // are regenerated wholesale with new ids while markers stay pinned to points.
 
-import type { ZoneType } from '../editor/EditorCanvas'
-
+import type { ZoneType } from '../types/doc'
 /** The marker vocabulary shown in the Space-step dropdown. Aligns with the
  *  detected/office room language; each maps onto the closed `ZoneType` enum. */
 export type RoomType =

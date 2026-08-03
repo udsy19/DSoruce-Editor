@@ -12,7 +12,8 @@
 // the driver's `parseClaudeContent`. The parse+clamp is pure + unit-tested with
 // fixtures (no live API) — see refine.test.mjs.
 
-import type { LayoutScore, Program, ZoneStat } from '../editor/EditorCanvas'
+import type { LayoutScore, ZoneStat } from '../types/metrics'
+import type { Program } from '../types/program'
 import { ADJUST_PROGRAM_TOOL } from './llmSchema'
 import { openaiToolsToAnthropic, parseClaudeContent, type ClaudeContentBlock } from './claudeDriver'
 

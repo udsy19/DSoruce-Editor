@@ -9,7 +9,7 @@
 // other sheet reads — walls for the plate, zones for rooms, components for the
 // furniture the outlets serve. Nothing here mutates state.
 
-import type { DocState, DocComponent } from '../editor/EditorCanvas'
+import type { DocState, DocComponent } from '../types/doc'
 import { zoneArea as zoneShapeArea, zoneBBox, zoneCenter } from '../util/zoneGeom'
 
 // ---------------------------------------------------------------------------

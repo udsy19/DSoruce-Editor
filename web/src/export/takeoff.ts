@@ -25,7 +25,7 @@
 // Currency is ₹ (INR) per CLAUDE.md; the qbiq sample is generic-currency.
 // Item Descriptions carry W×L in cm ("Desk W70 X L140"), matching the sample.
 
-import type { DocState, DocComponent, DocWall, DocZone, ZoneType } from '../editor/EditorCanvas'
+import type { DocState, DocComponent, DocWall, DocZone, ZoneType } from '../types/doc'
 import { pointInZoneShape } from '../util/zoneGeom'
 import { catByCategory } from '../editor/catalog'
 import { zipStore } from './zip'

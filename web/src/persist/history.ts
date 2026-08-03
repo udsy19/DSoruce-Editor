@@ -5,8 +5,9 @@
 // `drawing` and thumbs (§2 budget) — the DXF drawing changes only on import,
 // and hover thumbs render lazily from the snapshot.
 
-import type { EditorCanvas, Program } from '../editor/EditorCanvas'
-import { DEFAULT_PROGRAM } from '../editor/EditorCanvas'
+import type { Program } from '../types/program'
+import type { EditorCanvas } from '../editor/EditorCanvas'
+import { DEFAULT_PROGRAM } from '../types/program'
 import { dbDel, dbGetAll, dbPut } from './db'
 
 /** One record in the "history" store (keyPath "at" — naturally time-ordered). */

@@ -47,7 +47,7 @@
 // Rectangles are mirror-symmetric about their local axes, so only placements
 // need the flip — profile dims are used as-is.
 
-import type { DocState } from '../editor/EditorCanvas'
+import type { DocState } from '../types/doc'
 import { triggerDownload } from './png'
 
 export interface IfcMeta {

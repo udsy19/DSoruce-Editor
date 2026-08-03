@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { EditorCanvas, SelectedInfo } from '../editor/EditorCanvas'
+import type { SelectedInfo } from '../types/doc'
+import { EditorCanvas } from '../editor/EditorCanvas'
 import { CATALOG, catByCategory } from '../editor/catalog'
 
 const DEG = 180 / Math.PI

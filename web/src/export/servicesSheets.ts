@@ -38,7 +38,7 @@ import {
   type TitleBlockInfo,
 } from './sheet'
 import type { SheetSetMeta } from './sheetSet'
-import type { DocState } from '../editor/EditorCanvas'
+import type { DocState } from '../types/doc'
 import { zoneCenter } from '../util/zoneGeom'
 import {
   ceilingLayout,

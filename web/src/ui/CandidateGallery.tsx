@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react'
-import type { Candidate } from '../editor/EditorCanvas'
+import type { Candidate } from '../types/program'
 import { STRATEGY_LABEL } from '../editor/EditorCanvas'
 import type { SoftVerdict } from '../ai/evaluator'
 

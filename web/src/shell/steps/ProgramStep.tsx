@@ -29,7 +29,7 @@ import {
   type ProgramSpec,
   type RoomGroup,
 } from '../../program/spec'
-import type { Placement, SpaceKind } from '../../editor/EditorCanvas'
+import type { Placement, SpaceKind } from '../../types/doc'
 import { getProject, updateDraft } from '../../persist/projects'
 import { DrawingView } from '../../import/DrawingView'
 import type { DrawingCanvas } from '../../import/DrawingCanvas'

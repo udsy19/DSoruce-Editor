@@ -15,8 +15,10 @@
 // unit-testable in Node; only `saveProject` (download) and `applyProject`
 // (Editor mutation) touch the environment.
 
-import type { EditorCanvas, Placement, Program, RoomReq, SpaceKind } from '../editor/EditorCanvas'
-import { DEFAULT_PROGRAM } from '../editor/EditorCanvas'
+import type { Placement, SpaceKind } from '../types/doc'
+import type { Program, RoomReq } from '../types/program'
+import type { EditorCanvas } from '../editor/EditorCanvas'
+import { DEFAULT_PROGRAM } from '../types/program'
 import type { Drawing } from '../import/types'
 import { triggerDownload } from '../export/png'
 

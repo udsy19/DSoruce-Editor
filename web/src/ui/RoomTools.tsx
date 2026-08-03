@@ -1,4 +1,5 @@
-import { EditorCanvas, DocZone, ZoneType, RoomSelection } from '../editor/EditorCanvas'
+import type { DocZone, ZoneType, RoomSelection } from '../types/doc'
+import { EditorCanvas } from '../editor/EditorCanvas'
 import { Icon } from './icons'
 
 // Room types offered in the "Assign to" dropdown (order = the design doc's

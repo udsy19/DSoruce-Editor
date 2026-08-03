@@ -1,5 +1,7 @@
 import { useRef, useState } from 'react'
-import { EditorCanvas, Program, DocZone } from '../editor/EditorCanvas'
+import type { DocZone } from '../types/doc'
+import type { Program } from '../types/program'
+import { EditorCanvas } from '../editor/EditorCanvas'
 import { AgentDriver, DriverContext, PreviewDiff, ToolCall } from './contract'
 import { applyLive, preview } from './engine'
 

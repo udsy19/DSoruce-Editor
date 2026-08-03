@@ -13,7 +13,8 @@
 // pre-encoded JPEG bytes + a flat list of content ops, so it can be unit-tested
 // in node where canvas APIs don't exist.
 
-import type { DocState, DocComponent, Metrics } from '../editor/EditorCanvas'
+import type { DocState, DocComponent } from '../types/doc'
+import type { Metrics } from '../types/metrics'
 import { drawFurnitureSymbol } from '../editor/furniture'
 import type { Drawing, DrawEntity } from '../import/types'
 import { CATEGORY_COLOR } from '../import/types'

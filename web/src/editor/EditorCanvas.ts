@@ -20,168 +20,46 @@ import { evaluatorAvailable } from '../ai/evaluator'
 import { applyDelta, proposeAdjustment, refScore, type ProgramDelta } from '../ai/refine'
 import { proposeDesign, proposeDesignOptions, applyDesignSpec, DESIGN_OBJECTIVES, type DesignSpec, type DesignObjective } from '../ai/designer'
 
-// Types mirroring the Rust core's serialized document (serde field names).
-export interface DocWall {
-  id: number
-  a: { x: number; y: number }
-  b: { x: number; y: number }
-  thickness: number
-  /** Emitted by the test-fit generator (room partitions); re-emitted per run. */
-  generated?: boolean
-  /** Glazed partition (glass front) — triple-line in 2D, translucent in 3D. */
-  glazing?: boolean
-}
-export interface DocComponent {
-  id: number
-  category: string
-  x: number
-  y: number
-  w: number
-  h: number
-  rotation: number
-  /** Hinge handedness (doors only): reflect the symbol across its long axis. serde
-   *  defaults false, so pre-mirror snapshots + generated components read as false. */
-  mirror?: boolean
-  /** Passive REFERENCE facet: imported/legacy CAD furniture drawn for context but
-   *  NOT counted in any metric (workstations, pax, cost, CO2). serde defaults false,
-   *  so generated/placed content counts (see `Component::reference`, Rust core). */
-  reference?: boolean
-  label: string
-  product_id: string | null
-  decision: 'Open' | 'InReview' | 'Confirmed'
-}
-/** Read-only geometry facet of a selection, surfaced to the object inspector. */
-export type SelectedInfo =
-  | {
-      kind: 'component'
-      id: number
-      category: string
-      x: number
-      y: number
-      w: number
-      h: number
-      rotation: number
-      label: string
-      product_id: string | null
-      decision: 'Open' | 'InReview' | 'Confirmed'
-    }
-  | {
-      kind: 'wall'
-      id: number
-      length: number
-      thickness: number
-      a: { x: number; y: number }
-      b: { x: number; y: number }
-    }
-/** Partial edit applied by `updateSelected` (rotation in radians). */
-export interface SelectedPatch {
-  x?: number
-  y?: number
-  w?: number
-  h?: number
-  rotation?: number
-  category?: string
-  decision?: string
-  product_id?: string
-  product_name?: string
-}
-export type ZoneType =
-  | 'Circulation'
-  | 'Workspace'
-  | 'Meeting'
-  | 'Collaboration'
-  | 'Core'
-  | 'ClosedOffice'
-  | 'Amenity'
-export type ZoneShape =
-  | { kind: 'Rect'; x: number; y: number; w: number; h: number }
-  | { kind: 'RectRing'; x: number; y: number; w: number; h: number; in_w: number; in_h: number }
-  // Boundary-conforming filled polygon (world meters): a zone that hugs an
-  // angled/stepped wall edge-to-edge. Non-draggable/rotatable in v1 (edit guards
-  // gate on `kind !== 'Rect'`).
-  | { kind: 'Poly'; pts: [number, number][] }
-export interface DocZone {
-  id: number
-  zone_type: ZoneType
-  shape: ZoneShape
-  label: string
-  component_ids: number[]
-}
-/** A position-pinned room request (mirrors Rust `document::Anchor`). Rides
- *  `state()`; pushed via `Editor.add_anchor` (workflow.md §3.5). */
-export interface DocAnchor {
-  kind: SpaceKind
-  x: number
-  y: number
-}
-export interface DocState {
-  walls: DocWall[]
-  components: DocComponent[]
-  zones?: DocZone[]
-  /** Doc-level anchor pins (optional; empty/absent on pre-S6 docs). */
-  anchors?: DocAnchor[]
-  selection: number | null
-}
-export interface Metrics {
-  floor_area: number
-  wall_count: number
-  component_count: number
-  confirmed: number
-  // Slice 2 additive Statistics-panel fields (optional for backward-compat).
-  gross_external_area?: number
-  net_internal_area?: number
-  workstations?: number
-  area_per_workstation?: number
-  efficiency_pct?: number
-  indicative_cost?: number
-  /** Σ observed ₹ prices of bank-bound components (specified furniture capex). */
-  specified_cost?: number
-  indicative_carbon?: number
-}
-export interface ZoneStat {
-  id: number
-  zone_type: ZoneType
-  label: string
-  area: number
-  capacity: number
-  seated: number
-  pct_of_nia: number
-}
+// The document/metrics/program type layer lives in `web/src/types/` so the ~25
+// modules that only need the vocabulary (exporters, three/, ai/, persist/) can
+// import it without pulling in the canvas. Re-exported here so existing
+// importers keep working; migrate to `../types/*` directly.
+export type {
+  DocWall,
+  DocComponent,
+  SelectedInfo,
+  SelectedPatch,
+  ZoneType,
+  ZoneShape,
+  DocZone,
+  DocAnchor,
+  DocState,
+  SpaceKind,
+  Placement,
+  RoomSelection,
+} from '../types/doc'
+export { ZONE_LABEL } from '../types/doc'
+export type { Metrics, ZoneStat, LayoutScore, CirculationScore } from '../types/metrics'
+export type { RoomReq, Program, Candidate, GenResult } from '../types/program'
+export { DEFAULT_PROGRAM } from '../types/program'
+
+import type {
+  DocComponent,
+  DocState,
+  DocWall,
+  DocZone,
+  RoomSelection,
+  SelectedInfo,
+  SelectedPatch,
+  SpaceKind,
+  ZoneType,
+} from '../types/doc'
+import { ZONE_LABEL } from '../types/doc'
+import type { CirculationScore, LayoutScore, Metrics, ZoneStat } from '../types/metrics'
+import type { Candidate, GenResult, Program } from '../types/program'
+import { DEFAULT_PROGRAM } from '../types/program'
 
 export type ToolId = string // 'select' | 'wall' | 'place:<Category>'
-
-/** The core's room-type vocabulary (mirrors Rust `layout::SpaceKind`). A
- *  `RoomReq.kind` names one of these by string; the Program builder's richer
- *  vocabulary (Executive/Large/Medium office, XL conference, …) maps onto these
- *  at different footprints (see `program/spec.ts`). */
-export type SpaceKind =
-  | 'Meeting'
-  | 'Cabin'
-  | 'Meeting4P'
-  | 'Meeting6P'
-  | 'Boardroom'
-  | 'PhoneBooth'
-  | 'Focus'
-  | 'Collab'
-  | 'Reception'
-  | 'Pantry'
-  | 'Print'
-  | 'ItServer'
-  | 'Storage'
-  | 'Wellness'
-/** Facade preference for an explicit room (mirrors Rust `layout::Placement`). */
-export type Placement = 'Window' | 'Core' | 'Flexible'
-/** One explicit room request from the Detailed program builder (mirrors Rust
- *  `layout::RoomReq`). Serializes 1:1 to the wasm `generate` program. */
-export interface RoomReq {
-  kind: SpaceKind
-  count: number
-  /** Corridor-run width (m); omitted → the kind's default footprint. */
-  w?: number
-  /** Depth (m); omitted → the kind's default. */
-  d?: number
-  placement?: Placement
-}
 
 /** A room tag computed by drawZones, drawn above furniture by drawZoneTags. */
 interface ZoneTag {
@@ -200,95 +78,6 @@ export type { Strategy } from './strategy'
 export { STRATEGIES, STRATEGY_LABEL, STRATEGY_BLURB } from './strategy'
 import type { Strategy } from './strategy'
 import { STRATEGIES, STRATEGY_SEED_STRIDE, seedWindowOffset } from './strategy'
-
-/** Test-fit program + objective weights (mirrors Rust `layout::Program`). */
-export interface Program {
-  desks: number
-  meeting_rooms: number
-  desk_w: number
-  desk_h: number
-  meeting_w: number
-  meeting_h: number
-  cluster_cols: number
-  target_corridor_m: number
-  desk_clearance_m: number
-  /** Back-to-back paired desk rows (real-world bench desking). */
-  bench_pairs: boolean
-  /** Derive + place the full professional support program (cabins, phone booths,
-   * focus, pantry, reception, print, IT, storage, wellness — spec §1.1) alongside
-   * the desks/meetings. Default true. */
-  support_spaces: boolean
-  /** Design headcount N. When set, drives `SpaceProgram::derive`; when omitted it
-   * is inferred from the desk target (desks ≈ 0.85·N). Absent → Rust `None`. */
-  headcount?: number
-  /** Explicit room program from the Detailed builder (workflow.md §3.4). Empty →
-   * the derived support program + `meeting_rooms` override (today's behaviour);
-   * non-empty → these rooms replace it, counts + placement bias honored. */
-  rooms?: RoomReq[]
-  /** Space-planning strategy (M7). Absent → Rust `Balanced` (today's behaviour).
-   *  `autoGenerate` injects one per alternative so the gallery's A/B/C are
-   *  strategically distinct; an explicit `rooms` program pins the counts so a
-   *  strategy then only varies layout/scoring, never the counts. */
-  strategy?: Strategy
-  w_capacity: number
-  w_adjacency: number
-  w_circulation: number
-  w_density: number
-  /** Weight of `program_fit` (delivered vs derived room program). */
-  w_program: number
-  /** Weight of `daylight` (% desks near the facade — M5). */
-  w_daylight: number
-  /** Weight of `entry_adjacency` (reception near entry, pantry far — M5). */
-  w_entry: number
-}
-export interface LayoutScore {
-  capacity: number
-  adjacency: number
-  circulation: number
-  /** m²/person NIA density, peaking in the professional 8–12 band (M5). */
-  density: number
-  /** Delivered vs derived room program, 0..100 (M3/M4). */
-  program_fit: number
-  /** % of workstations within reach of the facade (M5). */
-  daylight: number
-  /** Entry narrative: reception near the entry, pantry far (M5). */
-  entry_adjacency: number
-  total: number
-  placed_desks: number
-}
-export interface CirculationScore {
-  score: number
-  reachable_free_area: number
-  floor_area: number
-  circulation_ratio: number
-  min_corridor_width: number
-  mean_clearance: number
-  pct_corridors_below_min: number
-  largest_connected_free_region: number
-  enclosed: boolean
-  grid_cols: number
-  grid_rows: number
-  cell_size: number
-}
-/** One retained test-fit option from the autonomous search (Laiout-style gallery). */
-export interface Candidate {
-  seed: number
-  /** Which strategy produced this option — the gallery labels A/B/C by it, and
-   *  reproducing the exact plan needs the (strategy, seed) pair. */
-  strategy: Strategy
-  score: LayoutScore
-  /** Opaque document snapshot — pass to `applyCandidate` to make it live. */
-  snap: unknown
-  /** Small plan-schematic dataURL for the gallery card. */
-  thumb: string
-}
-export interface GenResult {
-  best: LayoutScore
-  iterations: number
-  seed: number
-  /** Top-K distinct candidates, best first. */
-  candidates: Candidate[]
-}
 
 /** One objective-optimised design option (Laiout-style) from {@link EditorCanvas.designOptions}:
  *  Claude's spec + the realised fit + its headline metric, snapshot-backed. */
@@ -337,29 +126,6 @@ export interface RefineOutcome {
   improved: boolean
   /** false = clean no-op (no Claude key): `result` is the plain autoGenerate run. */
   ranAI: boolean
-}
-
-/** Default program — the single source used by the generate card and the AI. */
-export const DEFAULT_PROGRAM: Program = {
-  desks: 20,
-  meeting_rooms: 2,
-  desk_w: 1.6,
-  desk_h: 0.8,
-  meeting_w: 3,
-  meeting_h: 3,
-  cluster_cols: 4,
-  target_corridor_m: 1.2,
-  desk_clearance_m: 0.9,
-  bench_pairs: true,
-  support_spaces: true,
-  rooms: [],
-  w_capacity: 0.35,
-  w_adjacency: 0.2,
-  w_circulation: 0.25,
-  w_density: 0.2,
-  w_program: 0.1,
-  w_daylight: 0.05,
-  w_entry: 0.05,
 }
 
 /** Resolved dynamic-input candidate for the current frame (see dynResolve). */
@@ -427,24 +193,6 @@ const ZONE: Record<string, { fill: string; line: string }> = {
   Core: { fill: '#eceef1', line: '#8b939e' },
   ClosedOffice: { fill: '#fce6d6', line: '#cb8150' },
   Amenity: { fill: '#d9f0ef', line: '#3f9c95' },
-}
-
-/** Default room name per zone type, applied when a room is reclassified. */
-export const ZONE_LABEL: Record<ZoneType, string> = {
-  Circulation: 'Circulation',
-  Workspace: 'Open Workspace',
-  Meeting: 'Meeting Room',
-  Collaboration: 'Collaboration',
-  Core: 'Core',
-  ClosedOffice: 'Closed Office',
-  Amenity: 'Amenity',
-}
-
-/** A selected room + its on-screen box, handed to the floating `RoomTools`. */
-export interface RoomSelection {
-  zone: DocZone
-  /** Room bounding box in canvas CSS px (top-left origin). */
-  box: { left: number; top: number; width: number; height: number }
 }
 
 // Resize-handle order: TL, T, TR, R, BR, B, BL, L — with matching cursors.

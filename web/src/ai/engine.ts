@@ -3,12 +3,9 @@
 // on the clone, read the REAL Rust metrics, and diff — no duplicated metric math,
 // no flicker on the live canvas.
 import { Editor } from '../wasm/ds_core'
-import {
-  EditorCanvas,
-  Metrics,
-  DocState,
-  CirculationScore,
-} from '../editor/EditorCanvas'
+import type { DocState } from '../types/doc'
+import type { Metrics, CirculationScore } from '../types/metrics'
+import { EditorCanvas } from '../editor/EditorCanvas'
 import { ToolCall, PreviewDiff, MetricDelta, Consequence } from './contract'
 
 const MIN_CORRIDOR = 1.5 // m — NBC 2016 Part 4 business-corridor minimum (India-first)
