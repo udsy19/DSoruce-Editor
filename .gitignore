@@ -41,3 +41,6 @@ docs/reference/qbiq/extracted/Rendered Images Samples from Qbiq/
 docs/reference/qbiq/extracted/**/__MACOSX/
 **/.DS_Store
 docs/reference/rayon-output/*.pdf
+
+# generated knowledge graph (rebuild with /graphify)
+graphify-out/
