@@ -1,6 +1,5 @@
 import init, { Editor } from '../wasm/ds_core'
 import { catByCategory } from './catalog'
-import { drawFurnitureSymbol } from './furniture'
 import { CadController } from '../cad/controller'
 import { entityBBox } from '../cad/render'
 import type { CadEntity, SnapContext, Vec2, SnapResult } from '../cad/model'
@@ -16,9 +15,40 @@ import {
   type PolarOpts,
 } from '../cad/dynamicInput'
 import { fmtMeters, parseDim, endpointForLength } from '../cad/dimEdit'
-import { evaluatorAvailable } from '../ai/evaluator'
-import { applyDelta, proposeAdjustment, refScore, type ProgramDelta } from '../ai/refine'
-import { proposeDesign, proposeDesignOptions, applyDesignSpec, DESIGN_OBJECTIVES, type DesignSpec, type DesignObjective } from '../ai/designer'
+// The 2D paint layer, the direct-manipulation editing layer, and the autonomous
+// search loop each live in their own module; this class is the façade that owns
+// the canvas, routes input, and delegates to them (see the file docs there).
+import {
+  C,
+  clampN,
+  distToPoly,
+  drawComponent,
+  drawDimChip,
+  drawDimLabel,
+  drawGlazing,
+  drawGrid,
+  drawRoomSelection,
+  drawRulers,
+  drawSegment,
+  drawSummary,
+  drawZones,
+  drawZoneTags,
+  wallBbox,
+  wallStyle,
+  type PaintView,
+  type ZoneTag,
+} from './paint'
+import { RoomInteraction, SNAP_M, updateSelectedComponent, type RoomHost } from './interaction'
+import {
+  autoGenerate,
+  designOptions,
+  designWithAI,
+  refineWithAI,
+  type DesignOptionResult,
+  type RefineOutcome,
+  type SearchHost,
+} from './search'
+import type { DesignSpec } from '../ai/designer'
 
 // The document/metrics/program type layer lives in `web/src/types/` so the ~25
 // modules that only need the vocabulary (exporters, three/, ai/, persist/) can
@@ -42,6 +72,10 @@ export { ZONE_LABEL } from '../types/doc'
 export type { Metrics, ZoneStat, LayoutScore, CirculationScore } from '../types/metrics'
 export type { RoomReq, Program, Candidate, GenResult } from '../types/program'
 export { DEFAULT_PROGRAM } from '../types/program'
+// Re-exported from the extracted modules so every existing importer keeps its
+// single `EditorCanvas` entry point.
+export { renderThumb, distToPoly } from './paint'
+export type { DesignOptionResult, RefineStep, RefineOutcome } from './search'
 
 import type {
   DocComponent,
@@ -51,82 +85,24 @@ import type {
   RoomSelection,
   SelectedInfo,
   SelectedPatch,
-  SpaceKind,
   ZoneType,
 } from '../types/doc'
-import { ZONE_LABEL } from '../types/doc'
 import type { CirculationScore, LayoutScore, Metrics, ZoneStat } from '../types/metrics'
-import type { Candidate, GenResult, Program } from '../types/program'
+import type { GenResult, Program } from '../types/program'
 import { DEFAULT_PROGRAM } from '../types/program'
 
 export type ToolId = string // 'select' | 'wall' | 'place:<Category>'
-
-/** A room tag computed by drawZones, drawn above furniture by drawZoneTags. */
-interface ZoneTag {
-  name: string
-  metrics: string | null
-  cx: number
-  cy: number
-  namePx: number
-  color: string
-}
 
 // Space-planning strategies live in a dependency-free module (unit-testable in
 // node); re-exported here so existing importers keep the single `EditorCanvas`
 // entry point.
 export type { Strategy } from './strategy'
 export { STRATEGIES, STRATEGY_LABEL, STRATEGY_BLURB } from './strategy'
-import type { Strategy } from './strategy'
-import { STRATEGIES, STRATEGY_SEED_STRIDE, seedWindowOffset } from './strategy'
 
-/** One objective-optimised design option (Laiout-style) from {@link EditorCanvas.designOptions}:
- *  Claude's spec + the realised fit + its headline metric, snapshot-backed. */
-export interface DesignOptionResult {
-  objective: DesignObjective
-  spec: DesignSpec
-  score: LayoutScore
-  /** Placed workstations. */
-  pax: number
-  /** Indicative fit-out cost (₹). */
-  cost: number
-  /** Indicative embodied carbon (kgCO₂e). */
-  carbon: number
-  /** Net internal area (m²). */
-  nia: number
-  /** Opaque snapshot — pass to `applyCandidate` to make this option live. */
-  snapshot: string
-  thumb: string
-}
-
-/** One reasoning step of the AI refinement loop (surfaced in the UI trace). */
-export interface RefineStep {
-  iteration: number
-  /** Claude's one-line reason for this adjustment. */
-  rationale: string
-  /** The bounded, clamped program delta it proposed. */
-  delta: ProgramDelta
-  /** Fixed-weight yardstick score before and after applying + regenerating. */
-  scoreBefore: number
-  scoreAfter: number
-  /** Kept (improved the yardstick) or reverted. */
-  accepted: boolean
-}
-
-/** Result of {@link EditorCanvas.refineWithAI}: the (best) generation now live,
- *  plus the reasoning trace so the UI can show before→after + rationale. */
-export interface RefineOutcome {
-  /** The winning generation — what is live on the canvas. */
-  result: GenResult
-  /** The (possibly adjusted) program that produced it. */
-  program: Program
-  steps: RefineStep[]
-  /** Fixed-weight yardstick of the initial vs final winner. */
-  baseScore: number
-  finalScore: number
-  improved: boolean
-  /** false = clean no-op (no Claude key): `result` is the plain autoGenerate run. */
-  ranAI: boolean
-}
+/** Everything the extracted paint / interaction / search modules read back from
+ *  the canvas. The class hands them a getter-backed live view of itself, so they
+ *  always see the current core + viewport and never cache document state. */
+type CanvasHost = PaintView & RoomHost & SearchHost
 
 /** Resolved dynamic-input candidate for the current frame (see dynResolve). */
 interface DynResolved {
@@ -141,82 +117,18 @@ interface DynResolved {
   snapped: boolean
 }
 
-const GRID_M = 1 // 1-meter minor grid
-const MAJOR_EVERY = 5 // heavier line every 5 m
-const SNAP_M = 0.1 // 10 cm snap
-const RULER = 22 // px ruler gutter (top + left)
-
-// Light "floor-plate" palette — mirrors styles.css tokens (Laiout aesthetic).
-const C = {
-  surface: '#ffffff', // floor plate
-  mat: '#eef0f4', // outside the building footprint (a touch deeper so the plate lifts)
-  gridMinor: 'rgba(23,26,30,0.035)',
-  gridMajor: 'rgba(23,26,30,0.075)',
-  axis: 'rgba(45,91,214,0.18)',
-  wall: '#2b313a', // interior partitions — medium
-  wallExt: '#1b1f25', // exterior/structural — darkest, but crisp (not a fat marker)
-  wallGen: '#525a65', // generated partitions — lightest ink in the hierarchy
-  // Matches DrawingCanvas FURNITURE_LINE so generated + imported plans read alike.
-  furniture: '#565e69',
-  // Secondary furniture detail (keyboard, armrests, backrest ticks) — a mid gray
-  // that stays legible over the pastel zone (the old #b4b9c1 read as faint).
-  furnitureDetail: '#9aa1ab',
-  // Solid worktop/table fill so a desk reads as an object, not a hollow outline.
-  furnitureFill: 'rgba(255,255,255,0.86)',
-  // Chair/upholstery seat fill — a light cool neutral that sits on any pastel.
-  furnitureSeat: '#e7eaee',
-  // Passive as-drawn reference furniture (imported, not counted): muted so the
-  // generated fit reads as the primary content and context sits quietly behind it.
-  furnitureRef: '#b7bdc5',
-  labelSub: '#5f6771', // zone-tag metrics line (area · pax)
-  preview: 'rgba(45,91,214,0.70)',
-  accent: '#2d5bd6',
-  label: '#1a1d21',
-  rulerBg: '#ffffff',
-  rulerCorner: '#f7f8fa',
-  rulerText: '#9aa2ad',
-  rulerTick: 'rgba(23,26,30,0.18)',
-}
-
-const DECISION_DOT: Record<string, string> = {
-  Confirmed: '#2fa36b',
-  InReview: '#e0952b',
-  Open: '#9aa2ad',
-}
-
-// Zone fills keyed by ZoneType serde tag → { fill, line } (Laiout pastels).
-const ZONE: Record<string, { fill: string; line: string }> = {
-  Circulation: { fill: '#dcebfb', line: '#4a82c4' },
-  Workspace: { fill: '#fbf3d6', line: '#b99527' },
-  Meeting: { fill: '#e9e3f7', line: '#7e63c0' },
-  Collaboration: { fill: '#def1e2', line: '#4b9e66' },
-  Core: { fill: '#eceef1', line: '#8b939e' },
-  ClosedOffice: { fill: '#fce6d6', line: '#cb8150' },
-  Amenity: { fill: '#d9f0ef', line: '#3f9c95' },
-}
-
-// Resize-handle order: TL, T, TR, R, BR, B, BL, L — with matching cursors.
-const ROOM_MIN_M = 1.0 // a room can't be dragged smaller than 1 m on a side
-const HANDLE_HIT_PX = 8 // grab radius around a handle
 // frameContent tuning (see the method for rationale):
 const FRAME_MIN_VIEWPORT_PX = 40 // below this the canvas isn't really laid out → retry
 const FRAME_MAX_RETRIES = 30 // ~0.5 s of rAF before giving up (canvas genuinely hidden)
 const FRAME_ENTITY_MARGIN = 1.0 // admit CAD entities within 1× the shell span of it
-const HANDLE_CURSOR = [
-  'nwse-resize',
-  'ns-resize',
-  'nesw-resize',
-  'ew-resize',
-  'nwse-resize',
-  'ns-resize',
-  'nesw-resize',
-  'ew-resize',
-]
 
 /**
- * Owns the canvas: transforms, input, and 2D rendering. All document mutations
- * go through the Rust `Editor`; this class re-reads `state()` to draw. Rendering
- * is TS-side for now and migrates into a Rust/WebGL renderer later
+ * Owns the canvas: transforms, input, and the render pass. All document
+ * mutations go through the Rust `Editor`; this class re-reads `state()` to draw.
+ * It is the PUBLIC FAÇADE of the editor — the draw primitives (`./paint`), the
+ * direct-manipulation editing (`./interaction`) and the autonomous search
+ * (`./search`) live in their own modules and are delegated to from here.
+ * Rendering is TS-side for now and migrates into a Rust/WebGL renderer later
  * (docs/adr/0001-rendering-staging.md).
  */
 export class EditorCanvas {
@@ -260,22 +172,10 @@ export class EditorCanvas {
   selectedZoneId: number | null = null
   /** Notified when the selected room (or its screen box) changes; null on deselect. */
   onRoom: ((sel: RoomSelection | null) => void) | null = null
-  private roomDrag: {
-    zoneId: number
-    start: { x: number; y: number }
-    zone0: { x: number; y: number; w: number; h: number }
-    comps: { id: number; x0: number; y0: number }[]
-    walls: { id: number; ax0: number; ay0: number; bx0: number; by0: number }[]
-  } | null = null
-  private roomResize: {
-    zoneId: number
-    handle: number
-    zone0: { x: number; y: number; w: number; h: number }
-    // members stored as fractions of the room box so they re-flow on resize
-    comps: { id: number; fx: number; fy: number }[]
-    walls: { id: number; afx: number; afy: number; bfx: number; bfy: number }[]
-  } | null = null
-  private lastRoomKey: string | null = null
+  /** Room select/drag/resize + the contextual room ops (see ./interaction). */
+  private rooms!: RoomInteraction
+  /** Live view of this canvas handed to paint / interaction / search. */
+  private host!: CanvasHost
 
   // ---- dynamic input (cursor-first typed Distance/Angle, M1) ----
   /** Typed Distance/Angle buffers for the in-progress Line/Wall segment. */
@@ -315,6 +215,56 @@ export class EditorCanvas {
     const ctx = canvas.getContext('2d')
     if (!ctx) throw new Error('2D canvas context unavailable')
     this.ctx = ctx
+    // One live, getter-backed view of this canvas for every extracted module —
+    // `ed` (swapped by clearAll), the viewport and the room selection are always
+    // read through, never snapshotted, so nothing can drift from the core.
+    const self = this
+    this.host = {
+      get ed() {
+        return self.ed
+      },
+      get ctx() {
+        return self.ctx
+      },
+      get scale() {
+        return self.scale
+      },
+      get offset() {
+        return self.offset
+      },
+      get presentation() {
+        return self.presentation
+      },
+      get selectedZoneId() {
+        return self.selectedZoneId
+      },
+      set selectedZoneId(id: number | null) {
+        self.selectedZoneId = id
+      },
+      get onRoom() {
+        return self.onRoom
+      },
+      get program() {
+        return self.program
+      },
+      set program(p: Program) {
+        self.program = p
+      },
+      toScreen: (wx, wy) => this.toScreen(wx, wy),
+      toWorld: (sx, sy) => this.toWorld(sx, sy),
+      getState: () => this.getState(),
+      getMetrics: () => this.getMetrics(),
+      getZoneStats: () => this.getZoneStats(),
+      snapshot: () => this.snapshot(),
+      restore: (snap) => this.restore(snap),
+      hydrateCad: () => this.hydrateCad(),
+      commit: () => this.commit(),
+      generateOnce: (program, seed, keepConfirmed) => this.generateOnce(program, seed, keepConfirmed),
+      setCursor: (cursor) => {
+        this.canvas.style.cursor = cursor
+      },
+    }
+    this.rooms = new RoomInteraction(this.host)
     this.cad = new CadController({
       toScreen: (p) => this.toScreen(p.x, p.y),
       toWorld: (sx, sy) => this.toWorld(sx, sy),
@@ -598,54 +548,15 @@ export class EditorCanvas {
   private drawDimChips() {
     if (this.presentation) return
     if (this.tool === 'wall') {
-      for (const w of this.getState().walls) this.drawDimChip(w.a, w.b)
+      for (const w of this.getState().walls) drawDimChip(this.host, w.a, w.b)
       const r = this.dynResolved
-      if (this.wallStart && r) this.drawDimChip(this.wallStart, r.point, r.angleDeg, true, r.snapped)
+      if (this.wallStart && r) drawDimChip(this.host, this.wallStart, r.point, r.angleDeg, true, r.snapped)
     } else if (this.cad.active && this.cad.currentId === 'line') {
-      for (const e of this.cad.store.entities) if (e.kind === 'line') this.drawDimChip(e.a, e.b)
+      for (const e of this.cad.store.entities) if (e.kind === 'line') drawDimChip(this.host, e.a, e.b)
       const anchor = this.cad.anchor()
       const r = this.dynResolved
-      if (anchor && r) this.drawDimChip(anchor, r.point, r.angleDeg, true, r.snapped)
+      if (anchor && r) drawDimChip(this.host, anchor, r.point, r.angleDeg, true, r.snapped)
     }
-  }
-
-  private drawDimChip(a: Vec2, b: Vec2, angleDeg?: number, live = false, snapped = false) {
-    const len = Math.hypot(b.x - a.x, b.y - a.y)
-    if (len < 0.02) return
-    const ctx = this.ctx
-    const mid = this.toScreen((a.x + b.x) / 2, (a.y + b.y) / 2)
-    const label =
-      angleDeg != null ? `${fmtMeters(len)}  ${Math.round(angleDeg)}°` : fmtMeters(len)
-    ctx.save()
-    ctx.font = '10px "IBM Plex Mono", ui-monospace, monospace'
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    const w = ctx.measureText(label).width
-    // Live (in-progress) chip reads as a filled accent pill; committed chips are
-    // quiet accent-on-paper labels (dimension-label style from render.ts).
-    ctx.fillStyle = live ? (snapped ? '#1d47c0' : 'rgba(45,91,214,0.92)') : 'rgba(255,255,255,0.9)'
-    this.roundRect(ctx, mid.x - w / 2 - 5, mid.y - 8.5, w + 10, 17, 4)
-    ctx.fill()
-    ctx.fillStyle = live ? '#ffffff' : C.accent
-    ctx.fillText(label, mid.x, mid.y)
-    ctx.restore()
-  }
-
-  private roundRect(
-    ctx: CanvasRenderingContext2D,
-    x: number,
-    y: number,
-    w: number,
-    h: number,
-    r: number,
-  ) {
-    ctx.beginPath()
-    ctx.moveTo(x + r, y)
-    ctx.arcTo(x + w, y, x + w, y + h, r)
-    ctx.arcTo(x + w, y + h, x, y + h, r)
-    ctx.arcTo(x, y + h, x, y, r)
-    ctx.arcTo(x, y, x + w, y, r)
-    ctx.closePath()
   }
 
   // ---- selection dimensions + click-to-edit (M4, Rayon "the dimension IS the
@@ -699,10 +610,10 @@ export class EditorCanvas {
       const hp = edge(hw, 0) // right
       const xp = edge(0, hh) // bottom
       const yp = edge(-hw, 0) // left
-      this.drawDimLabel(wp.x, wp.y, fmtMeters(c.w), false)
-      this.drawDimLabel(hp.x, hp.y, fmtMeters(c.h), false)
-      this.drawDimLabel(xp.x, xp.y, `X ${c.x.toFixed(2)}`, true, 'compX', c.id)
-      this.drawDimLabel(yp.x, yp.y, `Y ${c.y.toFixed(2)}`, true, 'compY', c.id)
+      this.dimLabel(wp.x, wp.y, fmtMeters(c.w), false)
+      this.dimLabel(hp.x, hp.y, fmtMeters(c.h), false)
+      this.dimLabel(xp.x, xp.y, `X ${c.x.toFixed(2)}`, true, 'compX', c.id)
+      this.dimLabel(yp.x, yp.y, `Y ${c.y.toFixed(2)}`, true, 'compY', c.id)
       return
     }
 
@@ -710,14 +621,14 @@ export class EditorCanvas {
     if (ln && this.cad.active) {
       const len = Math.hypot(ln.b.x - ln.a.x, ln.b.y - ln.a.y)
       const mid = this.toScreen((ln.a.x + ln.b.x) / 2, (ln.a.y + ln.b.y) / 2)
-      this.drawDimLabel(mid.x, mid.y, fmtMeters(len), true, 'lineLen', ln.id)
+      this.dimLabel(mid.x, mid.y, fmtMeters(len), true, 'lineLen', ln.id)
     }
   }
 
-  /** Draw one selection-dimension pill (M1 chip visual language: editable →
-   *  filled accent, informational → quiet paper). Records a hitbox when editable
-   *  so {@link tryOpenDimEditor} can route a click to the inline editor. */
-  private drawDimLabel(
+  /** Paint one selection-dimension pill and, when it is editable, record its box
+   *  as a click target so {@link tryOpenDimEditor} can route a click to the
+   *  inline editor. The pill the open editor covers is skipped. */
+  private dimLabel(
     cx: number,
     cy: number,
     text: string,
@@ -725,34 +636,10 @@ export class EditorCanvas {
     kind?: 'compX' | 'compY' | 'lineLen',
     targetId?: number,
   ) {
-    const ctx = this.ctx
-    ctx.save()
-    ctx.font = '10px "IBM Plex Mono", ui-monospace, monospace'
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    const tw = ctx.measureText(text).width
-    const w = tw + 12
-    const h = 17
-    const x = cx - w / 2
-    const y = cy - h / 2
-    // Skip the pill that the inline editor is currently covering.
     const hidden = editable && this.dimEditing?.kind === kind && this.dimEditing?.targetId === targetId
-    if (!hidden) {
-      ctx.fillStyle = editable ? C.accent : 'rgba(255,255,255,0.9)'
-      this.roundRect(ctx, x, y, w, h, 4)
-      ctx.fill()
-      if (!editable) {
-        ctx.strokeStyle = 'rgba(45,91,214,0.28)'
-        ctx.lineWidth = 1
-        this.roundRect(ctx, x + 0.5, y + 0.5, w - 1, h - 1, 4)
-        ctx.stroke()
-      }
-      ctx.fillStyle = editable ? '#ffffff' : C.accent
-      ctx.fillText(text, cx, cy)
-    }
-    ctx.restore()
+    const box = drawDimLabel(this.host, cx, cy, text, editable, hidden)
     if (editable && kind && targetId != null) {
-      this.dimHits.push({ x, y, w, h, kind, targetId })
+      this.dimHits.push({ ...box, kind, targetId })
     }
   }
 
@@ -928,24 +815,7 @@ export class EditorCanvas {
    * component geometry/binding is editable today (walls are not select-hit).
    */
   updateSelected(patch: SelectedPatch) {
-    const s = this.getState()
-    const id = s.selection
-    if (id == null) return
-    const c = s.components.find((x) => x.id === id)
-    if (!c) return
-    if (patch.x !== undefined || patch.y !== undefined) {
-      this.ed.move_component(id, patch.x ?? c.x, patch.y ?? c.y)
-    }
-    if (patch.w !== undefined || patch.h !== undefined) {
-      this.ed.set_component_size(id, patch.w ?? c.w, patch.h ?? c.h)
-    }
-    if (patch.rotation !== undefined) this.ed.set_component_rotation(id, patch.rotation)
-    if (patch.category !== undefined) this.ed.set_component_category(id, patch.category)
-    if (patch.decision !== undefined) this.ed.set_decision(id, patch.decision)
-    if (patch.product_id !== undefined) {
-      this.ed.assign_product(id, patch.product_id, patch.product_name ?? c.label, undefined)
-    }
-    this.commit()
+    updateSelectedComponent(this.host, patch)
   }
   /** Enter/leave presentation ("paper") mode; repaints and notifies React so
    *  any toggle button can reflect the state. */
@@ -981,371 +851,45 @@ export class EditorCanvas {
     this.commit()
   }
 
-  // ---- rooms: selection + contextual ops (composed from core bindings) ----
-  private zones(): DocZone[] {
-    return this.getState().zones ?? []
-  }
-  private zoneById(id: number): DocZone | null {
-    return this.zones().find((z) => z.id === id) ?? null
-  }
+  // ---- rooms: selection + contextual ops (delegated to ./interaction) ----
   getSelectedZone(): DocZone | null {
-    return this.selectedZoneId == null ? null : this.zoneById(this.selectedZoneId)
+    return this.rooms.selectedZone()
   }
 
   /** Select a room by zone id (clears component selection); null to deselect. */
   selectRoom(id: number | null) {
-    this.selectedZoneId = id
-    if (id != null) this.ed.clear_selection()
-    this.emitRoom(true)
-    this.commit()
+    this.rooms.selectRoom(id)
   }
 
   /** Reclassify a room's type and rename it to that type's default label. */
   setZoneTypeRoom(id: number, type: ZoneType) {
-    this.ed.set_zone_type(id, type)
-    this.ed.rename_zone(id, ZONE_LABEL[type] ?? type)
-    this.selectedZoneId = id
-    this.emitRoom(true)
-    this.commit()
+    this.rooms.setZoneType(id, type)
   }
 
   /** Delete a room (its zone + the furniture inside it). */
   deleteRoom(id: number) {
-    this.ed.delete_zone(id)
-    this.selectRoom(null)
+    this.rooms.deleteRoom(id)
   }
 
   /** Split a rectangular room in half along its longer axis. */
   splitRoom(id: number) {
-    const z = this.zoneById(id)
-    if (!z || z.shape.kind !== 'Rect') return
-    const s = z.shape
-    if (s.w >= s.h) this.ed.split_zone(id, 'Vertical', s.x)
-    else this.ed.split_zone(id, 'Horizontal', s.y)
-    this.emitRoom(true)
-    this.commit()
+    this.rooms.splitRoom(id)
   }
 
   /** Duplicate a rectangular room + its furniture, offset into free space. */
   duplicateRoom(id: number) {
-    const z = this.zoneById(id)
-    if (!z || z.shape.kind !== 'Rect') return
-    const s = z.shape
-    const bb = this.wallWorldBBox()
-    // Offset by 1 m, clamped so the copy's bbox stays on the plate.
-    let off = 1
-    if (bb) off = Math.min(off, Math.max(0, bb.maxX - (s.x + s.w / 2)), Math.max(0, bb.maxY - (s.y + s.h / 2)))
-    const members = this.getState().components.filter((c) => z.component_ids.includes(c.id))
-    const newId = Number(this.ed.add_zone(z.zone_type, s.x + off, s.y + off, s.w, s.h, `${z.label} copy`))
-    for (const c of members) this.ed.add_component(c.category, c.x + off, c.y + off, c.w, c.h)
-    this.selectedZoneId = newId
-    this.emitRoom(true)
-    this.commit()
+    this.rooms.duplicateRoom(id)
   }
 
-  /**
-   * Rotate a rectangular room 90° clockwise about its center. The zone Rect
-   * swaps w/h (center fixed); every furniture member and interior wall is
-   * rotated about that center — positions turn AND each component gains 90° of
-   * `rotation` so the piece itself (chair/monitor) turns with the room. If the
-   * swapped box would leave the plate it's translated back on (everything with
-   * it, so members stay aligned). Rings aren't Rect → skipped, like resize.
-   * Four calls return to the original orientation (4×90° = identity).
-   */
+  /** Rotate a rectangular room 90° clockwise about its center (members turn
+   *  with it). Four calls return to the original orientation. */
   rotateRoom(id: number, deg = 90) {
-    const z = this.zoneById(id)
-    if (!z || z.shape.kind !== 'Rect') return // rings aren't rotatable (non-Rect)
-    const s = z.shape
-    const cx = s.x
-    const cy = s.y
-    // Number of clockwise quarter-turns (only 90° multiples keep an axis-aligned Rect).
-    const turns = ((Math.round(deg / 90) % 4) + 4) % 4
-    if (turns === 0) return
-    const quarter = (Math.PI / 2) * turns
-    // Clockwise quarter-turn about center in the Y-down plan: (dx,dy) → (-dy,dx).
-    const rot = (px: number, py: number) => {
-      let dx = px - cx
-      let dy = py - cy
-      for (let i = 0; i < turns; i++) {
-        const ndx = -dy
-        const ndy = dx
-        dx = ndx
-        dy = ndy
-      }
-      return { x: cx + dx, y: cy + dy }
-    }
-    // Odd turns swap w/h; even turns keep them.
-    const newW = turns % 2 === 1 ? s.h : s.w
-    const newH = turns % 2 === 1 ? s.w : s.h
-    // Clamp the swapped box back onto the plate; translate the whole room by the
-    // same (grid-snapped) delta so members stay aligned inside it.
-    const snap = (v: number) => Math.round(v / SNAP_M) * SNAP_M
-    let sdx = 0
-    let sdy = 0
-    const bb = this.wallWorldBBox()
-    if (bb) {
-      // If the swapped box can't fit the plate in an axis, no translation can
-      // bring it fully on-plate — clamping one edge would shove furniture off the
-      // opposite side (a wide room rotated onto a plate too short to hold its
-      // length). Refuse the rotation (no-op) rather than let furniture escape.
-      const eps = 1e-6
-      if (newW > bb.maxX - bb.minX + eps || newH > bb.maxY - bb.minY + eps) return
-      const left = cx - newW / 2
-      const right = cx + newW / 2
-      const top = cy - newH / 2
-      const bottom = cy + newH / 2
-      if (left < bb.minX) sdx = bb.minX - left
-      else if (right > bb.maxX) sdx = bb.maxX - right
-      if (top < bb.minY) sdy = bb.minY - top
-      else if (bottom > bb.maxY) sdy = bb.maxY - bottom
-    }
-    sdx = snap(sdx)
-    sdy = snap(sdy)
-    const members = this.getState().components.filter((c) => z.component_ids.includes(c.id))
-    for (const c of members) {
-      const p = rot(c.x, c.y)
-      this.ed.move_component(c.id, snap(p.x + sdx), snap(p.y + sdy))
-      // Normalize into [0, 2π) so 4 turns land exactly back on the original value.
-      const nr = (((c.rotation + quarter) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)
-      this.ed.set_component_rotation(c.id, nr)
-    }
-    for (const wl of this.interiorWalls(this.zoneWorldBBox(z))) {
-      const a = rot(wl.a.x, wl.a.y)
-      const b = rot(wl.b.x, wl.b.y)
-      this.ed.set_wall(wl.id, snap(a.x + sdx), snap(a.y + sdy), snap(b.x + sdx), snap(b.y + sdy))
-    }
-    this.ed.resize_zone(id, snap(cx + sdx), snap(cy + sdy), newW, newH)
-    // Permanent invariant (DEV): after a rotation every member must still sit on
-    // the plate. The fit-guard + shared translate guarantee this; a fire here
-    // means a regression in either. (snap can nudge a member ≤½ a grid cell past
-    // a wall, so allow SNAP_M/2 slack.)
-    if (import.meta.env.DEV && bb) {
-      const slack = SNAP_M / 2 + 1e-6
-      for (const c of this.getState().components.filter((m) => z.component_ids.includes(m.id))) {
-        if (c.x < bb.minX - slack || c.x > bb.maxX + slack || c.y < bb.minY - slack || c.y > bb.maxY + slack)
-          console.error(`rotateRoom: member ${c.id} escaped the plate at (${c.x}, ${c.y})`, bb)
-      }
-    }
-    this.selectedZoneId = id
-    this.emitRoom(true)
-    this.commit()
-  }
-
-  // ---- room geometry / hit-testing helpers ----
-  private wallWorldBBox() {
-    const bb = wallBbox(this.getState().walls)
-    return bb ? { minX: bb.minX, minY: bb.minY, maxX: bb.maxX, maxY: bb.maxY } : null
-  }
-  private zoneWorldBBox(z: DocZone) {
-    const s = z.shape
-    if (s.kind === 'Poly') {
-      let minX = Infinity
-      let minY = Infinity
-      let maxX = -Infinity
-      let maxY = -Infinity
-      for (const [px, py] of s.pts) {
-        minX = Math.min(minX, px)
-        minY = Math.min(minY, py)
-        maxX = Math.max(maxX, px)
-        maxY = Math.max(maxY, py)
-      }
-      return { minX, minY, maxX, maxY }
-    }
-    return { minX: s.x - s.w / 2, minY: s.y - s.h / 2, maxX: s.x + s.w / 2, maxY: s.y + s.h / 2 }
-  }
-  /** Selected room box in screen px (top-left origin). */
-  private roomScreenBox(z: DocZone) {
-    const bb = this.zoneWorldBBox(z)
-    const p0 = this.toScreen(bb.minX, bb.minY)
-    const p1 = this.toScreen(bb.maxX, bb.maxY)
-    return { x: p0.x, y: p0.y, w: p1.x - p0.x, h: p1.y - p0.y }
-  }
-  /** Topmost non-MeetingRoom component whose footprint covers world point w. */
-  private topFurnitureAt(w: { x: number; y: number }): DocComponent | null {
-    const comps = this.getState().components
-    for (let i = comps.length - 1; i >= 0; i--) {
-      const c = comps[i]
-      if (c.category === 'MeetingRoom') continue
-      if (Math.abs(c.x - w.x) <= c.w / 2 && Math.abs(c.y - w.y) <= c.h / 2) return c
-    }
-    return null
-  }
-  /** Index of the selected room's resize handle under screen point s, or null. */
-  private handleAt(s: { x: number; y: number }): number | null {
-    const z = this.getSelectedZone()
-    if (!z || z.shape.kind !== 'Rect') return null
-    const pts = handlePoints(this.roomScreenBox(z))
-    for (let i = 0; i < pts.length; i++) {
-      if (Math.abs(pts[i].x - s.x) <= HANDLE_HIT_PX && Math.abs(pts[i].y - s.y) <= HANDLE_HIT_PX) return i
-    }
-    return null
-  }
-
-  /** Walls that belong to a room and travel with it on drag/resize. Test is
-   *  boundary-INCLUSIVE (bbox expanded by `eps`): a room's own enclosing/partition
-   *  walls sit ON its bbox edges (endpoints at x≈minX/maxX or y≈minY/maxY), so a
-   *  strict interior test dropped them and they stayed behind on drag. The
-   *  expanded box still excludes a neighbour room's far wall (it lies beyond the
-   *  room's own perimeter by more than `eps`). */
-  private interiorWalls(bb: { minX: number; minY: number; maxX: number; maxY: number }) {
-    const eps = 0.15
-    const inside = (p: { x: number; y: number }) =>
-      p.x >= bb.minX - eps && p.x <= bb.maxX + eps && p.y >= bb.minY - eps && p.y <= bb.maxY + eps
-    return this.getState().walls.filter((wl) => inside(wl.a) && inside(wl.b))
-  }
-
-  // ---- room drag / resize (called from pointer handlers) ----
-  private beginRoomDrag(zoneId: number, w: { x: number; y: number }) {
-    const z = this.zoneById(zoneId)
-    // Rect and Poly rooms drag; a RectRing (perimeter circulation) doesn't.
-    // A Poly is dragged via its bounding box — the core exposes no Poly-preserving
-    // move (`resize_zone`/`add_zone` build only `Rect`), so the first grid-step of
-    // movement re-homes it as its rectangular footprint (honest limit; see
-    // updateRoomDrag). Seeding zone0 from the bbox makes both paths identical.
-    if (!z || (z.shape.kind !== 'Rect' && z.shape.kind !== 'Poly')) return
-    const bb = this.zoneWorldBBox(z)
-    const zone0 = {
-      x: (bb.minX + bb.maxX) / 2,
-      y: (bb.minY + bb.maxY) / 2,
-      w: bb.maxX - bb.minX,
-      h: bb.maxY - bb.minY,
-    }
-    const comps = this.getState()
-      .components.filter((c) => z.component_ids.includes(c.id))
-      .map((c) => ({ id: c.id, x0: c.x, y0: c.y }))
-    const walls = this.interiorWalls(bb).map((wl) => ({
-      id: wl.id,
-      ax0: wl.a.x,
-      ay0: wl.a.y,
-      bx0: wl.b.x,
-      by0: wl.b.y,
-    }))
-    this.roomDrag = { zoneId, start: w, zone0, comps, walls }
-  }
-
-  private updateRoomDrag(screen: { x: number; y: number }) {
-    const rd = this.roomDrag
-    if (!rd) return
-    const w = this.toWorld(screen.x, screen.y)
-    let dx = w.x - rd.start.x
-    let dy = w.y - rd.start.y
-    const bb = this.wallWorldBBox()
-    if (bb) {
-      dx = clampN(dx, bb.minX - (rd.zone0.x - rd.zone0.w / 2), bb.maxX - (rd.zone0.x + rd.zone0.w / 2))
-      dy = clampN(dy, bb.minY - (rd.zone0.y - rd.zone0.h / 2), bb.maxY - (rd.zone0.y + rd.zone0.h / 2))
-    }
-    dx = Math.round(dx / SNAP_M) * SNAP_M
-    dy = Math.round(dy / SNAP_M) * SNAP_M
-    // No net movement → don't touch the document. Keeps a plain select-click on a
-    // Poly non-destructive (a jittered sub-grid drag never re-homes it to a Rect).
-    if (dx === 0 && dy === 0) return
-    for (const c of rd.comps) this.ed.move_component(c.id, c.x0 + dx, c.y0 + dy)
-    for (const wl of rd.walls) this.ed.set_wall(wl.id, wl.ax0 + dx, wl.ay0 + dy, wl.bx0 + dx, wl.by0 + dy)
-    this.ed.resize_zone(rd.zoneId, rd.zone0.x + dx, rd.zone0.y + dy, rd.zone0.w, rd.zone0.h)
-    this.emitRoom(true)
-    this.commit()
-  }
-
-  private beginRoomResize(handle: number, zoneId: number) {
-    const z = this.zoneById(zoneId)
-    if (!z || z.shape.kind !== 'Rect') return
-    const s = z.shape
-    const frac = (v: number, o: number, size: number) => (v - o) / size
-    const comps = this.getState()
-      .components.filter((c) => z.component_ids.includes(c.id))
-      .map((c) => ({ id: c.id, fx: frac(c.x, s.x, s.w), fy: frac(c.y, s.y, s.h) }))
-    const walls = this.interiorWalls(this.zoneWorldBBox(z)).map((wl) => ({
-      id: wl.id,
-      afx: frac(wl.a.x, s.x, s.w),
-      afy: frac(wl.a.y, s.y, s.h),
-      bfx: frac(wl.b.x, s.x, s.w),
-      bfy: frac(wl.b.y, s.y, s.h),
-    }))
-    this.roomResize = { zoneId, handle, zone0: { x: s.x, y: s.y, w: s.w, h: s.h }, comps, walls }
-  }
-
-  private updateRoomResize(screen: { x: number; y: number }) {
-    const rr = this.roomResize
-    if (!rr) return
-    const w = this.toWorld(screen.x, screen.y)
-    const snap = (v: number) => Math.round(v / SNAP_M) * SNAP_M
-    const z0 = rr.zone0
-    let left = z0.x - z0.w / 2
-    let right = z0.x + z0.w / 2
-    let top = z0.y - z0.h / 2
-    let bottom = z0.y + z0.h / 2
-    const h = rr.handle
-    if (h === 0 || h === 6 || h === 7) left = snap(w.x) // left-edge handles
-    if (h === 2 || h === 3 || h === 4) right = snap(w.x) // right-edge handles
-    if (h === 0 || h === 1 || h === 2) top = snap(w.y) // top-edge handles
-    if (h === 4 || h === 5 || h === 6) bottom = snap(w.y) // bottom-edge handles
-    // enforce a minimum size (push the moving edge back if it crosses)
-    if (right - left < ROOM_MIN_M) {
-      if (h === 0 || h === 6 || h === 7) left = right - ROOM_MIN_M
-      else right = left + ROOM_MIN_M
-    }
-    if (bottom - top < ROOM_MIN_M) {
-      if (h === 0 || h === 1 || h === 2) top = bottom - ROOM_MIN_M
-      else bottom = top + ROOM_MIN_M
-    }
-    // clamp to the plate
-    const bb = this.wallWorldBBox()
-    if (bb) {
-      left = Math.max(left, bb.minX)
-      top = Math.max(top, bb.minY)
-      right = Math.min(right, bb.maxX)
-      bottom = Math.min(bottom, bb.maxY)
-    }
-    const nx = (left + right) / 2
-    const ny = (top + bottom) / 2
-    const nw = right - left
-    const nh = bottom - top
-    for (const c of rr.comps) this.ed.move_component(c.id, nx + c.fx * nw, ny + c.fy * nh)
-    for (const wl of rr.walls) {
-      this.ed.set_wall(wl.id, nx + wl.afx * nw, ny + wl.afy * nh, nx + wl.bfx * nw, ny + wl.bfy * nh)
-    }
-    this.ed.resize_zone(rr.zoneId, nx, ny, nw, nh)
-    this.emitRoom(true)
-    this.commit()
+    this.rooms.rotateRoom(id, deg)
   }
 
   /** Push the current room selection + its screen box to the floating toolbar. */
   private emitRoom(force = false) {
-    if (!this.onRoom) return
-    if (this.selectedZoneId == null) {
-      if (this.lastRoomKey !== null || force) this.onRoom(null)
-      this.lastRoomKey = null
-      return
-    }
-    const z = this.zoneById(this.selectedZoneId)
-    if (!z) {
-      this.onRoom(null)
-      this.lastRoomKey = null
-      return
-    }
-    const b = this.roomScreenBox(z)
-    const box = { left: b.x, top: b.y, width: b.w, height: b.h }
-    const key = `${z.id}:${z.zone_type}:${z.label}:${Math.round(b.x)}:${Math.round(b.y)}:${Math.round(b.w)}:${Math.round(b.h)}`
-    if (!force && key === this.lastRoomKey) return
-    this.lastRoomKey = key
-    this.onRoom({ zone: z, box })
-  }
-
-  private updateHoverCursor(s: { x: number; y: number }) {
-    let cur = ''
-    const z = this.getSelectedZone()
-    if (z && z.shape.kind === 'Rect') {
-      const hi = this.handleAt(s)
-      if (hi != null) cur = HANDLE_CURSOR[hi]
-      else if (inScreenBox(this.roomScreenBox(z), s)) cur = 'move'
-    }
-    if (!cur) {
-      const w = this.toWorld(s.x, s.y)
-      if (this.topFurnitureAt(w)) cur = 'pointer'
-      else if (this.ed.zone_at(w.x, w.y) != null) cur = 'move'
-      else cur = 'default'
-    }
-    this.canvas.style.cursor = cur
+    this.rooms.emitRoom(force)
   }
 
   /** One deterministic test-fit for `seed`; mutates the document. */
@@ -1354,87 +898,22 @@ export class EditorCanvas {
   }
 
   /**
-   * Autonomous test-fit search across the three STRATEGIES (M7). Each strategy
-   * runs its OWN seed search (early-stopping once `target` total is met) and
-   * contributes its single best-scoring plan, so the gallery's A/B/C are
-   * strategically DISTINCT — Open (dense open field) · Balanced (professional
-   * mix) · Cellular (privacy-forward) — a real trade-off, not seed-noise. The
-   * Rust generator is deterministic per (strategy, seed); the live document is
-   * restored to the overall best-scoring option at the end.
-   *
-   * Seeds are kept in disjoint per-strategy ranges (`strategyIndex·STRIDE + s`)
-   * so a candidate's `seed` is globally unique — the gallery keys by it — while
-   * `(strategy, seed)` still reproduces the exact plan. When `keepConfirmed` is
-   * set, Confirmed components are frozen and every candidate packs around them.
-   *
-   * `seedOffset` slides the searched seed WINDOW within each strategy's stride
-   * band: the UI advances it every Regenerate press so consecutive presses
-   * explore genuinely different seeds (real variety) while any exact
-   * `(strategy, seed)` stays deterministic. It is wrapped inside the stride so a
-   * candidate's global seed remains unique per strategy.
+   * Autonomous test-fit search across the three STRATEGIES (M7) — see
+   * {@link autoGenerate} in ./search for the full contract (per-strategy seed
+   * windows, determinism, `keepConfirmed`).
    */
   autoGenerate(
     program: Program,
     opts: { maxIter: number; target: number; keepConfirmed?: boolean; seedOffset?: number },
   ): GenResult {
-    const keep = opts.keepConfirmed ?? false
-    this.program = { ...program }
-    const STRIDE = STRATEGY_SEED_STRIDE
-    // Keep the window (offset+1 .. offset+maxIter) inside the strategy's stride
-    // band so global seeds never collide across strategies.
-    const offset = seedWindowOffset(opts.seedOffset ?? 0, opts.maxIter)
-    const candidates: Candidate[] = []
-    let iterations = 0
-    STRATEGIES.forEach((strategy, si) => {
-      const sp: Program = { ...program, strategy }
-      let best: LayoutScore | null = null
-      let bestSeed = si * STRIDE + offset + 1
-      for (let seed = 1; seed <= opts.maxIter; seed++) {
-        iterations++
-        const actual = si * STRIDE + offset + seed
-        const sc = this.ed.generate(sp, BigInt(actual), keep) as LayoutScore
-        if (!best || sc.total > best.total) {
-          best = sc
-          bestSeed = actual
-        }
-        if (best.total >= opts.target) break
-      }
-      // Re-generate the strategy's winning seed to capture its snapshot + thumb.
-      const finalSc = this.ed.generate(sp, BigInt(bestSeed), keep) as LayoutScore
-      candidates.push({
-        seed: bestSeed,
-        strategy,
-        score: finalSc,
-        snap: this.ed.snapshot(),
-        thumb: renderThumb(this.getState()),
-      })
-    })
-    // The live document reflects the overall best-scoring option (candidates
-    // stay in strategy order so A/B/C map to Open/Balanced/Cellular).
-    const best = candidates.reduce((a, b) => (b.score.total > a.score.total ? b : a))
-    this.ed.restore(best.snap as string)
-    this.hydrateCad()
-    this.ed.clear_selection()
-    this.commit()
-    return { best: best.score, iterations, seed: best.seed, candidates }
+    return autoGenerate(this.host, program, opts)
   }
 
   /**
-   * Autonomous REASONING loop (the vision's generate→evaluate→optimize): an
-   * initial {@link autoGenerate}, then up to `refineIters` rounds where Claude
-   * SHAPES the next batch — proposing a bounded program delta (desks / meetings
-   * / corridor / cluster density / adjacency + circulation emphasis) via the
-   * `adjust_program` tool — which we apply, regenerate, and KEEP only if a
-   * FIXED-weight yardstick ({@link refScore} under the ORIGINAL weights) rises.
-   * A rejected round is reverted (only the winner stays live); a null delta or a
-   * non-improving round ends the loop early (convergence). Each round's rationale
-   * is captured in `steps`.
-   *
-   * WITHOUT a Claude key this is a clean no-op: it returns the plain
-   * autoGenerate result with `ranAI: false` — generation is never blocked.
-   * Latency is bounded: iterations are capped 1–3 and the search runs on the
-   * live doc but every trial is snapshot-guarded so only the accepted plan
-   * survives.
+   * Autonomous REASONING loop (generate→evaluate→optimize): an initial
+   * {@link autoGenerate}, then Claude-shaped program deltas kept only when a
+   * fixed-weight yardstick rises. Clean no-op without a Claude key. Full
+   * contract: {@link refineWithAI} in ./search.
    */
   async refineWithAI(
     program: Program,
@@ -1447,130 +926,25 @@ export class EditorCanvas {
       softGoals?: string
     },
   ): Promise<RefineOutcome> {
-    const gen = { maxIter: opts.maxIter, target: opts.target, keepConfirmed: opts.keepConfirmed, seedOffset: opts.seedOffset }
-    // Fixed rubric: the ORIGINAL weights, so re-weighting deltas are judged fairly.
-    const refWeights: Program = { ...program }
-    const base = this.autoGenerate(program, gen)
-    const baseScore = refScore(base.best, refWeights)
-
-    let curProgram: Program = { ...program }
-    let curResult = base
-    let curScore = baseScore
-    const steps: RefineStep[] = []
-
-    if (!(await evaluatorAvailable())) {
-      return { result: base, program: curProgram, steps, baseScore, finalScore: baseScore, improved: false, ranAI: false }
-    }
-
-    let liveSnap = this.snapshot() // the last ACCEPTED plan (currently `base`)
-    const rounds = Math.max(1, Math.min(3, opts.refineIters ?? 3))
-    const softGoals =
-      opts.softGoals?.trim() ||
-      'Balance a dense open-desk field with legible circulation and coherent room adjacencies.'
-
-    for (let i = 0; i < rounds; i++) {
-      const delta: ProgramDelta | null = await proposeAdjustment({
-        program: curProgram,
-        best: curResult.best,
-        zones: this.getZoneStats(),
-        softGoals,
-      })
-      if (!delta) break // converged / declined / errored
-
-      const nextProgram = applyDelta(curProgram, delta)
-      if (this.programLeversEqual(nextProgram, curProgram)) {
-        // Clamped down to no change — record the rationale, then stop.
-        steps.push({ iteration: i + 1, rationale: delta.rationale ?? '', delta, scoreBefore: curScore, scoreAfter: curScore, accepted: false })
-        break
-      }
-
-      const trial = this.autoGenerate(nextProgram, gen)
-      const trialScore = refScore(trial.best, refWeights)
-      const accepted = trialScore > curScore + 1e-6
-      steps.push({ iteration: i + 1, rationale: delta.rationale ?? '', delta, scoreBefore: curScore, scoreAfter: trialScore, accepted })
-
-      if (accepted) {
-        curProgram = nextProgram
-        curResult = trial
-        curScore = trialScore
-        liveSnap = this.snapshot() // this trial is the new winner (already live)
-      } else {
-        this.restore(liveSnap) // revert: keep the last accepted plan live
-        break
-      }
-    }
-
-    this.program = { ...curProgram }
-    return { result: curResult, program: curProgram, steps, baseScore, finalScore: curScore, improved: curScore > baseScore + 1e-6, ranAI: true }
+    return refineWithAI(this.host, program, opts)
   }
 
   /**
-   * AGENTIC SENIOR DESIGNER (docs/design/agentic-designer.md, phase 1). Claude
-   * DESIGNS the program from a brief — deciding headcount, desk + meeting counts,
-   * the spatial strategy, the support-room mix with placement bias, and objective
-   * emphasis — and APPLIES it to `this.program`. The caller then generates (the UI
-   * runs the normal seed-search so Claude's design gets the A/B/C gallery + gates;
-   * a script can `generateOnce`). Geometry stays entirely with the solver — Claude
-   * never emits coordinates. A plate must exist (walls); the design is sized to the
-   * net internal area. Returns the spec (incl. Claude's rationale), or `null`
-   * without a Claude key / on failure (design is never blocking — fall back to
-   * Generate).
+   * AGENTIC SENIOR DESIGNER: Claude designs the program from a brief and applies
+   * it to `this.program`; the caller then generates. Returns null without a
+   * Claude key / plate. Full contract: {@link designWithAI} in ./search.
    */
   async designWithAI(brief: string, signal?: AbortSignal): Promise<DesignSpec | null> {
-    const m = this.getMetrics()
-    if (m.wall_count === 0) return null // no plate to design for
-    const plateAreaM2 = m.net_internal_area ?? m.floor_area
-    const spec = await proposeDesign({ plateAreaM2, program: this.program, brief }, signal)
-    if (!spec) return null
-    this.program = applyDesignSpec(this.program, spec)
-    return spec
+    return designWithAI(this.host, brief, signal)
   }
 
   /**
-   * MULTI-OBJECTIVE designer (docs/design/agentic-designer.md; Laiout-style option
-   * set). Claude designs a DISTINCT fit per objective — Max people / Budget / Low
-   * carbon / Wellbeing / Balanced — and the solver realizes each; every option
-   * carries its headline metric (pax · ₹ fit-out · kgCO₂e) for the option cards.
-   * Snapshots are captured so the UI can make any option live. Leaves the program
-   * unchanged. Returns [] without a Claude key / plate.
+   * MULTI-OBJECTIVE designer (Laiout-style option set): one realised,
+   * snapshot-backed option per objective. Leaves the program unchanged. Full
+   * contract: {@link designOptions} in ./search.
    */
   async designOptions(brief: string, seed = 1, signal?: AbortSignal): Promise<DesignOptionResult[]> {
-    const m0 = this.getMetrics()
-    if (m0.wall_count === 0) return []
-    const plateAreaM2 = m0.net_internal_area ?? m0.floor_area
-    const opts = await proposeDesignOptions({ plateAreaM2, program: this.program, brief }, DESIGN_OBJECTIVES, signal)
-    const base = { ...this.program }
-    const out: DesignOptionResult[] = []
-    for (const o of opts) {
-      this.program = applyDesignSpec(base, o.spec)
-      const score = this.generateOnce(this.program, seed)
-      const m = this.getMetrics()
-      out.push({
-        objective: o.objective,
-        spec: o.spec,
-        score,
-        pax: m.workstations ?? 0,
-        cost: m.indicative_cost ?? 0,
-        carbon: m.indicative_carbon ?? 0,
-        nia: m.net_internal_area ?? 0,
-        snapshot: this.ed.snapshot() as string,
-        thumb: renderThumb(this.getState()),
-      })
-    }
-    this.program = base
-    return out
-  }
-
-  /** True when two programs match on every lever the AI delta can touch. */
-  private programLeversEqual(a: Program, b: Program): boolean {
-    return (
-      a.desks === b.desks &&
-      a.meeting_rooms === b.meeting_rooms &&
-      a.target_corridor_m === b.target_corridor_m &&
-      a.cluster_cols === b.cluster_cols &&
-      a.w_adjacency === b.w_adjacency &&
-      a.w_circulation === b.w_circulation
-    )
+    return designOptions(this.host, brief, seed, signal)
   }
 
   /** Make a gallery candidate live: restore its snapshot, repaint, notify React.
@@ -1837,9 +1211,9 @@ export class EditorCanvas {
     }
     if (this.tool === 'select') {
       // 1. Grabbing a resize handle of the already-selected room?
-      const hi = this.handleAt(s)
+      const hi = this.rooms.handleAt(s)
       if (hi != null && this.selectedZoneId != null) {
-        this.beginRoomResize(hi, this.selectedZoneId)
+        this.rooms.beginResize(hi, this.selectedZoneId)
         return
       }
       // ROOM-FIRST selection (Laiout/Canva model). A room is furnished, so
@@ -1852,7 +1226,7 @@ export class EditorCanvas {
       const zid = this.ed.zone_at(w.x, w.y)
       if (zid != null) {
         if (zid === this.selectedZoneId) {
-          const furn = this.topFurnitureAt(w)
+          const furn = this.rooms.topFurnitureAt(w)
           if (furn) {
             this.ed.select_at(w.x, w.y) // drill into the piece under the cursor
             this.dragging = true
@@ -1860,20 +1234,20 @@ export class EditorCanvas {
             return
           }
           this.ed.clear_selection() // empty floor of the selected room → drag it
-          this.beginRoomDrag(zid, w)
+          this.rooms.beginDrag(zid, w)
           this.commit()
           return
         }
         this.selectedZoneId = zid
         this.ed.clear_selection()
-        this.beginRoomDrag(zid, w)
+        this.rooms.beginDrag(zid, w)
         this.emitRoom(true)
         this.commit()
         return
       }
       // 3. Outside any room → a loose component (e.g. passive reference furniture),
       //    else clear everything.
-      const furn = this.topFurnitureAt(w)
+      const furn = this.rooms.topFurnitureAt(w)
       if (furn) {
         this.selectedZoneId = null
         this.emitRoom()
@@ -1935,14 +1309,7 @@ export class EditorCanvas {
       return
     }
     // Room manipulation takes priority over component drag.
-    if (this.roomResize) {
-      this.updateRoomResize(s)
-      return
-    }
-    if (this.roomDrag) {
-      this.updateRoomDrag(s)
-      return
-    }
+    if (this.rooms.updateGesture(s)) return
     if (this.dragging && this.tool === 'select') {
       const dxw = (s.x - this.lastScreen.x) / this.scale
       const dyw = (s.y - this.lastScreen.y) / this.scale
@@ -1951,7 +1318,7 @@ export class EditorCanvas {
       this.commit()
       return
     }
-    if (this.tool === 'select') this.updateHoverCursor(s)
+    if (this.tool === 'select') this.rooms.updateHoverCursor(s)
     if (this.tool === 'wall' && this.wallStart) this.render()
     else if (this.hasCursor) this.render() // keep ruler cursor ticks live
   }
@@ -1967,9 +1334,7 @@ export class EditorCanvas {
       const s = this.screenFromEvent(e)
       this.cad.up(s.x, s.y)
     }
-    if (this.roomDrag || this.roomResize) {
-      this.roomDrag = null
-      this.roomResize = null
+    if (this.rooms.endGesture()) {
       this.emitRoom(true)
       this.commit()
     }
@@ -2139,10 +1504,10 @@ export class EditorCanvas {
         ctx.fillStyle = C.surface
         ctx.fillRect(0, 0, w, h)
       }
-      this.drawGrid(w, h)
+      drawGrid(this.host, w, h)
     }
     this.updatePlate(st.walls)
-    const tags = this.drawZones(st.zones)
+    const tags = this.paintZones(st.zones)
 
     // Resolve the dynamic-input candidate once per frame (wall preview + chips +
     // widget all read it) so OSNAP/getState isn't recomputed three times.
@@ -2155,25 +1520,26 @@ export class EditorCanvas {
       // Glass fronts get the triple-line convention; everything else draws in
       // the lineweight hierarchy (exterior > interior > generated partition).
       if (wall.glazing) {
-        this.drawGlazing(wall.a, wall.b)
+        drawGlazing(this.host, wall.a, wall.b)
       } else {
-        const s = this.wallStyle(wall)
-        this.drawSegment(wall.a, wall.b, s.width, s.color)
+        const s = wallStyle(this.host, wall, this.exteriorIds)
+        drawSegment(this.host, wall.a, wall.b, s.width, s.color)
       }
     }
     if (this.tool === 'wall' && this.wallStart) {
-      this.drawSegment(
+      drawSegment(
+        this.host,
         this.wallStart,
         this.dynResolved?.point ?? this.snap(this.mouseWorld),
         Math.max(2, 0.1 * this.scale),
         C.preview,
       )
     }
-    for (const c of st.components) this.drawComponent(c, c.id === st.selection)
-    this.drawRoomSelection()
+    for (const c of st.components) drawComponent(this.host, c, c.id === st.selection)
+    this.paintRoomSelection()
     // Room tags sit ABOVE furniture (architect's sheet convention) with a soft
     // paper halo so they stay legible over desks and linework.
-    this.drawZoneTags(tags)
+    drawZoneTags(this.host, tags)
 
     // CAD layer: entities + tool preview + snap indicator + grips.
     this.cad.render(ctx, {
@@ -2191,9 +1557,9 @@ export class EditorCanvas {
     this.drawSelectionDims()
 
     if (this.presentation) {
-      if (st.walls.length || st.components.length) this.drawSummary(w, h)
+      if (st.walls.length || st.components.length) drawSummary(this.host, w, h, this.getMetrics())
     } else {
-      this.drawRulers(w, h)
+      drawRulers(this.host, w, h, this.hasCursor ? this.mouseWorld : null)
     }
 
     // Floating typed Distance/Angle widget at the cursor.
@@ -2202,70 +1568,19 @@ export class EditorCanvas {
     if (this.selectedZoneId != null) this.emitRoom()
   }
 
-  /** Selected-room outline, 8 resize handles, and a live W×H dimension badge. */
-  private drawRoomSelection() {
-    if (this.selectedZoneId == null) return
-    const z = this.zoneById(this.selectedZoneId)
-    if (!z) return
-    const ctx = this.ctx
-    const box = this.roomScreenBox(z)
-    const ring = z.shape.kind !== 'Rect'
-
-    ctx.save()
-    ctx.strokeStyle = C.accent
-    ctx.lineWidth = 2
-    ctx.setLineDash(ring ? [6, 4] : [])
-    ctx.strokeRect(box.x + 0.5, box.y + 0.5, box.w - 1, box.h - 1)
-    ctx.setLineDash([])
-    ctx.restore()
-
-    if (z.shape.kind !== 'Rect') return // no handles / dims for non-rect (ring/poly) zones
-
-    // Live dimension badge (accent pill) centered under the room.
-    const label = `${z.shape.w.toFixed(2)} × ${z.shape.h.toFixed(2)} m`
-    ctx.font = '600 11px "Hanken Grotesk", system-ui, sans-serif'
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    const tw = ctx.measureText(label).width
-    const cx = box.x + box.w / 2
-    const by = box.y + box.h + 14
-    ctx.fillStyle = C.accent
-    roundRect(ctx, cx - tw / 2 - 7, by - 9, tw + 14, 18, 9)
-    ctx.fill()
-    ctx.fillStyle = '#ffffff'
-    ctx.fillText(label, cx, by + 1)
-
-    // 8 white square handles with an accent border.
-    ctx.fillStyle = '#ffffff'
-    ctx.strokeStyle = C.accent
-    ctx.lineWidth = 1.5
-    for (const p of handlePoints(box)) {
-      ctx.beginPath()
-      ctx.rect(p.x - 4, p.y - 4, 8, 8)
-      ctx.fill()
-      ctx.stroke()
-    }
+  /** Zone tints + the room tags they yield. Refreshes the core-truth zone stats
+   *  first (cached on a zone fingerprint) so the tags carry plate-clipped area. */
+  private paintZones(zones?: DocZone[]): ZoneTag[] {
+    if (!zones || zones.length === 0) return []
+    this.updateZoneStats(zones)
+    return drawZones(this.host, zones, this.platePoly, this.zoneStats)
   }
 
-  /**
-   * Lineweight hierarchy (architect's sheet convention, cf. DrawingCanvas
-   * LINE_WEIGHT): exterior/plate walls heaviest in the darkest ink, interior
-   * user walls medium, generated partitions lightest. Stroke is proportional
-   * to true thickness with min/max clamps so hierarchy survives any zoom.
-   */
-  private wallStyle(w: DocWall): { color: string; width: number } {
-    const t = w.thickness * this.scale
-    if (w.generated ?? false) {
-      // Lightest tier: room partitions the generator drew.
-      return { color: C.wallGen, width: clampN(t * 0.85, 1.3, 3.2) }
-    }
-    if (this.exteriorIds.has(w.id)) {
-      // Heaviest tier — but capped tight so the boundary reads as a crisp
-      // architectural line, not the fat black marker it was before.
-      return { color: C.wallExt, width: clampN(t, 2.4, 5) }
-    }
-    // Medium tier: interior/user walls.
-    return { color: C.wall, width: clampN(t, 1.7, 3.8) }
+  /** Outline + handles for the selected room (nothing when none is selected). */
+  private paintRoomSelection() {
+    const z = this.rooms.selectedZone()
+    if (!z) return
+    drawRoomSelection(this.host, z, this.rooms.screenBox(z))
   }
 
   /** Floor-plate polygon for zone clipping, cached on a cheap wall fingerprint
@@ -2295,243 +1610,6 @@ export class EditorCanvas {
     }
   }
 
-  /**
-   * Fine 45° architectural poché hatch, clipped to a zone's screen path. The
-   * standard drawing convention for a solid service core (shafts / stairs / WC /
-   * MEP) so a `Core` zone reads as built poché instead of an unfinished gray
-   * block. Deliberately restrained (Laiout/qbiq): thin light lines in the zone's
-   * own ink over its pale fill. `tracePath` re-lays the fill path (we begin it)
-   * so the hatch is clipped to Rect AND Poly cores identically.
-   */
-  private drawPoche(
-    tracePath: () => void,
-    bb: { minX: number; minY: number; maxX: number; maxY: number },
-    line: string,
-    evenOdd = false,
-  ) {
-    const ctx = this.ctx
-    ctx.save()
-    ctx.beginPath()
-    tracePath()
-    ctx.clip(evenOdd ? 'evenodd' : 'nonzero')
-    ctx.strokeStyle = hexToRgba(line, 0.34)
-    ctx.lineWidth = 0.6
-    const step = 6 // px between hatch lines (screen space; fixed density, not zoom-scaled)
-    const span = bb.maxY - bb.minY
-    ctx.beginPath()
-    // Parallel 45° lines (slope +1): start far enough left that down-right
-    // diagonals cover the whole clip rect.
-    for (let x = bb.minX - span; x <= bb.maxX; x += step) {
-      ctx.moveTo(x, bb.minY)
-      ctx.lineTo(x + span, bb.maxY)
-    }
-    ctx.stroke()
-    ctx.restore()
-  }
-
-  private drawZones(zones?: DocZone[]): ZoneTag[] {
-    if (!zones || zones.length === 0) return []
-    const ctx = this.ctx
-
-    // Zone shapes are rectangles even on an L-shaped plate; clip their fills to
-    // the plate polygon so tints never spill past the building boundary.
-    // Labels draw after restore so they stay legible near clipped corners.
-    const clipped = this.platePoly && this.platePoly.length >= 3
-    if (clipped) {
-      ctx.save()
-      ctx.beginPath()
-      const poly = this.platePoly!
-      const p0 = this.toScreen(poly[0][0], poly[0][1])
-      ctx.moveTo(p0.x, p0.y)
-      for (let i = 1; i < poly.length; i++) {
-        const p = this.toScreen(poly[i][0], poly[i][1])
-        ctx.lineTo(p.x, p.y)
-      }
-      ctx.closePath()
-      ctx.clip()
-    }
-
-    this.updateZoneStats(zones)
-    const tags: ZoneTag[] = []
-    for (const z of zones) {
-      const pal = ZONE[z.zone_type] ?? ZONE.Core
-      ctx.fillStyle = this.presentation ? lighten(pal.fill, 0.4) : pal.fill
-      if (z.shape.kind === 'Poly') {
-        // Boundary-conforming polygon: trace + fill + hairline; label at the
-        // area-weighted centroid.
-        const pts = z.shape.pts
-        if (pts.length < 3) continue
-        ctx.beginPath()
-        const s0 = this.toScreen(pts[0][0], pts[0][1])
-        ctx.moveTo(s0.x, s0.y)
-        for (let i = 1; i < pts.length; i++) {
-          const p = this.toScreen(pts[i][0], pts[i][1])
-          ctx.lineTo(p.x, p.y)
-        }
-        ctx.closePath()
-        ctx.fill()
-        ctx.strokeStyle = hexToRgba(pal.line, 0.45)
-        ctx.lineWidth = 1
-        ctx.stroke()
-        if (z.zone_type === 'Core') {
-          let bminX = Infinity
-          let bminY = Infinity
-          let bmaxX = -Infinity
-          let bmaxY = -Infinity
-          const sp = pts.map((pt) => this.toScreen(pt[0], pt[1]))
-          for (const q of sp) {
-            bminX = Math.min(bminX, q.x)
-            bminY = Math.min(bminY, q.y)
-            bmaxX = Math.max(bmaxX, q.x)
-            bmaxY = Math.max(bmaxY, q.y)
-          }
-          this.drawPoche(
-            () => {
-              ctx.moveTo(sp[0].x, sp[0].y)
-              for (let i = 1; i < sp.length; i++) ctx.lineTo(sp[i].x, sp[i].y)
-              ctx.closePath()
-            },
-            { minX: bminX, minY: bminY, maxX: bmaxX, maxY: bmaxY },
-            pal.line,
-          )
-        }
-        // Area-weighted centroid (world), then screen, for the room tag.
-        let a2 = 0
-        let cx = 0
-        let cy = 0
-        for (let i = 0; i < pts.length; i++) {
-          const [x0, y0] = pts[i]
-          const [x1, y1] = pts[(i + 1) % pts.length]
-          const cross = x0 * y1 - x1 * y0
-          a2 += cross
-          cx += (x0 + x1) * cross
-          cy += (y0 + y1) * cross
-        }
-        const stat = this.zoneStats.get(z.id)
-        const area = stat?.area ?? Math.abs(a2) / 2
-        if (area < 6 || Math.abs(a2) < 1e-6) continue
-        const wcx = cx / (3 * a2)
-        const wcy = cy / (3 * a2)
-        const c = this.toScreen(wcx, wcy)
-        const name = z.label.toUpperCase()
-        ctx.font = '600 10px "Hanken Grotesk", system-ui, sans-serif'
-        const cap = stat?.capacity ?? 0
-        const metrics: string | null =
-          area >= 12 ? `${fmtArea(area)} m²${cap > 0 ? ` · ${cap} pax` : ''}` : null
-        tags.push({ name, metrics, cx: c.x, cy: c.y, namePx: 10, color: pal.line })
-      } else if (z.shape.kind === 'RectRing') {
-        const s = z.shape
-        const o = this.toScreen(s.x - s.w / 2, s.y - s.h / 2)
-        const io = this.toScreen(s.x - s.in_w / 2, s.y - s.in_h / 2)
-        ctx.beginPath()
-        ctx.rect(o.x, o.y, s.w * this.scale, s.h * this.scale)
-        ctx.rect(io.x, io.y, s.in_w * this.scale, s.in_h * this.scale)
-        ctx.fill('evenodd')
-        if (z.zone_type === 'Core') {
-          this.drawPoche(
-            () => {
-              ctx.rect(o.x, o.y, s.w * this.scale, s.h * this.scale)
-              ctx.rect(io.x, io.y, s.in_w * this.scale, s.in_h * this.scale)
-            },
-            { minX: o.x, minY: o.y, maxX: o.x + s.w * this.scale, maxY: o.y + s.h * this.scale },
-            pal.line,
-            true,
-          )
-        }
-      } else {
-        const s = z.shape
-        const p = this.toScreen(s.x - s.w / 2, s.y - s.h / 2)
-        const w = s.w * this.scale
-        const h = s.h * this.scale
-        ctx.fillRect(p.x, p.y, w, h)
-        // Soft inset border (secondary to walls) — a refined architectural edge,
-        // not a saturated toy outline.
-        ctx.strokeStyle = hexToRgba(pal.line, 0.45)
-        ctx.lineWidth = 1
-        ctx.strokeRect(p.x + 0.5, p.y + 0.5, w - 1, h - 1)
-        if (z.zone_type === 'Core') {
-          this.drawPoche(
-            () => ctx.rect(p.x, p.y, w, h),
-            { minX: p.x, minY: p.y, maxX: p.x + w, maxY: p.y + h },
-            pal.line,
-          )
-        }
-
-        // Centered room tag: NAME over "area m² · N pax" (architect's sheet
-        // style). Skip when the zone is tiny (< 6 m²) or the tag can't fit;
-        // shrink the name one step before giving up.
-        const stat = this.zoneStats.get(z.id)
-        const area = stat?.area ?? s.w * s.h
-        if (area < 6 || h < 18) continue
-        const name = z.label.toUpperCase()
-        const maxW = w - 10
-        ctx.font = '600 10px "Hanken Grotesk", system-ui, sans-serif'
-        let namePx = 10
-        if (ctx.measureText(name).width > maxW) {
-          ctx.font = '600 8px "Hanken Grotesk", system-ui, sans-serif'
-          namePx = 8
-          if (ctx.measureText(name).width > maxW) continue
-        }
-        const cap = stat?.capacity ?? 0
-        let metrics: string | null = `${fmtArea(area)} m²${cap > 0 ? ` · ${cap} pax` : ''}`
-        ctx.font = '500 9.5px "Hanken Grotesk", system-ui, sans-serif'
-        if (h < 34 || ctx.measureText(metrics).width > maxW) metrics = null
-        const c = this.toScreen(s.x, s.y)
-        tags.push({ name, metrics, cx: c.x, cy: c.y, namePx, color: pal.line })
-      }
-    }
-    if (clipped) ctx.restore()
-    return tags
-  }
-
-  /** Draw collected room tags (after furniture) as clean soft-rounded label
-   *  pills — white with a subtle drop shadow and a hairline in the zone color —
-   *  so a room name reads over desks/linework without the cheap hard white box.
-   *  Numbers set in the UI sans (Hanken, tabular) to match the rest of the sheet;
-   *  see the CLAUDE.md typography note in the visual overhaul. */
-  private drawZoneTags(tags: ZoneTag[]) {
-    const ctx = this.ctx
-    const NAME_FONT = (px: number) => `600 ${px}px "Hanken Grotesk", system-ui, sans-serif`
-    const MET_FONT = '500 9.5px "Hanken Grotesk", system-ui, sans-serif'
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    for (const t of tags) {
-      ctx.font = NAME_FONT(t.namePx)
-      const nameW = ctx.measureText(t.name).width
-      ctx.font = MET_FONT
-      const metW = t.metrics ? ctx.measureText(t.metrics).width : 0
-      const padX = 8
-      const pillW = Math.max(nameW, metW) + padX * 2
-      const pillH = t.metrics ? 32 : 19
-      const px = t.cx - pillW / 2
-      const py = t.cy - pillH / 2
-
-      // Soft pill: drop shadow + near-white fill + hairline border in zone color.
-      ctx.save()
-      ctx.shadowColor = 'rgba(23,26,30,0.14)'
-      ctx.shadowBlur = 6
-      ctx.shadowOffsetY = 1
-      ctx.fillStyle = 'rgba(255,255,255,0.94)'
-      roundRect(ctx, px, py, pillW, pillH, pillH / 2)
-      ctx.fill()
-      ctx.restore()
-      ctx.strokeStyle = hexToRgba(t.color, 0.28)
-      ctx.lineWidth = 1
-      roundRect(ctx, px + 0.5, py + 0.5, pillW - 1, pillH - 1, (pillH - 1) / 2)
-      ctx.stroke()
-
-      // Name (zone-line color) over metrics (muted).
-      ctx.fillStyle = t.color
-      ctx.font = NAME_FONT(t.namePx)
-      ctx.fillText(t.name, t.cx, t.metrics ? t.cy - 6 : t.cy)
-      if (t.metrics) {
-        ctx.fillStyle = C.labelSub
-        ctx.font = MET_FONT
-        ctx.fillText(t.metrics, t.cx, t.cy + 7.5)
-      }
-    }
-  }
-
   /** Per-zone Rust-truth stats (plate-clipped area, capacity), cached on a
    *  zone fingerprint — `zone_stats()` re-clips + serializes on every call. */
   private zoneStats = new Map<number, ZoneStat>()
@@ -2553,459 +1631,4 @@ export class EditorCanvas {
     this.zoneStatsKey = key
     this.zoneStats = new Map(this.getZoneStats().map((s) => [s.id, s]))
   }
-
-  private drawGrid(w: number, h: number) {
-    const ctx = this.ctx
-    const step = GRID_M * this.scale
-    if (step >= 6) {
-      const originX = this.offset.x
-      const originY = this.offset.y
-      for (let i = 0, x = originX % step; x < w; x += step, i++) {
-        const worldM = Math.round((x - originX) / step) * GRID_M
-        ctx.strokeStyle = worldM % MAJOR_EVERY === 0 ? C.gridMajor : C.gridMinor
-        line(ctx, x, 0, x, h)
-      }
-      for (let y = originY % step; y < h; y += step) {
-        const worldM = Math.round((y - originY) / step) * GRID_M
-        ctx.strokeStyle = worldM % MAJOR_EVERY === 0 ? C.gridMajor : C.gridMinor
-        line(ctx, 0, y, w, y)
-      }
-    }
-    const o = this.toScreen(0, 0)
-    ctx.strokeStyle = C.axis
-    line(ctx, o.x, 0, o.x, h)
-    line(ctx, 0, o.y, w, o.y)
-  }
-
-  private drawSegment(
-    a: { x: number; y: number },
-    b: { x: number; y: number },
-    widthPx: number,
-    color: string,
-  ) {
-    const ctx = this.ctx
-    const pa = this.toScreen(a.x, a.y)
-    const pb = this.toScreen(b.x, b.y)
-    ctx.strokeStyle = color
-    ctx.lineWidth = widthPx
-    ctx.lineCap = 'round'
-    ctx.beginPath()
-    ctx.moveTo(pa.x, pa.y)
-    ctx.lineTo(pb.x, pb.y)
-    ctx.stroke()
-  }
-
-  /** Glazed wall: the drafting triple-line convention (two frame lines with a
-   *  lighter center glazing line), visually distinct from solid poché walls. */
-  private drawGlazing(a: { x: number; y: number }, b: { x: number; y: number }) {
-    const ctx = this.ctx
-    const pa = this.toScreen(a.x, a.y)
-    const pb = this.toScreen(b.x, b.y)
-    const dx = pb.x - pa.x
-    const dy = pb.y - pa.y
-    const len = Math.hypot(dx, dy) || 1
-    // Frame offset: half the drawn glazing depth, ≥1.5 px so it never collapses.
-    const o = Math.max(1.5, 0.05 * this.scale)
-    const nx = (-dy / len) * o
-    const ny = (dx / len) * o
-    ctx.lineCap = 'round'
-    ctx.strokeStyle = C.wall
-    ctx.lineWidth = 1
-    ctx.beginPath()
-    ctx.moveTo(pa.x + nx, pa.y + ny)
-    ctx.lineTo(pb.x + nx, pb.y + ny)
-    ctx.moveTo(pa.x - nx, pa.y - ny)
-    ctx.lineTo(pb.x - nx, pb.y - ny)
-    ctx.stroke()
-    ctx.strokeStyle = '#8fb6c9' // glass: light cool center line
-    ctx.beginPath()
-    ctx.moveTo(pa.x, pa.y)
-    ctx.lineTo(pb.x, pb.y)
-    ctx.stroke()
-  }
-
-  /** Presentation-mode plan summary block (bottom-right): the test-fit
-   *  deliverable card — name, NIA, workstations, m²/ws, efficiency. */
-  private drawSummary(w: number, h: number) {
-    const m = this.getMetrics()
-    const rows: [string, string][] = [
-      ['AREA (NIA)', `${fmtArea(m.net_internal_area ?? m.floor_area)} m²`],
-      ['WORKSTATIONS', `${m.workstations ?? 0}`],
-      ['M² / WS', m.area_per_workstation ? m.area_per_workstation.toFixed(1) : '—'],
-      ['EFFICIENCY', m.efficiency_pct != null ? `${Math.round(m.efficiency_pct)} %` : '—'],
-    ]
-    const ctx = this.ctx
-    const W = 196
-    const pad = 12
-    const rowH = 17
-    const H = 30 + rows.length * rowH + pad - 4
-    const x = w - W - 16
-    const y = h - H - 16
-    ctx.fillStyle = C.surface
-    ctx.fillRect(x, y, W, H)
-    ctx.strokeStyle = 'rgba(23,26,30,0.30)'
-    ctx.lineWidth = 1
-    ctx.strokeRect(x + 0.5, y + 0.5, W - 1, H - 1)
-
-    ctx.textAlign = 'left'
-    ctx.textBaseline = 'alphabetic'
-    ctx.fillStyle = C.label
-    ctx.font = '700 10px "Hanken Grotesk", system-ui, sans-serif'
-    ctx.fillText('TEST FIT', x + pad, y + 18)
-    ctx.strokeStyle = 'rgba(23,26,30,0.14)'
-    line(ctx, x + pad, y + 24.5, x + W - pad, y + 24.5)
-
-    let ry = y + 24 + rowH - 4
-    for (const [label, value] of rows) {
-      ctx.fillStyle = C.labelSub
-      ctx.font = '600 8px "Hanken Grotesk", system-ui, sans-serif'
-      ctx.textAlign = 'left'
-      ctx.fillText(label, x + pad, ry)
-      ctx.fillStyle = C.label
-      ctx.font = '10px "IBM Plex Mono", ui-monospace, monospace'
-      ctx.textAlign = 'right'
-      ctx.fillText(value, x + W - pad, ry)
-      ry += rowH
-    }
-    ctx.textAlign = 'left'
-  }
-
-  private drawComponent(c: DocComponent, selected: boolean) {
-    const ctx = this.ctx
-    const p = this.toScreen(c.x, c.y)
-    const w = c.w * this.scale
-    const h = c.h * this.scale
-    const frozen = c.decision === 'Confirmed'
-    // Passive as-drawn reference (imported furniture that isn't counted): draw it
-    // muted and plate-less so the generated fit stays the primary read. No decision
-    // dot / frozen styling — it carries no decision state.
-    const ref = c.reference === true && !selected
-
-    // Recognizable top-view CAD furniture line-symbol. The symbol carries its own
-    // solid worktop/seat fill (a filled object reads as furniture, where a hollow
-    // white plate under a hollow outline read as faint clutter over the pastel
-    // zone). Reference furniture gets no fill so it recedes into context.
-    drawFurnitureSymbol(ctx, {
-      category: c.category,
-      cx: p.x,
-      cy: p.y,
-      w,
-      h,
-      rotation: c.rotation,
-      mirror: c.mirror,
-      stroke: ref ? C.furnitureRef : frozen ? DECISION_DOT.Confirmed : C.furniture,
-      detail: ref ? C.furnitureRef : C.furnitureDetail,
-      fill: ref ? undefined : frozen ? 'rgba(47,163,107,0.10)' : C.furnitureFill,
-      seat: ref ? undefined : frozen ? 'rgba(47,163,107,0.16)' : C.furnitureSeat,
-      accent: C.accent,
-      selected,
-    })
-
-    // Label only for the selected item — zone labels carry the room names, so the
-    // plan stays clean.
-    if (selected) {
-      ctx.fillStyle = C.label
-      ctx.font = '600 11px "Hanken Grotesk", system-ui, sans-serif'
-      ctx.textAlign = 'center'
-      ctx.textBaseline = 'middle'
-      ctx.fillText(clip(c.label, Math.max(w, 64)), p.x, p.y - h / 2 - 9)
-    }
-
-    // decision dot (top-right) — only for non-Open, to keep the plate clean
-    // (reference furniture carries no decision state, so never dot it).
-    if (c.decision !== 'Open' && !ref) {
-      ctx.fillStyle = DECISION_DOT[c.decision]
-      ctx.beginPath()
-      ctx.arc(p.x + w / 2 - 5.5, p.y - h / 2 + 5.5, 3, 0, Math.PI * 2)
-      ctx.fill()
-    }
-
-    // selection corner ticks (CAD handles)
-    if (selected) {
-      ctx.strokeStyle = C.accent
-      ctx.lineWidth = 1.5
-      const t = 6
-      const L = -w / 2
-      const R = w / 2
-      const T = -h / 2
-      const B = h / 2
-      ctx.save()
-      ctx.translate(p.x, p.y)
-      for (const [cx, cy, sx, sy] of [
-        [L, T, 1, 1],
-        [R, T, -1, 1],
-        [L, B, 1, -1],
-        [R, B, -1, -1],
-      ] as const) {
-        ctx.beginPath()
-        ctx.moveTo(cx + sx * t, cy)
-        ctx.lineTo(cx, cy)
-        ctx.lineTo(cx, cy + sy * t)
-        ctx.stroke()
-      }
-      ctx.restore()
-    }
-  }
-
-  private drawRulers(w: number, h: number) {
-    const ctx = this.ctx
-    // strips
-    ctx.fillStyle = C.rulerBg
-    ctx.fillRect(0, 0, w, RULER)
-    ctx.fillRect(0, 0, RULER, h)
-    ctx.fillStyle = C.rulerCorner
-    ctx.fillRect(0, 0, RULER, RULER)
-
-    const stepM = niceStep(this.scale)
-    ctx.font = '9px "Hanken Grotesk", system-ui, sans-serif'
-    ctx.fillStyle = C.rulerText
-    ctx.strokeStyle = C.rulerTick
-    ctx.lineWidth = 1
-
-    // top ruler (world X)
-    const xStart = Math.ceil(this.toWorld(RULER, 0).x / stepM) * stepM
-    const xEnd = this.toWorld(w, 0).x
-    ctx.textAlign = 'left'
-    ctx.textBaseline = 'alphabetic'
-    ctx.beginPath()
-    for (let m = xStart; m <= xEnd; m += stepM) {
-      const sx = this.toScreen(m, 0).x
-      if (sx < RULER) continue
-      ctx.moveTo(sx + 0.5, RULER - 6)
-      ctx.lineTo(sx + 0.5, RULER)
-      ctx.fillText(fmtM(m), sx + 3, 10)
-    }
-    ctx.stroke()
-
-    // left ruler (world Y)
-    const yStart = Math.ceil(this.toWorld(0, RULER).y / stepM) * stepM
-    const yEnd = this.toWorld(0, h).y
-    ctx.textAlign = 'center'
-    ctx.beginPath()
-    for (let m = yStart; m <= yEnd; m += stepM) {
-      const sy = this.toScreen(0, m).y
-      if (sy < RULER) continue
-      ctx.moveTo(RULER - 6, sy + 0.5)
-      ctx.lineTo(RULER, sy + 0.5)
-      ctx.fillText(fmtM(m), RULER / 2, sy - 3)
-    }
-    ctx.stroke()
-
-    // amber cursor ticks
-    if (this.hasCursor) {
-      const cs = this.toScreen(this.mouseWorld.x, this.mouseWorld.y)
-      ctx.strokeStyle = C.accent
-      ctx.lineWidth = 1
-      if (cs.x >= RULER) line(ctx, cs.x + 0.5, 0, cs.x + 0.5, RULER)
-      if (cs.y >= RULER) line(ctx, 0, cs.y + 0.5, RULER, cs.y + 0.5)
-    }
-  }
-}
-
-// ---- module helpers ----
-
-// Thumbnail fills by category — desks cool blue, meeting rooms translucent teal.
-const THUMB_FILL: Record<string, string> = {
-  Desk: 'rgba(91, 141, 239, 0.85)',
-  MeetingRoom: 'rgba(70, 179, 166, 0.35)',
-}
-const THUMB_OTHER = 'rgba(138, 144, 153, 0.55)'
-
-/**
- * Minimal plan schematic of a document state → dataURL, for gallery cards.
- * Deliberately NOT the interactive render() pipeline: render() draws to the
- * live canvas with pan/zoom transforms, rulers, and CAD overlays; thumbnails
- * need an isolated fit-to-frame offscreen scene.
- */
-export function renderThumb(st: DocState, w = 200, h = 140): string {
-  const cv = document.createElement('canvas')
-  cv.width = w
-  cv.height = h
-  const ctx = cv.getContext('2d')
-  if (!ctx) return ''
-
-  // Fit the wall bbox (fall back to component extents) into the frame.
-  let bb = wallBbox(st.walls)
-  if (!bb && st.components.length) {
-    bb = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity }
-    for (const c of st.components) {
-      bb.minX = Math.min(bb.minX, c.x - c.w / 2)
-      bb.minY = Math.min(bb.minY, c.y - c.h / 2)
-      bb.maxX = Math.max(bb.maxX, c.x + c.w / 2)
-      bb.maxY = Math.max(bb.maxY, c.y + c.h / 2)
-    }
-  }
-  ctx.fillStyle = '#ffffff'
-  ctx.fillRect(0, 0, w, h)
-  if (!bb) return cv.toDataURL()
-
-  const pad = 8
-  const spanX = Math.max(bb.maxX - bb.minX, 0.001)
-  const spanY = Math.max(bb.maxY - bb.minY, 0.001)
-  const k = Math.min((w - pad * 2) / spanX, (h - pad * 2) / spanY)
-  const ox = (w - spanX * k) / 2 - bb.minX * k
-  const oy = (h - spanY * k) / 2 - bb.minY * k
-  const X = (m: number) => m * k + ox
-  const Y = (m: number) => m * k + oy
-
-  // Zone tints (rect + ring), same pastels as the main canvas.
-  for (const z of st.zones ?? []) {
-    const pal = ZONE[z.zone_type] ?? ZONE.Core
-    ctx.fillStyle = pal.fill
-    const s = z.shape
-    if (s.kind === 'Poly') {
-      if (s.pts.length < 3) continue
-      ctx.beginPath()
-      ctx.moveTo(X(s.pts[0][0]), Y(s.pts[0][1]))
-      for (let i = 1; i < s.pts.length; i++) ctx.lineTo(X(s.pts[i][0]), Y(s.pts[i][1]))
-      ctx.closePath()
-      ctx.fill()
-    } else if (s.kind === 'RectRing') {
-      ctx.beginPath()
-      ctx.rect(X(s.x - s.w / 2), Y(s.y - s.h / 2), s.w * k, s.h * k)
-      ctx.rect(X(s.x - s.in_w / 2), Y(s.y - s.in_h / 2), s.in_w * k, s.in_h * k)
-      ctx.fill('evenodd')
-    } else {
-      ctx.fillRect(X(s.x - s.w / 2), Y(s.y - s.h / 2), s.w * k, s.h * k)
-    }
-  }
-
-  // Components as flat category-colored rects (no symbols at this size).
-  for (const c of st.components) {
-    ctx.fillStyle = THUMB_FILL[c.category] ?? THUMB_OTHER
-    ctx.save()
-    ctx.translate(X(c.x), Y(c.y))
-    ctx.rotate(c.rotation)
-    ctx.fillRect((-c.w / 2) * k, (-c.h / 2) * k, c.w * k, c.h * k)
-    ctx.restore()
-  }
-
-  // Wall outlines on top.
-  ctx.strokeStyle = '#2e343b'
-  ctx.lineCap = 'round'
-  for (const wl of st.walls) {
-    ctx.lineWidth = Math.max(1, wl.thickness * k)
-    ctx.beginPath()
-    ctx.moveTo(X(wl.a.x), Y(wl.a.y))
-    ctx.lineTo(X(wl.b.x), Y(wl.b.y))
-    ctx.stroke()
-  }
-  return cv.toDataURL()
-}
-
-function wallBbox(
-  walls: DocWall[],
-): { minX: number; minY: number; maxX: number; maxY: number } | null {
-  if (!walls.length) return null
-  let minX = Infinity
-  let minY = Infinity
-  let maxX = -Infinity
-  let maxY = -Infinity
-  for (const wl of walls) {
-    for (const pt of [wl.a, wl.b]) {
-      minX = Math.min(minX, pt.x)
-      minY = Math.min(minY, pt.y)
-      maxX = Math.max(maxX, pt.x)
-      maxY = Math.max(maxY, pt.y)
-    }
-  }
-  return { minX, minY, maxX, maxY }
-}
-
-/** The 8 resize-handle screen points of a room box, ordered TL,T,TR,R,BR,B,BL,L. */
-function handlePoints(box: { x: number; y: number; w: number; h: number }) {
-  const { x, y, w, h } = box
-  const mx = x + w / 2
-  const my = y + h / 2
-  return [
-    { x, y },
-    { x: mx, y },
-    { x: x + w, y },
-    { x: x + w, y: my },
-    { x: x + w, y: y + h },
-    { x: mx, y: y + h },
-    { x, y: y + h },
-    { x, y: my },
-  ]
-}
-
-function inScreenBox(box: { x: number; y: number; w: number; h: number }, s: { x: number; y: number }) {
-  return s.x >= box.x && s.x <= box.x + box.w && s.y >= box.y && s.y <= box.y + box.h
-}
-
-function line(ctx: CanvasRenderingContext2D, x1: number, y1: number, x2: number, y2: number) {
-  ctx.beginPath()
-  ctx.moveTo(x1, y1)
-  ctx.lineTo(x2, y2)
-  ctx.stroke()
-}
-
-function clampN(v: number, lo: number, hi: number): number {
-  return Math.min(hi, Math.max(lo, v))
-}
-
-/** Min distance (m) from point `p` to the polygon's boundary edges. */
-export function distToPoly(poly: [number, number][], p: { x: number; y: number }): number {
-  let best = Infinity
-  for (let i = 0; i < poly.length; i++) {
-    const [ax, ay] = poly[i]
-    const [bx, by] = poly[(i + 1) % poly.length]
-    const dx = bx - ax
-    const dy = by - ay
-    const len2 = dx * dx + dy * dy
-    const t = len2 > 0 ? clampN(((p.x - ax) * dx + (p.y - ay) * dy) / len2, 0, 1) : 0
-    best = Math.min(best, Math.hypot(p.x - (ax + t * dx), p.y - (ay + t * dy)))
-  }
-  return best
-}
-
-/** Blend a #rrggbb color toward white by `amt` (0..1) — presentation tints. */
-function lighten(hex: string, amt: number): string {
-  const n = parseInt(hex.slice(1), 16)
-  const ch = (c: number) => Math.round(c + (255 - c) * amt)
-  return `rgb(${ch((n >> 16) & 255)}, ${ch((n >> 8) & 255)}, ${ch(n & 255)})`
-}
-
-/** Area readout: whole m² from 10 up, one decimal below ("42 m²", "7.5 m²"). */
-function fmtArea(a: number): string {
-  return a >= 10 ? String(Math.round(a)) : a.toFixed(1)
-}
-
-function niceStep(pxPerM: number): number {
-  const minPx = 46
-  for (const s of [0.5, 1, 2, 5, 10, 20, 50, 100]) if (s * pxPerM >= minPx) return s
-  return 100
-}
-
-function fmtM(m: number): string {
-  const r = Math.round(m * 100) / 100
-  return Number.isInteger(r) ? String(r) : String(r)
-}
-
-function clip(text: string, boxW: number): string {
-  const max = Math.max(3, Math.floor(boxW / 7))
-  return text.length > max ? `${text.slice(0, max - 1)}…` : text
-}
-
-/** '#rrggbb' → 'rgba(r,g,b,a)' (zone-line hairlines on tag pills). */
-function hexToRgba(hex: string, a: number): string {
-  const n = parseInt(hex.slice(1), 16)
-  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`
-}
-
-function roundRect(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  r: number,
-) {
-  ctx.beginPath()
-  ctx.moveTo(x + r, y)
-  ctx.arcTo(x + w, y, x + w, y + h, r)
-  ctx.arcTo(x + w, y + h, x, y + h, r)
-  ctx.arcTo(x, y + h, x, y, r)
-  ctx.arcTo(x, y, x + w, y, r)
-  ctx.closePath()
 }
