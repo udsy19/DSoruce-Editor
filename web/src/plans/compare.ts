@@ -8,7 +8,7 @@
 import { Editor } from '../wasm/ds_core'
 import type { DocState } from '../types/doc'
 import type { Metrics, CirculationScore } from '../types/metrics'
-import { renderThumb } from '../editor/EditorCanvas'
+import { renderThumb } from '../editor/paint'
 import { delta } from '../ai/engine'
 import { MetricDelta } from '../ai/contract'
 import { PlanMetricsSummary } from '../persist/plans'

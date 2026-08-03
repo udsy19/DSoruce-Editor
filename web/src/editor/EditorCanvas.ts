@@ -50,32 +50,10 @@ import {
 } from './search'
 import type { DesignSpec } from '../ai/designer'
 
-// The document/metrics/program type layer lives in `web/src/types/` so the ~25
-// modules that only need the vocabulary (exporters, three/, ai/, persist/) can
-// import it without pulling in the canvas. Re-exported here so existing
-// importers keep working; migrate to `../types/*` directly.
-export type {
-  DocWall,
-  DocComponent,
-  SelectedInfo,
-  SelectedPatch,
-  ZoneType,
-  ZoneShape,
-  DocZone,
-  DocAnchor,
-  DocState,
-  SpaceKind,
-  Placement,
-  RoomSelection,
-} from '../types/doc'
-export { ZONE_LABEL } from '../types/doc'
-export type { Metrics, ZoneStat, LayoutScore, CirculationScore } from '../types/metrics'
-export type { RoomReq, Program, Candidate, GenResult } from '../types/program'
-export { DEFAULT_PROGRAM } from '../types/program'
-// Re-exported from the extracted modules so every existing importer keeps its
-// single `EditorCanvas` entry point.
-export { renderThumb, distToPoly } from './paint'
-export type { DesignOptionResult, RefineStep, RefineOutcome } from './search'
+// The document/metrics/program vocabulary lives in `web/src/types/` and the
+// extracted canvas modules own their own exports — import from those directly
+// (`../types/doc`, `./paint`, `./search`). This file exports the canvas and
+// nothing it does not own.
 
 import type {
   DocComponent,

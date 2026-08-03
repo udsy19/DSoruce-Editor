@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
-import type { EditorCanvas, DesignOptionResult } from '../editor/EditorCanvas'
+import type { EditorCanvas } from '../editor/EditorCanvas'
+import type { DesignOptionResult } from '../editor/search'
 import { formatINR } from '../materialBank/client'
 import { Icon } from './icons'
 
