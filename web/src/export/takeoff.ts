@@ -186,9 +186,15 @@ export function buildTakeoffModel(state: DocState, opts: TakeoffOptions = {}): T
   const roomRefs = opts.roomRefs
   const zones = state.zones ?? []
 
+  // PRICE IS CORE-AUTHORITATIVE. `Editor.assign_product` writes `price_inr` onto
+  // the component and it rides state()/snapshot(); the App's bindings map is
+  // UI-layer display metadata (supplier, brand, thumbnail) and is NOT a price
+  // source. Reading the map here was a second, unenforced store: a component
+  // priced through the core reached this cost line unpriced whenever the App map
+  // was out of sync — the shape of the Track F bug, and a latent one the branch-2
+  // bake-off surfaced (ADR 0004).
   const priceOf = (c: DocComponent): number => {
-    if (!c.product_id || !bindings) return 0
-    const p = bindings.get(c.product_id)?.price
+    const p = c.price_inr
     return p != null && Number.isFinite(p) ? p : 0
   }
 

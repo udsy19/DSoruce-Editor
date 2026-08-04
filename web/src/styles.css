@@ -4313,3 +4313,37 @@ kbd {
 .space-plate-confirm:hover { background: rgba(232, 161, 60, 0.14); }
 /* An approximate figure reads as provisional, not as a measurement. */
 .space-metric-value[data-approx='true'] { opacity: 0.82; font-style: italic; }
+
+/* Hierarchical BOM (ADR 0004) — Level → Room → Category, rolled-up subtotals. */
+.bom-panel { font-size: 12px; padding: 4px 0 10px; }
+.bom-head, .bom-foot {
+  display: flex; gap: 8px; align-items: baseline;
+  padding: 6px 10px; color: var(--muted, #6b7280);
+  border-bottom: 1px solid rgba(23, 26, 30, 0.08);
+}
+.bom-foot {
+  border-bottom: none; border-top: 1px solid rgba(23, 26, 30, 0.14);
+  margin-top: 6px; color: var(--ink, #1a1d21); font-weight: 600;
+  justify-content: space-between;
+}
+.bom-head .bom-label, .bom-line .bom-label, .bom-row .bom-label { flex: 1; text-align: left; }
+.bom-count, .bom-qty { min-width: 54px; text-align: right; }
+.bom-area { min-width: 62px; text-align: right; color: var(--muted, #6b7280); }
+.bom-total { min-width: 88px; text-align: right; }
+.bom-row {
+  display: flex; gap: 8px; align-items: baseline; width: 100%;
+  padding: 5px 10px; border: 0; background: none; font: inherit; cursor: pointer;
+  color: var(--ink, #1a1d21); border-radius: 4px;
+}
+.bom-row:hover:not(:disabled) { background: rgba(23, 26, 30, 0.04); }
+.bom-row:disabled { cursor: default; }
+.bom-row-level { font-weight: 600; }
+.bom-row-room { font-weight: 500; }
+.bom-row-category { color: var(--muted, #6b7280); }
+.bom-caret { width: 12px; color: var(--muted, #9aa2ad); }
+.bom-line {
+  display: flex; gap: 8px; align-items: baseline;
+  padding: 3px 10px; color: var(--muted, #5f6771);
+}
+.bom-note { padding: 6px 10px 0; color: var(--muted, #6b7280); font-size: 11px; line-height: 1.5; }
+.bom-empty { padding: 12px 10px; color: var(--muted, #6b7280); }

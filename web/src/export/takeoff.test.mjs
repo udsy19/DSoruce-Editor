@@ -86,6 +86,13 @@ const state = ed.state()
 
 // --- bind a couple of products with ₹ prices --------------------------------
 // Give the first Desk and first Chair a product + price so pricing math runs.
+//
+// PRICE IS CORE-AUTHORITATIVE (ADR 0004): it goes on the component as
+// `price_inr`, exactly as `Editor.assign_product` writes it. This test used to
+// put price ONLY in the bindings map, which encoded the two-store design that
+// let a core-bound component reach a cost line unpriced — so it failed when the
+// second store was removed, correctly. The map keeps supplier/brand, which are
+// display metadata the core does not model.
 const bindings = new Map()
 let deskPid = null
 let chairPid = null
@@ -93,12 +100,14 @@ for (const c of state.components) {
   if (c.category === 'Desk' && deskPid == null) {
     deskPid = `desk-${c.id}`
     c.product_id = deskPid
-    bindings.set(deskPid, { price: 12000 })
+    c.price_inr = 12000
+    bindings.set(deskPid, {})
   } else if (c.category === 'Chair' && chairPid == null) {
     chairPid = `chair-${c.id}`
     c.product_id = chairPid
-    // a real supplier/brand → exercises the takeoff Supplier column
-    bindings.set(chairPid, { price: 4500, supplier: 'steelcase.com', brand: 'Steelcase' })
+    c.price_inr = 4500
+    // supplier/brand stay in the map → exercises the takeoff Supplier column
+    bindings.set(chairPid, { supplier: 'steelcase.com', brand: 'Steelcase' })
   }
 }
 

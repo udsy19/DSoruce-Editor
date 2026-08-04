@@ -36,7 +36,7 @@ const state = ed.state()
 const bindings = truth.bindingRegression.bindings
 
 const impls = []
-for (const f of ['baseline.ts', 'ifcCost.ts', 'qtoNative.ts']) {
+for (const f of ['baseline.ts', 'qtoNative.ts']) {
   const mod = await bundle(path.join(here, 'adapters/qto', f))
   const impl = mod.default ?? Object.values(mod).find((v) => v && v.schedule)
   if (!impl) { console.log(`  ! ${f}: no QuantityEngine export`); continue }

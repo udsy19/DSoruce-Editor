@@ -37,6 +37,17 @@ export interface DocComponent {
   reference?: boolean
   label: string
   product_id: string | null
+  /**
+   * Bound product price (₹), authoritative. The core owns this — it is written
+   * by `Editor.assign_product` and rides `state()`/`snapshot()`.
+   *
+   * It was previously absent from this mirror, which is exactly why the App's
+   * bindings map became the de-facto price source and why a component bound
+   * through the core could reach a cost line unpriced. Every cost-line
+   * constructor reads THIS; the bindings map is UI-layer display metadata
+   * (supplier, brand, thumbnail) and is not authoritative for money.
+   */
+  price_inr?: number | null
   decision: 'Open' | 'InReview' | 'Confirmed'
 }
 /** Read-only geometry facet of a selection, surfaced to the object inspector. */

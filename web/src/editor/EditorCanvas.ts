@@ -67,6 +67,7 @@ import type {
 } from '../types/doc'
 import type { CirculationScore, LayoutScore, Metrics, ZoneStat } from '../types/metrics'
 import type { PlateProvenance } from '../import/plateQuality'
+import type { CostSchedule } from '../types/qto'
 import type { GenResult, Program } from '../types/program'
 import { DEFAULT_PROGRAM } from '../types/program'
 
@@ -775,6 +776,16 @@ export class EditorCanvas {
   plateProvenance: PlateProvenance | null = null
   getMetrics(): Metrics {
     return this.ed.metrics() as Metrics
+  }
+  /**
+   * Hierarchical quantity schedule (level → room → category → item) from the
+   * core — the ADR 0004 winner. Prices are read from the core's `price_inr`, so
+   * this needs no App-layer bindings map.
+   */
+  getQtoSchedule(): CostSchedule | null {
+    const ed = this.ed as unknown as { qto_schedule?: () => unknown }
+    if (typeof ed.qto_schedule !== 'function') return null
+    return (ed.qto_schedule() as CostSchedule) ?? null
   }
   getZoneStats(): ZoneStat[] {
     const ed = this.ed as unknown as { zone_stats?: () => unknown }

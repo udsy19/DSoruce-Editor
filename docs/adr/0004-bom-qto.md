@@ -1,6 +1,6 @@
 # ADR 0004 — Branch 2: hierarchical BOM / quantity takeoff
 
-**Status:** results in — awaiting adoption decision at the merge gate
+**Status:** ADOPTED — `qto-native` shipped; `ifc-cost` dropped, its finding routed
 **Date:** 2026-08-04
 
 **Code anchors:** incumbent `buildTakeoffModel`, `takeoffToXlsx`
@@ -310,3 +310,71 @@ should be actioned separately: **our IFC export is viewer-grade**. Emitting
 `IfcSpace` for zones, `IfcElementQuantity` for quantities, and a classification or
 `Tag` carrying `product_id` would make it consumable by any BIM tool — worth an
 issue of its own, independent of costing.
+
+## Standing rule, from the third instance of one mistake
+
+Three times now a metric has been read as a score for a candidate it was never
+defined over: phantom fraction for `column-grid` (ADR 0003), hierarchy depth for
+`baseline`, and here totals across engines covering different category sets.
+
+> **A metric is only readable as a score for a candidate class it was defined
+> over; otherwise it is UNDEFINED — not zero, not failed.**
+
+Applied at pre-registration, not in results: every branch states its per-candidate
+metric validity table before running. Two of the three instances above were caught
+that way; the third was not, and scored two correct engines as failures.
+
+## Adoption
+
+`qto-native` is shipped:
+
+- `crates/ds-core/src/qto.rs` — the rollup, exposed as `Editor.qto_schedule()`.
+- `web/src/types/qto.ts` — the TS mirror of its serde output.
+- `web/src/ui/BomPanel.tsx` — Level → Room → Category with rolled-up subtotals,
+  collapsible, following the OpenConstructionERP grouping pattern pre-registered
+  as this branch's UX reference. The level row is shown for structural honesty
+  and **not** claimed as a feature, since the document has no multi-storey
+  concept yet.
+- Unpriced renders as an em dash, never ₹0: a bound product with no price and a
+  free product are different facts.
+- `ifc-cost`'s adapter and runner are deleted; its numbers live in this ADR.
+
+### Price is core-authoritative — the dual-source bug this branch found
+
+The branch surfaced a two-store design for money: the core's `price_inr` (written
+by `Editor.assign_product`) and the App-layer bindings map, with every cost-line
+constructor reading the **map**. A component priced through the core was unpriced
+in the takeoff unless a second, unenforced sync happened.
+
+Root cause: `DocComponent` — the TS mirror of the core document — **did not model
+`price_inr` at all**, so the map became the only price the frontend could see.
+That is EditorCanvas's accidental type mirror again, in miniature, for money.
+
+Resolved rather than patched:
+
+1. `DocComponent` now models `price_inr`, so the core's price is visible.
+2. `takeoff.ts`'s `priceOf` reads the component, not the map. The map demotes to
+   what it honestly is — display metadata (supplier, brand, thumbnail).
+3. `qto.rs` reads the core by construction, so adopting it removed the second
+   path rather than adding one.
+
+`priceSourceOfTruth.test.mjs` asserts the invariant end to end, including the case
+that would have caught both the historical Track F bug and the latent one: bind
+through the App entry point, build the takeoff with the bindings map
+**deliberately empty**, and require the price to arrive anyway. It also pins that
+a *stale* map cannot override the core, that unpriced stays unpriced, and that
+price survives a snapshot round-trip.
+
+### Routed, not scheduled: the IFC upgrade
+
+Our IFC is **exchange-grade for geometry, viewer-grade for semantics**. One issue,
+scoped: `IfcSpace` for zones · `IfcElementQuantity` for quantities · a
+classification or `Tag` carrying `product_id` — which also fixes the rename
+problem, since identity stops riding on the display name.
+
+**Trigger: it is pre-work for Agent 5's `blender-offline` candidate**, which
+routes scenes through Bonsai/IfcOpenShell and needs exactly these semantics to
+carry materials and spaces. That gives it a real activation condition rather than
+a backlog grave, and it revives `ifc-cost` as a future option for free. The
+untested Vercel prediction (ifcopenshell native code will not run in that sandbox)
+stays registered and resolves if that revival happens.

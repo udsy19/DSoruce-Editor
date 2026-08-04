@@ -11,6 +11,7 @@ import { searchBankLive, bankQueryFor, formatINR, type BankProduct } from './mat
 import { Icon } from './ui/icons'
 import { ToolDock, type DockTool } from './ui/ToolDock'
 import { StatsPanel } from './ui/StatsPanel'
+import { BomPanel } from './ui/BomPanel'
 import { RoomTools } from './ui/RoomTools'
 import { ObjectInspector } from './ui/ObjectInspector'
 import { LayersPanel } from './ui/LayersPanel'
@@ -276,7 +277,7 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
   /** M6 — sheets manager + publish overlay (opened from the Export menu). */
   const [sheetsOpen, setSheetsOpen] = useState(false)
   /** Right-inspector tab: the working plan vs the saved-plan library. */
-  const [panelTab, setPanelTab] = useState<'plan' | 'library'>('plan')
+  const [panelTab, setPanelTab] = useState<'plan' | 'bom' | 'library'>('plan')
   const [plans, setPlans] = useState<SavedPlan[]>([])
   /** Last autonomous-search candidates, lifted from GenerateCard so the topbar
    *  export menu can build the A/B/C space-planning report from them. */
@@ -1171,6 +1172,15 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
                 </button>
                 <button
                   role="tab"
+                  aria-selected={panelTab === 'bom'}
+                  className={panelTab === 'bom' ? 'stat-tab on' : 'stat-tab'}
+                  onClick={() => setPanelTab('bom')}
+                  data-testid="tab-bom"
+                >
+                  BOM
+                </button>
+                <button
+                  role="tab"
                   aria-selected={panelTab === 'library'}
                   className={panelTab === 'library' ? 'stat-tab on' : 'stat-tab'}
                   onClick={() => setPanelTab('library')}
@@ -1179,7 +1189,9 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
                   Library
                 </button>
               </div>
-              {panelTab === 'library' ? (
+              {panelTab === 'bom' ? (
+                <BomPanel ec={ec} />
+              ) : panelTab === 'library' ? (
                 <>
                 <LibraryPanel
                   plans={plans}
