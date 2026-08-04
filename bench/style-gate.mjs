@@ -74,6 +74,32 @@ for (const [rel, rules] of GUARDED) {
   })
 }
 
+// DPR contract: the editor canvas is already `setTransform(dpr,0,0,dpr,0,0)`
+// and toScreen() returns CSS px, so strokePx must NOT multiply by DPR itself.
+// It did once, drawing every tier at 2x weight on retina. That survived review
+// because the ladder is judged on RATIOS and a uniform error preserves them --
+// so the only thing that can catch it is a rule about the code, not a look at
+// the output. There is no TS test runner in this repo; the gate is where an
+// invariant like this can live.
+{
+  const tbl = fs.readFileSync(path.join(ROOT, 'web/src/editor/planStyle.ts'), 'utf8')
+  const fn = tbl.match(/export function strokePx\([^)]*\)[^{]*\{([\s\S]*?)\n\}/)
+  if (!fn) {
+    console.log('  DPR CONTRACT: strokePx not found in planStyle.ts')
+    violations++
+  } else if (/\bdpr\b|devicePixelRatio/.test(fn[1])) {
+    console.log('  DPR CONTRACT: strokePx multiplies by DPR; the ctx transform already does')
+    violations++
+  }
+  for (const rel of ['web/src/editor/paint.ts']) {
+    const src = fs.readFileSync(path.join(ROOT, rel), 'utf8')
+    if (/strokePx\([^)]*,[^)]*,[^)]*\)/.test(src)) {
+      console.log(`  DPR CONTRACT: ${rel} still passes a third (dpr) argument to strokePx`)
+      violations++
+    }
+  }
+}
+
 // Mirror check: a declared TS/CSS pair that disagrees is worse than two
 // literals, because it renders as one value while reading as another.
 const tableSrc = fs.readFileSync(path.join(ROOT, 'web/src/editor/planStyle.ts'), 'utf8')

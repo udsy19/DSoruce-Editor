@@ -158,8 +158,7 @@ export function drawGlazing(v: PaintView, a: Pt, b: Pt) {
 export function drawWall(v: PaintView, w: DocWall, exterior: boolean) {
   const style = planStyle(v.presentation ? 'paper' : 'editor')
   const el = exterior ? style.wallCut : style.wallInterior
-  const dpr = typeof devicePixelRatio === 'number' ? devicePixelRatio : 1
-  const width = strokePx(el.tier ?? 'wall', v.scale, dpr)
+  const width = strokePx(el.tier ?? 'wall', v.scale)
   const color = el.stroke ?? BLACK
 
   const dx = w.b.x - w.a.x
@@ -191,10 +190,9 @@ export function drawWall(v: PaintView, w: DocWall, exterior: boolean) {
  */
 export function punchOpening(v: PaintView, a: Pt, b: Pt, thickness: number) {
   const style = planStyle(v.presentation ? 'paper' : 'editor')
-  const dpr = typeof devicePixelRatio === 'number' ? devicePixelRatio : 1
   // The punch must be at least as wide as the wall it erases.
   const width = Math.max(
-    strokePx(style.opening.tier ?? 'openingPunch', v.scale, dpr),
+    strokePx(style.opening.tier ?? 'openingPunch', v.scale),
     thickness * v.scale,
   )
   drawSegment(v, a, b, width, style.opening.stroke ?? WHITE)

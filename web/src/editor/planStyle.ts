@@ -52,24 +52,30 @@ const MAX_STROKE_PX = 6
  * THE one function that owns stroke-width maths. Every stroke in the plan goes
  * through it — nothing computes a width itself.
  *
- * DPR-aware by construction: widths are multiplied by `devicePixelRatio` so a
- * 2× display renders the same *relative* hierarchy rather than half-weight
- * hairlines. Clamps are applied in CSS px BEFORE the DPR multiply, so the clamp
- * means the same thing on every display.
+ * Returns a width in CSS px, because that is the space the caller draws in.
+ *
+ * DO NOT multiply by `devicePixelRatio` here. `EditorCanvas.render` already
+ * does `ctx.setTransform(dpr, 0, 0, dpr, 0, 0)` and `toScreen` returns CSS px,
+ * so the context applies DPR itself. An earlier version of this function
+ * multiplied as well, which applied DPR twice and drew every tier at exactly
+ * 2× its intended weight on a retina display — verified in-browser at
+ * devicePixelRatio 2 with a canvas buffer ratio of 2 and ctx transform 2.
+ * The hierarchy still looked right because every tier scaled together, which is
+ * precisely why it survived: the ladder is defined by RATIOS, so a uniform
+ * error is invisible in the thing the ladder is judged on.
+ *
+ * Resolution independence needs no help from us — a 0.8 CSS px line already
+ * becomes 1.6 device px on a 2× display, which is a crisper line, not a
+ * half-weight one.
  *
  * `pixelsPerMeter` is accepted for future world-scaled widths (a wall that
  * thickens as you zoom). Today the ladder is screen-relative — the reference's
  * weights are paper-relative too — but the parameter is threaded now so 2b can
  * turn it on without touching call sites.
  */
-export function strokePx(tier: Tier, _pixelsPerMeter: number, dpr = 1): number {
+export function strokePx(tier: Tier, _pixelsPerMeter: number): number {
   const raw = BASE_STROKE_PX * TIER[tier]
-  // ORDER IS LOAD-BEARING: clamp in CSS px, THEN multiply by DPR. Clamping
-  // after the multiply would make the clamp mean a different physical width on
-  // every display — a 0.35 px floor would be half a hairline at DPR 2. Do not
-  // "simplify" by folding the multiply in first.
-  const clamped = Math.min(MAX_STROKE_PX, Math.max(MIN_STROKE_PX, raw))
-  return clamped * dpr
+  return Math.min(MAX_STROKE_PX, Math.max(MIN_STROKE_PX, raw))
 }
 
 // ---------------------------------------------------------------------------
