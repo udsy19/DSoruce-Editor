@@ -75,7 +75,7 @@ export interface FinishSheet {
 // in the FINISH LEGEND / NOTES footer block on every sheet.
 // ---------------------------------------------------------------------------
 
-type FinishKey =
+export type FinishKey =
   | 'workspace'
   | 'conference'
   | 'boardroom'
@@ -93,7 +93,7 @@ type FinishKey =
   | 'core'
   | 'other'
 
-interface FinishSpec {
+export interface FinishSpec {
   floor: string
   base: string // skirting
   wall: string
@@ -101,7 +101,7 @@ interface FinishSpec {
 }
 
 /** The finish spec for every room type (floor · base/skirting · wall · ceiling). */
-const FINISH_SPEC: Record<FinishKey, FinishSpec> = {
+export const FINISH_SPEC: Record<FinishKey, FinishSpec> = {
   workspace: {
     floor: 'Carpet tile 500×500 (CPT)',
     base: 'PVC skirting 100 mm',
@@ -201,7 +201,7 @@ const FINISH_SPEC: Record<FinishKey, FinishSpec> = {
 }
 
 /** Human room-type label shown in the schedule's Room Type column. */
-const TYPE_LABEL: Record<FinishKey, string> = {
+export const TYPE_LABEL: Record<FinishKey, string> = {
   workspace: 'Open Workspace',
   conference: 'Conference',
   boardroom: 'Boardroom',
@@ -225,7 +225,7 @@ const TYPE_LABEL: Record<FinishKey, string> = {
  * "Reception", "Pantry", "Cabin 2", "Phone Booth 3", "Focus 1", "Meeting Room 4"
  * …), falling back to the broad `zone_type`. Deterministic — pure string match.
  */
-function finishTypeFor(z: DocZone): FinishKey {
+export function finishTypeFor(z: DocZone): FinishKey {
   const raw = z.label ?? ''
   const l = raw.toLowerCase()
   if (l.includes('reception')) return 'reception'

@@ -12,6 +12,7 @@ mod document;
 mod geometry;
 mod layout;
 mod model;
+mod quantity;
 mod zone;
 
 use document::{Anchor, Document};
@@ -264,6 +265,7 @@ impl Editor {
             thickness,
             generated: false,
             glazing: false,
+            height_m: None,
         });
         id
     }
@@ -744,6 +746,54 @@ impl Editor {
             w.b = Point::new(bx, by);
         }
     }
+
+    /// Set a wall's height in meters. Anything `>= 0` and below the full storey
+    /// height ([`model::FULL_WALL_HEIGHT_M`]) makes it a **partial-height screen**
+    /// and moves its run into the takeoff's `Half Drywall` category; pass a
+    /// negative value (or the full height) to clear the override back to full
+    /// height. No-op if the id is unknown. This is the only writer of
+    /// `Wall::height_m` — the generator has no partial-height primitive.
+    pub fn set_wall_height(&mut self, id: u32, height_m: f64) {
+        if let Some(w) = self.doc.walls.iter_mut().find(|w| w.id == id) {
+            w.height_m = if height_m > 0.0 && height_m < model::FULL_WALL_HEIGHT_M {
+                Some(height_m)
+            } else {
+                None
+            };
+        }
+    }
+
+    // ----- Quantity surface (`quantity.rs`): the geometric truth the Quantity
+    // Takeoff workbook reads. Every number is computed from the document, never
+    // typed; `scripts/gates/g3-quantity-truth.py` cross-checks the workbook
+    // against `ground_truth_json`. -----
+
+    /// Wall run length + elevational area per wall type, door count/width per
+    /// door type, and per-room area/headcount — all derived from geometry.
+    /// Shape: `{ sqfPerM2, wallHeightM, floorAreaM2, walls[], doors[],
+    /// doorCount, doorTotalWidthM, rooms[] }`. See `quantity::Quantities`.
+    pub fn quantities(&self) -> Result<JsValue, JsValue> {
+        serde_wasm_bindgen::to_value(&quantity::quantities(&self.doc))
+            .map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
+    /// Per-wall classification for the **plan renderer**:
+    /// `[{ id, wallType, planKey, lengthM }, ...]` in document order, where
+    /// `planKey` is a `qbiqPalette.ts` `WallType` (`"drywall"`, `"glass"`, …).
+    /// The renderer must colour from THIS rather than re-deriving types in TS —
+    /// that is what keeps the coloured plan and the billed workbook in agreement.
+    pub fn wall_types(&self) -> Result<JsValue, JsValue> {
+        serde_wasm_bindgen::to_value(&quantity::classify_walls(&self.doc))
+            .map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
+    /// The `out/ground-truth.json` payload as a JSON string, ready to write.
+    /// `plan_labels` must be the room ids the **plan renderer actually drew** —
+    /// G3's 1:1 label check is only meaningful because this method does not
+    /// synthesise them from its own room list.
+    pub fn ground_truth_json(&self, plan_labels: Vec<String>) -> String {
+        quantity::ground_truth_json(&self.doc, &plan_labels)
+    }
 }
 
 impl Default for Editor {
@@ -798,6 +848,7 @@ mod tests {
                 thickness: 0.1,
                 generated: false,
                 glazing: false,
+                height_m: None,
             });
         }
         // One Workspace zone covering the whole plate.
@@ -897,6 +948,7 @@ mod tests {
                 thickness: 0.1,
                 generated: false,
                 glazing: false,
+                height_m: None,
             });
         }
         add_rect_zone(&mut doc, ZoneType::Workspace, 5.0, 5.0, 10.0, 10.0); // x∈[0,10]
@@ -1120,6 +1172,7 @@ mod tests {
                 thickness: 0.1,
                 generated: false,
                 glazing: false,
+                height_m: None,
             });
         }
         for (i, zt) in [
@@ -1234,6 +1287,7 @@ mod tests {
                 thickness: 0.1,
                 generated: false,
                 glazing: false,
+                height_m: None,
             });
         }
         doc

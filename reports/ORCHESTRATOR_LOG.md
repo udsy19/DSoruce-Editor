@@ -117,4 +117,38 @@ Too much for one agent, so B is split into independently-testable units:
 - **B2** — the seven OOXML writer capabilities (verifiable against a synthetic workbook alone).
 - **B3** — the 12 sheets + formula wiring (needs B1 + B2), dispatched after they land.
 B1, B2 and C are mutually independent → dispatched in parallel now.
+
+---
+
+## Cycle 2 — B2 LANDED and independently verified
+
+### B2 — OOXML writer capabilities: **ACCEPTED**. Tripwire did NOT fire.
+The hand-rolled-writer bet paid off; exceljs was not needed and no Python step was introduced, so
+the export stays client-side/one-action. New `web/src/export/workbook.ts` (`buildXlsx(SheetSpec[])`)
+is the general writer; `takeoff.ts` was **migrated onto it and its inline OOXML layer deleted**
+(`sheetXml`/`cellXml`/`STYLES_XML`/`SheetPlan` gone) — zero duplicate xlsx paths, satisfying no-bloat.
+
+Orchestrator re-ran the tests directly (not trusting the report):
+- `node web/src/export/workbook.test.mjs` → **All assertions passed**, including LibreOffice recalc
+  (`=A1*B1`→42, cross-sheet `='General'!B9`→'Carpet', VLOOKUP→1250, SUMIF→40,
+  `ROUND(General!D5*A4,2)`→120, nested IF/ISBLANK→12, and a deliberately **stale cached 0 recalculated
+  to 50000** — so B3 need not compute cached values), plus round-trip survival of sheets, gridlines-off,
+  3 images, validations, and chip ARGB `FFFFDC60`.
+- `node web/src/export/takeoff.test.mjs` → **All assertions passed** (existing 4-sheet export not
+  regressed; it is now formula-live and gridline-free as a side benefit).
+
+### INCIDENT: concurrent `git stash` in a shared worktree (near-miss data loss)
+Mid-verification, `workbook.ts`/`workbook.test.mjs` vanished and `takeoff.ts` read byte-identical to
+HEAD — the signature of a `git stash -u` run by one of the three agents sharing this single worktree.
+It was popped and everything recovered, but a stash landing during an orchestrator commit would have
+silently destroyed a lane's work. (Matches the known "worktree agent integration" hazard.)
+**Mitigation:** B1 and C were sent an explicit prohibition on `git stash`/`reset`/`checkout`/`clean`/
+`commit`, plus their file lanes, with `takeoff.ts`+`workbook.ts` declared frozen post-B2. All staging
+and committing stays with the orchestrator. **Do not run agents concurrently in one worktree again
+without either this prohibition up front or `isolation: "worktree"` per agent.**
+
+### Known defect (deferred to final cleanup, not gate-blocking)
+`scripts/gates/lib/gen_spec_md.py:198` still narrates the seven writer gaps as open and cites the now
+-deleted `sheetXml`/`takeoffToXlsx` symbols. It is a spec-doc generator, **not invoked by
+`run-all.sh`**, so no gate is affected. Fix (and regenerate `workbook-spec.md`) during final cleanup.
 </content>

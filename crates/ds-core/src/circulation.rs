@@ -894,7 +894,7 @@ mod tests {
         ];
         for (a, b) in corners {
             let id = doc.alloc_id();
-            doc.walls.push(Wall { id, a, b, thickness: t, generated: false, glazing: false });
+            doc.walls.push(Wall { id, a, b, thickness: t, generated: false, glazing: false, height_m: None });
         }
         doc
     }
@@ -982,6 +982,7 @@ mod tests {
                     thickness: 0.1,
                     generated: true,
                     glazing: false,
+                    height_m: None,
                 });
             };
             seg(2.0, 2.0, 2.0, 5.0); // left

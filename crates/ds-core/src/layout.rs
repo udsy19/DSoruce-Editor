@@ -912,6 +912,9 @@ fn push_gen_wall(doc: &mut Document, ax: f64, ay: f64, bx: f64, by: f64, thickne
         thickness,
         generated: true,
         glazing,
+        // Generated partitions are always full storey height — the generator has
+        // no partial-height primitive (see `quantity::WallType::HalfDrywall`).
+        height_m: None,
     });
 }
 
@@ -4671,6 +4674,7 @@ mod tests {
                 thickness: 0.1,
                 generated: false,
                 glazing: false,
+                height_m: None,
             });
         }
         doc
@@ -6316,7 +6320,7 @@ mod tests {
     fn add_partition(doc: &mut Document, ax: f64, ay: f64, bx: f64, by: f64) -> (Point, Point) {
         let id = doc.alloc_id();
         let (a, b) = (Point::new(ax, ay), Point::new(bx, by));
-        doc.walls.push(Wall { id, a, b, thickness: 0.1, generated: false, glazing: false });
+        doc.walls.push(Wall { id, a, b, thickness: 0.1, generated: false, glazing: false, height_m: None });
         (a, b)
     }
 

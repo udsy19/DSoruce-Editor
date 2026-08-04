@@ -265,6 +265,7 @@ mod tests {
             thickness: 0.2,
             generated: false,
             glazing: false,
+            height_m: None,
         };
         vec![
             seg(p(0.0, 0.0), p(w, 0.0)),
@@ -282,6 +283,7 @@ mod tests {
             thickness: 0.1,
             generated: true,
             glazing,
+            height_m: None,
         }
     }
 

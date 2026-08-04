@@ -19,16 +19,19 @@
 // column-identical item summary:
 //   1. Main Summary          — grand totals per cost group (mirrors 'Main Summary')
 //   2. Furniture Inventory   — per-component BOM, columns verbatim from the sample
-//   3. Furniture Summary     — aggregated by item, columns verbatim from the sample
+//   3. Furniture Inventory Summary — aggregated by item, columns verbatim
 //   4. Wall Schedule         — linear meters per wall type + door count/length
 //
 // Currency is ₹ (INR) per CLAUDE.md; the qbiq sample is generic-currency.
 // Item Descriptions carry W×L in cm ("Desk W70 X L140"), matching the sample.
+//
+// The OOXML byte stream is written by `workbook.ts` (the shared, general
+// SpreadsheetML writer) — this file only declares sheets, styles and formulas.
 
 import type { DocState, DocComponent, DocWall, DocZone, ZoneType } from '../editor/EditorCanvas'
 import { pointInZoneShape } from '../util/zoneGeom'
 import { catByCategory } from '../editor/catalog'
-import { zipStore } from './zip'
+import { buildXlsx, type Cell, type SheetSpec, type StyleSpec } from './workbook'
 import { triggerDownload } from './png'
 
 // ---------------------------------------------------------------------------
@@ -329,265 +332,125 @@ function round2(n: number): number {
 }
 
 // ---------------------------------------------------------------------------
-// XLSX layer (hand-written OOXML, zipped by zip.ts)
+// XLSX layer — declarative sheets handed to the shared OOXML writer
 // ---------------------------------------------------------------------------
 
-const XML_ESC: Record<string, string> = {
-  '&': '&amp;',
-  '<': '&lt;',
-  '>': '&gt;',
-  '"': '&quot;',
-  "'": '&apos;',
+const HEADER: StyleSpec = {
+  font: { bold: true, size: 10, color: '#FFFFFF' },
+  fill: '#0B67F9',
+  align: { h: 'center', v: 'center', wrap: true },
+  border: { all: 'thin' },
 }
-function esc(s: string): string {
-  return s.replace(/[&<>"']/g, (ch) => XML_ESC[ch])
-}
+const TITLE: StyleSpec = { font: { bold: true, size: 14 } }
+const RUPEE: StyleSpec = { numFmt: '"\u20B9"#,##0' }
+const TOTAL: StyleSpec = { font: { bold: true }, border: { top: 'thin' } }
+const TOTAL_RUPEE: StyleSpec = { ...TOTAL, numFmt: '"\u20B9"#,##0' }
 
-type Cell = { t: 'n'; v: number } | { t: 's'; v: string } | null
+const money = (v: number, isTotal = false): Cell => ({ v, style: isTotal ? TOTAL_RUPEE : RUPEE })
+const head = (labels: string[]): Cell[] => labels.map((v) => ({ v, style: HEADER }))
+const bold = (v: number | string): Cell => ({ v, style: TOTAL })
 
-/** A cell holding text (inlineStr) or a number, with an optional style index. */
-function cellXml(col: string, row: number, cell: Cell, style?: number): string {
-  if (cell == null) return ''
-  const s = style != null ? ` s="${style}"` : ''
-  if (cell.t === 'n') {
-    return `<c r="${col}${row}"${s}><v>${cell.v}</v></c>`
-  }
-  return `<c r="${col}${row}"${s} t="inlineStr"><is><t xml:space="preserve">${esc(cell.v)}</t></is></c>`
-}
-
-const COL_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('')
-
-/** Build one worksheet XML from a matrix of cells. Style indices (styles.xml):
- *  0 default, 1 bold header, 2 title (bold large), 3 currency (₹). */
-function sheetXml(rows: Cell[][], styleFor: (r: number, c: number) => number | undefined): string {
-  const body = rows
-    .map((cells, ri) => {
-      const rowNum = ri + 1
-      const cellsXml = cells
-        .map((cell, ci) => cellXml(COL_LETTERS[ci], rowNum, cell, styleFor(ri, ci)))
-        .join('')
-      return `<row r="${rowNum}">${cellsXml}</row>`
-    })
-    .join('')
-  return (
-    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
-    '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
-    `<sheetData>${body}</sheetData></worksheet>`
-  )
-}
-
-const num = (v: number): Cell => ({ t: 'n', v })
-const str = (v: string): Cell => ({ t: 's', v })
-
-interface SheetPlan {
-  name: string
-  rows: Cell[][]
-  /** Rows (0-based) that are the bold header band. */
-  headerRows: Set<number>
-  /** Column indices (0-based) that are ₹ currency. */
-  currencyCols: Set<number>
-  /** Title rows (0-based) — bold, larger. */
-  titleRows: Set<number>
-}
-
-/** Assemble the four sheet plans from a takeoff model. */
-function planSheets(model: TakeoffModel, opts: TakeoffOptions): SheetPlan[] {
+/** Assemble the four sheets from a takeoff model. */
+function planSheets(model: TakeoffModel, opts: TakeoffOptions): SheetSpec[] {
   const project = opts.project ?? 'DSource Test-Fit'
   const t = model.totals
 
   // 1. Main Summary --------------------------------------------------------
-  const summaryRows: Cell[][] = [
-    [str(`Quantity Takeoff — ${project}`)],
-    [str('Cost group'), str('Total (₹)')],
-    [str('Furniture'), num(t.furniture)],
-    [str('Walls, glazing & doors'), num(t.walls)],
-    [str('Grand total'), num(t.grand)],
-    [],
-    [str('Furniture line items'), num(model.summary.length)],
-    [str('Furniture units'), num(t.itemCount)],
-  ]
-  const mainSummary: SheetPlan = {
+  const mainSummary: SheetSpec = {
     name: 'Main Summary',
-    rows: summaryRows,
-    headerRows: new Set([1]),
-    currencyCols: new Set([1]),
-    titleRows: new Set([0]),
+    gridlines: false,
+    cols: { A: 28, B: 18 },
+    rows: [
+      [{ v: `Quantity Takeoff \u2014 ${project}`, style: TITLE }],
+      head(['Cost group', 'Total (\u20B9)']),
+      ['Furniture', money(t.furniture)],
+      ['Walls, glazing & doors', money(t.walls)],
+      [bold('Grand total'), money(t.grand, true)],
+      [],
+      ['Furniture line items', model.summary.length],
+      ['Furniture units', t.itemCount],
+    ],
   }
 
   // 2. Furniture Inventory (per-component BOM) -----------------------------
-  const fHeader = [
-    'Cost Code',
-    'Floor',
-    'Room ID',
-    'Room Type',
-    'Item Description',
-    'Supplier',
-    'Quantity',
-    'Unit Price',
-    'Total Price',
-  ]
-  const furnitureRows: Cell[][] = [
-    fHeader.map(str),
-    ...model.furniture.map((r) => [
-      str(r.costCode),
-      typeof r.floor === 'number' ? num(r.floor) : str(String(r.floor)),
-      typeof r.roomId === 'number' ? num(r.roomId) : str(String(r.roomId)),
-      str(r.roomType),
-      str(r.itemDescription),
-      str(r.supplier),
-      num(r.quantity),
-      num(r.unitPrice),
-      num(r.totalPrice),
-    ]),
-    [str('Total'), null, null, null, null, null, num(t.itemCount), null, num(t.furniture)],
-  ]
-  const furnitureInventory: SheetPlan = {
+  const furnitureInventory: SheetSpec = {
     name: 'Furniture Inventory',
-    rows: furnitureRows,
-    headerRows: new Set([0]),
-    currencyCols: new Set([7, 8]),
-    titleRows: new Set(),
+    gridlines: false,
+    freeze: 'A2',
+    cols: { A: 11, B: 7, C: 9, D: 22, E: 26, F: 18, G: 10, H: 13, I: 14 },
+    rows: [
+      head([
+        'Cost Code',
+        'Floor',
+        'Room ID',
+        'Room Type',
+        'Item Description',
+        'Supplier',
+        'Quantity',
+        'Unit Price',
+        'Total Price',
+      ]),
+      ...model.furniture.map((r, i): Cell[] => [
+        r.costCode,
+        r.floor,
+        r.roomId,
+        r.roomType,
+        r.itemDescription,
+        r.supplier,
+        r.quantity,
+        money(r.unitPrice),
+        // Live formula, so an edited unit price re-totals in the client's hands.
+        { f: `H${i + 2}*G${i + 2}`, v: r.totalPrice, style: RUPEE },
+      ]),
+      [bold('Total'), null, null, null, null, null, bold(t.itemCount), null, money(t.furniture, true)],
+    ],
   }
 
   // 3. Furniture Inventory Summary (aggregated by item) --------------------
-  const sHeader = ['Cost Code', 'Item Description', 'Supplier', 'Quantity', 'Unit Price', 'Total Price']
-  const summaryBom: Cell[][] = [
-    sHeader.map(str),
-    ...model.summary.map((r) => [
-      str(r.costCode),
-      str(r.itemDescription),
-      str(r.supplier),
-      num(r.quantity),
-      num(r.unitPrice),
-      num(r.totalPrice),
-    ]),
-    [str('Total'), null, null, num(t.itemCount), null, num(t.furniture)],
-  ]
-  const furnitureSummary: SheetPlan = {
-    name: 'Furniture Summary',
-    rows: summaryBom,
-    headerRows: new Set([0]),
-    currencyCols: new Set([4, 5]),
-    titleRows: new Set(),
+  const furnitureSummary: SheetSpec = {
+    name: 'Furniture Inventory Summary',
+    gridlines: false,
+    freeze: 'A2',
+    cols: { A: 11, B: 26, C: 18, D: 10, E: 13, F: 14 },
+    rows: [
+      head(['Cost Code', 'Item Description', 'Supplier', 'Quantity', 'Unit Price', 'Total Price']),
+      ...model.summary.map((r, i): Cell[] => [
+        r.costCode,
+        r.itemDescription,
+        r.supplier,
+        r.quantity,
+        money(r.unitPrice),
+        { f: `E${i + 2}*D${i + 2}`, v: r.totalPrice, style: RUPEE },
+      ]),
+      [bold('Total'), null, null, bold(t.itemCount), null, money(t.furniture, true)],
+    ],
   }
 
   // 4. Wall Schedule (linear quantities) -----------------------------------
-  const wHeader = ['Wall Type', 'Unit', 'Quantity', 'Unit Price', 'Total Cost']
-  const wallRows: Cell[][] = [
-    wHeader.map(str),
-    ...model.walls.map((r) => [
-      str(r.wallType),
-      str(r.unit),
-      num(r.quantity),
-      num(r.unitPrice),
-      num(r.totalPrice),
-    ]),
-    [str('Total'), null, null, null, num(t.walls)],
-  ]
-  const wallSchedule: SheetPlan = {
+  const wallSchedule: SheetSpec = {
     name: 'Wall Schedule',
-    rows: wallRows,
-    headerRows: new Set([0]),
-    currencyCols: new Set([3, 4]),
-    titleRows: new Set(),
+    gridlines: false,
+    freeze: 'A2',
+    cols: { A: 22, B: 8, C: 12, D: 13, E: 14 },
+    rows: [
+      head(['Wall Type', 'Unit', 'Quantity', 'Unit Price', 'Total Cost']),
+      ...model.walls.map((r, i): Cell[] => [
+        r.wallType,
+        r.unit,
+        { v: r.quantity, style: { numFmt: '0.00' } },
+        money(r.unitPrice),
+        { f: `D${i + 2}*C${i + 2}`, v: r.totalPrice, style: RUPEE },
+      ]),
+      [bold('Total'), null, null, null, money(t.walls, true)],
+    ],
   }
 
   return [mainSummary, furnitureInventory, furnitureSummary, wallSchedule]
 }
 
-// styles.xml: fonts[0]=normal, [1]=bold, [2]=bold 14pt; numFmt 164 = ₹ integer;
-// cellXfs: 0 default, 1 bold header, 2 title, 3 ₹ currency.
-const STYLES_XML =
-  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
-  '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
-  '<numFmts count="1"><numFmt numFmtId="164" formatCode="&quot;₹&quot;#,##0"/></numFmts>' +
-  '<fonts count="3">' +
-  '<font><sz val="11"/><name val="Calibri"/></font>' +
-  '<font><b/><sz val="11"/><name val="Calibri"/></font>' +
-  '<font><b/><sz val="14"/><name val="Calibri"/></font>' +
-  '</fonts>' +
-  '<fills count="2"><fill><patternFill patternType="none"/></fill>' +
-  '<fill><patternFill patternType="gray125"/></fill></fills>' +
-  '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>' +
-  '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
-  '<cellXfs count="4">' +
-  '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>' +
-  '<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>' +
-  '<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/>' +
-  '<xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>' +
-  '</cellXfs>' +
-  '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>' +
-  '</styleSheet>'
-
 /** Build the full .xlsx byte stream from a takeoff model. */
 export function takeoffToXlsx(model: TakeoffModel, opts: TakeoffOptions = {}): Uint8Array {
-  const plans = planSheets(model, opts)
-  const enc = new TextEncoder()
-
-  const contentTypes =
-    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
-    '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
-    '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
-    '<Default Extension="xml" ContentType="application/xml"/>' +
-    '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
-    '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>' +
-    plans
-      .map(
-        (_p, i) =>
-          `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`,
-      )
-      .join('') +
-    '</Types>'
-
-  const rootRels =
-    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
-    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
-    '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>' +
-    '</Relationships>'
-
-  const workbook =
-    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
-    '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" ' +
-    'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
-    '<sheets>' +
-    plans
-      .map((p, i) => `<sheet name="${esc(p.name)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`)
-      .join('') +
-    '</sheets></workbook>'
-
-  const workbookRels =
-    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
-    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
-    plans
-      .map(
-        (_p, i) =>
-          `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`,
-      )
-      .join('') +
-    `<Relationship Id="rId${plans.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>` +
-    '</Relationships>'
-
-  const files = [
-    { name: '[Content_Types].xml', data: enc.encode(contentTypes) },
-    { name: '_rels/.rels', data: enc.encode(rootRels) },
-    { name: 'xl/workbook.xml', data: enc.encode(workbook) },
-    { name: 'xl/_rels/workbook.xml.rels', data: enc.encode(workbookRels) },
-    { name: 'xl/styles.xml', data: enc.encode(STYLES_XML) },
-    ...plans.map((p, i) => ({
-      name: `xl/worksheets/sheet${i + 1}.xml`,
-      data: enc.encode(
-        sheetXml(p.rows, (r, c) => {
-          if (p.titleRows.has(r)) return 2
-          if (p.headerRows.has(r)) return 1
-          // Currency style only on numeric cells in currency columns.
-          const cell = p.rows[r]?.[c]
-          if (cell && cell.t === 'n' && p.currencyCols.has(c)) return 3
-          return undefined
-        }),
-      ),
-    })),
-  ]
-  return zipStore(files)
+  return buildXlsx(planSheets(model, opts))
 }
 
 /** Build the takeoff workbook and trigger a browser download. */

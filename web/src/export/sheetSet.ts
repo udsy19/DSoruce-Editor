@@ -327,7 +327,7 @@ function legendRow(p: Page, x: number, yTop: number, sw: (px: number, py: number
 // Label / tag de-collision (deterministic nudge + stack, leader when far)
 // ---------------------------------------------------------------------------
 
-interface OccBox {
+export interface OccBox {
   x: number // top-left, top-down pt
   y: number
   w: number
@@ -344,7 +344,7 @@ function boxesOverlap(a: OccBox, b: OccBox): boolean {
  * order is deterministic, so the same plan always lays out identically. Records
  * the chosen box in `occ` and returns the center actually used.
  */
-function placeNear(occ: OccBox[], cx: number, cy: number, w: number, h: number): { x: number; y: number } {
+export function placeNear(occ: OccBox[], cx: number, cy: number, w: number, h: number): { x: number; y: number } {
   const dv = h + 3
   const dh = w * 0.55 + 6
   const cands: [number, number][] = [

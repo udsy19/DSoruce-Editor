@@ -549,6 +549,7 @@ mod tests {
             thickness: 0.2,
             generated: false,
             glazing: false,
+            height_m: None,
         });
         let cid = doc.alloc_id();
         let mut c = desk(cid, 3.0, 3.0);
@@ -669,6 +670,7 @@ mod tests {
             thickness: 0.2,
             generated: false,
             glazing: false,
+            height_m: None,
         }
     }
 
