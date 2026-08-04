@@ -1,6 +1,6 @@
 # ADR 0003 — Branch 1b: envelope inference when no shell exists
 
-**Status:** pre-registered — predictions recorded, candidates NOT yet written
+**Status:** results in — awaiting adoption decision at the merge gate
 **Date:** 2026-08-04
 
 **Code anchors:** `extractPlate` ladder rungs (`web/src/import/testfit.ts`) ·
