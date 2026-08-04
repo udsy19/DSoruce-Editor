@@ -263,10 +263,10 @@
     },
     "note": "Palette tolerance applies to the S/L TARGET BAND, not to qbiq hexes \u2014 DSource keeps its own hues by standing decision.",
     "re_anchored_to_target": {
-      "palette_delta_e_vs_laiout": 5.0,
-      "quantization_allowance": "+/-18 per channel, because the Laiout hexes are 8-value-quantized approximations",
+      "palette_delta_e_vs_laiout": 3.0,
+      "residual_covers": "capture colour-profile only - NOT method error, which was removed by re-measuring rather than absorbed by widening",
       "lightness_band": [
-        88,
+        87,
         93
       ],
       "weight_ratios": "unchanged, from the qbiq ladder, +/-10%"
@@ -310,87 +310,96 @@
     "supersedes": "The earlier match-first ruling, which made the paper profile faithful to qbiq. The qbiq block in this spec is untouched and still governs the WEIGHT LADDER, which is the only vector-exact source of ratios and which nothing in the owner direction contradicts."
   },
   "laiout": {
-    "provenance_tier": "screenshot-sampled, PROVISIONAL",
-    "source": "owner screenshots, PIL 8-value quantization, corroborated across two independent plan views",
+    "provenance_tier": "ASSERTED - exact pixel values, two-source agreement",
+    "source": "owner app-view screenshots (clean plan render + costs view), lossless PNG, sampled at exact pixel values with no quantization and no downsampling",
     "verification_attempt": {
       "what": "Fetched rayon.design (17 distinct image URLs) and laiout.co (55) and decoded 14 laiout assets, searching for the reported hexes.",
       "result": "NO MATCH at +/-10 or +/-20 per channel.",
       "interpretation": "INCONCLUSIVE, not falsifying. The fetched assets are marketing/hero imagery pulled from static HTML; I could not confirm any of them contains a plan view at all, and failing to find plan colours in non-plan images proves nothing. The site app imagery appears to require JS rendering.",
-      "consequence": "Tier stays PROVISIONAL. Promotion to asserted needs a plan-view asset, not another sweep of the same marketing images."
+      "consequence": "Tier stays PROVISIONAL. Promotion to asserted needs a plan-view asset, not another sweep of the same marketing images.",
+      "status_after_remeasure": "Superseded. The site fetch stays recorded as inconclusive, but promotion never depended on it - see taste_authority."
     },
-    "quantization_caveat": "The reported hexes lie on an 8-value ladder (8c, c4, d4, dc, e4, ec, f4, fc \u2014 every channel a multiple of 4 from a set of 8). That is the stated quantization, so these are APPROXIMATIONS BY CONSTRUCTION, not exact colours. Conformance tolerance must absorb the quantization step (+/-18 per channel) or we would be matching an artifact precisely \u2014 a false precision the campaign has already been bitten by twice.",
     "palette": [
       {
         "role": "paper/background",
-        "hex": "#fcfcfc",
+        "hex": "#ffffff",
         "hsl": [
           0,
           0,
-          99
-        ]
+          100
+        ],
+        "was_quantized": "#fcfcfc"
       },
       {
         "role": "open workspace",
-        "hex": "#dce4f4",
+        "hex": "#d9e7f4",
         "hsl": [
-          220,
-          52,
-          91
-        ]
+          209,
+          55,
+          90
+        ],
+        "was_quantized": "#dce4f4"
       },
       {
         "role": "amenity",
-        "hex": "#fcf4dc",
+        "hex": "#faf4de",
         "hsl": [
-          45,
-          84,
+          47,
+          74,
           93
-        ]
+        ],
+        "was_quantized": "#fcf4dc"
       },
       {
         "role": "meeting",
-        "hex": "#ece4f4",
+        "hex": "#eae4f6",
         "hsl": [
-          270,
-          42,
+          260,
+          50,
           93
-        ]
+        ],
+        "was_quantized": "#ece4f4"
       },
       {
         "role": "core/service",
-        "hex": "#d4f4d4",
+        "hex": "#d1f1d5",
         "hsl": [
-          120,
-          59,
-          89
-        ]
+          128,
+          53,
+          88
+        ],
+        "was_quantized": "#d4f1d4"
       },
       {
         "role": "breakout",
-        "hex": "#fce4c4",
+        "hex": "#fae0c3",
         "hsl": [
-          34,
-          90,
-          88
-        ]
+          32,
+          85,
+          87
+        ],
+        "was_quantized": "#fce4c4"
       },
       {
         "role": "walls (solid fill)",
-        "hex": "#8c8c8c",
+        "hex": "#8b8b8b",
         "hsl": [
           0,
           0,
           55
-        ]
+        ],
+        "was_quantized": "#8c8c8c"
       },
       {
-        "role": "columns/secondary grey",
-        "hex": "#dcdcdc",
+        "role": "secondary grey",
+        "hex": "#d8d8d8",
+        "alt": "#dadada",
         "hsl": [
           0,
           0,
-          86
-        ]
+          85
+        ],
+        "was_quantized": "#dcdcdc"
       }
     ],
     "band": "L 88-93 \u2014 LIGHTER than qbiq measured L 80-92. Tolerance targets re-anchor to this band.",
@@ -405,20 +414,31 @@
       "flip": "DSource blue currently means CIRCULATION. After this change blue means WORKSPACE and circulation becomes ground.",
       "risk": "A returning user reads the same colour as a different thing.",
       "mitigation": "The legend \u2014 already a required feature \u2014 is what makes the flip safe, which is a second reason it pairs with 2e rather than landing later."
-    }
+    },
+    "promotion_evidence": {
+      "standard": "two genuine app views agree TO THE EXACT HEX on every value",
+      "negative_control": "the marketing feature card shows shifted values (#d4e4f3 vs #d9e7f4, #808080 vs #8b8b8b) - expected resampling degradation in a resized embed, and the reason app views outrank marketing assets as sources",
+      "supersedes": "the earlier 8-value-quantized sampling, whose hexes were approximations by construction"
+    },
+    "taste_authority": "The owner screenshots ARE the spec, not a proxy for it. The owner pointed at these images and said this. If the live Laiout app drifts a hex from these captures, the target does NOT move. This is why a plan-view asset hunt was not a precondition for promotion."
   },
   "rayon": {
     "provenance_tier": "grammar ASSERTED from imagery; exact values PROVISIONAL",
     "walls": "thickness polygons filled with fine ~45 degree diagonal hatch, hatch strokes mid-grey (#c4c4c4-#dcdcdc blended at screenshot resolution), DARK OUTLINES on both faces; exterior/cut profile heaviest",
     "columns": "solid dark",
-    "paper": "warm white #f4f4f4-#fcfcfc",
+    "paper": "warm - #fffdfb cream over #fafafa (confirmed)",
     "openings": "keep the qbiq WHITE-PUNCH mechanism (it composes with any wall style) plus thin swing arcs",
     "hatch_spacing": "start at 1/3 of wall thickness, tune against fetched reference imagery; record chosen value and its provenance",
     "hatch_tier": "the hatch tier of the weight ladder, so it never competes with the outlines",
     "noted_not_adopted": [
       "dim-string orange (dimensions keep DSource current treatment)",
       "dark editor mode (out of scope)"
-    ]
+    ],
+    "dimension_string_orange": {
+      "hex": "#ec5729",
+      "status": "NOTED, NOT ADOPTED - dimensions keep DSource current treatment. The note is now exact rather than approximate."
+    },
+    "numeric_values_tier": "wall/hatch numbers remain PROVISIONAL at screenshot resolution; the GRAMMAR is asserted and unchanged"
   },
   "target": {
     "$comment": "THE styling target from here. qbiq governs ratios; Rayon governs wall form; Laiout governs palette.",

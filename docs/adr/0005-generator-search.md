@@ -471,14 +471,26 @@ Each was learned from a live mistake in this campaign.
    directories away. Checking it — rather than producing a spec that agreed with
    the brief — is what the phase was for.
 
-8. **Quantized values are approximations by construction** (plan-grammar
-   campaign) — a measurement reported through a lossy method carries that
-   method's error, and conformance tolerance must absorb it or the target is a
-   quantization artifact matched precisely.
-   *From:* an owner palette sampled with 8-value quantization. Every reported
-   channel lands on the ladder {8c, c4, d4, dc, e4, ec, f4, fc}, so the hexes are
-   ±18/channel approximations — treating them as exact would be false precision
-   of the same species the campaign has already been bitten by twice.
+8. **Re-measure, do not widen** (plan-grammar campaign) - a measurement reported
+   through a lossy method carries that method's error. **The fix is a better
+   measurement of the same primary artifact, not a wider tolerance.** Widening
+   preserves the error and hides it inside the acceptance band.
+   *From:* an owner palette first sampled with 8-value quantization - every
+   channel on the ladder {8c, c4, d4, dc, e4, ec, f4, fc}, i.e. plus/minus 18
+   approximations by construction. The first instinct was to absorb that by
+   widening conformance tolerance to match. The correct move, taken instead, was
+   re-sampling the same screenshots losslessly: exact hexes, two-source
+   agreement, and tolerance *shrank* to delta-E <= 3 covering capture
+   colour-profile only.
+
+   Two riders worth keeping. **Source rank matters**: the marketing feature card
+   disagreed with the app views (#d4e4f3 vs #d9e7f4) - resampling degradation in
+   a resized embed, which is why app views outrank marketing assets and why the
+   disagreement is useful as a negative control rather than noise. And **the
+   artifact can be the authority, not a proxy for it**: the owner pointed at
+   these screenshots and said "this", so if the live product drifts a hex, the
+   target does not move. Verifying against the live site was worth attempting and
+   worth recording as inconclusive, but promotion never depended on it.
 
 **And a standing requirement that falls out of the same discipline: every
 trigger needs a SENSOR.** A trigger without something watching for it is a wish.
