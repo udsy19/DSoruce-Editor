@@ -419,6 +419,25 @@ Each was learned from a live mistake in this campaign.
    actually spent 6, because an early-exit the config does not mention fired
    every time.
 
+6. **The instrument held the evidence** (ADR 0006) — **new measurement code is
+   itself an untested candidate until something independent corroborates it. An
+   indictment of an artifact must be verified against the ARTIFACT, not only
+   through the instrument that produced the indictment. Re-measure before
+   ROUTING a finding, not only before adopting one.**
+   *From two instances, which makes it a pattern:*
+   - the **position hash** declared "layouts differ across seed windows"; under a
+     declared, product-meaningful definition they do not.
+   - the **IFC reader** indicted our exporter for carrying no classification and
+     no product identity, and derived a "self-defeating pricing" loop from it.
+     Both attributes were present all along; the reader read `Name`. A five-minute
+     look at the SPF would have shown `ObjectType` carrying the category.
+
+   Worth recording that the second one was **ratified, not merely made**: the
+   finding was called the round's sharpest *in the review*, and an issue was
+   routed partly on it. A reviewer amplifying an unverified indictment is part of
+   the failure — the rule is not only "the measurer must check", it is "nobody
+   promotes an indictment without the artifact being read directly".
+
 **And a standing requirement that falls out of the same discipline: every
 trigger needs a SENSOR.** A trigger without something watching for it is a wish.
 Audited across the campaign:
