@@ -455,3 +455,60 @@ Do not build for them now.
    the boundary out; visible as a thin spur on the real plan's overlay. Nothing
    in the drawing distinguishes a neighbour's desk from ours, so no geometric
    rule can fix it — only the confirm step, or tenancy metadata we do not have.
+
+## Confidence vs the shipped ladder — OPEN, needs a ruling
+
+Shipping the ladder improved every fragmented fixture (see below) and, in doing
+so, **falsified part of ADR 0002's confidence calibration**. Recorded rather than
+patched, because the fix is a threshold change and this branch does not retune
+thresholds after seeing numbers.
+
+Geometric improvement from the ladder:
+
+| fixture | before | after | Δ |
+|---|---|---|---|
+| `rect-regular-column-grid` | 0.775 | **1.000** | +0.225 |
+| `lshape-shell-fragments` | 0.730 | **0.979** | +0.249 |
+| `notched-shell-fragments` | 0.885 (2 self×) | **0.925** (0 self×) | +0.040 |
+| `rect-no-shell-only-partitions` | 0.644 | **0.719** | +0.075 |
+| `rot17-door-gaps` | 1.000 | 0.989 | −0.011 |
+| `real-furniture-plan` | containment 0.961 | **0.985** (passes gate) | — |
+
+Two accurate plates are now labelled `low`:
+
+- `rect-regular-column-grid` — IoU **1.000**, phantom **1.000**. Exactly the
+  finding already recorded above: phantom is *undefined* for a column-derived
+  envelope, and the confidence rule reads it anyway.
+- `lshape-shell-fragments` — IoU **0.979**, phantom 0.237. The shell genuinely
+  has gaps, so a correct boundary legitimately rests on nothing for a quarter of
+  its length.
+
+**No false `high` was introduced** — the safety-critical direction is intact, and
+`plateQuality.test.mjs` now asserts exactly that, reporting the false-lows
+without failing.
+
+The conflict, stated in the form the amendment above prescribes:
+
+- **ADR 0002's rule** (`phantom < 0.15 ⇒ high`) rests on the premise that phantom
+  is a valid accuracy proxy. That premise is now **partially falsified** — it does
+  not hold for column-derived envelopes at all, nor where real gaps exist.
+- **ADR 0003's statement** ("every rung below `traced-loop` reports `low`") rests
+  on the premise that inference warrants confirmation regardless of accuracy.
+  Not falsified — but never calibrated either, and it contradicts ADR 0002's
+  explicit rejection of "high requires a closed traced loop", which was rejected
+  precisely because it flagged six accurate plates as low.
+
+Both cannot hold. Options, for the merge gate:
+
+1. **Accept the false-lows.** Two extra confirmation clicks on drawings that
+   already have no shell. Costs nothing but a click; changes no code.
+2. **Exempt column-derived envelopes from the phantom test.** Applying an
+   already-recorded metric-validity finding, not a retune. Fixes one of the two.
+3. **Make confidence track provenance, not phantom** — inferred ⇒ low, always.
+   Consistent with ADR 0003's statement, but reverses a decision already taken in
+   ADR 0002 on measured grounds.
+
+Recommendation: **(1) for now, (2) with the next real-world recalibration.** The
+false-lows are in the safe direction, the ladder is a strict geometric
+improvement, and option 3 is a larger behavioural change than this branch should
+make on 15 synthetic fixtures.

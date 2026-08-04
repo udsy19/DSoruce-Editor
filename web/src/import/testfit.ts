@@ -34,6 +34,7 @@
 
 import type { Drawing, DrawEntity } from './types'
 import { assessPlate, type PlateMethod, type PlateProvenance } from './plateQuality'
+import { columnGridEnvelope, partitionContour } from './plateLadder'
 import type { EditorCanvas } from '../editor/EditorCanvas'
 import type { AnchorPin } from '../program/anchors'
 
@@ -158,6 +159,43 @@ export function extractPlate(drawing: Drawing): PlateResult | null {
     const ring = simplify(smooth(despike(simplify(orientCCW(bigLoop), SIMPLIFY_LOOP, true))), SIMPLIFY_POST, true)
     const ok = accept(ring, 'loop')
     if (ok) return finishPlate({ ...ok, drawing })
+  }
+
+  // ---- adopted envelope-inference rungs (ADR 0003) -----------------------
+  // Tried only after loop tracing fails, i.e. only when no closed shell exists.
+  // Each is guarded and declines cleanly; the rungs below still catch anything
+  // they refuse, so the user is never left without a draft. All of these yield
+  // `confidence: 'low'` — they improve the PROPOSAL, not what is asserted.
+
+  // (a2) Column grid — exact when a real structural grid exists (IoU 1.000 on
+  // the calibration fixture), rejects otherwise. Highest-trust inference rung.
+  {
+    const ring = columnGridEnvelope(drawing)
+    if (ring) {
+      const area = Math.abs(signedArea(ring))
+      if (area >= plausible) {
+        return finishPlate({
+          ring, method: 'hull', coverage: ringCoverage(ring, centers), area,
+          drawing, provenanceMethod: 'column-grid',
+        })
+      }
+    }
+  }
+
+  // (a3) Partition contour — recovers a boundary that gaps have broken
+  // (0.730 -> 0.979 on shell fragments). Tried WITHOUT the furniture wrap first:
+  // wrapping fills re-entrant corners the walls correctly define.
+  // (a4) …then WITH the wrap, which reaches furniture no wall encloses
+  // (containment 0.762 -> 0.985 on the real DWG) at the cost of that concavity.
+  for (const wrap of [false, true]) {
+    const ring = partitionContour(wallSegs, drawing, wrap)
+    if (!ring) continue
+    const area = Math.abs(signedArea(ring))
+    if (area < plausible) continue
+    return finishPlate({
+      ring, method: 'hull', coverage: ringCoverage(ring, centers), area,
+      drawing, provenanceMethod: 'partition-envelope',
+    })
   }
 
   // (b) Occupancy-grid outer contour of the widened shell set (doors close the

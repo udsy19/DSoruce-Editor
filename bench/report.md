@@ -7,9 +7,6 @@ Regenerate with `pnpm bench plate`. Raw results: `bench/results/plate.json`.
 | impl | portability | license | summary |
 |---|---|---|---|
 | `baseline` | A-port | original | Current hull/loop tracer in import/testfit.ts, unmodified. |
-| `column-grid` | A-port | original | Envelope from the structural column grid, extended half a median bay. Rejects unless BOTH axes pass an IQR ≤ 25%-of-median regularity guard. |
-| `partition-envelope` | A-port | original | gridContour with an escalating dilation schedule (0.5–6.0 m) stopped by furniture containment, not coverage. Reuses the incumbent rasterizer. |
-| `partition-envelope-wrap` | A-port | original | partition-envelope with furniture bbox outlines added to the dilation input, so the closing can reach furniture that no wall encloses. |
 
 ## Per-fixture results
 
@@ -28,10 +25,7 @@ Truth area: **985.1175 m²** · truth source: synthetic — truth is the generat
 
 | impl | GATES | self× | contain | IoU | Δarea% | dev m | phantom m (%) | linework | verts | ms | det |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| `baseline` | pass | 0 | 1 | 0.9904 | -0.2 | 0.187 | **1.49** (1.1%) | 0.4924 | 17 | 16 | y |
-| `column-grid` | — | — | — | — | — | — | — | — | — | — | no plate returned |
-| `partition-envelope` | pass | 0 | 1 | 0.9904 | -0.17 | 0.187 | **1.49** (1.1%) | 0.5071 | 18 | 4.7 | y |
-| `partition-envelope-wrap` | pass | 0 | 1 | 0.9904 | -0.17 | 0.187 | **1.49** (1.1%) | 0.5071 | 18 | 5.7 | y |
+| `baseline` | pass | 0 | 1 | 0.9904 | -0.17 | 0.187 | **1.49** (1.1%) | 0.5071 | 18 | 5.8 | y |
 
 ### `lshape-door-gaps`
 _Re-entrant corner: hull tracers cut the notch off — the classic phantom diagonal._
@@ -39,10 +33,7 @@ Truth area: **624 m²** · truth source: synthetic — truth is the generating p
 
 | impl | GATES | self× | contain | IoU | Δarea% | dev m | phantom m (%) | linework | verts | ms | det |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| `baseline` | pass | 0 | 1 | **0.9788** | 0.24 | 0.395 | **6.21** (5.4%) | 0.4817 | 6 | 9.5 | y |
-| `column-grid` | — | — | — | — | — | — | — | — | — | — | no plate returned |
-| `partition-envelope` | pass | 0 | 1 | **0.9788** | 0.24 | 0.395 | **6.21** (5.4%) | 0.4817 | 6 | 5.6 | y |
-| `partition-envelope-wrap` | pass | 0 | 1 | **0.9788** | 0.24 | 0.395 | **6.21** (5.4%) | 0.4817 | 6 | 4.8 | y |
+| `baseline` | pass | 0 | 1 | **0.9788** | 0.24 | 0.395 | **6.21** (5.4%) | 0.4817 | 6 | 5.9 | y |
 
 ### `lshape-jitter-dup-gaps`
 _All three defects at once — the composed-pipeline case the research predicts._
@@ -50,10 +41,7 @@ Truth area: **624 m²** · truth source: synthetic — truth is the generating p
 
 | impl | GATES | self× | contain | IoU | Δarea% | dev m | phantom m (%) | linework | verts | ms | det |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| `baseline` | pass | 0 | 1 | 0.9908 | 0 | 0.049 | 0 (0%) | 0.2295 | 6 | 0.5 | y |
-| `column-grid` | — | — | — | — | — | — | — | — | — | — | no plate returned |
-| `partition-envelope` | pass | 0 | 1 | **0.9789** | 0.24 | 0.386 | 0 (0%) | 0.4913 | 6 | 0.7 | y |
-| `partition-envelope-wrap` | pass | 0 | 1 | **0.9789** | 0.24 | 0.386 | 0 (0%) | 0.4913 | 6 | 0.9 | y |
+| `baseline` | pass | 0 | 1 | 0.9908 | 0 | 0.049 | 0 (0%) | 0.2295 | 6 | 0.7 | y |
 
 ### `lshape-shell-fragments`
 _PRODUCTION BUG CLASS: shell present only as fragments — forces hull fallback across the notch._
@@ -61,10 +49,7 @@ Truth area: **624 m²** · truth source: synthetic — truth is the generating p
 
 | impl | GATES | self× | contain | IoU | Δarea% | dev m | phantom m (%) | linework | verts | ms | det |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| `baseline` | pass | 0 | 1 | **0.7295** | -25.34 | 7.375 | **74.81** (44.5%) | 0.7057 | 28 | 18.3 | y |
-| `column-grid` | — | — | — | — | — | — | — | — | — | — | no plate returned |
-| `partition-envelope` | pass | 0 | 1 | **0.9788** | 0.24 | 0.395 | **27.48** (23.7%) | 0.7446 | 6 | 14.5 | y |
-| `partition-envelope-wrap` | pass | 0 | 1 | **0.7344** | -24.67 | 7.375 | **73.98** (40.3%) | 0.7238 | 31 | 9.4 | y |
+| `baseline` | pass | 0 | 1 | **0.9788** | 0.24 | 0.395 | **27.48** (23.7%) | 0.7446 | 6 | 15.2 | y |
 
 ### `notched-core`
 _Deep notch (a lift core biting into the slab) — two re-entrant corners._
@@ -72,10 +57,7 @@ Truth area: **976 m²** · truth source: synthetic — truth is the generating p
 
 | impl | GATES | self× | contain | IoU | Δarea% | dev m | phantom m (%) | linework | verts | ms | det |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| `baseline` | pass | 0 | 1 | 0.9829 | 0.2 | 0.395 | **2.96** (2%) | 0.521 | 8 | 3.4 | y |
-| `column-grid` | — | — | — | — | — | — | — | — | — | — | no plate returned |
-| `partition-envelope` | pass | 0 | 1 | 0.9829 | 0.2 | 0.395 | **2.96** (2%) | 0.521 | 8 | 0.5 | y |
-| `partition-envelope-wrap` | pass | 0 | 1 | 0.9829 | 0.2 | 0.395 | **2.96** (2%) | 0.521 | 8 | 0.5 | y |
+| `baseline` | pass | 0 | 1 | 0.9829 | 0.2 | 0.395 | **2.96** (2%) | 0.521 | 8 | 0.8 | y |
 
 ### `notched-shell-fragments`
 _PRODUCTION BUG CLASS: two re-entrant corners with a fragmented shell — worst case for a hull._
@@ -83,10 +65,7 @@ Truth area: **976 m²** · truth source: synthetic — truth is the generating p
 
 | impl | GATES | self× | contain | IoU | Δarea% | dev m | phantom m (%) | linework | verts | ms | det |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| `baseline` | **FAIL** | **2** | 1 | **0.8845** | -10.02 | 7.375 | **66.4** (35.9%) | 0.7614 | 32 | 20.1 | y |
-| `column-grid` | — | — | — | — | — | — | — | — | — | — | no plate returned |
-| `partition-envelope` | pass | 0 | 1 | **0.9251** | 6.56 | 8.125 | **43** (32.6%) | 0.7813 | 4 | 87 | y |
-| `partition-envelope-wrap` | pass | 0 | 1 | **0.9499** | -3.31 | 3.375 | **44.12** (28.4%) | 0.7628 | 18 | 23.5 | y |
+| `baseline` | pass | 0 | 1 | **0.9251** | 6.56 | 8.125 | **43** (32.6%) | 0.7813 | 4 | 80.9 | y |
 
 ### `rect-clean`
 _Control. If a candidate cannot do this, nothing else matters._
@@ -95,9 +74,6 @@ Truth area: **600 m²** · truth source: synthetic — truth is the generating p
 | impl | GATES | self× | contain | IoU | Δarea% | dev m | phantom m (%) | linework | verts | ms | det |
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | `baseline` | pass | 0 | 1 | 1 | 0 | 0 | 0 (0%) | 0.5 | 4 | 0.1 | y |
-| `column-grid` | — | — | — | — | — | — | — | — | — | — | no plate returned |
-| `partition-envelope` | pass | 0 | 1 | 0.9835 | 0 | 0.177 | 0 (0%) | 0.5 | 4 | 0.3 | y |
-| `partition-envelope-wrap` | pass | 0 | 1 | 0.9835 | 0 | 0.177 | 0 (0%) | 0.5 | 4 | 0.3 | y |
 
 ### `rect-door-gaps`
 _Doors/windows break wall continuity — the gap-closing case (L5IN / IIETA)._
@@ -105,10 +81,7 @@ Truth area: **600 m²** · truth source: synthetic — truth is the generating p
 
 | impl | GATES | self× | contain | IoU | Δarea% | dev m | phantom m (%) | linework | verts | ms | det |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| `baseline` | pass | 0 | 1 | 0.9835 | 0 | 0.177 | **4** (4%) | 0.4981 | 4 | 4 | y |
-| `column-grid` | — | — | — | — | — | — | — | — | — | — | no plate returned |
-| `partition-envelope` | pass | 0 | 1 | 0.9835 | 0 | 0.177 | **4** (4%) | 0.4981 | 4 | 1 | y |
-| `partition-envelope-wrap` | pass | 0 | 1 | 0.9835 | 0 | 0.177 | **4** (4%) | 0.4981 | 4 | 0.9 | y |
+| `baseline` | pass | 0 | 1 | 0.9835 | 0 | 0.177 | **4** (4%) | 0.4981 | 4 | 0.8 | y |
 
 ### `rect-duplicated-layers`
 _A second, 40 mm-offset wall layer — overlapping-wall elimination (Wu et al.)._
@@ -117,9 +90,6 @@ Truth area: **600 m²** · truth source: synthetic — truth is the generating p
 | impl | GATES | self× | contain | IoU | Δarea% | dev m | phantom m (%) | linework | verts | ms | det |
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | `baseline` | pass | 0 | 1 | 1 | 0 | 0 | 0 (0%) | 0.5 | 4 | 0.1 | y |
-| `column-grid` | — | — | — | — | — | — | — | — | — | — | no plate returned |
-| `partition-envelope` | pass | 0 | 1 | 0.9835 | 0 | 0.177 | 0 (0%) | 0.5 | 4 | 0.3 | y |
-| `partition-envelope-wrap` | pass | 0 | 1 | 0.9835 | 0 | 0.177 | 0 (0%) | 0.5 | 4 | 0.3 | y |
 
 ### `rect-jitter`
 _Endpoints 8 mm off coincident — the snap/set_precision case (dxf-fix)._
@@ -128,9 +98,6 @@ Truth area: **600 m²** · truth source: synthetic — truth is the generating p
 | impl | GATES | self× | contain | IoU | Δarea% | dev m | phantom m (%) | linework | verts | ms | det |
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | `baseline` | pass | 0 | 1 | 1 | 0.02 | 0.007 | 0 (0%) | 0.7463 | 4 | 0.1 | y |
-| `column-grid` | — | — | — | — | — | — | — | — | — | — | no plate returned |
-| `partition-envelope` | pass | 0 | 1 | 0.9835 | 0 | 0.169 | 0 (0%) | 0.5 | 4 | 0.2 | y |
-| `partition-envelope-wrap` | pass | 0 | 1 | 0.9835 | 0 | 0.169 | 0 (0%) | 0.5 | 4 | 0.3 | y |
 
 ### `rect-no-shell-only-partitions`
 _PRODUCTION BUG CLASS: no exterior wall at all, only interior partitions + scattered columns — the real DWG condition._
@@ -138,10 +105,7 @@ Truth area: **600 m²** · truth source: synthetic — truth is the generating p
 
 | impl | GATES | self× | contain | IoU | Δarea% | dev m | phantom m (%) | linework | verts | ms | det |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| `baseline` | **FAIL** | 0 | **0.9615** | **0.6442** | -35.58 | 5.304 | **69.32** (68%) | 0.8729 | 36 | 24.7 | y |
-| `column-grid` | — | — | — | — | — | — | — | — | — | — | no plate returned |
-| `partition-envelope` | **FAIL** | 0 | **0.6154** | **0.6457** | -35.43 | 4.72 | **45.65** (54.1%) | 0.9215 | 18 | 63.1 | y |
-| `partition-envelope-wrap` | pass | 0 | 1 | **0.7188** | -28.13 | 3.775 | **72.01** (68.1%) | 0.8911 | 36 | 13.2 | y |
+| `baseline` | pass | 0 | 1 | **0.7188** | -28.13 | 3.775 | **72.01** (68.1%) | 0.8911 | 36 | 77.8 | y |
 
 ### `rect-regular-column-grid`
 _Fair test for the column-grid rung: no shell, a REGULAR 4x3 column grid inset half a bay._
@@ -149,10 +113,7 @@ Truth area: **600 m²** · truth source: synthetic — truth is the generating p
 
 | impl | GATES | self× | contain | IoU | Δarea% | dev m | phantom m (%) | linework | verts | ms | det |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| `baseline` | pass | 0 | 1 | **0.7747** | -22.53 | 4.043 | **76.39** (90.6%) | 1 | 13 | 11.6 | y |
-| `column-grid` | pass | 0 | 1 | 1 | 0 | 0 | **100** (100%) | 1 | 4 | 0.2 | y |
-| `partition-envelope` | **FAIL** | 0 | **0.5417** | **0.6049** | -39.52 | 4.585 | **48.25** (56.2%) | 0.8727 | 20 | 57.6 | y |
-| `partition-envelope-wrap` | pass | 0 | 1 | **0.6498** | -35.02 | 4.122 | **57.87** (60.3%) | 0.9228 | 41 | 10.7 | y |
+| `baseline` | pass | 0 | 1 | 1 | 0 | 0 | **100** (100%) | 1 | 4 | 1.4 | y |
 
 ### `rect-wide-gaps`
 _Gaps widened to 2.4 m — past a door leaf, where naive closing over-bridges._
@@ -160,10 +121,7 @@ Truth area: **600 m²** · truth source: synthetic — truth is the generating p
 
 | impl | GATES | self× | contain | IoU | Δarea% | dev m | phantom m (%) | linework | verts | ms | det |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| `baseline` | pass | 0 | 1 | 0.9835 | 0 | 0.177 | **13** (13%) | 0.5035 | 4 | 4.6 | y |
-| `column-grid` | — | — | — | — | — | — | — | — | — | — | no plate returned |
-| `partition-envelope` | pass | 0 | 1 | 0.9835 | 0 | 0.177 | **13** (13%) | 0.5035 | 4 | 2.2 | y |
-| `partition-envelope-wrap` | pass | 0 | 1 | 0.9835 | 0 | 0.177 | **13** (13%) | 0.5035 | 4 | 4.1 | y |
+| `baseline` | pass | 0 | 1 | 0.9835 | 0 | 0.177 | **13** (13%) | 0.5035 | 4 | 3 | y |
 
 ### `rot17-door-gaps`
 _Rotated 17°: every axis-aligned assumption breaks; regularisation must not force it square._
@@ -171,10 +129,7 @@ Truth area: **600 m²** · truth source: synthetic — truth is the generating p
 
 | impl | GATES | self× | contain | IoU | Δarea% | dev m | phantom m (%) | linework | verts | ms | det |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| `baseline` | pass | 0 | 1 | 1 | 0 | 0 | **3.47** (3.5%) | 0.4819 | 6 | 9.3 | y |
-| `column-grid` | — | — | — | — | — | — | — | — | — | — | no plate returned |
-| `partition-envelope` | **FAIL** | 0 | **0.0556** | **0.0371** | -96.26 | 26.753 | **11.49** (36.1%) | 0.1166 | 4 | 55.3 | y |
-| `partition-envelope-wrap` | pass | 0 | 1 | 0.9891 | -0.79 | 0.336 | **3.91** (3.9%) | 0.1307 | 7 | 12.3 | y |
+| `baseline` | pass | 0 | 1 | 0.9891 | -0.79 | 0.336 | **3.91** (3.9%) | 0.1307 | 7 | 74 | y |
 
 ### `real-furniture-plan`
 _The real 882 m² plan. No closed exterior envelope on any wall layer._
@@ -182,7 +137,4 @@ Truth area: **not established** · truth source: TRUTH NOT ESTABLISHED — truth
 
 | impl | GATES | self× | contain | IoU | Δarea% | dev m | phantom m (%) | linework | verts | ms | det |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| `baseline` | **FAIL** | 0 | **0.9606** | — | — | — | **78.81** (46.3%) | 0.9133 | 31 | 71.9 | y |
-| `column-grid` | — | — | — | — | — | — | — | — | — | — | no plate returned |
-| `partition-envelope` | **FAIL** | 0 | **0.7617** | — | — | — | **71.74** (43.7%) | 0.9548 | 27 | 217.7 | y |
-| `partition-envelope-wrap` | pass | 0 | 0.985 | — | — | — | **99.54** (50%) | 0.9346 | 34 | 74.6 | y |
+| `baseline` | pass | 0 | 0.985 | — | — | — | **99.54** (50%) | 0.9346 | 34 | 275.8 | y |
