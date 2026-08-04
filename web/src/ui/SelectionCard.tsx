@@ -1,6 +1,7 @@
 import { useLayoutEffect, useEffect, useRef, useState, type ReactNode, type CSSProperties } from 'react'
 import { formatINR } from '../materialBank/client'
 import { Icon } from './icons'
+import { MONO } from './type'
 
 /**
  * Materio-style floating selection card. Purely presentational: the parent
@@ -213,7 +214,7 @@ export function SelectionCard({
             <span
               style={{
                 marginLeft: 'auto',
-                fontFamily: '"IBM Plex Mono", ui-monospace, monospace',
+                fontFamily: `${MONO}`,
                 fontSize: 13,
                 fontWeight: 600,
                 color: '#1e2329',

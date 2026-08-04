@@ -9,8 +9,8 @@ import { useState } from 'react'
 import type { CSSProperties, FormEvent } from 'react'
 import type { PlaceSpec } from './DrawingCanvas'
 import { BANK_FOOTPRINT, searchOfficeBank, type BankCategory } from '../materialBank/office'
+import { MONO } from '../ui/type'
 
-const MONO = '"IBM Plex Mono", ui-monospace, monospace'
 
 const S: Record<string, CSSProperties> = {
   card: {

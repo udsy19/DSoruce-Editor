@@ -1,6 +1,7 @@
 import { useState, type CSSProperties } from 'react'
 import { formatINR } from '../materialBank/client'
 import { Icon } from './icons'
+import { MONO } from './type'
 
 /**
  * Materio-style "Plan by category" sidebar section. Purely presentational —
@@ -26,8 +27,8 @@ export interface CategoryPlanGroup {
   items: CategoryPlanItem[]
 }
 
-const MONO: CSSProperties = {
-  fontFamily: '"IBM Plex Mono", ui-monospace, monospace',
+const MONO_STYLE: CSSProperties = {
+  fontFamily: `${MONO}`,
 }
 
 export function CategoryPlan({
@@ -113,10 +114,10 @@ export function CategoryPlan({
               >
                 {g.category}
               </span>
-              <span style={{ ...MONO, fontSize: 10.5, color: '#9aa2ad' }}>{g.count}</span>
+              <span style={{ ...MONO_STYLE, fontSize: 10.5, color: '#9aa2ad' }}>{g.count}</span>
               <span
                 style={{
-                  ...MONO,
+                  ...MONO_STYLE,
                   marginLeft: 'auto',
                   fontSize: 12,
                   fontWeight: 600,
@@ -210,13 +211,13 @@ export function CategoryPlan({
                       )}
                       {it.name}
                     </span>
-                    <span style={{ ...MONO, fontSize: 11, color: '#9aa2ad', flex: 'none' }}>
+                    <span style={{ ...MONO_STYLE, fontSize: 11, color: '#9aa2ad', flex: 'none' }}>
                       ×{it.qty}
                     </span>
                     {it.priceInr !== undefined && (
                       <span
                         style={{
-                          ...MONO,
+                          ...MONO_STYLE,
                           fontSize: 11.5,
                           color: '#1e2329',
                           flex: 'none',

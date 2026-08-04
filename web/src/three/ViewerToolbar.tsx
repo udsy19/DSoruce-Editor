@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import type { ViewerMode, Viewer3D } from './Viewer3D'
 import { THEMES, THEME_ORDER, type ThemeId } from './theme'
+import { MONO } from '../ui/type'
 
 /** Camera framing presets offered by the upgraded viewer engine. */
 export type ViewPreset = 'persp' | 'top'
@@ -221,7 +222,7 @@ function SunSlider({
         <span style={{ font: '500 11px/1 "Space Grotesk", system-ui, sans-serif', color: '#5c626c', letterSpacing: '0.03em' }}>
           {label}
         </span>
-        <span style={{ font: '400 11px/1 "IBM Plex Mono", ui-monospace, monospace', color: '#1b1d21' }}>
+        <span style={{ font: `400 11px/1 ${MONO}`, color: '#1b1d21' }}>
           {value}°
         </span>
       </span>

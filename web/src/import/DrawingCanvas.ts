@@ -6,6 +6,7 @@ import type { Backdrop } from './rasterImport'
 import { backdropBounds } from './rasterImport'
 import { normalizeFurniture } from './normalize'
 import { drawSymbol, seatsForSize } from '../editor/symbols'
+import { MONO } from '../ui/type'
 
 /**
  * Framework-agnostic CAD renderer for an imported {@link Drawing}. Renders
@@ -1535,7 +1536,7 @@ export class DrawingCanvas {
     ctx.strokeStyle = '#ffffff'
     ctx.stroke()
     ctx.fillStyle = '#1a1d21'
-    ctx.font = '600 10px "IBM Plex Mono", ui-monospace, monospace'
+    ctx.font = `600 10px ${MONO}`
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
     ctx.fillText(ref.slice(0, 4), p.x, p.y + 0.5)
@@ -1581,7 +1582,7 @@ export class DrawingCanvas {
     // dims label under the footprint
     const bottom = Math.max(...pts.map((q) => q.y))
     ctx.fillStyle = ACCENT
-    ctx.font = '11px "IBM Plex Mono", ui-monospace, monospace'
+    ctx.font = `11px ${MONO}`
     ctx.textAlign = 'center'
     ctx.textBaseline = 'top'
     ctx.fillText(`${spec.w.toFixed(2)} × ${spec.h.toFixed(2)} m`, p.x, bottom + 6)
@@ -1664,7 +1665,7 @@ export class DrawingCanvas {
       ctx.translate(p.x, p.y)
       if (e.rot) ctx.rotate(-e.rot) // world CCW → screen CW
       ctx.fillStyle = e.color ?? CATEGORY_COLOR[e.category] ?? '#9aa2ad'
-      ctx.font = `${px.toFixed(1)}px "IBM Plex Mono", ui-monospace, monospace`
+      ctx.font = `${px.toFixed(1)}px ${MONO}`
       ctx.fillText(e.text, 0, 0)
       ctx.restore()
     }

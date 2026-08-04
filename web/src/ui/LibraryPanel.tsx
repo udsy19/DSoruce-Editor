@@ -10,6 +10,7 @@ import { groupPlans, type SavedPlan } from '../persist/plans'
 import type { HistoryEntry } from '../persist/history'
 import { formatINR } from '../materialBank/client'
 import { Icon } from './icons'
+import { MONO } from './type'
 
 export interface LibraryPanelProps {
   plans: SavedPlan[]
@@ -46,7 +47,6 @@ export interface LibraryPanelProps {
   syncing?: boolean
 }
 
-const MONO = "'IBM Plex Mono', ui-monospace, monospace"
 
 const defaultPlanName = () =>
   `Plan ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}`

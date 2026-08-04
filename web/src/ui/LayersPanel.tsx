@@ -6,6 +6,7 @@
 // store.setActiveLayer(name).
 import { useState } from 'react'
 import type { CSSProperties, FormEvent } from 'react'
+import { MONO } from './type'
 
 export interface LayerRow {
   name: string
@@ -85,7 +86,7 @@ const S: Record<string, CSSProperties> = {
     cursor: 'pointer',
   },
   count: {
-    fontFamily: '"IBM Plex Mono", monospace',
+    fontFamily: `${MONO}`,
     fontSize: 11,
     color: 'var(--muted, #5c6670)',
   },

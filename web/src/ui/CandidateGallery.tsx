@@ -2,6 +2,7 @@ import type { CSSProperties } from 'react'
 import type { Candidate } from '../editor/EditorCanvas'
 import { STRATEGY_LABEL } from '../editor/EditorCanvas'
 import type { SoftVerdict } from '../ai/evaluator'
+import { MONO } from './type'
 
 /**
  * Laiout-style options strip: every kept test-fit candidate as a small scored
@@ -135,7 +136,7 @@ const S: Record<string, CSSProperties> = {
     letterSpacing: '0.02em',
   },
   total: {
-    fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
+    fontFamily: `${MONO}`,
     fontSize: 13,
     fontWeight: 600,
     color: '#1a1d21',
@@ -146,13 +147,13 @@ const S: Record<string, CSSProperties> = {
     marginTop: 2,
   },
   sub: {
-    fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
+    fontFamily: `${MONO}`,
     fontSize: 9.5,
     color: '#9aa2ad',
   },
   aiBadge: {
     marginLeft: 'auto',
-    fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
+    fontFamily: `${MONO}`,
     fontSize: 9.5,
     fontWeight: 600,
     color: ACCENT,

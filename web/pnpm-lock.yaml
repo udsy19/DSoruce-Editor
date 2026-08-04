@@ -11,6 +11,9 @@ importers:
       '@fontsource/hanken-grotesk':
         specifier: ^5.2.8
         version: 5.2.8
+      '@fontsource/ibm-plex-mono':
+        specifier: ^5.3.0
+        version: 5.3.0
       '@fontsource/schibsted-grotesk':
         specifier: ^5.2.8
         version: 5.2.8
@@ -295,6 +298,9 @@ packages:
 
   '@fontsource/hanken-grotesk@5.2.8':
     resolution: {integrity: sha512-J/e6hdfNCbyc4WK5hmZtk0zjaIsFx3pvCdPVxY25iYw2C9v1ZggGz4nfHnRjMhcz4WfaadUuwLNtvj8sQ70tkg==}
+
+  '@fontsource/ibm-plex-mono@5.3.0':
+    resolution: {integrity: sha512-eTgnZjZEGk1QtD3ZstF+Vclo2HLAni8YMy34/DxllwZvyz1lR/1RF/xTiAquOBO7MvqBx8D2Ig2WCPMVfdZu7Q==}
 
   '@fontsource/schibsted-grotesk@5.2.8':
     resolution: {integrity: sha512-CyyDW5aS89oKGFAVndOsJTQ5pqzKuPnSKWjrdJdMT5TD/eA2JyWapUBhvy6X/lqqrB/GNk74PIff7coPifeVyg==}
@@ -920,6 +926,8 @@ snapshots:
     optional: true
 
   '@fontsource/hanken-grotesk@5.2.8': {}
+
+  '@fontsource/ibm-plex-mono@5.3.0': {}
 
   '@fontsource/schibsted-grotesk@5.2.8': {}
 

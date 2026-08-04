@@ -209,6 +209,7 @@ export type { Strategy } from './strategy'
 export { STRATEGIES, STRATEGY_LABEL, STRATEGY_BLURB } from './strategy'
 import type { Strategy } from './strategy'
 import { STRATEGIES, STRATEGY_SEED_STRIDE, seedWindowOffset } from './strategy'
+import { MONO } from '../ui/type'
 
 /** Test-fit program + objective weights (mirrors Rust `layout::Program`). */
 export interface Program {
@@ -882,7 +883,7 @@ export class EditorCanvas {
     const label =
       angleDeg != null ? `${fmtMeters(len)}  ${Math.round(angleDeg)}°` : fmtMeters(len)
     ctx.save()
-    ctx.font = '10px "IBM Plex Mono", ui-monospace, monospace'
+    ctx.font = `10px ${MONO}`
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
     const w = ctx.measureText(label).width
@@ -992,7 +993,7 @@ export class EditorCanvas {
   ) {
     const ctx = this.ctx
     ctx.save()
-    ctx.font = '10px "IBM Plex Mono", ui-monospace, monospace'
+    ctx.font = `10px ${MONO}`
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
     const tw = ctx.measureText(text).width
@@ -1038,7 +1039,7 @@ export class EditorCanvas {
       width: '64px',
       padding: '2px 6px',
       textAlign: 'center',
-      font: '12.5px "IBM Plex Mono", ui-monospace, monospace',
+      font: `12.5px ${MONO}`,
       color: '#1a1d21',
       background: 'rgba(255,255,255,0.98)',
       border: `1.5px solid ${C.accent}`,
@@ -3044,7 +3045,7 @@ export class EditorCanvas {
       ctx.textAlign = 'left'
       ctx.fillText(label, x + pad, ry)
       ctx.fillStyle = C.label
-      ctx.font = '10px "IBM Plex Mono", ui-monospace, monospace'
+      ctx.font = `10px ${MONO}`
       ctx.textAlign = 'right'
       ctx.fillText(value, x + W - pad, ry)
       ry += rowH
