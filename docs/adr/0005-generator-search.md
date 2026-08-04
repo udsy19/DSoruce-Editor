@@ -391,9 +391,10 @@ that is the next step, not a blind reduction.
 
 ## The rules family — one failure mode, four faces
 
-Each was learned from a live mistake in this campaign, and they are the same
-error wearing different clothes: **something was read as evidence outside the
-conditions that made it evidence.**
+> **Four faces of one error: something read as evidence outside the conditions
+> that made it evidence.**
+
+Each was learned from a live mistake in this campaign.
 
 1. **Metric validity** (ADR 0004) — a metric is only readable as a score for a
    candidate class it was defined over; otherwise UNDEFINED, not zero, not failed.
@@ -415,6 +416,64 @@ conditions that made it evidence.**
 
 The fourth instance of the family will come. When it does, add it here rather
 than treating it as new.
+
+### Worked example — the rule applied one level up
+
+The plateau finding offered a free 0.4 s: score tops out at 15 calls and the
+default spends 27. It was **declined**, because the same measurement showed
+diversity is a real and *unmeasured* dimension of what re-seeding buys.
+
+Cutting the default would have optimised the metric we had at the expense of the
+one we had just learned we lacked — Goodhart one level up. Not merely *"don't let
+the measured hold the ruler"*, but:
+
+> **Don't act on a ruler you know is missing a dimension. Measure the missing
+> dimension first, or state that you are trading it away.**
+
+## Closing measurement — diversity per budget
+
+Pre-registered here **before running**, per the discipline.
+
+### What "distinct" means — declared, because it is a product judgment
+
+Position-hashing is too brittle (one chair moves ⇒ "new layout") to support a
+diversity claim. Two plans are **distinct** if EITHER:
+
+- **(a) zone topology differs** — the multiset of `(zone_type, area rounded to
+  5 m²)` is not equal; or
+- **(b) placement diverges** — more than **20 %** of components sit more than
+  **1.0 m** from the nearest same-category component in the other plan.
+
+Coarse on purpose: (a) catches "a different room mix", (b) catches "same rooms,
+genuinely rearranged". Every diversity number below is made under this
+definition, and a different threshold would give different numbers — which is
+exactly why it is stated rather than assumed.
+
+### The grid measured is the one the product shows
+
+Users pick among **A/B/C cards** — one per strategy, each the best seed in its
+window — not among seed windows in isolation. So both questions are answered on
+that grid:
+
+1. **Between windows:** does pressing Regenerate produce a different card set?
+2. **Within a set:** do the three cards the user is shown differ from each other?
+
+The 2-of-5 seed-side finding says seed diversity is thin; whether **strategy**
+diversity carries the product is the open half.
+
+### Decision rule — pre-stated
+
+- **If diversity@15 ≈ diversity@27** (within one distinct plan): cut the default
+  to 15 calls and bank the speed-up.
+- **If diversity grows past the score plateau**: set the default at the
+  *diversity* plateau, and record that the product pays calls for **options, not
+  points**.
+- **If the A/B/C cards are near-duplicates of each other**: that is a product
+  finding filed with a trigger, not something fixed in this branch.
+
+### Results
+
+_Not yet run._
 
 ## Untested claim, routed with a trigger
 
