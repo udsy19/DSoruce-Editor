@@ -86,7 +86,19 @@ export function AppShell() {
       {route.name === 'projects' && (
         <ProjectLibrary
           onNew={() => navigate({ name: 'create' })}
-          onOpen={(p) => navigate({ name: 'wizard', projectId: p.id, step: 'space' })}
+          // Re-opening a project resumes where the user left it. Once a test-fit
+          // has been picked, the project record remembers WHICH floor
+          // (`chosenPlanId`, written by GenerateStep) — so go straight to it in
+          // the editor. Only a project with no chosen floor yet starts at Space.
+          // Without this the finished plan was unreachable from the landing page
+          // and the user was silently restarted at "Drop the floor plate".
+          onOpen={(p) =>
+            navigate(
+              p.chosenPlanId
+                ? { name: 'editor', projectId: p.id, planId: p.chosenPlanId }
+                : { name: 'wizard', projectId: p.id, step: 'space' },
+            )
+          }
         />
       )}
       {route.name === 'create' && (
@@ -99,8 +111,7 @@ export function AppShell() {
         <WizardChrome
           current="space"
           title="Drop the floor plate"
-          subtitle="Upload a CAD floor plan and we read it for you — tracing the usable plate, tallying the furniture, and detecting rooms before you set the brief."
-          guide="Drop a DXF or DWG floor plan below. Everything else is automatic — then press Next."
+          guide="Drop a DXF, DWG, or an image of a floor plan. Everything else is read for you."
           onStep={goToStep(route.projectId)}
           onBack={() => navigate({ name: 'projects' })}
           onNext={async () => {
@@ -134,7 +145,6 @@ export function AppShell() {
         <WizardChrome
           current="program"
           title="State the program"
-          subtitle="Tell the engine what to build — the room mix, desk type and size, and where offices should sit. Sensible defaults are already filled in, so you can tune as much or as little as you like."
           guide="Pick a template or type a headcount. The counts are pre-filled — adjust anything, then press Next."
           onStep={goToStep(route.projectId)}
           onBack={() => navigate({ name: 'wizard', projectId: route.projectId, step: 'space' })}
@@ -159,8 +169,7 @@ export function AppShell() {
         <WizardChrome
           current="generate"
           title="Pick a test-fit"
-          subtitle="The engine generated a few alternatives against your program. Compare their metrics and category winners, then open one to keep designing — or head back to adjust the brief."
-          guide="Compare the options, then press “Open in editor” on the one you like to keep designing (Review → Design → Visualise → Share)."
+          guide="Compare the options, then press “Open in editor” on the one you want to keep designing."
           onStep={goToStep(route.projectId)}
           onBack={() => navigate({ name: 'wizard', projectId: route.projectId, step: 'program' })}
           hideNext

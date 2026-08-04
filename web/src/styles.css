@@ -87,11 +87,40 @@
 * {
   box-sizing: border-box;
 }
+/* ---------------------------------------------------------------------------
+   THE LAYOUT LAW (docs/design/ui-system.md §1)
+   `#root` is the ONLY viewport owner. Exactly one pane per screen scrolls; the
+   canvas never scrolls, it pans.
+     1. `vh`/`dvh` appear ONLY on #root. Never below it — a child sized against
+        the window inside a box that is `window − chrome` always overflows.
+     2. A scroll pane's children never carry a fixed px height that can exceed
+        the pane. They size in fr / % / auto with `min-height: 0`.
+     3. A canvas pane is `position:relative; overflow:hidden`; canvases fill it.
+     4. No ancestor of a floating surface declares `overflow` other than
+        `visible` — flyouts are `absolute`, never `fixed`.
+     5. Chrome bands are `flex:none`; the work area is `1fr; min-height:0`.
+   --------------------------------------------------------------------------- */
 html,
-body,
-#root {
+body {
   height: 100%;
   margin: 0;
+}
+#root {
+  height: 100dvh;
+  overflow: hidden;
+}
+/* The one scroll owner of a screen. Nothing else in that screen may scroll. */
+.pane-scroll {
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: clip;
+}
+/* A pane the canvas fills. It clips; the drawing pans and zooms inside it. */
+.pane-canvas {
+  position: relative;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
 }
 body {
   font-family: var(--font-ui);
@@ -252,7 +281,13 @@ button {
   min-height: 0;
 }
 
-/* Tool rail */
+/* Tool rail.
+   NO `overflow` here (layout law rule 4). The rail holds an avatar, six dock
+   tiles, a spring and one FAB — it has never needed to scroll. The old
+   `overflow-y:auto` was left over from the flat rail the grouped dock replaced,
+   and being a scroll container made it a CLIP container, which is what silently
+   ate the dock's flyout and forced the `position:fixed` re-anchoring workaround.
+   Keeping it `visible` is what lets the flyout be a plain absolute child. */
 .rail {
   display: flex;
   flex-direction: column;
@@ -261,9 +296,6 @@ button {
   padding: 8px 0;
   background: var(--surface);
   border-right: 1px solid var(--hairline);
-  overflow-y: auto;
-  overflow-x: clip;
-  scrollbar-width: thin;
 }
 .rail-avatar {
   width: 32px;
@@ -363,12 +395,14 @@ button {
   border-radius: 50%;
   box-shadow: 0 0 0 1px rgba(23, 26, 30, 0.12);
 }
-/* Flyout: reveals the group's members to the right of the tile. Rendered
-   `position: fixed` (coords set inline from the tile's live rect in ToolDock)
-   so it escapes the rail's `overflow` clip — an absolutely-positioned flyout
-   was clipped away by the rail and unclickable. */
+/* Flyout: reveals the group's members to the right of the tile. A plain
+   absolute child of `.tdock-group` — the rail no longer declares `overflow`
+   (layout law rule 4), so nothing clips it and no viewport re-anchoring is
+   needed. */
 .tdock-flyout {
-  position: fixed;
+  position: absolute;
+  left: calc(100% + 8px);
+  top: -5px;
   min-width: 176px;
   display: flex;
   flex-direction: column;
@@ -2805,10 +2839,17 @@ kbd {
   margin-top: 8px;
 }
 
-/* --- wizard chrome (guided workflow) --- */
+/* --- wizard chrome (guided workflow) ---
+   Three fixed bands + one work area (layout law §1.1). The work area is `1fr;
+   min-height:0` and the STEP inside it declares its own single scroll owner —
+   a `.pane-scroll` (Program, Generate) or a canvas/scroll split (Space). The
+   chrome itself never scrolls and never grows. */
 .studio.wizard {
   height: 100%;
   overflow: hidden;
+  display: grid;
+  grid-template-rows: auto auto 1fr auto;
+  padding-bottom: 0;
 }
 .wizard-steps {
   display: flex;
@@ -2836,9 +2877,6 @@ kbd {
 .wizard-step.done .wizard-rail,
 .wizard-step.active .wizard-rail {
   background: var(--accent);
-}
-.wizard-step.future .wizard-rail {
-  background: var(--hairline);
 }
 .wizard-step-hit {
   display: inline-flex;
@@ -2872,12 +2910,6 @@ kbd {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
-.wizard-step-pip {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--faint);
-}
 .wizard-step.done .wizard-step-hit {
   color: var(--text-2);
 }
@@ -2893,34 +2925,27 @@ kbd {
   background: var(--accent);
   color: var(--accent-ink);
 }
-.wizard-step.future .wizard-step-hit {
+.wizard-step.todo .wizard-step-hit {
   color: var(--faint);
 }
-.wizard-step.future .wizard-step-dot {
-  background: transparent;
-}
-/* The editor-phase tail is context, not a control — drop it on narrow screens so
-   the four guided steps stay legible. */
-@media (max-width: 1120px) {
-  .wizard-step.future {
-    display: none;
-  }
-}
 
-/* "What to do here" guide strip — the single, unmissable instruction. */
+/* "What to do here" — the single, unmissable instruction, sitting inline with
+   the title band rather than as its own full-width strip. */
 .wizard-guide {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 0 0 4px;
-  padding: 11px 14px;
-  border: 1px solid var(--accent-soft);
-  background: var(--accent-soft);
-  border-radius: var(--r-md);
+  align-items: baseline;
+  gap: 7px;
+  margin: 0;
+  min-width: 0;
   color: var(--accent-hover);
-  font-size: 13.5px;
+  font-size: 13px;
   font-weight: 500;
-  line-height: 1.4;
+  line-height: 1.3;
+}
+.wizard-guide-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .wizard-guide-arrow {
   display: inline-flex;
@@ -2957,23 +2982,40 @@ kbd {
 .wizard-next-reason svg {
   color: var(--faint);
 }
+/* One compact context band: "2 · SPACE" + the title on one line, the single
+   imperative under it. The old title + subtitle + guide strip said the same
+   thing three ways and cost 174px of a 900px viewport. */
 .wizard-head {
-  padding: clamp(20px, 4vw, 40px) 0 20px;
-  max-width: 760px;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 14px 0 10px;
+  min-width: 0;
+}
+.wizard-head .panel-eyebrow {
+  margin: 0;
+  flex: none;
 }
 .wizard-title {
   font-family: var(--font-display);
   font-weight: 700;
-  font-size: clamp(26px, 4vw, 40px);
-  line-height: 1.05;
+  font-size: 21px;
+  line-height: 1.15;
   letter-spacing: -0.01em;
-  margin: 8px 0 12px;
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
+/* The work area. NOT a scroll container — the step inside owns the scrolling
+   (layout law rule 5). `min-height:0` is what lets it actually shrink to the
+   grid track instead of being pushed out by its content. */
 .wizard-body {
-  flex: 1;
   min-height: 0;
-  overflow-y: auto;
-  padding-bottom: 16px;
+  min-width: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  padding-bottom: 12px;
 }
 .wizard-nav {
   display: flex;
@@ -2991,11 +3033,14 @@ kbd {
   transform: rotate(-90deg);
 }
 
-/* --- space step (upload + detected readouts) --- */
+/* --- space step (upload + detected readouts) ---
+   Upload band (auto) over the work split (1fr). The step fills the wizard's
+   work area; nothing here is sized against the viewport. */
 .space-step {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 12px;
+  min-height: 0;
 }
 .space-drop {
   display: flex;
@@ -3057,42 +3102,41 @@ kbd {
 }
 .space-readouts {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(280px, 1fr);
-  gap: 20px;
-  align-items: start;
+  grid-template-columns: minmax(0, 1.4fr) minmax(300px, 1fr);
+  gap: 16px;
+  min-height: 0;
 }
 @media (max-width: 900px) {
   .space-readouts {
     grid-template-columns: 1fr;
+    grid-template-rows: minmax(220px, 1fr) auto;
   }
 }
-.space-preview {
-  position: relative;
-  /* Tall, viewport-responsive box so a floor plate (often near-square/portrait)
-     fills the preview instead of leaving big side margins in a wide-short frame.
-     DrawingCanvas re-fits on resize, so this stays framed as the window grows. */
-  height: clamp(460px, 74vh, 880px);
+/* The plan: a toolbar band over a canvas pane. No fixed height — it fills its
+   grid track, so the drawing is fully visible at every window size (the old
+   `height: clamp(460px, 74vh, 880px)` was a viewport-unit box inside a box that
+   is `viewport − chrome`, so it always overflowed and the plan was never whole). */
+.space-plan {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  min-width: 0;
   border: 1px solid var(--hairline);
   border-radius: var(--r-md);
   background: var(--canvas-bg);
   overflow: hidden;
 }
-/* Area-select + room-marker tools — floating overlay over the plan preview. */
+/* Area-select + room-marker tools — a band ABOVE the plan, not an overlay on
+   it. It no longer occludes the drawing, and its hint has room to wrap instead
+   of spilling over the canvas and hiding the toggle it describes. */
 .space-tools {
-  position: absolute;
-  z-index: 3;
-  top: 10px;
-  left: 10px;
-  right: 10px;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
-  padding: 6px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-md);
-  background: color-mix(in srgb, var(--surface) 92%, transparent);
-  backdrop-filter: blur(6px);
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--hairline);
+  background: var(--surface-2);
 }
 .space-tool {
   display: inline-flex;
@@ -3155,18 +3199,14 @@ kbd {
   font-family: var(--font-mono, 'IBM Plex Mono', monospace);
   width: 4.5em;
 }
+/* Tool hint — a full-width row INSIDE the toolbar band (flex-basis 100% makes
+   it wrap onto its own line), so it never paints over the drawing. */
 .space-tool-hint {
-  position: absolute;
-  z-index: 3;
-  top: 52px;
-  left: 10px;
-  right: 10px;
+  flex: 1 0 100%;
   margin: 0;
-  padding: 6px 10px;
-  border-radius: var(--r-sm, 6px);
-  background: color-mix(in srgb, var(--surface) 92%, transparent);
-  backdrop-filter: blur(6px);
+  padding: 2px 2px 0;
   font-size: 11.5px;
+  line-height: 1.35;
   color: var(--eyebrow);
 }
 .area-restricted-note {
@@ -3224,10 +3264,15 @@ kbd {
   border-color: #d64545;
   color: #d64545;
 }
+/* The step's single scroll owner. The plan pane beside it never scrolls. */
 .space-detail {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: clip;
+  padding-right: 4px;
 }
 .space-metrics {
   display: grid;
@@ -3317,11 +3362,17 @@ kbd {
   color: var(--faint);
 }
 
-/* --- program step (Concept / Detailed builder) --- */
+/* --- program step (Concept / Detailed builder) ---
+   The step's single scroll owner. It leads with the program builder — the
+   step's primary control — and anchor pins follow it. */
 .program-step {
   display: flex;
   flex-direction: column;
   gap: 18px;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: clip;
+  padding-right: 4px;
 }
 .program-mode {
   display: inline-flex;
@@ -3642,9 +3693,11 @@ kbd {
   border-color: #4a8fc7;
   color: #fff;
 }
+/* Anchor pins are a secondary control, so this plan is a figure inside the
+   step's scroll pane — modest and fixed, never the thing that greets you. */
 .program-anchor-plan {
   position: relative;
-  height: 420px;
+  height: 340px;
   border: 1px solid var(--hairline);
   border-radius: var(--r-md);
   background: var(--canvas-bg);
@@ -3694,11 +3747,16 @@ kbd {
   color: #d64545;
 }
 
-/* --- generate step (A/B/C alternatives gallery) --- */
+/* --- generate step (A/B/C alternatives gallery) ---
+   The step's single scroll owner. */
 .generate-step {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: clip;
+  padding-right: 4px;
 }
 .generate-running {
   display: flex;
@@ -3833,7 +3891,11 @@ kbd {
   font-weight: 700;
   font-size: 12px;
 }
+/* `flex:1` + `margin-top:auto` on the CTA pins "Open in editor" to the bottom of
+   every card, so three cards with different badge/verdict counts still line up
+   their primary action on one row. */
 .generate-alt-body {
+  flex: 1;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -3858,16 +3920,26 @@ kbd {
   font-weight: 500;
   color: var(--faint);
 }
+/* Clamped to two lines so a longer strategy blurb can't shove one card's
+   metrics out of line with its neighbours'. */
 .generate-alt-blurb {
   margin: 2px 0 0;
   font-size: 11.5px;
   line-height: 1.4;
-  color: var(--muted, #5f6771);
+  color: var(--muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
+/* Reserved even when a card wins no category, so badge count never shifts the
+   rows below it. */
 .generate-badges {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 5px;
+  min-height: 19px;
 }
 .generate-badge {
   display: inline-flex;
@@ -3934,7 +4006,7 @@ kbd {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  margin-top: 2px;
+  margin-top: auto;
 }
 .generate-alt-open svg {
   transform: rotate(-90deg);

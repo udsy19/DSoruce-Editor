@@ -458,7 +458,10 @@ export function SpaceStep({
 
       {drawing && readouts && (
         <div className="space-readouts" data-testid="space-readouts">
-          <div className="space-preview">
+          {/* Toolbar band over a canvas pane. The plan fills its grid track, so
+              it is fully visible at every window size, and the toolbar sits
+              above the drawing instead of floating over it. */}
+          <div className="space-plan">
             <div className="space-tools" role="toolbar" aria-label="Plan tools">
               {backdrop && (
                 <>
@@ -594,81 +597,86 @@ export function SpaceStep({
                   Keep existing walls
                 </button>
               </div>
+              {/* Hints live INSIDE the toolbar band (each wraps onto its own row)
+                  so they never paint over the plan and never push a control out of
+                  reach. */}
+              <p className="space-tool-hint" data-testid="space-keep-hint">
+                {keepExisting
+                  ? 'Keep existing walls fits new furniture around your current partitions.'
+                  : 'Fresh fit clears the old fit-out and lays out the base shell; Keep existing walls fits new furniture around your current partitions.'}
+              </p>
+              {activeTool === 'scale' && (
+                <p className="space-tool-hint" data-testid="space-scale-hint">
+                  Click the two ends of a known dimension (a wall, a door) — then type its real
+                  length to scale the whole image.
+                </p>
+              )}
+              {scalePrompt && (
+                <div
+                  className="space-tool-hint"
+                  data-testid="space-scale-prompt"
+                  role="group"
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}
+                >
+                  <span>This line is</span>
+                  <input
+                    className="space-marker-ref num"
+                    data-testid="space-scale-input"
+                    value={scaleLenM}
+                    onChange={(e) => setScaleLenM(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') applyScale()
+                    }}
+                    inputMode="decimal"
+                    placeholder="5"
+                    aria-label="Real length in meters"
+                    size={5}
+                    autoFocus
+                  />
+                  <span>m</span>
+                  <button
+                    type="button"
+                    className="space-tool on"
+                    data-testid="space-scale-apply"
+                    onClick={applyScale}
+                    disabled={!(parseFloat(scaleLenM) > 0)}
+                  >
+                    <Icon name="check" size={12} /> Set scale
+                  </button>
+                  <button
+                    type="button"
+                    className="space-tool ghost"
+                    data-testid="space-scale-cancel"
+                    onClick={() => {
+                      setScalePrompt(null)
+                      dcRef.current?.cancelTool()
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
+              {backdrop && !scalePrompt && activeTool !== 'scale' && (
+                <p className="space-tool-hint" data-testid="space-backdrop-hint">
+                  Image backdrop loaded. Use <strong>Set scale</strong> to calibrate real
+                  dimensions, then <strong>Select area</strong> to trace the usable plate.
+                </p>
+              )}
+              {activeTool === 'area' && (
+                <p className="space-tool-hint" data-testid="space-area-hint">
+                  Click to lay the boundary — snaps to nearby walls. Click the first point (or
+                  double-click / Enter) to close, Esc to cancel.
+                </p>
+              )}
+              {activeTool === 'marker' && (
+                <p className="space-tool-hint">
+                  Pick a room type + number, then click the plan to drop a labelled pin.
+                </p>
+              )}
             </div>
-            <p className="space-tool-hint" data-testid="space-keep-hint">
-              {keepExisting
-                ? 'Keep existing walls fits new furniture around your current partitions.'
-                : 'Fresh fit clears the old fit-out and lays out the base shell; Keep existing walls fits new furniture around your current partitions.'}
-            </p>
-            {activeTool === 'scale' && (
-              <p className="space-tool-hint" data-testid="space-scale-hint">
-                Click the two ends of a known dimension (a wall, a door) — then type its real
-                length to scale the whole image.
-              </p>
-            )}
-            {scalePrompt && (
-              <div
-                className="space-tool-hint"
-                data-testid="space-scale-prompt"
-                role="group"
-                style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}
-              >
-                <span>This line is</span>
-                <input
-                  className="space-marker-ref num"
-                  data-testid="space-scale-input"
-                  value={scaleLenM}
-                  onChange={(e) => setScaleLenM(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') applyScale()
-                  }}
-                  inputMode="decimal"
-                  placeholder="5"
-                  aria-label="Real length in meters"
-                  size={5}
-                  autoFocus
-                />
-                <span>m</span>
-                <button
-                  type="button"
-                  className="space-tool on"
-                  data-testid="space-scale-apply"
-                  onClick={applyScale}
-                  disabled={!(parseFloat(scaleLenM) > 0)}
-                >
-                  <Icon name="check" size={12} /> Set scale
-                </button>
-                <button
-                  type="button"
-                  className="space-tool ghost"
-                  data-testid="space-scale-cancel"
-                  onClick={() => {
-                    setScalePrompt(null)
-                    dcRef.current?.cancelTool()
-                  }}
-                >
-                  Cancel
-                </button>
-              </div>
-            )}
-            {backdrop && !scalePrompt && activeTool !== 'scale' && (
-              <p className="space-tool-hint" data-testid="space-backdrop-hint">
-                Image backdrop loaded. Use <strong>Set scale</strong> to calibrate real
-                dimensions, then <strong>Select area</strong> to trace the usable plate.
-              </p>
-            )}
-            {activeTool === 'area' && (
-              <p className="space-tool-hint" data-testid="space-area-hint">
-                Click to lay the boundary — snaps to nearby walls. Click the first point (or
-                double-click / Enter) to close, Esc to cancel.
-              </p>
-            )}
-            {activeTool === 'marker' && (
-              <p className="space-tool-hint">
-                Pick a room type + number, then click the plan to drop a labelled pin.
-              </p>
-            )}
-            <DrawingView drawing={drawing} onCanvas={handleCanvas} />
+            <div className="pane-canvas">
+              <DrawingView drawing={drawing} onCanvas={handleCanvas} />
+            </div>
           </div>
 
           <div className="space-detail">

@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Icon } from './icons'
 
 /**
@@ -65,13 +65,9 @@ const GROUPS: { key: string; label: string; icon: string; members: string[] }[] 
 ]
 
 export function ToolDock({ tools, active, onPick }: ToolDockProps) {
-  // Which group's flyout is open (click / keyboard), plus the viewport-anchored
-  // position it renders at. Null = closed.
+  // Which group's flyout is open (click / keyboard). Null = closed.
   const [open, setOpen] = useState<string | null>(null)
-  const [pos, setPos] = useState<{ left: number; top: number } | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
-  // The tile button the open flyout hangs off — so scroll/resize can re-anchor it.
-  const openBtnRef = useRef<HTMLButtonElement | null>(null)
 
   const byId = new Map(tools.map((t) => [t.id, t]))
   // Build the ordered groups from whatever tools App handed us; collect anything
@@ -87,35 +83,13 @@ export function ToolDock({ tools, active, onPick }: ToolDockProps) {
     groups.push({ key: 'more', label: 'More', icon: 'generate', members: leftovers })
   }
 
-  // Anchor the flyout beside its tile. The flyout is rendered `position: fixed`
-  // (see styles.css) precisely because the rail is an `overflow` clip/scroll
-  // container: an absolutely-positioned flyout that extends past the rail's right
-  // edge was silently clipped away, which is why the dock appeared dead. Fixed
-  // positioning escapes every ancestor clip; we compute the coords from the live
-  // tile rect here and keep them fresh on scroll/resize.
-  const anchor = () => {
-    const btn = openBtnRef.current
-    if (!btn) return
-    const r = btn.getBoundingClientRect()
-    setPos({ left: Math.round(r.right + 8), top: Math.round(r.top - 5) })
-  }
+  const close = () => setOpen(null)
 
-  // Open a group's flyout, anchored to the clicked tile.
-  const openFlyout = (key: string, btn: HTMLButtonElement) => {
-    openBtnRef.current = btn
-    anchor()
-    setOpen(key)
-  }
-
-  const close = () => {
-    setOpen(null)
-    setPos(null)
-    openBtnRef.current = null
-  }
-
-  // While open: close on Escape / outside-click (covers touch + canvas), and
-  // re-anchor the fixed flyout if the rail scrolls or the window resizes.
-  useLayoutEffect(() => {
+  // While open: close on Escape / outside-click (covers touch + canvas). The
+  // flyout positions itself in CSS as a plain absolute child of its tile group —
+  // the rail no longer declares `overflow`, so nothing clips it and there is no
+  // viewport re-anchoring to keep in sync on scroll or resize.
+  useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') close()
@@ -125,14 +99,9 @@ export function ToolDock({ tools, active, onPick }: ToolDockProps) {
     }
     window.addEventListener('keydown', onKey)
     window.addEventListener('mousedown', onDocDown)
-    window.addEventListener('resize', anchor)
-    // capture so it also fires for the rail's own scroll, not just the window.
-    window.addEventListener('scroll', anchor, true)
     return () => {
       window.removeEventListener('keydown', onKey)
       window.removeEventListener('mousedown', onDocDown)
-      window.removeEventListener('resize', anchor)
-      window.removeEventListener('scroll', anchor, true)
     }
   }, [open])
 
@@ -154,14 +123,12 @@ export function ToolDock({ tools, active, onPick }: ToolDockProps) {
               // (Enter/Space on this button) drives the same path. Escape /
               // outside-click / picking an item all close it.
               className={`tdock-tile${isActive ? ' on' : ''}${isOpen ? ' open' : ''}`}
-              onClick={(e) => {
+              onClick={() => {
                 if (g.members.length === 1) {
                   onPick(g.members[0].id)
                   close()
-                } else if (isOpen) {
-                  close()
                 } else {
-                  openFlyout(g.key, e.currentTarget)
+                  setOpen(isOpen ? null : g.key)
                 }
               }}
               aria-haspopup={g.members.length > 1 ? 'menu' : undefined}
@@ -174,13 +141,8 @@ export function ToolDock({ tools, active, onPick }: ToolDockProps) {
               )}
               {g.members.length > 1 && <span className="tdock-caret" aria-hidden />}
             </button>
-            {isOpen && pos && (
-              <div
-                className="tdock-flyout"
-                role="menu"
-                aria-label={g.label}
-                style={{ left: pos.left, top: pos.top }}
-              >
+            {isOpen && (
+              <div className="tdock-flyout" role="menu" aria-label={g.label}>
                 <div className="tdock-flyout-head">{g.label}</div>
                 {g.members.map((t) => {
                   const on = t.id === active

@@ -196,76 +196,11 @@ export function ProgramStep({
         </button>
       </div>
 
-      {/* Anchor pins (workflow.md §3.5): pick a room type, click the plan to
-          force that room onto the spot — it bumps the count. */}
-      {drawing && (
-        <section className="program-anchors" data-testid="program-anchors">
-          <div className="program-anchors-head">
-            <div>
-              <div className="panel-eyebrow">Anchor pins · place rooms on the plan</div>
-              <p className="program-summary-note">
-                Pin a room type, then click the plan to force it onto that spot — the pin bumps its
-                count and the generator places it first. Pins clear if you re-upload the plate.
-              </p>
-            </div>
-            <div className="program-anchor-controls">
-              <select
-                className="program-anchor-kind num"
-                data-testid="program-anchor-kind"
-                value={anchorKind}
-                onChange={(e) => setAnchorKind(e.target.value as SpaceKind)}
-                aria-label="Room type to pin"
-              >
-                {ANCHOR_KINDS.map((k) => (
-                  <option key={k.value} value={k.value}>
-                    {k.label}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                className={`program-anchor-tool${anchorTool ? ' on' : ''}`}
-                data-testid="program-anchor-tool"
-                aria-pressed={anchorTool}
-                onClick={toggleAnchorTool}
-              >
-                <Icon name="pin" size={13} /> {anchorTool ? 'Placing…' : 'Pin on plan'}
-              </button>
-            </div>
-          </div>
-          {anchorTool && (
-            <p className="space-tool-hint" data-testid="program-anchor-hint">
-              Click the plan to drop a <strong>{anchorKindLabel(anchorKind)}</strong> pin. Esc to stop.
-            </p>
-          )}
-          <div className="program-anchor-plan">
-            <DrawingView drawing={drawing} onCanvas={handleAnchorCanvas} />
-          </div>
-          {anchors.length > 0 && (
-            <ul className="program-anchors-list" data-testid="program-anchors-list">
-              {anchors.map((a) => (
-                <li key={a.id} className="program-anchor-row" data-testid="anchor-pin">
-                  <span className="program-anchor-diamond" aria-hidden />
-                  <span className="program-anchor-row-kind">{anchorKindLabel(a.kind)}</span>
-                  <span className="program-anchor-row-pos num">
-                    {a.x.toFixed(1)}, {a.y.toFixed(1)} m
-                  </span>
-                  <button
-                    type="button"
-                    className="program-anchor-del"
-                    data-testid="anchor-pin-del"
-                    aria-label={`Remove ${anchorKindLabel(a.kind)} pin`}
-                    onClick={() => deleteAnchor(a.id)}
-                  >
-                    <Icon name="close" size={12} />
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      )}
-
+      {/* PROGRAM BUILDER FIRST — it is this step's primary control and what the
+          guide strip tells the user to do. Anchor pins (a tertiary refinement)
+          follow it. They used to sit ABOVE it, pushing the templates and the
+          headcount ~475px below the fold, so the step opened on a control nobody
+          had been told to use. */}
       <div className="program-body">
         <div className="program-main">
           {spec.mode === 'concept' ? (
@@ -365,6 +300,78 @@ export function ProgramStep({
           </p>
         </aside>
       </div>
+
+      {/* Anchor pins (workflow.md §3.5): pick a room type, click the plan to
+          force that room onto the spot — it bumps the count. A refinement on top
+          of the program above, so it sits below it. */}
+      {drawing && (
+        <section className="program-anchors" data-testid="program-anchors">
+          <div className="program-anchors-head">
+            <div>
+              <div className="panel-eyebrow">Anchor pins · place rooms on the plan</div>
+              <p className="program-summary-note">
+                Optional. Pin a room type, then click the plan to force it onto that spot — the pin
+                bumps its count and the generator places it first. Pins clear if you re-upload the
+                plate.
+              </p>
+            </div>
+            <div className="program-anchor-controls">
+              <select
+                className="program-anchor-kind num"
+                data-testid="program-anchor-kind"
+                value={anchorKind}
+                onChange={(e) => setAnchorKind(e.target.value as SpaceKind)}
+                aria-label="Room type to pin"
+              >
+                {ANCHOR_KINDS.map((k) => (
+                  <option key={k.value} value={k.value}>
+                    {k.label}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className={`program-anchor-tool${anchorTool ? ' on' : ''}`}
+                data-testid="program-anchor-tool"
+                aria-pressed={anchorTool}
+                onClick={toggleAnchorTool}
+              >
+                <Icon name="pin" size={13} /> {anchorTool ? 'Placing…' : 'Pin on plan'}
+              </button>
+            </div>
+          </div>
+          {anchorTool && (
+            <p className="space-tool-hint" data-testid="program-anchor-hint">
+              Click the plan to drop a <strong>{anchorKindLabel(anchorKind)}</strong> pin. Esc to stop.
+            </p>
+          )}
+          <div className="program-anchor-plan">
+            <DrawingView drawing={drawing} onCanvas={handleAnchorCanvas} />
+          </div>
+          {anchors.length > 0 && (
+            <ul className="program-anchors-list" data-testid="program-anchors-list">
+              {anchors.map((a) => (
+                <li key={a.id} className="program-anchor-row" data-testid="anchor-pin">
+                  <span className="program-anchor-diamond" aria-hidden />
+                  <span className="program-anchor-row-kind">{anchorKindLabel(a.kind)}</span>
+                  <span className="program-anchor-row-pos num">
+                    {a.x.toFixed(1)}, {a.y.toFixed(1)} m
+                  </span>
+                  <button
+                    type="button"
+                    className="program-anchor-del"
+                    data-testid="anchor-pin-del"
+                    aria-label={`Remove ${anchorKindLabel(a.kind)} pin`}
+                    onClick={() => deleteAnchor(a.id)}
+                  >
+                    <Icon name="close" size={12} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
     </div>
   )
 }
