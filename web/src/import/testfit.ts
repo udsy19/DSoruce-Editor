@@ -33,6 +33,7 @@
 // Pure TS, dependency-free. Coordinates in meters throughout.
 
 import type { Drawing, DrawEntity } from './types'
+import { assessPlate, type PlateMethod, type PlateProvenance } from './plateQuality'
 import type { EditorCanvas } from '../editor/EditorCanvas'
 import type { AnchorPin } from '../program/anchors'
 
@@ -50,6 +51,15 @@ export interface PlateResult {
   coverage: number
   /** Enclosed area of `boundary`, m². */
   areaM2: number
+  /**
+   * How this boundary was derived and how far it can be trusted. Absent only on
+   * plates built without the source drawing to check against.
+   *
+   * `provenance.confidence === 'low'` means the plate is a PROPOSAL: show it as
+   * an editable draft with `provenance.reason`, and never print a hard area for
+   * it (or for anything derived from it — circulation, cost, m²/person).
+   */
+  provenance?: PlateProvenance
 }
 
 // ---- tunables ----------------------------------------------------------
@@ -147,14 +157,14 @@ export function extractPlate(drawing: Drawing): PlateResult | null {
     // Simplify → despike → light simplify (despiking leaves collinear runs).
     const ring = simplify(smooth(despike(simplify(orientCCW(bigLoop), SIMPLIFY_LOOP, true))), SIMPLIFY_POST, true)
     const ok = accept(ring, 'loop')
-    if (ok) return finishPlate(ok)
+    if (ok) return finishPlate({ ...ok, drawing })
   }
 
   // (b) Occupancy-grid outer contour of the widened shell set (doors close the
   // flood-fill leaks) with escalating gap-closing dilation.
   for (const dilate of [GRID_DILATE, GRID_DILATE * 2, GRID_DILATE * 4]) {
     const ok = accept(contourRing(shellSegs, dilate), 'hull')
-    if (ok) return finishPlate(ok)
+    if (ok) return finishPlate({ ...ok, drawing })
   }
 
   // (c) Guaranteed-coverage wrap: shell ∪ every furniture bbox outline. The
@@ -163,7 +173,7 @@ export function extractPlate(drawing: Drawing): PlateResult | null {
     const wrapSegs = shellSegs.concat(furnitureBoxSegments(drawing))
     for (const dilate of [GRID_DILATE * 2, GRID_DILATE * 4]) {
       const ok = accept(contourRing(wrapSegs, dilate), 'wrap')
-      if (ok) return finishPlate(ok)
+      if (ok) return finishPlate({ ...ok, drawing })
     }
   }
 
@@ -175,7 +185,16 @@ export function extractPlate(drawing: Drawing): PlateResult | null {
   }
   accept(convexHull(hullPts), 'hull')
 
-  return best ? finishPlate(best) : null
+  // `best` is only ever assigned inside the `accept` closure, which TS's
+  // control-flow analysis cannot see — it narrows the binding to `null` here.
+  // The cast restores the declared type so the fields can be read.
+  const chosen = best as Scored | null
+  return chosen
+    ? finishPlate({
+        ring: chosen.ring, method: chosen.method,
+        coverage: chosen.coverage, area: chosen.area, drawing,
+      })
+    : null
 }
 
 /** Fraction (0–1) of the drawing's furniture bbox centers inside the plate boundary. */
@@ -1437,11 +1456,22 @@ export function convexHull(points: Pt[]): Pt[] {
 // ---- finalization -----------------------------------------------------
 
 /** Translate the ring so its min corner sits at (EDITOR_MARGIN, EDITOR_MARGIN). */
+/** Ladder rung → the provenance vocabulary shown to the user. */
+const PROVENANCE_METHOD: Record<PlateResult['method'], PlateMethod> = {
+  loop: 'traced-loop',
+  hull: 'grid-contour', // the 'hull' rung is the grid contour; true hull is the 'wrap' last resort
+  wrap: 'hull',
+}
+
 function finishPlate(c: {
   ring: Pt[]
   method: PlateResult['method']
   coverage: number
   area: number
+  /** Source drawing — needed to check the boundary against real linework. */
+  drawing?: Drawing | null
+  /** Overrides the ladder mapping (area-select is user-traced, not inferred). */
+  provenanceMethod?: PlateMethod
 }): PlateResult {
   let minX = Infinity
   let minY = Infinity
@@ -1450,12 +1480,19 @@ function finishPlate(c: {
     minY = Math.min(minY, y)
   }
   const offset = { x: minX - EDITOR_MARGIN, y: minY - EDITOR_MARGIN }
+  // Assessed in SOURCE coordinates, before the editor offset is applied, so the
+  // ring lines up with the drawing's own linework.
+  const method = c.provenanceMethod ?? PROVENANCE_METHOD[c.method]
+  const provenance = c.drawing !== undefined
+    ? assessPlate(c.ring, c.drawing, method)
+    : undefined
   return {
     boundary: c.ring.map(([x, y]) => [x - offset.x, y - offset.y]),
     offset,
     method: c.method,
     coverage: c.coverage,
     areaM2: c.area,
+    provenance,
   }
 }
 
@@ -1512,11 +1549,14 @@ function clipToRect(poly: Pt[], x0: number, y0: number, x1: number, y1: number):
 export function plateFromArea(
   polygon: Pt[],
   bounds: [number, number, number, number],
+  /** Source drawing, for provenance. Optional: a user-traced plate is trusted
+   *  regardless, so callers that lack it still get `confidence: 'high'`. */
+  drawing?: Drawing,
 ): PlateResult | null {
   if (!polygon || polygon.length < 3) return null
   const clipped = clipToRect(polygon, bounds[0], bounds[1], bounds[2], bounds[3])
   if (clipped.length < 3) return null
   const area = Math.abs(signedArea(clipped))
   if (area < 4) return null
-  return finishPlate({ ring: clipped, method: 'loop', coverage: 1, area })
+  return finishPlate({ ring: clipped, method: 'loop', coverage: 1, area, drawing: drawing ?? null, provenanceMethod: 'user-traced' })
 }
