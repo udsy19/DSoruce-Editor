@@ -577,11 +577,17 @@ impl Editor {
                 // This also subsumes the old plate-spanning-Workspace special
                 // case: every desk seats exactly 1, so Σ seats over a desk field
                 // IS its seated-desk count.
+                // `Chair` is EXCLUDED: a chair is seating *for* a table or desk,
+                // and that table already reports the seats it provides. Counting
+                // both double-books the same person — a cabin holding a 2-seat
+                // table plus its one chair would report 3. A desk seats its own
+                // occupant (its chair is part of the desk symbol), so desks count.
                 let furnished: u32 = z
                     .component_ids
                     .iter()
                     .filter_map(|&cid| self.doc.components.iter().find(|c| c.id == cid))
                     .filter(|c| !c.reference) // imported context furniture seats nobody
+                    .filter(|c| c.category != "Chair")
                     .map(|c| c.seats)
                     .sum();
                 let capacity = if furnished > 0 {
@@ -670,6 +676,9 @@ impl Editor {
             .as_string()
             .ok_or_else(|| JsValue::from_str("snapshot must be a string"))?;
         self.doc = serde_json::from_str(&s).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        // Plans saved before the `seats` facet load with 0; resolve them so an
+        // old plan and a new one report the same pax for the same building.
+        self.doc.backfill_seats();
         Ok(())
     }
 
@@ -678,8 +687,9 @@ impl Editor {
         let s = snap
             .as_string()
             .ok_or_else(|| JsValue::from_str("snapshot must be a string"))?;
-        let doc: Document =
+        let mut doc: Document =
             serde_json::from_str(&s).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        doc.backfill_seats();
         Ok(Editor { doc })
     }
 

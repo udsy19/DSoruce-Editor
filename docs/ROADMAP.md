@@ -227,6 +227,63 @@ The qbiq-style flow: Project → Upload → Program → Generate → Editor → 
     adjacency/critique; the deterministic solver does geometry) is viable as a hybrid — build after the
     core is perfected. Pure-LLM geometric placement is unreliable (misalignment/overlaps, even GPT-5).
 
+## Track A′ — UI/UX overhaul (`docs/design/ux-audit.md`, `docs/design/ui-system.md`)
+Audit + design system from a full naive-user walkthrough on the real DWG. Shipping in slices.
+
+- [x] **Slice 1 — the layout law.** `#root` is the only viewport owner; exactly one pane per screen
+  scrolls; the canvas pans. Root cause of the "double scroll": `.space-preview` was
+  `height: clamp(460px,74vh,880px)` inside `.wizard-body`, which is `100vh − 359px` — a viewport-unit
+  box inside a non-viewport box always overflows, so the plan could never be seen whole. Wizard chrome
+  359px→172px; work area 541→728px @1440×900; plan fully visible at 1440×900 and 1200×688.
+  **`chosenPlanId` wired** (written since S7, never read) so a finished project reopens in the editor
+  instead of restarting at "Drop the floor plate". Program leads with its builder (was ~475px below
+  the fold behind anchor pins). Deleted: the fictional Review→Design→Visualise→Share stepper tail, and
+  `.rail`'s superseded `overflow` — which was the only reason ToolDock needed a `position:fixed`
+  re-anchoring flyout (~35 lines + 2 window listeners went with it).
+- [x] **Slice 2 — canvas symbology.** 15 screen-pixel decisions in `furniture.ts` made a symbol's
+  CONTENT a function of zoom; one 1.2×0.6 m table drew 0/6/8/10 chairs at 20/45/70/110 px/m under a
+  tag reading "9 pax". Now: `Component.seats` (additive) resolved once by `model::seats_for` where a
+  component is created; `editor/symbols.ts` (replaces `furniture.ts`) renders that value in WORLD
+  units, shared by EditorCanvas + DrawingCanvas + export/pdf; DPR-snapped pen set; walls as filled
+  poché at true thickness; continuous-fade LOD; tag visibility by world area. 134 Rust tests,
+  `symbols.test.mjs` 46 assertions (seat count constant across 8–300 px/m, device-grid pens at DPR
+  1/1.5/2/3), `mergeOrient.test.mjs` ported and green.
+- [x] **⚠ DELIBERATE OUTPUT CHANGE — `zone_stats().capacity` now prefers furniture over the area
+  rule.** `Zone::capacity()` (floor area ÷ m²-per-seat) is an estimate for an EMPTY room; once a room
+  is furnished, Σ `Component::seats` is the real answer and is the same owner the glyph draws from, so
+  the room tag and the chairs under it now agree by construction. An unfurnished zone keeps the
+  estimate. `Chair` is excluded from the sum — a chair is seating *for* a table that already reports
+  its seats (counting both made an 18 m² cabin report 3 pax for a 2-seat table + its chair).
+  **Report/gallery KPIs moved** (measured, candidate A, real 882 m² DWG):
+  | | before | after |
+  |---|---|---|
+  | Meeting seats (Σ Meeting+Collab capacity) | 18 | **26** |
+  | Seats (= workstations + meeting seats) | 108 | **116** |
+  | Density | 7.82 m²/person · 84.2 sf | **7.28 m²/person · 78.4 sf** |
+  | Workstations · NIA · GEA · efficiency | 90 · 845 m² · 882 m² · 57% | unchanged |
+  **Winner badges did NOT flip** — A "Most seats" + "Best density", C "Best daylight", B none, identical
+  to the pre-change gallery (`docs/design/ux-audit/generate-gallery.png`). "Best density" is
+  workstations/NIA and "Best daylight" is geometric, so neither reads capacity at all; only "Most
+  seats" does, and the ordering held. **Takeoff is unaffected** — it never reads capacity (verified by
+  grep: no `capacity`/`pax` reference in `export/takeoff.ts`). `report.test.mjs` stays 43/43 because it
+  asserts the INVARIANT `seats == workstations + meetingSeats`, not golden values — it is not a
+  byte-identical guard, and this change is why that distinction matters.
+- [x] **`.dsource` / IndexedDB forward-compat for `seats`.** `#[serde(default)]` alone would have left
+  every existing saved plan on the old area rule while new plans used furniture seats — the same
+  building reading two ways depending on when it was saved. `Document::backfill_seats()` now runs on
+  `restore` and `from_snapshot`, resolving absent seats through the same `seats_for`; idempotent and
+  0 for things nobody sits at. Existing libraries reopen with correct pax, not 0. Rust test
+  `backfill_resolves_seats_on_an_old_document`.
+- [x] **Two chronic test failures fixed, not reported.** Dropped the 150 ms *wall-clock* assertion from
+  `real_building_plate_spreads_the_program` — it passed in isolation and failed at 151–215 ms under
+  parallel load, training everyone to read red as noise; correctness assertions kept, timing belongs in
+  a benchmark. `dxf.test.mjs` pointed at `samples/furniture-plan.dxf`, which `.gitignore:35` excludes —
+  so it had never run on any fresh clone; it now derives the fixture from the committed DWG via
+  `dwg2dxf` (the same LibreDWG converter `/api/dwg` uses) and fails loudly with install instructions if
+  the converter is missing. **Rust 134/134, JS 22/22 — the suite is fully green for the first time in
+  this work.**
+- [ ] Slice 3 — navigation hierarchy · [ ] Slice 4 — workflow repairs · [ ] Slice 5 — typography/tokens.
+
 ## Track B — Test-fit generator quality (`docs/design/testfit-pro-quality.md`)
 Make generated plans read like a senior architect's work, not a diagram.
 

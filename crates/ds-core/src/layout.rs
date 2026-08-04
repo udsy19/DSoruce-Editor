@@ -5985,12 +5985,18 @@ mod tests {
         program.meeting_rooms = 4;
         program.meeting_w = 3.0;
         program.meeting_h = 3.0;
+        // NOTE: this test used to also assert `generate` finished within 150 ms
+        // in a DEBUG build. That is a wall-clock assertion on a shared machine:
+        // it passed in isolation (~0.8 s for the whole test) and failed at
+        // 151–215 ms whenever the suite ran in parallel under load. A test that
+        // goes red because the machine was busy teaches everyone to read red as
+        // noise, which is worse than having no timing signal at all. Generator
+        // performance belongs in a benchmark (`cargo bench`) where variance is
+        // measured rather than asserted; the correctness assertions below are
+        // what this test is actually for.
         for seed in 1..=3u64 {
             let mut doc = real_plate_doc();
-            let t0 = std::time::Instant::now();
             generate(&mut doc, &program, seed, false);
-            let ms = t0.elapsed().as_millis();
-            assert!(ms < 150, "seed {seed}: generate took {ms} ms (debug budget 150)");
 
             let poly = poly_of(&doc);
             let desks: Vec<_> = doc.components.iter().filter(|c| c.category == "Desk").collect();

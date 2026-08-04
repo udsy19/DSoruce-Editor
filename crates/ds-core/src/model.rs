@@ -189,6 +189,42 @@ mod tests {
         assert_eq!(c.seats, 0, "missing `seats` defaults to 0");
     }
 
+    /// …and a load BACKFILLS it, so a plan saved before the facet reports the
+    /// same pax as an identical plan generated today. Without this, an existing
+    /// library would reopen on the old area rule-of-thumb while new plans used
+    /// furniture seats — the same building reading two ways.
+    #[test]
+    fn backfill_resolves_seats_on_an_old_document() {
+        let old = r#"{
+            "walls":[],
+            "components":[
+                {"id":1,"category":"Table","x":0,"y":0,"w":2.4,"h":3.3,"rotation":0,
+                 "label":"Table 1","product_id":null,"decision":"Open"},
+                {"id":2,"category":"Desk","x":5,"y":0,"w":1.4,"h":0.7,"rotation":0,
+                 "label":"Desk 2","product_id":null,"decision":"Open"},
+                {"id":3,"category":"Door","x":9,"y":0,"w":0.9,"h":0.15,"rotation":0,
+                 "label":"Door 3","product_id":null,"decision":"Open"}
+            ],
+            "zones":[],"keepouts":[],"entries":[],"selection":null,"next_id":4
+        }"#;
+        let mut doc: crate::document::Document =
+            serde_json::from_str(old).expect("pre-seats document must parse");
+        assert!(doc.components.iter().all(|c| c.seats == 0), "loads at 0");
+
+        doc.backfill_seats();
+        // 2.4 x 3.3 m: floor(3.3 / 0.65) = 5 a side, + 2 heads = 12. This is the
+        // real boardroom table the generator emits on the sample plate.
+        assert_eq!(doc.components[0].seats, 12, "boardroom table resolved");
+        assert_eq!(doc.components[1].seats, 1, "desk resolved");
+        assert_eq!(doc.components[2].seats, 0, "nobody sits at a door");
+
+        // Idempotent: re-running must never inflate an already-resolved doc.
+        let before: Vec<u32> = doc.components.iter().map(|c| c.seats).collect();
+        doc.backfill_seats();
+        let after: Vec<u32> = doc.components.iter().map(|c| c.seats).collect();
+        assert_eq!(before, after, "backfill is idempotent");
+    }
+
     /// Pre-M1 snapshots carry walls WITHOUT the `generated`/`glazing` flags —
     /// they must deserialize (flags default false), and a full round-trip must
     /// preserve explicitly set flags. This is the additive-schema guarantee.
