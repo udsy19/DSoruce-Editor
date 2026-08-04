@@ -22,12 +22,31 @@ export type DeskType = 'workstation' | 'bench'
 /** Desk footprint keys (cm) from the reference screenshots. */
 export type DeskSizeKey = '120x60' | '140x70' | '160x70' | '180x70'
 
-export const DESK_SIZES: { key: DeskSizeKey; w: number; d: number; label: string }[] = [
-  { key: '120x60', w: 1.2, d: 0.6, label: '120 × 60' },
-  { key: '140x70', w: 1.4, d: 0.7, label: '140 × 70' },
-  { key: '160x70', w: 1.6, d: 0.7, label: '160 × 70' },
-  { key: '180x70', w: 1.8, d: 0.7, label: '180 × 70' },
+/**
+ * Desk footprints. `w`/`d` are METRES — the core's unit, and the only value that
+ * is real; everything downstream (`deskFootprint` → `Program.desk_w/desk_h` →
+ * the generator) reads these.
+ *
+ * The display string is DERIVED (see {@link deskSizeLabel}), not stored. It used
+ * to be a hand-typed `label: '120 × 60'` sitting beside `w: 1.2, d: 0.6` — a
+ * second representation of the same fact, in a different unit, maintained by
+ * hand and free to drift from the metres nobody would notice. It also carried no
+ * unit at all, so a CAD product whose core is metres displayed a bare
+ * "140 × 70" that could be read as mm, cm or inches.
+ */
+export const DESK_SIZES: { key: DeskSizeKey; w: number; d: number }[] = [
+  { key: '120x60', w: 1.2, d: 0.6 },
+  { key: '140x70', w: 1.4, d: 0.7 },
+  { key: '160x70', w: 1.6, d: 0.7 },
+  { key: '180x70', w: 1.8, d: 0.7 },
 ]
+
+/** Render a desk footprint from its METRE dimensions, in the centimetres the
+ *  furniture trade quotes. One source of truth, so the label cannot disagree
+ *  with the geometry the generator actually places. */
+export function deskSizeLabel(s: { w: number; d: number }): string {
+  return `${Math.round(s.w * 100)} × ${Math.round(s.d * 100)}`
+}
 
 /** UI room identifiers — richer than the core `SpaceKind`. */
 export type UiRoomKind =

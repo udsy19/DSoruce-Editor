@@ -1163,10 +1163,28 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
           />
           <button
             className="export-btn"
-            onClick={() => fileRef.current?.click()}
+            // Importing swaps the reference drawing under the open floor. That
+            // was survivable when nothing wrote back to the floor record; now
+            // that a floor autosaves (persistOpenFloor), the next edit would
+            // quietly commit a DIFFERENT building into the floor the user
+            // opened. Ask first — but only when there is something to lose.
+            onClick={() => {
+              const hasWork = !docEmpty || !!drawing
+              if (currentPlanId && hasWork) {
+                const floor = project?.floor ? `“${project.floor}”` : 'this floor'
+                const ok = window.confirm(
+                  `Import a different plan into ${floor}?\n\n` +
+                    `It replaces the CAD drawing behind the current fit-out, and ${floor} ` +
+                    `is saved automatically — so this becomes part of it.\n\n` +
+                    `To keep the current one, cancel and use Download first.`,
+                )
+                if (!ok) return
+              }
+              fileRef.current?.click()
+            }}
             disabled={importing}
             aria-label="Import a DWG or DXF plan"
-            title="Import a DWG or DXF plan"
+            title="Import a DWG or DXF plan — replaces the drawing behind this floor"
             data-testid="import-btn"
           >
             {importing ? (

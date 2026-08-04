@@ -340,17 +340,31 @@ Two rules, learned the hard way while verifying these slices.
    check it carried a `Cannot access 'docEmpty' before initialization` from an intermediate HMR build
    — a real-looking error for code that had already been fixed. Match error timestamps to the current
    build, or reload and re-read, before believing one.
-3. **Confirm the dev server is serving YOUR source before trusting any browser result.** Worse than a
-   stale page is a *live, correct-looking page running someone else's code*: this repo is developed
-   in parallel git worktrees, and a `vite --strictPort` from a different worktree will happily hold
-   :5173, answer every request, and reload cleanly — while serving a different branch. That produced
-   a ~15-minute stretch here where a verified-correct fix appeared not to work. Run each worktree's
-   server on its own port, and before drawing conclusions:
+3. **Run the pre-flight. Every time.** Worse than a stale page is a *live, correct-looking page
+   running someone else's code*. This repo is developed in parallel git worktrees, and a
+   `vite --strictPort` from a different worktree will hold the port, answer every request and
+   hot-reload cleanly — while serving another branch. Unlike a blank page or a stale console error,
+   **nothing about it looks wrong**: it is a false green with no symptom. It cost ~15 minutes here
+   chasing a fix that was already correct, and it could as easily have "confirmed" one that never
+   landed.
+
+   This is procedure, not advice — there is a script, and it fails loudly:
+
    ```sh
-   curl -s http://localhost:<port>/src/App.tsx | grep -c '<an identifier from your change>'
+   scripts/verify-preflight.sh <port> <identifier-from-your-change> [module-path]
+   # e.g.
+   scripts/verify-preflight.sh 5199 persistOpenFloor src/App.tsx
    ```
-   Grep for an **identifier**, never for comment text — esbuild strips comments in dev, so a comment
-   grep returns 0 against perfectly current code and sends you chasing a phantom.
+
+   It asserts, in order: something is listening; **the listening PID's cwd is this worktree** (not
+   merely that something answers); and the served module contains a distinctive identifier from the
+   change under test.
+
+   **The rules it enforces:**
+   - Bind each session's dev server to its **own port**. Never reuse 5173 while other worktrees exist.
+   - Verify ownership by the **listening process's cwd**, not by getting a 200.
+   - Grep the served module for an **identifier, never comment text** — esbuild strips comments in
+     dev, so a comment grep returns 0 against perfectly current code and sends you chasing a phantom.
 
 ### 3.7 Acceptance test for the whole spec
 

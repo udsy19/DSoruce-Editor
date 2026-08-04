@@ -324,7 +324,33 @@ Audit + design system from a full naive-user walkthrough on the real DWG. Shippi
   mounted, replacing three ad-hoc names (`__dc`/`__spacedc`/`__programdc` — the previous answer to
   the collision was to add more names). Control verified: every shortcut still works in the editor.
   Rust 134/134, JS 22/22.
-- [ ] Slice 4 — workflow repairs · [ ] Slice 5 — typography/tokens.
+- [~] **Slice 4 — workflow repairs.**
+  - [x] **⚠ DATA LOSS, not a naming problem — edits to an open floor were never saved.** This was
+    filed as "Save/Open ambiguity against IndexedDB autosave". It was not an ambiguity. **No code
+    path wrote an edit back to the floor record.** Topbar "Save" was `triggerDownload()` (a .dsource
+    file); autosave (`noteChange`) wrote only to the capped `history` undo ring; the `plans` record
+    was written solely by openCandidate / Library "Save current" / rename / assign. Measured on the
+    real DWG: **133 components → delete one → 132 → press "Save" → a file downloads → reload → 133.**
+    The app silently discarded the user's work while showing a button that implied it hadn't. That is
+    the defect that ends the product with a real user, and the label was the disguise, not the bug.
+    Fixed: a floor opened from a project saves like a document (debounced write-back of the snapshot
+    to its own record, keyed on the open id, skipped if the record was deleted underneath); the
+    history ring is untouched so undo/version-restore still capture every step. Verified
+    133 → 132 → reload → **132**. Autosave is deliberately the default — no explicit Save button, per
+    the decision that a Save button in a browser CAD tool teaches users their work is only
+    conditionally safe. The two file buttons became **Download** / **Open file…** so they describe
+    what they do. **If you are skimming this line, do not read it as a copy tweak.**
+  - [ ] Unguarded project delete · [ ] destructive Import warning · [ ] unit drift ·
+        [ ] Program `disabledReason` · [ ] stale raster-import line (Track E).
+- [ ] Slice 5 — typography/tokens.
+
+### Method note — trace the value, don't rename at the render site
+Two of the three worst defects in this overhaul were filed as cosmetic and turned out to be
+correctness bugs, both found the same way: **follow where the value actually comes from before
+touching how it is displayed.** The room tag's "9 pax" led to a genuine dual-source (area rule vs.
+furniture seats, §Track A′ slice 2); "Save/Open ambiguity" led to silent data loss (above). Apply it
+to anything that looks like a labelling ticket — a unitless "140 × 70" in a product whose core is
+metres is a question about where the unit was dropped, not about appending "cm" in the JSX.
 
 ## Track B — Test-fit generator quality (`docs/design/testfit-pro-quality.md`)
 Make generated plans read like a senior architect's work, not a diagram.
@@ -465,7 +491,14 @@ User showed Rayon drawing-set PDFs as the output bar (`docs/reference/rayon-outp
 - [x] DWG/DXF parse (LibreDWG `/api/dwg`), plate extraction (furniture-coverage), keepouts (cores),
   entries, interior-wall extraction, editable imported furniture, palette-place new catalog items.
 - [x] Area-select / markers+refs / wall-heal — shipped as Track A S2/S3/S4.
-- [ ] PDF/image import with scale confirmation (deferred, CAD-only v1).
+- [x] **Image import with scale calibration — SHIPPED** (this line said "deferred, CAD-only v1" long
+  after it landed). `import/rasterImport.ts` decodes a PNG/JPG/WebP to a backdrop; the Space step's
+  **Set scale** tool draws a reference line over a known dimension, takes its real length, and the
+  whole image snaps to metres, after which area-select and plate tracing work over it exactly as they
+  do over CAD linework. The upload input accepts `.png/.jpg/.jpeg/.webp` and the drop zone says so.
+- [ ] **PDF** import specifically — still deferred. `rasterImport.ts` documents the route (pdf.js
+  renders a page to a canvas that feeds straight into `makeBackdrop`, bundling under Vite via the
+  worker-URL pattern, so no runtime CDN); it needs the `pdfjs-dist` dependency added.
 
 ## Track F — Material bank / Materio
 - [x] Live bank (VPS, ~159k products) via `/api/bank`; ₹ pricing; bind products; decision lifecycle;

@@ -15,6 +15,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   DESK_SIZES,
+  deskSizeLabel,
   GROUP_LABELS,
   ROOM_DEFS,
   TEMPLATES,
@@ -237,7 +238,12 @@ export function ProgramStep({
                 </div>
               </div>
               <div className="program-field">
-                <span className="program-field-label">Desk size</span>
+                {/* The unit is stated once, on the label, rather than repeated on
+                    four chips — and the chip text is derived from the metres the
+                    generator actually uses, so it cannot drift from them. */}
+                <span className="program-field-label">
+                  Desk size <span className="field-unit">cm</span>
+                </span>
                 <div className="program-chips num" data-testid="program-desk-size">
                   {DESK_SIZES.map((s) => (
                     <button
@@ -246,9 +252,10 @@ export function ProgramStep({
                       className={`program-chip${spec.deskSize === s.key ? ' on' : ''}`}
                       data-testid={`program-desk-size-${s.key}`}
                       aria-pressed={spec.deskSize === s.key}
+                      title={`${s.w.toFixed(2)} × ${s.d.toFixed(2)} m`}
                       onClick={() => patch({ deskSize: s.key as DeskSizeKey })}
                     >
-                      {s.label}
+                      {deskSizeLabel(s)}
                     </button>
                   ))}
                 </div>
@@ -285,10 +292,17 @@ export function ProgramStep({
             <div className="program-usage-bar">
               <span className="program-usage-fill" style={{ width: `${pctUsed}%` }} />
             </div>
+            {/* m² leads, sf follows. The Space step reports the same plate in m²
+                (with sf underneath) and the editor's statistics are m² — this
+                panel alone led in sf, so the SAME area appeared as two unrelated
+                numbers one step apart. Both units stay (India-first, but the
+                qbiq-style deliverables quote sf); the primary one is now
+                consistent across the flow. */}
             <div className="program-usage-label num">
-              {usableSf != null ? (
+              {usableM2 != null ? (
                 <>
-                  {fmt(occupiedSf)} of {fmt(usableSf)} sf used
+                  {fmt(occupiedM2)} of {fmt(usableM2)} m² used
+                  <span className="program-usage-alt"> · {fmt(occupiedSf)} of {fmt(usableSf ?? 0)} sf</span>
                 </>
               ) : (
                 <>{fmt(occupiedM2)} m² programmed</>

@@ -174,6 +174,9 @@ export function AppShell() {
           nextLabel="Next: Generate"
           nextTestId="program-next"
           nextDisabled={!programReady}
+          // Space passes a reason; Program did not — same component, half-wired,
+          // so this step's Next greyed out saying nothing.
+          disabledReason="Loading your program…"
         >
           <ProgramStep
             key={route.projectId}

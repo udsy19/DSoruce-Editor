@@ -4416,3 +4416,19 @@ kbd {
   background: var(--danger-soft);
   color: var(--danger);
 }
+
+/* Unit marker on a field label — stated once, beside the label, rather than
+   repeated on every chip (or omitted entirely, which is how a CAD product whose
+   core is metres ended up showing a bare "140 × 70"). */
+.field-unit {
+  margin-left: 5px;
+  color: var(--faint);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+/* Secondary unit on the program-summary usage line (m² leads, sf follows). */
+.program-usage-alt {
+  color: var(--faint);
+}
