@@ -164,7 +164,7 @@ export function extractPlate(drawing: Drawing): PlateResult | null {
   // flood-fill leaks) with escalating gap-closing dilation.
   for (const dilate of [GRID_DILATE, GRID_DILATE * 2, GRID_DILATE * 4]) {
     const ok = accept(contourRing(shellSegs, dilate), 'hull')
-    if (ok) return finishPlate({ ...ok, drawing })
+    if (ok) return finishPlate({ ...ok, drawing, provenanceMethod: 'grid-contour' })
   }
 
   // (c) Guaranteed-coverage wrap: shell ∪ every furniture bbox outline. The
@@ -173,7 +173,7 @@ export function extractPlate(drawing: Drawing): PlateResult | null {
     const wrapSegs = shellSegs.concat(furnitureBoxSegments(drawing))
     for (const dilate of [GRID_DILATE * 2, GRID_DILATE * 4]) {
       const ok = accept(contourRing(wrapSegs, dilate), 'wrap')
-      if (ok) return finishPlate({ ...ok, drawing })
+      if (ok) return finishPlate({ ...ok, drawing, provenanceMethod: 'grid-contour' })
     }
   }
 
@@ -183,7 +183,13 @@ export function extractPlate(drawing: Drawing): PlateResult | null {
     const [x0, y0, x1, y1] = f.bbox
     hullPts.push([x0, y0], [x1, y0], [x1, y1], [x0, y1])
   }
-  accept(convexHull(hullPts), 'hull')
+  const hullRing = convexHull(hullPts)
+  const beforeHull = best
+  accept(hullRing, 'hull')
+  // If the convex hull became the winner, say so: 'hull' in PlateResult.method
+  // is overloaded (rung (b) uses it for the grid contour), and provenance must
+  // not report a furniture-corner hull as a contour of real linework.
+  const hullWon = best !== beforeHull
 
   // `best` is only ever assigned inside the `accept` closure, which TS's
   // control-flow analysis cannot see — it narrows the binding to `null` here.
@@ -193,6 +199,7 @@ export function extractPlate(drawing: Drawing): PlateResult | null {
     ? finishPlate({
         ring: chosen.ring, method: chosen.method,
         coverage: chosen.coverage, area: chosen.area, drawing,
+        provenanceMethod: hullWon ? 'hull' : PROVENANCE_METHOD[chosen.method],
       })
     : null
 }

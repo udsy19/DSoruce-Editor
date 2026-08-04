@@ -266,13 +266,43 @@ const FIXTURES = [
   },
   {
     id: 'rect-no-shell-only-partitions',
-    why: 'PRODUCTION BUG CLASS: no exterior wall at all, only interior partitions + columns — the real DWG condition.',
+    why: 'PRODUCTION BUG CLASS: no exterior wall at all, only interior partitions + scattered columns — the real DWG condition.',
     truth: RECT,
     build: (t) => drawingFrom(
       [], // no shell whatsoever
       [...interiorPartitions(t, 34, 37), ...columnsIn(t, 12, 38)],
       { furniture: furnitureIn(t, 26, 39) },
     ),
+  },
+  {
+    // The column-grid rung's fair test. `rect-no-shell-only-partitions` CANNOT
+    // serve: its columns are random scatter (11 distinct x lines for 12
+    // columns), so no bay spacing exists to infer and the plausibility guard
+    // should reject it. Here the columns are a real 4x3 grid on 7.5 x 6.667 m
+    // bays, inset exactly half a bay — so the half-bay extension rule recovers
+    // the truth EXACTLY, and any deviation is the rung's own error, not the
+    // fixture's ambiguity.
+    id: 'rect-regular-column-grid',
+    why: 'Fair test for the column-grid rung: no shell, a REGULAR 4x3 column grid inset half a bay.',
+    truth: RECT,
+    build: (t) => {
+      const cols = []
+      const bx = 7.5, by = 20 / 3
+      for (let i = 0; i < 4; i++) {
+        for (let j = 0; j < 3; j++) {
+          const cx = bx / 2 + i * bx
+          const cy = by / 2 + j * by
+          const s = 0.3
+          cols.push({
+            kind: 'polyline', layer: 'COL', category: 'wall', closed: true,
+            pts: [[cx - s, cy - s], [cx + s, cy - s], [cx + s, cy + s], [cx - s, cy + s]]
+              .map(([a, b]) => [+a.toFixed(4), +b.toFixed(4)]),
+          })
+        }
+      }
+      return drawingFrom([], [...interiorPartitions(t, 20, 41), ...cols],
+        { furniture: furnitureIn(t, 24, 42) })
+    },
   },
 ]
 

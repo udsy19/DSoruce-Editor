@@ -443,6 +443,10 @@ User showed Rayon drawing-set PDFs as the output bar (`docs/reference/rayon-outp
 
 ## Immediate next (working order)
 1. [x] Real-plate density — verified on the user's DWG (52 ws @ 10 m²/person).
+   **⚠ Denominator under review — see `docs/adr/0002-plate-provenance.md`.** The 881.5 m² this
+   m²/person figure divides by is a convex-hull artifact: the DWG has no closed exterior envelope on
+   any wall layer, and 46% of that hull's perimeter rests on no linework at all. Do NOT re-verify
+   against 881.5 m². The corrected area waits on the envelope-inference ladder (bake-off branch 1b).
 2. [x] Track A S1–S3, S5–S7 — **full guided flow verified end-to-end (10/10) on the real DWG.**
 3. [x] S4 wall-heal + cold-reload floor-open — **Track A finished (S0–S7 shipped).**
 4. [x] Leaner ratios; supplier column; report branding; cloud sync; 3D themes; smarter A/B/C strategies.

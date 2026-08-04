@@ -1,8 +1,8 @@
 {
  "type": "Feature",
  "properties": {
-  "id": "rect-no-shell-only-partitions",
-  "why": "PRODUCTION BUG CLASS: no exterior wall at all, only interior partitions + scattered columns — the real DWG condition.",
+  "id": "rect-regular-column-grid",
+  "why": "Fair test for the column-grid rung: no shell, a REGULAR 4x3 column grid inset half a bay.",
   "source": "synthetic — truth is the generating polygon, exact by construction",
   "areaM2": 600
  },
