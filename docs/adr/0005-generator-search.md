@@ -1,6 +1,6 @@
 # ADR 0005 — Branch 4a: generator search strategy
 
-**Status:** pre-registered — predictions recorded, candidates NOT yet written
+**Status:** results in — NULL RESULT; awaiting decision at the merge gate
 **Date:** 2026-08-04
 
 **Code anchors:** incumbent `autoGenerate` (`web/src/editor/search.ts`) ·
@@ -80,6 +80,18 @@ reported alongside** (secondary, not the score).
 Budgets: **15, 27 and 51 calls** — the incumbent's own spend at `maxIter` 4, 8
 and 16, so the baseline is measured at exactly the budgets it was designed for
 rather than at numbers chosen to suit a challenger.
+
+**Loophole closed: work outside `generate()` is invisible to a call-count
+budget.** A candidate that improves layouts through the fine-grained mutators
+(`move_component`, `resize_zone`) rather than regeneration does real search work
+that costs almost nothing in call-count terms. So, pre-registered as a rule
+rather than left to the wall-clock column to notice:
+
+> **A candidate whose wall-clock exceeds 2× the incumbent's at equal call count
+> triggers a wall-clock-matched re-run, and BOTH results are reported.**
+
+Call count stays the primary ruler — machine-independent and reproducible — but
+no candidate can smuggle unbounded off-budget work past it.
 
 The incumbent's `target` early-exit is **disabled for benching**: a candidate
 that stops early has not spent the budget, and comparing a partial spend to a
@@ -186,6 +198,139 @@ already exist in `layout.rs`/`circulation.rs`.
   make an LLM emit geometry.
 - Consequence-preview-before-apply for AI edits is untouched.
 
-## Results
+## Note for 4b — corpus provenance tiers
 
-_Not yet run._
+The 4b corpus would otherwise be the synthetic-fixture trap in a new costume: a
+validator tested only against failures we imagined scores well and says little
+about the failures Claude actually produces. The calibration log's humans-only
+discipline does **not** transfer whole — that log needed evidence of human
+*trust*, so automation was poison; this corpus needs coverage of Claude's actual
+output *distribution*, and a harness driving the real prompt path produces genuine
+Claude outputs. **Automation is not the contaminant here; unlabeled provenance
+is.** Three tiers, and claims grade by tier:
+
+| tier | source | status |
+|---|---|---|
+| 1 | hand-authored bad proposals | build-time; scores **advisory only** |
+| 2 | harness-elicited across varied briefs (incl. absurd headcounts, contradictory emphasis, tiny plates) | genuine Claude distribution; brief distribution ≠ real users', so labeled |
+| 3 | live-session, `isTrusted`-gated, with outcome (applied / rejected / scored-below-base) | **evidentiary** |
+
+Built on 1, validated on 2, **trusted** on 3. Tier 3's outcome label is free
+ground truth the refine loop already computes. Corpus size per tier is recorded
+so 4b's claims are sized to their evidence.
+
+## Results — a null result, and the metric error that nearly hid it
+
+`node bench/runSearch.mjs`. 4 strategies × 7 fixtures × 3 budgets × 3 search
+seeds. Predictions frozen in `9e2a182`.
+
+### The headline metric was invalid, and the first run was a false positive
+
+The first run showed large wins: `iterative-align` +4.1 to +6.8 on the primary,
+`evolutionary` +1.6 to +4.8, both far outside their predicted ranges. Checking
+*why* before writing it up found the flaw:
+
+> `LayoutScore.total` is a weighted sum **using the program's own weights**
+> (`layout/score.rs`: `total = w_capacity·capacity + …`). Two of the four
+> candidates MUTATE those weights. They were raising `total` by shifting weight
+> onto whatever already scored well — **optimizing the ruler, not the design.**
+
+The fix was already in the codebase: `ai/refine.ts` computes `refScore` against
+**fixed** weights for exactly this reason, so an LLM's program change cannot
+flatter itself. Every candidate is now scored on the base program's weights
+whatever program it searched with.
+
+How much of the apparent gain was ruler-gaming, on `lshape-concave@51`:
+
+| candidate | raw `total` | fixed yardstick | gap |
+|---|---|---|---|
+| baseline | 90.60 | 88.86 | +1.74 |
+| evolutionary | 95.01 | 88.86 | **+6.15** |
+| iterative-align | 97.60 | 88.68 | **+8.92** |
+| hard-constraints | 90.16 | 88.33 | +1.83 |
+
+The two weight-mutating candidates carry 3–5× the baseline's gap. **Their entire
+advantage was the metric.**
+
+### On the fixed yardstick — delta vs baseline, all budgets
+
+| fixture | evolutionary | iterative-align | hard-constraints |
+|---|---|---|---|
+| real/standard | +0.00 | −0.36 | −0.51 |
+| **real/dense** | **+1.57 / +1.61 / +1.73** | −0.30 | −0.65 |
+| real/pinned-rooms | −0.05 | −0.11 | −0.61 |
+| small-90m2 | +0.17 / 0 / 0 | +0.17 / 0 / 0 | −0.83 |
+| tilted-17deg | −0.01 | −0.22 | −0.44 |
+| lshape-concave | +0.00 | −0.18 | −0.53 |
+| high-constraint | +0.00 | −0.30 | +0.00 |
+
+(three numbers = budgets 15 / 27 / 51 where they differ.)
+
+**This is the pre-registered null result.** Falsification said: *"All candidates
+within noise of baseline on every fixture ⇒ null result, recorded as such.
+Re-seeding across disjoint windows would then be the right design."*
+
+### Mechanism tells, checked explicitly
+
+- **`evolutionary`** predicted −1 to +2 at 15 calls: **in range** (+0.00). Predicted
+  +2 to +6 at 51: **below** (+0.00 on the primary). Its one real gain is
+  **+1.73 on `real/dense`**, and it *grows with budget* (+1.57 → +1.73) — exactly
+  the mechanism working, in the one regime where program tuning has something to
+  find, because `cluster_cols`/`bench_pairs` genuinely change packing under
+  capacity pressure. Small, real, and confined.
+- **`iterative-align`** predicted +3 to +8 on concave/small: **below** (−0.18 on
+  lshape, 0 on small). Its registered tell was *"a uniform gain would falsify the
+  mechanism"* — the actual is a **uniform slight loss** (−0.11 to −0.36 nearly
+  everywhere), which falsifies it just as decisively: holding the seed and
+  climbing in program space finds nothing the seed sweep did not.
+- **`hard-constraints`** predicted −2 to +3: **in range** (−0.44 to −0.83). It
+  costs a little score everywhere, as constraint satisfaction should. But see the
+  gate below.
+
+### The constraint gate is UNRESOLVED, not passed or failed
+
+Every candidate — including baseline — reports **2 violations** on
+`high-constraint`. A metric that returns the same value for a candidate designed
+to eliminate violations and one that never claimed to is not measuring what it
+claims.
+
+`violations()` was written **after** the candidates existed, so per the ADR 0004
+amendment it is **post-hoc and advisory**. It reads
+`CirculationScore.min_corridor_width`, which is a global minimum over the whole
+occupancy grid — including pinch points between furniture — not a corridor-width
+compliance check. **`hard-constraints`' one claim is therefore untested**, and
+this ADR does not record it as passed or failed. A real check needs a
+corridor-specific measure the core does not currently expose.
+
+### Variance across search seeds
+
+Near-zero for every candidate on almost every fixture (sd ≤ 0.03 outside
+`real/dense`, where evolutionary shows 0.24–0.66). Baseline's own sd is **0.00**:
+different seed windows converge on the same best. That is itself the explanation
+for the null result — **the solver's output quality is largely insensitive to
+seed on these plates**, so there is little for any search to exploit, and
+re-seeding is hard to beat because the thing it varies barely matters.
+
+### Determinism gate
+
+All four pass: same `(program, plate, budget, search-seed)` reproduces an
+identical candidate list.
+
+### Recommendation
+
+**Adopt nothing.** The incumbent's disjoint-seed-window re-seeding is the right
+design at the budgets this product uses, and that is now measured rather than
+assumed.
+
+Two things worth keeping from the round:
+
+1. **The yardstick rule is now load-bearing beyond the AI loop.** Any future
+   search comparison MUST score on fixed weights. Registering this as a standing
+   rule alongside the metric-validity one — the failure mode is identical in
+   shape: *a metric read as a score for something it was not defined over*, here
+   across programs rather than across candidate classes.
+2. **`evolutionary` under capacity pressure** (+1.73 on dense, growing with
+   budget) is the only live thread. It is not adoptable as a general search, but
+   "tune `cluster_cols`/`bench_pairs` when the program is capacity-bound" is a
+   narrower, cheaper intervention that does not need a GA. Worth its own
+   pre-registration if dense fit-outs matter commercially.
