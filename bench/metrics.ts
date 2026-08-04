@@ -183,11 +183,63 @@ export function boundaryDeviation(a: Pt[], b: Pt[]): number {
   return worst
 }
 
+// ---- containment gates ------------------------------------------------------
+// Phantom fraction alone can be minimized by SHRINKING: an envelope that hugs
+// interior partitions tightly scores a low phantom while orphaning real floor
+// area. On synthetic fixtures IoU catches that; on the real plan, whose truth is
+// undecided, nothing does. These two gates close it, and are registered before
+// any candidate has produced a number.
+
+/**
+ * Fraction of furniture bbox centers inside the envelope. GATED at ≥ 0.98.
+ *
+ * The plate exists to generate a fit around the real furniture, so an envelope
+ * that excludes desks is wrong however clean its boundary is. This restates as
+ * an explicit gate what `extractPlate`'s coverage ladder held implicitly.
+ */
+export function furnitureContainment(ring: Pt[], drawing: { furniture?: Array<{ bbox: number[] }> }): number {
+  const items = drawing.furniture ?? []
+  if (items.length === 0) return 1
+  let inside = 0
+  for (const f of items) {
+    const [x0, y0, x1, y1] = f.bbox as [number, number, number, number]
+    if (pointInRing([(x0 + x1) / 2, (y0 + y1) / 2], ring)) inside++
+  }
+  return inside / items.length
+}
+
+/**
+ * Fraction of wall-category linework LENGTH inside the envelope. DIAGNOSTIC
+ * ONLY — never gated: keep-outs, service runs and off-plate linework legitimately
+ * sit outside a correct plate, so a hard gate here would reject good envelopes.
+ */
+export function lineworkCoverage(ring: Pt[], segs: Array<[Pt, Pt]>): number {
+  let total = 0
+  let covered = 0
+  for (const [a, b] of segs) {
+    const len = Math.hypot(b[0] - a[0], b[1] - a[1])
+    if (len < 1e-9) continue
+    total += len
+    // Sample the segment rather than testing endpoints, so a wall crossing the
+    // boundary contributes only the part that is actually inside.
+    const n = Math.max(1, Math.ceil(len / 0.5))
+    let hit = 0
+    for (let k = 0; k < n; k++) {
+      const t = (k + 0.5) / n
+      if (pointInRing([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t], ring)) hit++
+    }
+    covered += (hit / n) * len
+  }
+  return total > 0 ? covered / total : 1
+}
+
 /**
  * Phantom edges: boundary length with NO supporting source linework within
  * `tol`. This is the direct measure of the screenshot bug — the diagonals cut
  * across open space, so they have no wall under them. Reported as a LENGTH (m)
  * because one long phantom diagonal matters more than several short ones.
+ *
+ * Minimizable by shrinking — always read alongside `furnitureContainment`.
  */
 export function phantomEdgeLength(ring: Pt[], segs: Array<[Pt, Pt]>, tol = 0.35): number {
   const STEP = 0.25 // m — sample the boundary this finely

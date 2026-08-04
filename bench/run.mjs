@@ -131,10 +131,18 @@ function score(fx, res, ms) {
     perim += Math.hypot(b[0] - a[0], b[1] - a[1])
   }
   // Truth-free metrics — meaningful with or without a reference polygon.
+  const containment = M.furnitureContainment(ring, fx.drawing)
+  const selfX = M.selfIntersections(ring)
   const out = {
     ok: true,
     method: res.method ?? '?',
-    selfIntersections: M.selfIntersections(ring),
+    selfIntersections: selfX,
+    // GATES. A candidate must pass both before its phantom number means
+    // anything: self-crossing is a hard fail at any IoU, and phantom fraction
+    // is minimizable by shrinking, which containment is what catches.
+    furnitureContainment: +containment.toFixed(4),
+    lineworkCoverage: +M.lineworkCoverage(ring, segs).toFixed(4),
+    gatesPass: selfX === 0 && containment >= 0.98,
     closureErrorM: +M.closureError(ring).toFixed(4),
     orthogonalityPct: +(M.orthogonality(ring) * 100).toFixed(1),
     phantomEdgeM: +phantom.toFixed(2),
@@ -229,7 +237,12 @@ function writeReport(b, results, fixtures) {
   L.push('')
   L.push('## Per-fixture results')
   L.push('')
-  L.push('`self×` = boundary self-intersections (**must be 0**) · `IoU` vs ground truth · ')
+  L.push('**GATES** must pass before a phantom number means anything: `self×` = 0 AND')
+  L.push('`contain` (furniture bbox centres inside the envelope) ≥ 0.98 — phantom fraction is')
+  L.push('minimizable by shrinking, and containment is what catches that. `linework` is a')
+  L.push('diagnostic, never gated (keep-outs and service runs legitimately sit outside).')
+  L.push('')
+  L.push('`IoU` vs ground truth · ')
   L.push('`Δarea%` signed · `dev` worst boundary deviation (m) · `orth%` length-weighted ·')
   L.push('`phantom` boundary metres with no supporting linework · `det` deterministic.')
   L.push('')
@@ -238,14 +251,14 @@ function writeReport(b, results, fixtures) {
     if (fx.truthMeta.why) L.push(`_${fx.truthMeta.why}_`)
     L.push(`Truth area: **${fx.truth ? (fx.truthMeta.areaM2 ?? M.area(fx.truth).toFixed(2)) + ' m²' : 'not established'}** · truth source: ${fx.truthMeta.source ?? 'n/a'}`)
     L.push('')
-    L.push('| impl | self× | IoU | Δarea% | dev m | orth% | phantom m | verts | ms | det |')
-    L.push('|---|---|---|---|---|---|---|---|---|---|')
+    L.push('| impl | GATES | self× | contain | IoU | Δarea% | dev m | phantom m (%) | linework | verts | ms | det |')
+    L.push('|---|---|---|---|---|---|---|---|---|---|---|---|')
     for (const n of names) {
       const r = results.impls[n].fixtures[fx.id]
-      if (!r || !r.ok) { L.push(`| \`${n}\` | — | — | — | — | — | — | — | — | ${r?.note ?? 'n/a'} |`); continue }
+      if (!r || !r.ok) { L.push(`| \`${n}\` | — | — | — | — | — | — | — | — | — | — | ${r?.note ?? 'n/a'} |`); continue }
       const flag = (v, bad) => (bad ? `**${v}**` : `${v}`)
       const dash = (v) => (v === null || v === undefined ? '—' : v)
-      L.push(`| \`${n}\` | ${flag(r.selfIntersections, r.selfIntersections > 0)} | ${r.iou === null ? '—' : flag(r.iou, r.iou < 0.98)} | ${dash(r.areaDeltaPct)} | ${dash(r.boundaryDevM)} | ${r.orthogonalityPct} | ${flag(r.phantomEdgeM, r.phantomEdgeM > 0.5)} (${r.phantomPctOfPerimeter}%) | ${r.vertices} | ${r.ms} | ${r.deterministic ? 'y' : '**NO**'} |`)
+      L.push(`| \`${n}\` | ${r.gatesPass ? 'pass' : '**FAIL**'} | ${flag(r.selfIntersections, r.selfIntersections > 0)} | ${flag(r.furnitureContainment, r.furnitureContainment < 0.98)} | ${r.iou === null ? '—' : flag(r.iou, r.iou < 0.98)} | ${dash(r.areaDeltaPct)} | ${dash(r.boundaryDevM)} | ${flag(r.phantomEdgeM, r.phantomEdgeM > 0.5)} (${r.phantomPctOfPerimeter}%) | ${r.lineworkCoverage} | ${r.vertices} | ${r.ms} | ${r.deterministic ? 'y' : '**NO**'} |`)
     }
     L.push('')
   }
