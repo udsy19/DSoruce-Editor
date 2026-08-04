@@ -42,6 +42,7 @@ export function WizardChrome({
   nextDisabled = false,
   disabledReason,
   nextTestId = 'wizard-next',
+  nextFormId,
   hideNext = false,
   children,
 }: {
@@ -62,6 +63,10 @@ export function WizardChrome({
   disabledReason?: string
   /** testid of the Next button — per-step so E2E can target e.g. `program-next`. */
   nextTestId?: string
+  /** When the step's body is a `<form>`, Next becomes that form's submit button
+   *  via the HTML form-owner attribute. Lets a form-shaped step (Property) live
+   *  under this chrome without lifting its state up here. */
+  nextFormId?: string
   /** The terminal step (Generate) exits by picking a candidate, not by a Next
    *  button — hide it so no dead "Next" dangles at the end of the wizard. */
   hideNext?: boolean
@@ -149,11 +154,12 @@ export function WizardChrome({
               </span>
             )}
             <button
-              type="button"
+              type={nextFormId ? 'submit' : 'button'}
+              form={nextFormId}
               className="empty-btn primary wizard-next"
               data-testid={nextTestId}
               onClick={onNext}
-              disabled={nextDisabled || !onNext}
+              disabled={nextDisabled || (!onNext && !nextFormId)}
             >
               {nextLabel} <Icon name="caret" size={13} />
             </button>

@@ -812,7 +812,7 @@ export function SpaceStep({
             </section>
 
             <section className="space-section" data-testid="space-bom">
-              <CategoryPlan groups={readouts.bom} />
+              <CategoryPlan groups={readouts.bom} testId="space-category-plan" />
             </section>
           </div>
         </div>

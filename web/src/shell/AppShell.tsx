@@ -19,7 +19,7 @@ import { useEffect, useRef, useState } from 'react'
 import { EditorView, type EditorController } from '../App'
 import { navigate, useRoute } from './route'
 import { ProjectLibrary } from './ProjectLibrary'
-import { CreateProject } from './CreateProject'
+import { CreateProject, CREATE_FORM_ID } from './CreateProject'
 import { WizardChrome, type WizardStepId } from './WizardChrome'
 import { SpaceStep } from './steps/SpaceStep'
 import { ProgramStep } from './steps/ProgramStep'
@@ -52,6 +52,7 @@ export function AppShell() {
   // (WizardChrome owns Back/Next; the step reports readiness up).
   const [spaceReady, setSpaceReady] = useState(false)
   const [programReady, setProgramReady] = useState(false)
+  const [createReady, setCreateReady] = useState(false)
 
   // The active project (wizard or editor route) — its real identity brands the
   // exports (workflow.md §2). Loaded here and threaded into EditorView so the
@@ -102,10 +103,26 @@ export function AppShell() {
         />
       )}
       {route.name === 'create' && (
-        <CreateProject
-          onCancel={() => navigate({ name: 'projects' })}
-          onCreated={(p) => navigate({ name: 'wizard', projectId: p.id, step: 'space' })}
-        />
+        // Property is a real step under the same chrome as the rest — it used to
+        // render its own full-screen form, so the stepper showed "Property"
+        // permanently ticked for a screen the user was never shown as a step.
+        <WizardChrome
+          current="property"
+          title="Set up the property"
+          guide="Name the property and the floor. These carry through to the priced report and takeoff."
+          onBack={() => navigate({ name: 'projects' })}
+          backLabel="All projects"
+          nextLabel="Create project"
+          nextTestId="create-submit"
+          nextFormId={CREATE_FORM_ID}
+          nextDisabled={!createReady}
+          disabledReason="Enter a property name to continue"
+        >
+          <CreateProject
+            onCreated={(p) => navigate({ name: 'wizard', projectId: p.id, step: 'space' })}
+            onReadyChange={setCreateReady}
+          />
+        </WizardChrome>
       )}
       {onSpace && (
         <WizardChrome

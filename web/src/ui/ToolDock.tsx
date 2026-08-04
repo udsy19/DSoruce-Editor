@@ -23,6 +23,10 @@ interface ToolDockProps {
   tools: DockTool[]
   active: string
   onPick: (id: string) => void
+  /** Every tool draws on the 2D plan, so the dock is inert in 3D / import mode.
+   *  Say so rather than leaving lit buttons that silently do nothing. */
+  disabled?: boolean
+  disabledReason?: string
 }
 
 /** Presentational grouping — clusters existing tool ids into Rayon-style groups.
@@ -64,7 +68,7 @@ const GROUPS: { key: string; label: string; icon: string; members: string[] }[] 
   },
 ]
 
-export function ToolDock({ tools, active, onPick }: ToolDockProps) {
+export function ToolDock({ tools, active, onPick, disabled = false, disabledReason }: ToolDockProps) {
   // Which group's flyout is open (click / keyboard). Null = closed.
   const [open, setOpen] = useState<string | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
@@ -106,11 +110,18 @@ export function ToolDock({ tools, active, onPick }: ToolDockProps) {
   }, [open])
 
   return (
-    <div className="tool-dock" ref={rootRef} data-testid="tool-dock" role="toolbar" aria-label="Tools">
+    <div
+      className={`tool-dock${disabled ? ' disabled' : ''}`}
+      ref={rootRef}
+      data-testid="tool-dock"
+      role="toolbar"
+      aria-label="Tools"
+      aria-disabled={disabled || undefined}
+    >
       {groups.map((g) => {
         const activeMember = g.members.find((m) => m.id === active)
-        const isActive = !!activeMember
-        const isOpen = open === g.key
+        const isActive = !!activeMember && !disabled
+        const isOpen = open === g.key && !disabled
         // The tile mirrors the active tool's own icon when this group holds it —
         // so the dock always shows what's live (Rayon behaviour).
         const tileIcon = activeMember?.icon ?? g.icon
@@ -123,6 +134,8 @@ export function ToolDock({ tools, active, onPick }: ToolDockProps) {
               // (Enter/Space on this button) drives the same path. Escape /
               // outside-click / picking an item all close it.
               className={`tdock-tile${isActive ? ' on' : ''}${isOpen ? ' open' : ''}`}
+              disabled={disabled}
+              title={disabled ? disabledReason : g.label}
               onClick={() => {
                 if (g.members.length === 1) {
                   onPick(g.members[0].id)
@@ -133,7 +146,7 @@ export function ToolDock({ tools, active, onPick }: ToolDockProps) {
               }}
               aria-haspopup={g.members.length > 1 ? 'menu' : undefined}
               aria-expanded={g.members.length > 1 ? isOpen : undefined}
-              aria-label={g.label}
+              aria-label={disabled ? `${g.label} — ${disabledReason ?? 'unavailable'}` : g.label}
             >
               <Icon name={tileIcon} />
               {activeMember?.swatch && (

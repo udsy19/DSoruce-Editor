@@ -282,7 +282,26 @@ Audit + design system from a full naive-user walkthrough on the real DWG. Shippi
   `dwg2dxf` (the same LibreDWG converter `/api/dwg` uses) and fails loudly with install instructions if
   the converter is missing. **Rust 134/134, JS 22/22 — the suite is fully green for the first time in
   this work.**
-- [ ] Slice 3 — navigation hierarchy · [ ] Slice 4 — workflow repairs · [ ] Slice 5 — typography/tokens.
+- [~] **Slice 3 — navigation hierarchy.** The editor had NO route back: the brand and project name
+  were plain `<span>`s, so once a user opened a fit the browser Back button was the only exit. Now a
+  **breadcrumb** (`DSOURCE / <project> / <floor>`) where every segment is a real link, verified live.
+  **Property joined the stepper** — `CreateProject` rendered its own full-screen chrome, so step 1
+  showed as permanently pre-ticked for a screen the user was never shown as a step; it is now a step
+  body under `WizardChrome`, whose Next submits the form through the HTML form-owner attribute (no
+  state lifted), disabled with the reason "Enter a property name to continue" and the one required
+  field marked as such. **Deleted the four inert Canvas rows** (Units/Grid/Axis/Background — read-outs
+  of hard-coded constants) **and the shipped apology** under them ("…the rest are display-only until
+  per-canvas settings land"); the card keeps Presentation, which works. Inspector 2119px→1907px.
+  **Duplicate `data-testid="category-plan"` fixed** — one literal on a shared component rendered in
+  two live places at once (Space step + the hidden-but-mounted editor), which broke strict
+  `getByTestId`; now a per-mount `testId` prop. Rust 134/134, JS 22/22, `make build` clean.
+  **PARTIAL — the 3D half is implemented but NOT visually verified.** Panels/rail/status bar follow
+  the mode (in 3D: 2D-only cards hidden behind a pointer to the on-canvas toolbar, tool dock disabled
+  with "Switch to 2D to draw", 2D cursor/scale read-outs hidden). WebGL is unavailable in this
+  headless browser — instantiating `Scene3D` throws and unmounts the app — so only the 2D side is
+  browser-proven. Consistent with the existing Track H note that 3D needs a real GPU. Verify on a
+  real display before treating this as done.
+- [ ] Slice 4 — workflow repairs · [ ] Slice 5 — typography/tokens.
 
 ## Track B — Test-fit generator quality (`docs/design/testfit-pro-quality.md`)
 Make generated plans read like a senior architect's work, not a diagram.
@@ -486,6 +505,21 @@ User showed Rayon drawing-set PDFs as the output bar (`docs/reference/rayon-outp
   `3a923ea` + `706c7cf`. Milestones 2–3 (edit-lease → full co-editing) not started.
 
 ---
+
+## Known non-guards (tests that pass for weaker reasons than they appear to)
+Recording these so nobody rests a parity gate on something that isn't holding it.
+
+- **`report.test.mjs` (43/43) is an INVARIANT suite, not a golden-value guard.** It asserts
+  relationships — `seats == workstations + meetingSeats`, `seats > 0`, radar axes normalise — not
+  absolute numbers. It stayed green through the slice-2 capacity change that moved meeting seats
+  18→26 and density 7.82→7.28 m²/person, and would stay green through almost any capacity change.
+  Treating "report 43/43" as proof the deliverables are unchanged is treating it as something it has
+  never been. A real regression gate needs golden KPI values (or a checked-in reference PDF hash).
+- **`dxf.test.mjs` depends on LibreDWG (`dwg2dxf`) being installed.** It derives its 15 MB fixture
+  from the committed DWG rather than committing the derivative (`.gitignore:35`). This is the same
+  dependency that degrades to a 503 on Vercel (`deploy/VERCEL.md`). It is designed to fail with an
+  explicit "install libredwg" message rather than an obscure ENOENT — if this ever shows up in CI,
+  that message is the answer, not a mystery.
 
 ## Known bugs / debt
 - [x] **Cold-reload of `#/p/:pid/f/:planId`** re-opens the saved floor: EditorView takes an `openPlanId`

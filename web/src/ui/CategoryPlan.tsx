@@ -33,9 +33,15 @@ const MONO: CSSProperties = {
 export function CategoryPlan({
   groups,
   onPick,
+  testId = 'category-plan',
 }: {
   groups: CategoryPlanGroup[]
   onPick?: (itemName: string) => void
+  /** Per-MOUNT testid. This component renders in two places at once — the Space
+   *  step's bill of components and the editor's import panel — and the editor is
+   *  kept mounted (hidden) behind the wizard, so a single hard-coded id put two
+   *  `category-plan` nodes in the DOM and broke any strict `getByTestId`. */
+  testId?: string
 }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
 
@@ -49,7 +55,7 @@ export function CategoryPlan({
 
   return (
     <div
-      data-testid="category-plan"
+      data-testid={testId}
       style={{ fontFamily: '"Space Grotesk", system-ui, sans-serif' }}
     >
       <div

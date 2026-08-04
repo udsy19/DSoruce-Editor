@@ -72,6 +72,7 @@ import {
   type SavedPlan,
 } from './persist/plans'
 import type { ProjectRecord } from './persist/projects'
+import { navigate } from './shell/route'
 import { syncPlans, type SyncResult } from './persist/sync'
 import { cloudEnabled } from './cloud'
 import { CloudSyncPanel } from './cloud/CloudSyncPanel'
@@ -954,11 +955,42 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
   return (
     <div className="app">
       <header className="topbar">
-        <div className="brand">
-          <span className="brand-mark" aria-hidden />
-          <span className="brand-name">DSOURCE</span>
-          <span className="brand-doc">/ {project?.name ?? 'Untitled Plan'}</span>
-        </div>
+        {/* Persistent context + the way out (ui-system.md §2.1). Every segment is
+            a real link. Until now the editor had NO route back to the project or
+            the library — the brand and project name were plain <span>s, so once a
+            user opened a fit the browser Back button was the only exit. */}
+        <nav className="brand" aria-label="Breadcrumb">
+          <button
+            className="brand-home"
+            onClick={() => navigate({ name: 'projects' })}
+            data-testid="crumb-home"
+            title="All projects"
+          >
+            <span className="brand-mark" aria-hidden />
+            <span className="brand-name">DSOURCE</span>
+          </button>
+          {project && (
+            <>
+              <span className="crumb-sep" aria-hidden>
+                /
+              </span>
+              <button
+                className="crumb-link"
+                onClick={() => navigate({ name: 'wizard', projectId: project.id, step: 'space' })}
+                data-testid="crumb-project"
+                title="Back to this project's setup"
+              >
+                {project.name || project.propertyName}
+              </button>
+            </>
+          )}
+          <span className="crumb-sep" aria-hidden>
+            /
+          </span>
+          <span className="crumb-current" data-testid="crumb-floor">
+            {project?.floor || 'Untitled Plan'}
+          </span>
+        </nav>
         <div className="topbar-right">
           <div className="mode-toggle" role="group" aria-label="View mode">
             <button className={mode === '2d' ? 'seg on' : 'seg'} onClick={() => setMode('2d')} data-testid="mode-2d">
@@ -1055,7 +1087,15 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
         <nav className="rail" aria-label="Tools">
           <span className="rail-avatar" aria-hidden />
           <div className="rail-sep" />
-          <ToolDock tools={dockTools} active={tool} onPick={pickTool} />
+          {/* Every tool here draws on the 2D plan. In 3D they were still lit and
+              clickable but did nothing, with no explanation — now they say why. */}
+          <ToolDock
+            tools={dockTools}
+            active={tool}
+            onPick={pickTool}
+            disabled={mode !== '2d'}
+            disabledReason={mode === '3d' ? 'Switch to 2D to draw' : 'Switch to 2D to draw'}
+          />
           <span className="rail-spring" />
           <button
             className={aiOpen ? 'rail-fab on' : 'rail-fab'}
@@ -1238,6 +1278,22 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
                 />
                 {cloudEnabled() && <CloudSyncPanel onChanged={refreshLibrary} />}
                 </>
+              ) : mode === '3d' ? (
+                // The inspector follows the MODE. It used to show the 2D canvas
+                // card in 3D — Units / Grid / Axis / Background / Presentation,
+                // all meaningless here — while the real 3D controls live in the
+                // toolbar over the viewport. Stats are mode-independent, so they
+                // stay; everything 2D-only goes.
+                <>
+                  <div className="panel-body" data-testid="view-props-3d">
+                    <div className="panel-eyebrow">View</div>
+                    <p className="inline-note">
+                      Camera, lighting, quality and theme are on the toolbar over the model. Switch
+                      to <strong>2D</strong> to draw, edit rooms, or bind products.
+                    </p>
+                  </div>
+                  <StatsPanel ec={ec} />
+                </>
               ) : (
                 <>
                   <ObjectInspector ec={ec} />
@@ -1278,14 +1334,17 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
       </div>
 
       <footer className="statusbar">
-        <span className="sb-coord">
+        {/* Cursor position and drawing scale are 2D-plan facts. In 3D they were
+            still being reported — stale numbers describing a view the user isn't
+            looking at. The document totals on the right are mode-independent. */}
+        <span className="sb-coord" style={{ visibility: mode === '2d' ? 'visible' : 'hidden' }}>
           <span className="sb-glyph">⌖</span>
           <span ref={coordRef} className="num">
             x —  y —
           </span>
         </span>
-        <span className="sb-dot" />
-        <span className="num muted" ref={scaleRef}>
+        {mode === '2d' && <span className="sb-dot" />}
+        <span className="num muted" ref={scaleRef} style={{ visibility: mode === '2d' ? 'visible' : 'hidden' }}>
           46 px/m
         </span>
         <span className="sb-spring" />

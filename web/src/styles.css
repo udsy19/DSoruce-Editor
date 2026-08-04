@@ -157,16 +157,19 @@ button {
   background: var(--surface);
   border-bottom: 1px solid var(--hairline);
 }
+/* Breadcrumb: persistent context AND the way out of the editor. */
 .brand {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 7px;
+  min-width: 0;
 }
 .brand-mark {
   width: 15px;
   height: 15px;
   border-radius: 4px;
   background: var(--accent);
+  flex: none;
 }
 .brand-name {
   font-family: var(--font-display);
@@ -175,9 +178,44 @@ button {
   letter-spacing: 0.5px;
   color: var(--text);
 }
-.brand-doc {
+.brand-home,
+.crumb-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 4px 6px;
+  margin: 0 -2px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  font: inherit;
   color: var(--muted);
   font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.brand-home:hover,
+.crumb-link:hover {
+  background: var(--overlay-scrim);
+  color: var(--text);
+}
+.brand-home:focus-visible,
+.crumb-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.crumb-sep {
+  color: var(--faint);
+  font-size: 13px;
+}
+.crumb-current {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .topbar-right {
   display: flex;
@@ -346,6 +384,14 @@ button {
 }
 .tdock-group {
   position: relative;
+}
+/* Inert in 3D / import mode — visibly unavailable, with a title saying why,
+   rather than lit buttons that silently do nothing. */
+.tool-dock.disabled {
+  opacity: 0.38;
+}
+.tool-dock.disabled .tdock-tile {
+  cursor: not-allowed;
 }
 .tdock-tile {
   position: relative;
@@ -1188,6 +1234,18 @@ button {
   margin-top: 10px;
   font-size: 12px;
   color: var(--muted);
+  line-height: 1.5;
+}
+/* Secondary line under a settings-row label — says what the control does, so a
+   row never needs a paragraph of explanation underneath the card. */
+.row-hint {
+  display: block;
+  margin-top: 2px;
+  color: var(--faint);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 /* ---- Design with AI (agentic senior-designer) ---- */
@@ -2758,22 +2816,29 @@ kbd {
   margin: 0;
 }
 
-/* --- create-project form --- */
+/* --- Property step (create-project form) ---
+   A step body under WizardChrome like any other, so it owns the step's single
+   scroll pane. Its own page chrome + Cancel/Create footer are gone — the wizard
+   footer drives it via the form-owner attribute. */
+.create-step {
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: clip;
+}
 .create-wrap {
   max-width: 520px;
   width: 100%;
   margin: 0 auto;
-  padding: clamp(28px, 6vw, 64px) 0 64px;
+  padding: 4px 0 24px;
 }
-.create-head {
-  margin-bottom: 28px;
-}
-.create-title {
-  font-family: var(--font-display);
-  font-weight: 700;
-  font-size: 28px;
-  letter-spacing: -0.01em;
-  margin: 8px 0 10px;
+.field-required {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: var(--r-pill);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
 }
 .create-form {
   display: flex;
@@ -2831,12 +2896,6 @@ kbd {
   max-width: 90%;
   max-height: 82px;
   object-fit: contain;
-}
-.create-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  margin-top: 8px;
 }
 
 /* --- wizard chrome (guided workflow) ---
