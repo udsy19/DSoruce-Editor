@@ -64,6 +64,10 @@ const MAX_STROKE_PX = 6
  */
 export function strokePx(tier: Tier, _pixelsPerMeter: number, dpr = 1): number {
   const raw = BASE_STROKE_PX * TIER[tier]
+  // ORDER IS LOAD-BEARING: clamp in CSS px, THEN multiply by DPR. Clamping
+  // after the multiply would make the clamp mean a different physical width on
+  // every display — a 0.35 px floor would be half a hairline at DPR 2. Do not
+  // "simplify" by folding the multiply in first.
   const clamped = Math.min(MAX_STROKE_PX, Math.max(MIN_STROKE_PX, raw))
   return clamped * dpr
 }

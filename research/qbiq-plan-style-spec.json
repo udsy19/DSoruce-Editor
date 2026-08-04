@@ -261,7 +261,16 @@
     "grid_on_paper_profile": {
       "required": "absent or <=4% opacity"
     },
-    "note": "Palette tolerance applies to the S/L TARGET BAND, not to qbiq hexes \u2014 DSource keeps its own hues by standing decision."
+    "note": "Palette tolerance applies to the S/L TARGET BAND, not to qbiq hexes \u2014 DSource keeps its own hues by standing decision.",
+    "re_anchored_to_target": {
+      "palette_delta_e_vs_laiout": 5.0,
+      "quantization_allowance": "+/-18 per channel, because the Laiout hexes are 8-value-quantized approximations",
+      "lightness_band": [
+        88,
+        93
+      ],
+      "weight_ratios": "unchanged, from the qbiq ladder, +/-10%"
+    }
   },
   "out_of_scope_confirmed": [
     "Laiout comparison (no artifact in repo)",
@@ -294,5 +303,132 @@
   "beat_variant": {
     "status": "NOT IMPLEMENTED",
     "rule": "Earned, not assumed. Only after paper-profile conformance passes may a poche variant be added \u2014 one config flag given the style table \u2014 as ONE EXTRA BLINDED COLUMN in the final grid. No implementation before conformance, no self-declared winner, config-level effort only."
+  },
+  "owner_decision": {
+    "date": "2026-08-04",
+    "ruling": "Target grammar is COMPOSED: wall treatment per Rayon (rayon.design), zone palette per Laiout (laiout.co). qbiq remains the measured PARITY BENCHMARK and keeps its column in the grid, but it is no longer the styling target. \"Match qbiq\" is superseded by \"meet qbiq bar with this composed grammar\".",
+    "supersedes": "The earlier match-first ruling, which made the paper profile faithful to qbiq. The qbiq block in this spec is untouched and still governs the WEIGHT LADDER, which is the only vector-exact source of ratios and which nothing in the owner direction contradicts."
+  },
+  "laiout": {
+    "provenance_tier": "screenshot-sampled, PROVISIONAL",
+    "source": "owner screenshots, PIL 8-value quantization, corroborated across two independent plan views",
+    "verification_attempt": {
+      "what": "Fetched rayon.design (17 distinct image URLs) and laiout.co (55) and decoded 14 laiout assets, searching for the reported hexes.",
+      "result": "NO MATCH at +/-10 or +/-20 per channel.",
+      "interpretation": "INCONCLUSIVE, not falsifying. The fetched assets are marketing/hero imagery pulled from static HTML; I could not confirm any of them contains a plan view at all, and failing to find plan colours in non-plan images proves nothing. The site app imagery appears to require JS rendering.",
+      "consequence": "Tier stays PROVISIONAL. Promotion to asserted needs a plan-view asset, not another sweep of the same marketing images."
+    },
+    "quantization_caveat": "The reported hexes lie on an 8-value ladder (8c, c4, d4, dc, e4, ec, f4, fc \u2014 every channel a multiple of 4 from a set of 8). That is the stated quantization, so these are APPROXIMATIONS BY CONSTRUCTION, not exact colours. Conformance tolerance must absorb the quantization step (+/-18 per channel) or we would be matching an artifact precisely \u2014 a false precision the campaign has already been bitten by twice.",
+    "palette": [
+      {
+        "role": "paper/background",
+        "hex": "#fcfcfc",
+        "hsl": [
+          0,
+          0,
+          99
+        ]
+      },
+      {
+        "role": "open workspace",
+        "hex": "#dce4f4",
+        "hsl": [
+          220,
+          52,
+          91
+        ]
+      },
+      {
+        "role": "amenity",
+        "hex": "#fcf4dc",
+        "hsl": [
+          45,
+          84,
+          93
+        ]
+      },
+      {
+        "role": "meeting",
+        "hex": "#ece4f4",
+        "hsl": [
+          270,
+          42,
+          93
+        ]
+      },
+      {
+        "role": "core/service",
+        "hex": "#d4f4d4",
+        "hsl": [
+          120,
+          59,
+          89
+        ]
+      },
+      {
+        "role": "breakout",
+        "hex": "#fce4c4",
+        "hsl": [
+          34,
+          90,
+          88
+        ]
+      },
+      {
+        "role": "walls (solid fill)",
+        "hex": "#8c8c8c",
+        "hsl": [
+          0,
+          0,
+          55
+        ]
+      },
+      {
+        "role": "columns/secondary grey",
+        "hex": "#dcdcdc",
+        "hsl": [
+          0,
+          0,
+          86
+        ]
+      }
+    ],
+    "band": "L 88-93 \u2014 LIGHTER than qbiq measured L 80-92. Tolerance targets re-anchor to this band.",
+    "circulation_rule": {
+      "finding": "LAIOUT DOES NOT FILL CIRCULATION. Corridors are paper-white ground; only PROGRAM zones carry colour.",
+      "current_dsource": "floods circulation with its strongest blue",
+      "adopt": "circulation/corridor fill = none (or <=2% grey tint as an editor-only affordance)",
+      "note": "Largest single visual change in the palette move. Lands as ITS OWN COMMIT with its own before/after screenshot."
+    },
+    "semantic_flip": {
+      "decision": "Adopt Laiout hue-to-program mapping wholesale rather than recolouring DSource semantics.",
+      "flip": "DSource blue currently means CIRCULATION. After this change blue means WORKSPACE and circulation becomes ground.",
+      "risk": "A returning user reads the same colour as a different thing.",
+      "mitigation": "The legend \u2014 already a required feature \u2014 is what makes the flip safe, which is a second reason it pairs with 2e rather than landing later."
+    }
+  },
+  "rayon": {
+    "provenance_tier": "grammar ASSERTED from imagery; exact values PROVISIONAL",
+    "walls": "thickness polygons filled with fine ~45 degree diagonal hatch, hatch strokes mid-grey (#c4c4c4-#dcdcdc blended at screenshot resolution), DARK OUTLINES on both faces; exterior/cut profile heaviest",
+    "columns": "solid dark",
+    "paper": "warm white #f4f4f4-#fcfcfc",
+    "openings": "keep the qbiq WHITE-PUNCH mechanism (it composes with any wall style) plus thin swing arcs",
+    "hatch_spacing": "start at 1/3 of wall thickness, tune against fetched reference imagery; record chosen value and its provenance",
+    "hatch_tier": "the hatch tier of the weight ladder, so it never competes with the outlines",
+    "noted_not_adopted": [
+      "dim-string orange (dimensions keep DSource current treatment)",
+      "dark editor mode (out of scope)"
+    ]
+  },
+  "target": {
+    "$comment": "THE styling target from here. qbiq governs ratios; Rayon governs wall form; Laiout governs palette.",
+    "wall_form": "rayon",
+    "palette": "laiout",
+    "weight_ratios": "qbiq (only vector-exact source; uncontradicted by the owner direction)",
+    "openings": "qbiq white-punch (composes with any wall style)",
+    "delta_from_2a_as_shipped": "add hatch fill between the wall faces + darken the face outlines. Everything else 2a built \u2014 thickness polygons, the punch, the ladder \u2014 is reused unchanged."
+  },
+  "architecture_test": {
+    "2a_prime": "The Rayon delta is scheduled as a planStyle-ONLY change. It is the first real test of whether the style-table architecture does what it was built for: a restyle with zero renderer-logic changes. If it requires touching renderer code beyond registering a hatch pattern, that is a FINDING ABOUT THE ARCHITECTURE and gets reported, not absorbed."
   }
 }

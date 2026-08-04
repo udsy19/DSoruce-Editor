@@ -471,6 +471,15 @@ Each was learned from a live mistake in this campaign.
    directories away. Checking it — rather than producing a spec that agreed with
    the brief — is what the phase was for.
 
+8. **Quantized values are approximations by construction** (plan-grammar
+   campaign) — a measurement reported through a lossy method carries that
+   method's error, and conformance tolerance must absorb it or the target is a
+   quantization artifact matched precisely.
+   *From:* an owner palette sampled with 8-value quantization. Every reported
+   channel lands on the ladder {8c, c4, d4, dc, e4, ec, f4, fc}, so the hexes are
+   ±18/channel approximations — treating them as exact would be false precision
+   of the same species the campaign has already been bitten by twice.
+
 **And a standing requirement that falls out of the same discipline: every
 trigger needs a SENSOR.** A trigger without something watching for it is a wish.
 Audited across the campaign:
