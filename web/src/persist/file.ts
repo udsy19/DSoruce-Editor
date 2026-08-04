@@ -20,6 +20,7 @@ import type { Program, RoomReq } from '../types/program'
 import type { EditorCanvas } from '../editor/EditorCanvas'
 import { DEFAULT_PROGRAM } from '../types/program'
 import type { Drawing } from '../import/types'
+import type { PlateProvenance } from '../import/plateQuality'
 import { triggerDownload } from '../export/png'
 
 /** Best-effort UI restore hints (which view the plan was saved from). */
@@ -59,6 +60,17 @@ export interface DSourceFile {
   bindings?: Record<string, BindingInfo>
   /** Optional view state, restored best-effort. */
   ui?: DSourceUi
+  /**
+   * How the accepted floor plate was derived, and how far it could be trusted
+   * (ADR 0002/0003). Part of the document's history: it travels with the plan,
+   * so a reader can tell a traced shell from an inferred envelope the user
+   * confirmed, months later.
+   *
+   * Additive v1 key — older readers ignore it. The calibration LOG is separate
+   * and deliberately not here (`persist/plateLog.ts`): embedding one user's
+   * import history in a shared file would leak it.
+   */
+  plateProvenance?: PlateProvenance
 }
 
 const DEFAULT_FILENAME = 'dsource-plan.dsource'
@@ -216,6 +228,8 @@ interface ProjectParts {
   drawing?: Drawing | null
   bindings?: Map<string, BindingInfo> | null
   ui?: DSourceUi
+  /** Provenance of the accepted plate, carried into the saved document. */
+  plateProvenance?: PlateProvenance
 }
 
 /**
@@ -235,6 +249,7 @@ export function buildProjectFile(opts: ProjectParts): DSourceFile {
       ? { bindings: Object.fromEntries(opts.bindings) }
       : {}),
     ...(opts.ui ? { ui: opts.ui } : {}),
+    ...(opts.plateProvenance ? { plateProvenance: opts.plateProvenance } : {}),
   }
 }
 

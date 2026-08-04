@@ -15,16 +15,20 @@
 // logic runs unmodified in Node. This was chosen over dependency injection
 // as the least invasive option: callers stay plain function calls.
 
-type StoreName = 'plans' | 'history' | 'projects'
+type StoreName = 'plans' | 'history' | 'projects' | 'plateLog'
 
 const DB_NAME = 'dsource'
-const DB_VERSION = 2
-const KEY_PATHS: Record<StoreName, string> = { plans: 'id', history: 'at', projects: 'id' }
+// v3 adds "plateLog" (keyPath "at"): the plate-provenance calibration log. Same
+// additive, forward-only upgrade rule as v2 — existing records are untouched.
+const DB_VERSION = 3
+const KEY_PATHS: Record<StoreName, string> = {
+  plans: 'id', history: 'at', projects: 'id', plateLog: 'at',
+}
 
 /** In-memory fallback stores, active only where IndexedDB does not exist. */
 const memory: Record<StoreName, Map<IDBValidKey, unknown>> | null =
   typeof indexedDB === 'undefined'
-    ? { plans: new Map(), history: new Map(), projects: new Map() }
+    ? { plans: new Map(), history: new Map(), projects: new Map(), plateLog: new Map() }
     : null
 
 let dbPromise: Promise<IDBDatabase> | null = null

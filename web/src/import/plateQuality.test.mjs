@@ -76,7 +76,7 @@ for (const f of fs.readdirSync(path.join(FIX, 'plate')).filter((n) => n.endsWith
     check(
       `${id}: IoU ${iou.toFixed(3)} (inaccurate) must NOT be high confidence`,
       r.provenance.confidence === 'low',
-      `got '${r.provenance.confidence}', phantom ${r.provenance.phantomFraction.toFixed(3)}`,
+      `got '${r.provenance.confidence}', phantom ${r.provenance.phantomFraction === null ? 'n/a' : r.provenance.phantomFraction.toFixed(3)}`,
     )
   } else if (r.provenance.confidence === 'low') {
     // The safe direction: an accurate plate asking for confirmation costs one
@@ -86,7 +86,8 @@ for (const f of fs.readdirSync(path.join(FIX, 'plate')).filter((n) => n.endsWith
     // real gaps exist), and retuning the threshold to hide that would be exactly
     // the post-hoc move the calibration forbids. Awaiting a ruling; see
     // docs/adr/0003 "confidence vs the shipped ladder".
-    falseLows.push(`${id} (IoU ${iou.toFixed(3)}, phantom ${r.provenance.phantomFraction.toFixed(3)}, ${r.provenance.method})`)
+    const ph = r.provenance.phantomFraction
+    falseLows.push(`${id} (IoU ${iou.toFixed(3)}, phantom ${ph === null ? 'n/a' : ph.toFixed(3)}, ${r.provenance.method})`)
   }
   checked++
 }
@@ -129,9 +130,42 @@ if (falseLows.length) {
   const d = JSON.parse(fs.readFileSync(path.join(FIX, 'plate/rect-no-shell-only-partitions.json'), 'utf8'))
   const r = extractPlate(d)
   check('low-confidence plates explain themselves',
-    r.provenance.reason.includes('no wall beneath it'), r.provenance.reason)
+    r.provenance.reason.includes('bridged across gaps'), r.provenance.reason)
 }
 check('threshold is the calibrated value', PHANTOM_MAX_FOR_HIGH === 0.15, PHANTOM_MAX_FOR_HIGH)
+
+{
+  // The ladder's one accepted regression: rot17-door-gaps fell 1.000 -> 0.989
+  // when partition-envelope took the rung. Provenance honesty was worth a
+  // hundredth of IoU; it is NOT worth a tenth, so pin it.
+  const d = JSON.parse(fs.readFileSync(path.join(FIX, 'plate/rot17-door-gaps.json'), 'utf8'))
+  const t = JSON.parse(fs.readFileSync(path.join(FIX, 'truth/rot17-door-gaps.geojson'), 'utf8'))
+  const r = extractPlate(d)
+  const ring = r.boundary.map(([x, y]) => [x + r.offset.x, y + r.offset.y])
+  const iou = M.iou(ring, t.geometry.coordinates[0].slice(0, -1))
+  check('rot17-door-gaps holds >= 0.98 (accepted regression, pinned)', iou >= 0.98, iou.toFixed(4))
+}
+
+{
+  // Phantom is undefined for an envelope that is not a linework contour, and a
+  // column-grid plate must say WHY it needs confirming — its own assumption,
+  // not a phantom number that means nothing for it.
+  const d = JSON.parse(fs.readFileSync(path.join(FIX, 'plate/rect-regular-column-grid.json'), 'utf8'))
+  const r = extractPlate(d)
+  const p = r.provenance
+  check('column-grid reports phantom as undefined, not 1.000',
+    p.method === 'column-grid' && p.phantomFraction === null, `${p.method}/${p.phantomFraction}`)
+  check('column-grid stays low: its slab-edge assumption is unverifiable',
+    p.confidence === 'low' && p.reason.includes('slab edge'), p.reason)
+}
+
+{
+  // A bridged contour explains itself in the language of what it did.
+  const d = JSON.parse(fs.readFileSync(path.join(FIX, 'plate/lshape-shell-fragments.json'), 'utf8'))
+  const r = extractPlate(d)
+  check('bridged envelope says it bridged, and how much',
+    r.provenance.reason.includes('bridged across gaps'), r.provenance.reason)
+}
 
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILURE(S)`)
 process.exit(failures === 0 ? 0 : 1)

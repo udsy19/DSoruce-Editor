@@ -37,9 +37,14 @@ export interface PlateProvenance {
   /**
    * Fraction of the boundary's LENGTH with no supporting wall/glazing linework
    * beneath it. The direct measure of a phantom edge: a hull cutting across open
-   * space has nothing under it. 0.463 on the real furniture-plan.dwg.
+   * space has nothing under it.
+   *
+   * `null` when the method does not derive its boundary from a linework contour
+   * — a column-grid envelope scores 1.000 here *correctly*, because the columns
+   * are inside the plate and no shell exists, so the number is meaningless as a
+   * quality signal (ADR 0003, per-rung metric validity).
    */
-  phantomFraction: number
+  phantomFraction: number | null
   /**
    * Length-weighted fraction of the boundary within 2° of a principal direction.
    * REPORTED, never gated on — a curved facade legitimately scores 0.28 while
@@ -74,6 +79,26 @@ export const PHANTOM_MAX_FOR_HIGH = 0.15
 const PHANTOM_STEP_M = 0.25
 /** A boundary point this close to real linework counts as supported (m). */
 const PHANTOM_TOL_M = 0.35
+
+/** Methods whose boundary IS a contour of the linework, so phantom is meaningful. */
+const CONTOUR_DERIVED = new Set<PlateMethod>([
+  'traced-loop', 'grid-contour', 'partition-envelope', 'hull',
+])
+
+/** Where a method rests on something the drawing cannot confirm, say so plainly. */
+const UNVERIFIABLE_ASSUMPTION: Partial<Record<PlateMethod, string>> = {
+  'column-grid':
+    'it assumes the slab edge sits half a structural bay past the perimeter columns, which this drawing cannot confirm',
+}
+
+/** Opening clause of the confirm prompt, per method. */
+const PREAMBLE: Partial<Record<PlateMethod, string>> = {
+  'traced-loop': 'This boundary was traced from the building shell',
+  'grid-contour': 'No closed building shell was found, so this boundary was inferred from the wall linework',
+  'partition-envelope': 'No closed building shell was found, so this boundary was inferred from the partitions and furniture',
+  'column-grid': 'This boundary was inferred from the column grid',
+  'hull': 'No closed building shell was found, so this boundary is a best-fit outline',
+}
 
 // ---- geometry ---------------------------------------------------------------
 
@@ -234,21 +259,31 @@ export function assessPlate(
 
   const segs = drawing ? supportingSegments(drawing) : []
   const phantom = drawing ? phantomFraction(ring, segs) : 1
+  // Phantom only means something for a boundary traced from linework.
+  const phantomMeaningful = Boolean(drawing) && CONTOUR_DERIVED.has(method)
 
   const reasons: string[] = []
   if (!drawing) reasons.push('the boundary could not be checked against the source linework')
   if (selfX > 0) reasons.push(`the boundary crosses itself ${selfX}×`)
-  if (drawing && phantom >= PHANTOM_MAX_FOR_HIGH) {
-    reasons.push(`${Math.round(phantom * 100)}% of this boundary has no wall beneath it`)
+  if (phantomMeaningful && phantom >= PHANTOM_MAX_FOR_HIGH) {
+    reasons.push(`${Math.round(phantom * 100)}% of it was bridged across gaps rather than traced`)
   }
+
+  // An inference resting on an assumption the linework cannot verify is `low`
+  // however well it scores. `column-grid` is exact on the fixture built to be
+  // fair to it — which proves the rung implements its rule, not that the rule
+  // matches this building: a real slab edge sits anywhere from flush to a full
+  // bay past the perimeter columns. That uncertainty is not measurable from the
+  // drawing, so it is surfaced rather than scored (ADR 0003).
+  if (UNVERIFIABLE_ASSUMPTION[method]) reasons.push(UNVERIFIABLE_ASSUMPTION[method])
 
   return {
     method,
-    phantomFraction: phantom,
+    phantomFraction: phantomMeaningful ? phantom : null,
     orthogonality: orthogonality(ring),
     closingEdgeM: first && last ? Math.hypot(first[0] - last[0], first[1] - last[1]) : 0,
     selfIntersections: selfX,
     confidence: reasons.length === 0 ? 'high' : 'low',
-    reason: reasons.length === 0 ? '' : `No closed building shell was found — ${reasons.join(', and ')}.`,
+    reason: reasons.length === 0 ? '' : `${PREAMBLE[method] ?? 'This boundary was inferred'} — ${reasons.join(', and ')}. Confirm or adjust it.`,
   }
 }
