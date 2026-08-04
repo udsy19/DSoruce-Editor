@@ -99,6 +99,15 @@ async function writeArtifact(outDir: string, name: string, data: Buffer): Promis
 /**
  * Shoot the walkthrough with the headless driver and stream its progress back
  * as NDJSON. Resolves once the mp4 is on disk.
+ *
+ * ATOMIC, like every other artifact here. ffmpeg streams its output for ~90 s
+ * and touches the file's mtime on the FIRST byte, so a renderer writing
+ * straight into `out/` publishes a half-written, un-decodable mp4 under its
+ * final name — which is exactly how the gate suite came to report a green board
+ * over a video that `ffprobe` could not open for another 36 s (defect D2). The
+ * driver therefore renders into a private staging directory and the finished
+ * files are `rename()`d into place: `out/walkthrough.mp4` either does not exist
+ * or is a complete take, never anything in between.
  */
 async function renderWalkthrough(
   res: ServerResponse,
@@ -114,11 +123,14 @@ async function renderWalkthrough(
   const line = (o: unknown): void => void res.write(`${JSON.stringify(o)}\n`)
   line({ phase: 'start', done: 0, total: 0 })
 
-  const mp4 = path.join(outDir, 'walkthrough.mp4')
   await fs.mkdir(outDir, { recursive: true })
+  // Same filesystem as `out/`, so the publish step below is a true rename.
+  const stage = path.join(outDir, `.walkthrough-${process.pid}-${Date.now()}`)
+  await fs.mkdir(stage, { recursive: true })
+  const mp4 = path.join(stage, 'walkthrough.mp4')
   const child = spawn(
     process.execPath,
-    [path.join(repoRoot, 'scripts', 'render-walkthrough.mjs'), '--state', tmp, '--out', outDir],
+    [path.join(repoRoot, 'scripts', 'render-walkthrough.mjs'), '--state', tmp, '--out', stage],
     { cwd: repoRoot, stdio: ['ignore', 'pipe', 'pipe'] },
   )
   let tail = ''
@@ -140,15 +152,29 @@ async function renderWalkthrough(
   })
   await fs.rm(tmp, { force: true })
 
+  const cleanStage = (): Promise<void> => fs.rm(stage, { recursive: true, force: true })
   if (code !== 0) {
+    await cleanStage()
     line({ ok: false, error: `walkthrough renderer exited ${code}: ${tail.slice(-400)}` })
     return void res.end()
   }
   const stat = await fs.stat(mp4).catch(() => null)
   if (!stat || stat.size === 0) {
+    await cleanStage()
     line({ ok: false, error: 'walkthrough renderer produced no mp4' })
     return void res.end()
   }
+  // Publish everything the take produced (mp4 + the route report) in one go.
+  // `rename` REPLACES an existing file atomically — a reader sees the old take
+  // or the new one, never a partial — so nothing is unlinked first. Only a
+  // directory (`--keep-frames`) has to be cleared, since rename cannot replace one.
+  for (const name of await fs.readdir(stage)) {
+    const dest = path.join(outDir, name)
+    const prev = await fs.stat(dest).catch(() => null)
+    if (prev?.isDirectory()) await fs.rm(dest, { recursive: true, force: true })
+    await fs.rename(path.join(stage, name), dest)
+  }
+  await cleanStage()
   line({ ok: true, bytes: stat.size })
   res.end()
 }

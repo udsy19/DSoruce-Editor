@@ -826,6 +826,9 @@ const CHAIR_PROJECT: f64 = 0.35;
 const CHAIR_AISLE_KEEP: f64 = 0.2;
 /// Smallest projection (m) worth drawing — below this the chair is fully tucked.
 const CHAIR_PROJECT_MIN: f64 = 0.05;
+/// Seat pitch (m) along a conference table's long sides. 750 mm per person is the
+/// office-planning norm (Neufert / BCO give 600–750 mm of table edge per seat).
+const SEAT_PITCH: f64 = 0.75;
 
 // ---- M4: drawn circulation (spec §3) ----
 
@@ -886,7 +889,8 @@ enum CorridorSide {
 /// categories (Table/Chair), so the 2D glyphs and 3D builds need no additions.
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum RoomFurniture {
-    /// Full-size conference table with the TABLE_CLEAR egress ring (meetings).
+    /// Full-size conference table with the TABLE_CLEAR egress ring, seated all
+    /// round by `seat_around_table` (meetings).
     ConferenceTable,
     /// Work table against the rear wall + task chair facing the door
     /// (cabin / focus / phone booth — the booth degrades to chair + ledge).
@@ -1081,12 +1085,24 @@ fn furnish_room(doc: &mut Document, cx: f64, cy: f64, w: f64, h: f64, side: Corr
 
     match furniture {
         RoomFurniture::ConferenceTable => {
-            // Full-size conference table (chairs live in its 2D glyph / 3D
-            // build), centered with the TABLE_CLEAR ring to the inner faces.
+            // Full-size conference table, centered with the TABLE_CLEAR ring to
+            // the inner faces, seated all round with REAL chair components.
             let tw = (w - 2.0 * PARTITION_T - 2.0 * TABLE_CLEAR).max(0.8).min(w - 2.0 * PARTITION_T - 0.2);
             let th = (h - 2.0 * PARTITION_T - 2.0 * TABLE_CLEAR).max(0.8).min(h - 2.0 * PARTITION_T - 0.2);
             if tw > 0.3 && th > 0.3 {
                 push_component(doc, "Table", cx, cy, tw, th, 0.0);
+                // Seats stay inside the partitions' INNER faces (the walls are
+                // centerline-inset by half their thickness, so the inner face
+                // sits PARTITION_T in from the room rect).
+                seat_around_table(
+                    doc, cx, cy, tw, th,
+                    (
+                        cx - w / 2.0 + PARTITION_T,
+                        cy - h / 2.0 + PARTITION_T,
+                        cx + w / 2.0 - PARTITION_T,
+                        cy + h / 2.0 - PARTITION_T,
+                    ),
+                );
             }
         }
         RoomFurniture::WorkPoint => {
@@ -1127,6 +1143,85 @@ fn furnish_room(doc: &mut Document, cx: f64, cy: f64, w: f64, h: f64, side: Corr
             }
         }
         RoomFurniture::Empty => {}
+    }
+}
+
+/// Seat task chairs around a conference / meeting / collaboration table.
+///
+/// `floor(long_side / SEAT_PITCH)` seats along **each** long side, plus **one**
+/// head seat at each end — office practice takes a single person at a table end
+/// however wide it is. Every chair faces the table and tucks
+/// `CHAIR_SIZE − CHAIR_PROJECT` under its edge, projecting `CHAIR_PROJECT` into
+/// the room: the identical tuck `seat_desk_chairs` gives a workstation, so all
+/// seating in the document reads as one object at one size.
+///
+/// `clear` is the `(x0, y0, x1, y1)` rect the seats must stay inside — a walled
+/// room's INNER wall faces, or an open setting's zone rect. A seat that does not
+/// fit, or that would collide with a seat already placed at this table, is
+/// **dropped rather than forced**, so a table clamped against architecture
+/// simply carries fewer chairs and never one inside a wall.
+///
+/// These are REAL `Chair` components, which is the whole point: the 2D plan
+/// glyphs draw no implied seating (`web/src/editor/furniture.ts`), so what the
+/// plan and the room thumbnails draw is exactly what the Furniture Inventory
+/// bills and what `quantity::headcount` counts for a room with no desks.
+/// Like every other chair they are exempt from the circulation raster
+/// (`circulation::is_loose_seating`).
+fn seat_around_table(
+    doc: &mut Document,
+    tx: f64,
+    ty: f64,
+    tw: f64,
+    th: f64,
+    clear: (f64, f64, f64, f64),
+) {
+    use std::f64::consts::{FRAC_PI_2, PI};
+    let half = CHAIR_SIZE / 2.0;
+    // Chair centre offset BEYOND the table edge: the seat overlaps the worktop
+    // and projects CHAIR_PROJECT past it.
+    let off = (CHAIR_PROJECT - half).max(0.0);
+    let (x0, y0, x1, y1) = clear;
+
+    let long_x = tw >= th;
+    let (run, span) = if long_x { (tw, th) } else { (th, tw) };
+    let n = ((run / SEAT_PITCH).floor() as usize).max(1);
+
+    // Long sides first (they are the real capacity), heads last, so a head seat
+    // is the one dropped when a stubby table's corners would collide.
+    let side_d = snap_module(span / 2.0 + off);
+    let head_d = snap_module(run / 2.0 + off);
+    let mut seats: Vec<(f64, f64, f64)> = Vec::with_capacity(2 * n + 2);
+    for i in 0..n {
+        let t = snap_module(((i as f64 + 0.5) / n as f64 - 0.5) * run);
+        if long_x {
+            // Chair faces the table: rot maps its local +y onto the facing
+            // direction (`rot = atan2(-fx, fy)`), matching `furnish_room`.
+            seats.push((tx + t, ty - side_d, 0.0));
+            seats.push((tx + t, ty + side_d, PI));
+        } else {
+            seats.push((tx - side_d, ty + t, -FRAC_PI_2));
+            seats.push((tx + side_d, ty + t, FRAC_PI_2));
+        }
+    }
+    if long_x {
+        seats.push((tx - head_d, ty, -FRAC_PI_2));
+        seats.push((tx + head_d, ty, FRAC_PI_2));
+    } else {
+        seats.push((tx, ty - head_d, 0.0));
+        seats.push((tx, ty + head_d, PI));
+    }
+
+    let mut placed: Vec<(f64, f64, f64, f64)> = Vec::with_capacity(seats.len());
+    for (cx, cy, rot) in seats {
+        let inside = cx - half >= x0 - 1e-6
+            && cx + half <= x1 + 1e-6
+            && cy - half >= y0 - 1e-6
+            && cy + half <= y1 + 1e-6;
+        if !inside || footprint_overlaps(&placed, cx, cy, CHAIR_SIZE, CHAIR_SIZE, -1e-6) {
+            continue;
+        }
+        placed.push((cx, cy, CHAIR_SIZE, CHAIR_SIZE));
+        push_component(doc, "Chair", cx, cy, CHAIR_SIZE, CHAIR_SIZE, rot);
     }
 }
 
@@ -2056,9 +2151,10 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
         }
     }
 
-    // Keep-outs surface as `Core` zones (gray tint, Core cost/NIA rate). Emitted
-    // last so a point inside a keep-out buckets to Core, winning the
-    // last-non-Circulation-wins tie over any overlapping Workspace rect.
+    // Keep-outs surface as `Core` zones (gray tint, Core cost/NIA rate). A point
+    // inside a keep-out buckets to Core rather than to an overlapping spanning
+    // Workspace rect because `Document::zone_index_at` picks the SMALLEST
+    // containing zone (a shaft is always smaller than the field around it).
     for (kx, ky, kw, kh, label) in &keepout_zones {
         push_zone(
             doc,
@@ -2092,6 +2188,85 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
 
     // Fill each zone's component_ids by point-in-zone on component centers.
     doc.reassign_components();
+
+    // Model the facade's glazing module. Runs AFTER zones and components so the
+    // ids they were allocated (the workbook's Room IDs) never move.
+    glaze_facade(doc);
+}
+
+/// Solid corner pier (m) at each end of a glazed facade run — the return a
+/// curtain-wall band stops short of. 600 mm is the module the plan renderer's
+/// own fallback already draws (`web/src/export/wallTypes.ts::CORNER_RETURN`), so
+/// the drawn facade and the billed facade are one convention, not two.
+const FACADE_PIER: f64 = 0.6;
+/// Below this run length (m) a facade wall is all pier — there is no room for a
+/// window band between two returns.
+const MIN_GLAZED_RUN: f64 = 2.0 * FACADE_PIER + 0.5;
+
+/// Model the perimeter facade as what an office facade actually is: a **glazed
+/// band between solid corner piers**.
+///
+/// Each architectural wall the quantity classifier calls `PerimeterWall` is split
+/// into three collinear segments — `FACADE_PIER` solid, the glazed band, then
+/// `FACADE_PIER` solid — with `glazing: true` on the band only. Runs shorter than
+/// `MIN_GLAZED_RUN` stay wholly solid.
+///
+/// **Why in the geometry and not in a classifier rule.** Everything downstream
+/// reads the document: `quantity::classify_wall` bills the band as
+/// `Perimeter windows` (rule 2) and the piers as `Perimeter wall`, the plan
+/// renderer colours them from that same classification, the 3D viewer builds
+/// glass there, and `cost.rs` prices it. One edit to the model therefore makes
+/// the takeoff and the plan graphic tell the same story by construction — they
+/// cannot drift, because there is only one fact.
+///
+/// **Idempotent**, so regenerating never re-splits: an already-glazed band is
+/// skipped by the `!glazing` guard and a `FACADE_PIER` return is far below
+/// `MIN_GLAZED_RUN`. Deterministic — document order, no RNG. Only walls the
+/// classifier ALREADY calls `PerimeterWall` are touched, so core/keep-out walls,
+/// interior partitions and every generated wall are left alone, and a document
+/// whose walls do not close into a plate (no traced polygon) is left alone
+/// entirely rather than guessed at.
+fn glaze_facade(doc: &mut Document) {
+    let Some(plate) = doc.plate_polygon() else { return };
+    // Re-cut a wall in place (it keeps its id as the first pier) and append the
+    // band + far pier. Collecting first keeps the borrow checker happy and makes
+    // the pass independent of the order things are pushed.
+    let mut extra: Vec<Wall> = Vec::new();
+    for i in 0..doc.walls.len() {
+        let w = &doc.walls[i];
+        if w.generated || w.glazing {
+            continue;
+        }
+        let len = w.length();
+        if len < MIN_GLAZED_RUN {
+            continue;
+        }
+        if crate::quantity::classify_wall(w, &doc.keepouts, Some(&plate))
+            != crate::quantity::WallType::PerimeterWall
+        {
+            continue;
+        }
+        let (a, b, thickness, height_m) = (w.a, w.b, w.thickness, w.height_m);
+        let (ux, uy) = ((b.x - a.x) / len, (b.y - a.y) / len);
+        let at = |t: f64| Point::new(a.x + ux * t, a.y + uy * t);
+        let (p0, p1) = (at(FACADE_PIER), at(len - FACADE_PIER));
+        let seg = |a: Point, b: Point, glazing: bool| Wall {
+            id: 0, // assigned below, once `doc` is free to allocate
+            a,
+            b,
+            thickness,
+            generated: false,
+            glazing,
+            height_m,
+        };
+        extra.push(seg(p0, p1, true));
+        extra.push(seg(p1, b, false));
+        doc.walls[i].b = p0; // the original wall becomes the near pier
+    }
+    for mut w in extra {
+        w.id = doc.alloc_id();
+        doc.walls.push(w);
+    }
 }
 
 /// Grow boundary-touching **`Rect`** zones — rooms, workspace fields AND
@@ -3861,7 +4036,19 @@ fn emit_job(doc: &mut Document, job: &RoomJob, cx: f64, cy: f64, w: f64, h: f64,
         let tw = snap_module((w - 1.8).clamp(0.6, 2.4).min(w - 0.2));
         let th = snap_module((h - 1.8).clamp(0.6, 1.2).min(h - 0.2));
         if tw > 0.3 && th > 0.3 {
-            push_component(doc, "Table", snap_module(cx), snap_module(cy), tw, th, 0.0);
+            let (tx, ty) = (snap_module(cx), snap_module(cy));
+            push_component(doc, "Table", tx, ty, tw, th, 0.0);
+            // A COLLABORATION setting is a table people sit around, so it is
+            // seated like any meeting table. The other open setting is the print
+            // point, whose "table" is a copier console — nobody sits at it, so it
+            // is deliberately left unseated (this is why the rule keys on the
+            // zone type and not on the presence of a `Table`).
+            if job.zone_type == ZoneType::Collaboration {
+                seat_around_table(
+                    doc, tx, ty, tw, th,
+                    (cx - w / 2.0, cy - h / 2.0, cx + w / 2.0, cy + h / 2.0),
+                );
+            }
         }
     }
 }
@@ -5073,8 +5260,22 @@ mod tests {
             assert_room_enclosed(&doc, x, y, w, h, "rect plate");
         }
         // Every generated wall belongs to a room perimeter — none float free —
-        // and the user's 4 boundary walls are untouched.
-        assert_eq!(doc.walls.iter().filter(|w| !w.generated).count(), 4);
+        // and the user's boundary is untouched IN EXTENT. `glaze_facade` re-cuts
+        // each of the 4 facade runs into pier · glazed band · pier, so the
+        // SEGMENT COUNT grows while the geometry (and so the traced plate) is
+        // identical: same total length, one glazed band per run.
+        let arch: Vec<&Wall> = doc.walls.iter().filter(|w| !w.generated).collect();
+        assert_eq!(arch.len(), 12, "4 facade runs, each cut into pier/band/pier");
+        let arch_len: f64 = arch.iter().map(|w| w.length()).sum();
+        assert!(
+            (arch_len - 2.0 * (30.0 + 20.0)).abs() < 1e-6,
+            "the re-cut facade must still measure the plate perimeter, got {arch_len:.4} m"
+        );
+        assert_eq!(
+            arch.iter().filter(|w| w.glazing).count(),
+            4,
+            "exactly one glazed band per facade run"
+        );
         // Rooms stay REACHABLE: with partitions in and doors whitelisted the
         // walkable floor is still (nearly) one connected region.
         let circ = circulation::evaluate(&doc, &CirculationConfig::default());
@@ -5128,10 +5329,14 @@ mod tests {
                 "user wall {id} was dropped by regenerate"
             );
         }
+        // The only non-generated walls are the user's runs and the pier/band
+        // segments `glaze_facade` cut them into — 3 per run, never more however
+        // many times we regenerate (the pass is idempotent: an already-glazed
+        // band is skipped, and a 0.6 m pier is far below MIN_GLAZED_RUN).
         assert_eq!(
             doc.walls.iter().filter(|w| !w.generated).count(),
-            user_ids.len(),
-            "no extra non-generated walls appear"
+            3 * user_ids.len(),
+            "no extra non-generated walls appear beyond the facade's pier/band/pier cut"
         );
     }
 
@@ -6239,6 +6444,208 @@ mod tests {
         let poly = poly_of(&doc);
         assert_chairs_are_seated(&doc, &poly, "keep_confirmed regenerate");
         assert_no_overlaps(&doc, "keep_confirmed regenerate");
+    }
+
+    /// D4 — the workbook must not contradict its own images. Every meeting /
+    /// team / boardroom / collaboration table is seated with REAL `Chair`
+    /// components, so the seats the plan and the room thumbnails draw are the
+    /// seats the Furniture Inventory bills and the seats `Headcount` counts.
+    ///
+    /// (Before this, `furniture.ts::drawTable` ringed every table with ~8 chairs
+    /// pitched in SCREEN pixels — a glyph nothing could bill. ~50 chairs were
+    /// drawn in the workbook's own thumbnails and billed nowhere in it.)
+    #[test]
+    fn every_meeting_table_is_seated_and_every_seat_is_a_billable_component() {
+        let mut program = Program::default();
+        program.meeting_rooms = 3;
+        program.meeting_w = 5.0;
+        program.meeting_h = 4.0;
+        for seed in [1u64, 3, 7] {
+            let mut doc = room(30.0, 20.0);
+            generate(&mut doc, &program, seed, false);
+            let ctx = format!("seed {seed}");
+            let q = crate::quantity::quantities(&doc);
+
+            let mut seated_rooms = 0;
+            for z in &doc.zones {
+                if z.zone_type != ZoneType::Meeting && z.zone_type != ZoneType::Collaboration {
+                    continue;
+                }
+                let of = |cat: &str| {
+                    z.component_ids
+                        .iter()
+                        .filter(|&&cid| {
+                            doc.components.iter().any(|c| c.id == cid && c.category == cat)
+                        })
+                        .count()
+                };
+                let (tables, chairs) = (of("Table"), of("Chair"));
+                if tables == 0 {
+                    continue; // a room too small for a table is honestly unseated
+                }
+                seated_rooms += 1;
+                assert!(
+                    chairs >= 4,
+                    "{ctx}: '{}' draws a table but bills only {chairs} chairs",
+                    z.label
+                );
+                // What is billed is what is counted: with no desks in the room,
+                // `quantity::headcount` is exactly its seats.
+                let r = q.rooms.iter().find(|r| r.room_id == z.id).unwrap();
+                assert_eq!(
+                    r.headcount as usize, chairs,
+                    "{ctx}: '{}' bills {chairs} chairs but reports headcount {}",
+                    z.label, r.headcount
+                );
+            }
+            assert!(seated_rooms >= 3, "{ctx}: only {seated_rooms} seated tables — test is vacuous");
+
+            // Every chair tucks under at most one worksurface and no two chairs
+            // collide (a forced perimeter seat would break this).
+            assert_chairs_are_seated(&doc, &poly_of(&doc), &ctx);
+            assert_no_overlaps(&doc, &ctx);
+        }
+    }
+
+    /// D8 — headcount must be a function of the furniture, not of zone emission
+    /// order. Three cabins with byte-identical furniture used to report 1, 0 and
+    /// 0 because `zone_index_at` took the LAST containing zone, so the
+    /// plate-spanning Workspace field silently swallowed the furniture of every
+    /// room it happened to enclose.
+    #[test]
+    fn rooms_with_identical_furniture_report_identical_headcount() {
+        let mut program = Program::default();
+        program.headcount = Some(60);
+        program.meeting_rooms = 3;
+        for seed in [3u64, 7, 11] {
+            let mut doc = room(40.0, 24.0);
+            generate(&mut doc, &program, seed, false);
+            let ctx = format!("seed {seed}");
+            let q = crate::quantity::quantities(&doc);
+
+            // An enclosed room owns the furniture standing inside it — never the
+            // big field drawn around it. (`Circulation` is the deliberate
+            // exception: it loses to any specific zone containing the point.)
+            for z in &doc.zones {
+                let ZoneShape::Rect { x, y, w, h } = z.shape else { continue };
+                if z.zone_type == ZoneType::Workspace || z.zone_type == ZoneType::Circulation {
+                    continue; // the spanning field / corridor legitimately enclose rooms
+                }
+                for c in &doc.components {
+                    if (c.x - x).abs() > w / 2.0 || (c.y - y).abs() > h / 2.0 {
+                        continue;
+                    }
+                    assert!(
+                        z.component_ids.contains(&c.id),
+                        "{ctx}: {} stands inside '{}' but was bucketed elsewhere",
+                        c.label,
+                        z.label
+                    );
+                }
+            }
+
+            // Same furniture in, same headcount out.
+            let sig = |z: &Zone| {
+                let mut v: Vec<String> = z
+                    .component_ids
+                    .iter()
+                    .filter_map(|&cid| doc.components.iter().find(|c| c.id == cid))
+                    .filter(|c| !c.reference && c.category != "Door")
+                    .map(|c| format!("{} {:.2}x{:.2}", c.category, c.w, c.h))
+                    .collect();
+                v.sort();
+                v
+            };
+            // Key: zone type + the furniture multiset — the two things the
+            // Inventory row shows next to `Headcount`.
+            let mut seen: std::collections::HashMap<String, (u32, String)> =
+                std::collections::HashMap::new();
+            let mut compared = 0;
+            for z in &doc.zones {
+                let s = sig(z);
+                if s.is_empty() {
+                    continue;
+                }
+                let key = format!("{:?}|{}", z.zone_type, s.join(", "));
+                let hc = q.rooms.iter().find(|r| r.room_id == z.id).unwrap().headcount;
+                match seen.get(&key) {
+                    Some((prev, prev_label)) => {
+                        compared += 1;
+                        assert_eq!(
+                            hc, *prev,
+                            "{ctx}: '{}' and '{prev_label}' hold identical furniture ({key}) \
+                             but report headcounts {hc} and {prev}",
+                            z.label
+                        );
+                    }
+                    None => {
+                        seen.insert(key, (hc, z.label.clone()));
+                    }
+                }
+            }
+            assert!(compared > 0, "{ctx}: no two rooms shared furniture — test is vacuous");
+        }
+    }
+
+    /// D5 — the plan graphic and the takeoff must tell the same story about the
+    /// facade. `glaze_facade` models the office facade module in the GEOMETRY
+    /// (pier · glazed band · pier), so the classification the plan colours from
+    /// and the quantities the workbook bills are the same classification.
+    #[test]
+    fn the_facade_is_glazed_and_the_plan_and_takeoff_agree_on_it() {
+        let program = Program::default();
+        for (name, mk) in [
+            ("rect", (|| room(30.0, 20.0)) as fn() -> Document),
+            ("l-plate", l_room as fn() -> Document),
+            ("real-plate", real_plate_doc as fn() -> Document),
+        ] {
+            let mut doc = mk();
+            generate(&mut doc, &program, 3, false);
+            let q = crate::quantity::quantities(&doc);
+            let win = q
+                .walls
+                .iter()
+                .find(|w| w.wall_type == crate::quantity::WallType::PerimeterWindows)
+                .unwrap()
+                .length_m;
+            let solid = q
+                .walls
+                .iter()
+                .find(|w| w.wall_type == crate::quantity::WallType::PerimeterWall)
+                .unwrap()
+                .length_m;
+            assert!(win > 0.0, "{name}: the facade bills 0 m of perimeter windows");
+            assert!(
+                win > solid,
+                "{name}: an office facade is mostly glass — got {win:.2} m glazed vs {solid:.2} m solid"
+            );
+
+            // The plan renderer colours from `classify_walls`; the workbook bills
+            // from `quantities`. Both must measure the same metres of glazing.
+            let drawn: f64 = crate::quantity::classify_walls(&doc)
+                .iter()
+                .filter(|c| c.plan_key == "perimeter_windows")
+                .map(|c| c.length_m)
+                .sum();
+            assert!(
+                (drawn - win).abs() < 1e-9,
+                "{name}: the plan draws {drawn:.4} m of perimeter windows, the takeoff bills {win:.4} m"
+            );
+
+            // Re-cutting is idempotent: regenerating must not shave another pier
+            // off the band (that would creep the facade solid over time).
+            generate(&mut doc, &program, 3, false);
+            let again = crate::quantity::quantities(&doc)
+                .walls
+                .iter()
+                .find(|w| w.wall_type == crate::quantity::WallType::PerimeterWindows)
+                .unwrap()
+                .length_m;
+            assert!(
+                (again - win).abs() < 1e-9,
+                "{name}: regenerate moved the glazed run {win:.4} -> {again:.4} m"
+            );
+        }
     }
 
     /// No two footprints may overlap — with ONE deliberate exemption: a `Chair`

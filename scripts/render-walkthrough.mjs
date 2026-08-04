@@ -7,12 +7,12 @@
 // STREAMED out of the page one at a time (exposeBinding) straight into ffmpeg's
 // stdin, so a 1000-frame take never has to fit in memory anywhere.
 //
-//   node scripts/render-walkthrough.mjs [--out out] [--seed 7] [--fps 30]
+//   node scripts/render-walkthrough.mjs [--out out] [--seed 7] [--fps 60]
 //                                       [--duration 36] [--width 1920] [--height 1080]
 //                                       [--state doc.json] [--keep-frames] [--dry-run]
 //
 // Writes:
-//   out/walkthrough.mp4    H.264 yuv420p, -crf 18, 1920x1080
+//   out/walkthrough.mp4    H.264 yuv420p, 60 fps, -crf 15, 1920x1080
 //   out/walkthrough.json   route + camera report (stops, speed, clearance)
 //
 // Chromium is launched with --use-angle=metal for real hardware GL on macOS; it
@@ -36,9 +36,14 @@ const OUT = path.resolve(REPO, arg('--out', 'out'))
 const SEED = Number(arg('--seed', '7'))
 const WIDTH = Number(arg('--width', '1920'))
 const HEIGHT = Number(arg('--height', '1080'))
-const FPS = Number(arg('--fps', '30'))
+// 60 fps and crf 15 are the REFERENCE's numbers, not a default: qbiq's
+// walkthrough is 60 fps at 33 Mb/s and ours shipped 30 fps at 4.8 Mb/s, which is
+// a visible smoothness and banding gap on a camera that never stops moving. The
+// cost is honest and stated: twice the frames to render (~100 s → ~200 s on an
+// M4 Pro) and a bigger file. Pass `--fps 30` for the cheap take.
+const FPS = Number(arg('--fps', '60'))
 const DURATION = argv.includes('--duration') ? Number(arg('--duration')) : undefined
-const CRF = arg('--crf', '18')
+const CRF = arg('--crf', '15')
 const FRAME_CODEC = arg('--frame-codec', 'png') // png = lossless hand-off to x264
 const DRY = argv.includes('--dry-run')
 const KEEP = argv.includes('--keep-frames')

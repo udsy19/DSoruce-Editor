@@ -3,6 +3,7 @@ import { canvasToPngBytes } from './planGraphic'
 import type { WallSpan } from './wallTypes'
 import { buildInteriorScene, type InteriorRoom, type InteriorScene } from '../three/materialTheme'
 import { placeRoomCamera, renderInteriorStill, type StillOpts } from '../three/interiorStill'
+import { FINISH_SPEC } from './finishSchedule'
 import { zoneArea } from '../util/zoneGeom'
 
 /**
@@ -65,14 +66,20 @@ export interface RoomRender {
   /** The zone that was photographed. */
   roomId: number
   roomLabel: string
-  /** Inventory ("General" sheet) floor material — the anti-drift cross-check.
-   *  Always reported; see {@link RoomRender.floorCheck} for whether the still
-   *  can actually EVIDENCE it. */
+  /** The room's Inventory floor material — `FINISH_SPEC[finishTypeFor(zone)].floor`,
+   *  the SAME string `qtoWorkbook` writes into the Inventory sheet's
+   *  `Floor Material` column and into `ground-truth.rooms[].floorMaterial`. One
+   *  vocabulary for plan, workbook and renders; gate G6 requires the three to
+   *  agree literally. */
   floorMaterial: string
+  /** Which framing actually produced this still — `spec.framing`, unless the
+   *  first shot could not see the room's own floor and the reframe did. */
+  framing: RoomRenderSpec['framing']
   /** Whether this still offers a floor sample good enough to cross-check the
    *  Inventory: `'ok'`, or why not. A still whose only visible floor is a
-   *  shadowed sliver would report the ambient, not the finish — claiming it as
-   *  evidence would be worse than admitting it. */
+   *  shadowed sliver would report the ambient, not the finish. This is
+   *  DIAGNOSTIC only — it never removes the claim from the ground truth, because
+   *  a gate the artifact can switch off is not a gate (defect D1). */
   floorCheck: 'ok' | 'no-clean-floor' | 'floor-underexposed'
   /** Measured mostly-floor crop, for G6's floor-pixel sample. */
   floorRect: [number, number, number, number]
@@ -117,6 +124,38 @@ function pickRoom(scene: InteriorScene, spec: RoomRenderSpec, taken: Set<number>
   return null
 }
 
+/** Place a camera with the given framing and shoot the still. */
+function shoot(
+  scene: InteriorScene,
+  room: InteriorRoom,
+  state: DocState,
+  opts: RoomPackOpts,
+  framing: RoomRenderSpec['framing'],
+): ReturnType<typeof renderInteriorStill> {
+  const cam = placeRoomCamera(scene, room, state, { ...opts, framing })
+  return renderInteriorStill(scene, cam, {
+    width: opts.width ?? 3840,
+    height: opts.height ?? 2160,
+    exposure: opts.exposure,
+    environmentIntensity: opts.environmentIntensity,
+    postprocess: opts.postprocess,
+    lampIntensity: opts.lampIntensity,
+    lampReachM: opts.lampReachM,
+    ceilingLamps: opts.ceilingLamps,
+    // The floor crop must be THIS room's floor — a conference still shot
+    // from the corridor must not sample the corridor's parquet.
+    floorZoneId: room.zone.id,
+  })
+}
+
+/** Can this still be trusted to SHOW the room's floor finish? The purity bar
+ *  tracks `interiorStill`'s own `MIN_FLOOR_PURITY`. */
+function floorCheckOf(still: ReturnType<typeof renderInteriorStill>): RoomRender['floorCheck'] {
+  if (still.floorRectPurity < 0.95) return 'no-clean-floor'
+  if (still.floorRectLuma < 0.2 || still.floorRectLuma > 0.85) return 'floor-underexposed'
+  return 'ok'
+}
+
 /**
  * Render the four hero stills. The interior scene is built ONCE and all four
  * cameras shoot it, so the stills cannot disagree with each other about the
@@ -142,33 +181,33 @@ export async function renderRoomPack(state: DocState, opts: RoomPackOpts = {}): 
       const room = pickRoom(scene, spec, taken)
       if (!room) continue
       taken.add(room.zone.id)
-      const cam = placeRoomCamera(scene, room, state, { ...opts, framing: spec.framing })
-      const still = renderInteriorStill(scene, cam, {
-        width: opts.width ?? 3840,
-        height: opts.height ?? 2160,
-        exposure: opts.exposure,
-        environmentIntensity: opts.environmentIntensity,
-        postprocess: opts.postprocess,
-        lampIntensity: opts.lampIntensity,
-        lampReachM: opts.lampReachM,
-        ceilingLamps: opts.ceilingLamps,
-        // The floor crop must be THIS room's floor — a conference still shot
-        // from the corridor must not sample the corridor's parquet.
-        floorZoneId: room.zone.id,
-      })
-      const floorCheck: RoomRender['floorCheck'] =
-        still.floorRectPurity < 0.95
-          ? 'no-clean-floor'
-          : still.floorRectLuma < 0.2 || still.floorRectLuma > 0.85
-            ? 'floor-underexposed'
-            : 'ok'
+
+      // Shoot the spec's framing; if that camera cannot see the room's OWN
+      // floor cleanly, reframe and shoot again rather than publish a still that
+      // cannot evidence its finish. A pack whose renders do not agree with the
+      // takeoff is the defect — dropping the claim only hid it (D1).
+      let framing = spec.framing
+      let still = shoot(scene, room, state, opts, framing)
+      if (floorCheckOf(still) !== 'ok') {
+        const alt: RoomRenderSpec['framing'] = framing === 'wide' ? 'close' : 'wide'
+        const retry = shoot(scene, room, state, opts, alt)
+        // Only a shot that ACTUALLY evidences the floor is worth losing the
+        // spec's composition for. Trading the intended framing for a merely
+        // less-bad one buys nothing and produces a table-top close-up.
+        if (floorCheckOf(retry) === 'ok') {
+          still = retry
+          framing = alt
+        }
+      }
+      const cam = still.camera
       out.push({
         key: spec.key,
         title: spec.title,
         roomId: room.zone.id,
         roomLabel: room.zone.label,
-        floorMaterial: room.floorMaterialName,
-        floorCheck,
+        floorMaterial: FINISH_SPEC[room.finishKey].floor,
+        framing,
+        floorCheck: floorCheckOf(still),
         floorRect: still.floorRect,
         floorRectPurity: still.floorRectPurity,
         floorRectLuma: still.floorRectLuma,
@@ -200,18 +239,20 @@ export function roomRenderGroundTruth(
   name: string
   file: string
   roomId: number
-  floorMaterial?: string
+  floorMaterial: string
   floorRect: [number, number, number, number]
 }> {
   return pack.map((r) => ({
     name: r.key,
     file: `${dir}/${r.key}.png`,
     roomId: r.roomId,
-    // `floorMaterial` is the assertion "this still SHOWS that finish". Only
-    // stills that actually expose a clean, correctly-exposed patch of the
-    // room's own floor make it; the rest are published without the claim rather
-    // than with an unsupportable one (G6 then notes the skip and moves on).
-    ...(r.floorCheck === 'ok' ? { floorMaterial: r.floorMaterial } : {}),
+    // ALWAYS claimed, never conditional. `floorMaterial` is the assertion "this
+    // still shows the Inventory finish of room <roomId>", and G6 holds the pack
+    // to it. Omitting it when the shot was poor used to disable the gate's only
+    // render-to-model check from inside the artifact (D1); the honest response
+    // to a shot that cannot show its floor is to reframe it (see
+    // {@link renderRoomPack}), not to withdraw the claim.
+    floorMaterial: r.floorMaterial,
     floorRect: r.floorRect,
   }))
 }

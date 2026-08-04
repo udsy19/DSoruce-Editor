@@ -93,9 +93,10 @@ export interface StillOpts extends CameraPlacementOpts {
 export interface StillResult {
   canvas: HTMLCanvasElement
   camera: StillCamera
-  /** Fractional `(x0,y0,x1,y1)` crop of the frame that is ≥97 % floor pixels —
-   *  measured from a mask render, not guessed. This is what a render pack hands
-   *  gate G6 so its floor-material check samples floor and nothing else. */
+  /** Fractional `(x0,y0,x1,y1)` crop of the frame that is floor to
+   *  `MIN_FLOOR_PURITY` — measured from a mask render, not guessed. This is what
+   *  a render pack hands gate G6 so its floor-material check samples floor and
+   *  nothing else. */
   floorRect: [number, number, number, number]
   /** Share of `floorRect` that is genuinely floor (1.0 = every pixel). */
   floorRectPurity: number
@@ -120,6 +121,20 @@ const SOLID_SKIP = /glass|mullion|emissive/i
  * in — but it has to win by a real margin.
  */
 const INSIDE_BONUS = 1.5
+
+/**
+ * Fraction of the lower frame that must land DIRECTLY on the room's own floor
+ * before the still counts as able to evidence its finish.
+ *
+ * `INSIDE_BONUS` alone was not enough: a corridor camera that frames the whole
+ * of a small glazed room outscores every camera standing in it, and then the
+ * still shows the floor only through glass — where the mask (and gate G6's
+ * sample) cannot reach it. That is not a stylistic loss, it is the loss of the
+ * render↔takeoff cross-check the pack rests on, so it is decided BEFORE score:
+ * cameras that can show the floor are ranked among themselves, and the pretty
+ * corridor shot wins only when no camera anywhere can see the floor at all.
+ */
+const FLOOR_EVIDENCE_MIN = 0.15
 
 interface Candidate {
   x: number
@@ -385,7 +400,7 @@ export function placeRoomCamera(
 
   /** Validate one candidate and score it, or null if it must not be used. */
   let lastReject = ''
-  const evaluate = (c: Candidate): { cam: StillCamera; score: number } | null => {
+  const evaluate = (c: Candidate): { cam: StillCamera; score: number; floorSeen: number } | null => {
     const eye = new THREE.Vector3(c.x, eyeY, c.z)
     const dist = eye.distanceTo(target)
     if (dist < minDist) { lastReject = `dist ${dist.toFixed(2)}<${minDist.toFixed(2)}`; return null }
@@ -461,6 +476,7 @@ export function placeRoomCamera(
 
     return {
       score,
+      floorSeen,
       cam: {
         eye,
         target,
@@ -479,27 +495,39 @@ export function placeRoomCamera(
   // deliverable exists to make impossible, so it is not a matter of taste.
   const pools = candidateEyes(room, state, framing, scene.plate)
   if (typeof window !== 'undefined' && (window as any).DS_CAMERA_DEBUG) {
-    const rep = pools.inside.map((c) => {
+    const rep = (c: Candidate): string => {
       const r = evaluate(c)
-      return `${c.kind}(${c.x.toFixed(1)},${c.z.toFixed(1)})=${r ? r.score.toFixed(2) : 'REJ:' + (lastReject || '?')}`
-    })
-    console.warn(`cam ${room.zone.label} inside[${pools.inside.length}] ${rep.join(' ')}`)
+      return `${c.kind}(${c.x.toFixed(1)},${c.z.toFixed(1)})=` +
+        (r ? `${r.score.toFixed(2)}/floor${r.floorSeen.toFixed(2)}` : `REJ:${lastReject || '?'}`)
+    }
+    console.warn(`cam ${room.zone.label} inside[${pools.inside.length}] ${pools.inside.map(rep).join(' ')}`)
+    console.warn(`cam ${room.zone.label} outside[${pools.outside.length}] ${pools.outside.map(rep).join(' ')}`)
   }
   let best: StillCamera | null = null
   let bestScore = -Infinity
+  // Ranked separately, and preferred outright: see FLOOR_EVIDENCE_MIN.
+  let evidencing: StillCamera | null = null
+  let evidencingScore = -Infinity
   for (const [pool, bonus] of [
     [pools.inside, INSIDE_BONUS],
     [pools.outside, 0],
   ] as const) {
     for (const c of pool) {
       const r = evaluate(c)
-      if (r && r.score + bonus > bestScore) {
-        bestScore = r.score + bonus
+      if (!r) continue
+      const s = r.score + bonus
+      if (s > bestScore) {
+        bestScore = s
         best = r.cam
+      }
+      if (r.floorSeen >= FLOOR_EVIDENCE_MIN && s > evidencingScore) {
+        evidencingScore = s
+        evidencing = r.cam
       }
     }
   }
 
+  if (evidencing) return evidencing
   if (best) return best
   // Nothing survived (a tiny room packed with furniture). Fall back to the room
   // centre raised above the furniture — never inside a wall, just less flattering.
@@ -515,6 +543,20 @@ export function placeRoomCamera(
 // ── Floor mask → the honest floorRect ────────────────────────────────────────
 
 const MASK_W = 480
+
+/**
+ * How much of the offered crop must be the room's own floor before the still may
+ * offer it as evidence of that room's finish. High on purpose: the crop is
+ * published to gate G6 as "these pixels ARE the Inventory floor material", and a
+ * crop with a tenth of chair leg in it is a measurement of the chair as much as
+ * of the carpet. A room that cannot offer such a crop reports `no-clean-floor`
+ * and is counted as un-evidenced — see `roomRenders.floorCheckOf` and G6's
+ * `--min-evidenced` bar. Relaxing this to 0.90 was tried and reverted: it did
+ * not rescue the one room that needs it (a 5 × 4 m meeting room with eight
+ * chairs offers no clean patch at any threshold) and it measurably shrank the
+ * colour margin on the three rooms that pass.
+ */
+const MIN_FLOOR_PURITY = 0.97
 
 /** Largest mostly-floor rectangle in the lower half of the frame, from a mask
  *  render. Beats guessing a band: the crop is derived from the geometry that
@@ -542,7 +584,7 @@ function bestFloorRect(
   const box = (t: Int32Array | Float64Array, x0: number, y0: number, x1: number, y1: number) =>
     t[y1 * (w + 1) + x1] - t[y0 * (w + 1) + x1] - t[y1 * (w + 1) + x0] + t[y0 * (w + 1) + x0]
   const area = (x0: number, y0: number, x1: number, y1: number) => box(sum, x0, y0, x1, y1)
-  // A crop of floor that is 97 % floor but sits in the black shadow under a
+  // A crop that is pure floor but sits in the black shadow under a
   // table is still not a sample of the material: it reports the ambient, not the
   // finish (the reception's parquet measured S 0.09 there against 0.18–0.48 in
   // the open). Only a correctly-exposed patch may be offered for the check.
@@ -554,6 +596,8 @@ function bestFloorRect(
   // table, and a coarse grid that only offers symmetric wide bands will miss it
   // and fall back to sampling a desk top instead.
   const MIN_AREA_FRAC = 0.006 // ≥0.6 % of the frame, so the sample is not a sliver
+  const MIN_W_FRAC = 0.1
+  const MIN_H_FRAC = 0.05
   const minPx = MIN_AREA_FRAC * w * h
   let best: [number, number, number, number] = [0.05, 0.8, 0.95, 0.98]
   let bestPurity = 0
@@ -564,12 +608,12 @@ function bestFloorRect(
   let bestLuma = 0
 
   for (let fx0 = 0.02; fx0 <= 0.62; fx0 += 0.04) {
-    for (let fx1 = fx0 + 0.1; fx1 <= 0.985; fx1 += 0.04) {
+    for (let fx1 = fx0 + MIN_W_FRAC; fx1 <= 0.985; fx1 += 0.04) {
       const x0 = Math.round(fx0 * w)
       const x1 = Math.round(fx1 * w)
       if (x1 <= x0) continue
       for (let fy0 = 0.32; fy0 <= 0.93; fy0 += 0.03) {
-        for (let fy1 = fy0 + 0.05; fy1 <= Math.min(0.99, fy0 + 0.38); fy1 += 0.04) {
+        for (let fy1 = fy0 + MIN_H_FRAC; fy1 <= Math.min(0.99, fy0 + 0.38); fy1 += 0.04) {
           const y0 = Math.round(fy0 * h)
           const y1 = Math.round(fy1 * h)
           const px = (x1 - x0) * (y1 - y0)
@@ -581,7 +625,7 @@ function bestFloorRect(
             fallbackLuma = meanLuma
             fallback = [fx0, fy0, fx1, fy1]
           }
-          if (purity < 0.97 || px < minPx) continue
+          if (purity < MIN_FLOOR_PURITY || px < minPx) continue
           if (meanLuma < LUMA_LO || meanLuma > LUMA_HI) continue
           if (px > bestArea) {
             bestArea = px
@@ -593,7 +637,7 @@ function bestFloorRect(
       }
     }
   }
-  // No 97 %-pure crop of usable size exists — report the purest one found and
+  // No crop of usable size clears MIN_FLOOR_PURITY — report the purest one and
   // let the caller decide whether the still can carry a material cross-check.
   if (bestArea < 0) return { rect: fallback, purity: fallbackPurity, luma: fallbackLuma }
   return { rect: best, purity: bestPurity, luma: bestLuma }

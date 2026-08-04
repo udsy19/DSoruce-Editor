@@ -38,7 +38,7 @@ import type { WallSpan } from './wallTypes'
  *     equivalent field in TS at the core's own 0.15 m cell size, seeded from
  *     `circulation()`'s `cell_size` when one is supplied.
  *  2. **A route through it.** Dijkstra between semantic stops (reception →
- *     corridor → open space → conference) over a cost that *prefers width*, so
+ *     corridor → open space → hero bay) over a cost that *prefers width*, so
  *     the path lands on the corridor centreline rather than scraping doorframes.
  *     The result is simplified, splined (centripetal Catmull-Rom) and pushed
  *     back off obstacles — a spline through circulation-graph waypoints.
@@ -151,14 +151,14 @@ export interface WalkStop {
 }
 
 /** The resolved route: its stops plus the rooms they were resolved against, so
- *  the branding rig hangs its screens in the rooms the camera actually visits
- *  (picking "the largest conference room" independently gets a DIFFERENT room
- *  when a plan has four identical ones). */
+ *  the branding rig hangs its screens in the rooms the camera actually visits.
+ *  Re-resolving a room independently ("the largest meeting room") picks a
+ *  DIFFERENT one on a plan with four identical ones, and the screen then hangs
+ *  where nobody looks. */
 export interface WalkRoute {
   stops: WalkStop[]
   reception: InteriorRoom | null
   open: InteriorRoom | null
-  conference: InteriorRoom | null
 }
 
 export interface WalkPose {
@@ -887,23 +887,39 @@ function byAreaDesc(rooms: InteriorRoom[]): InteriorRoom[] {
 }
 
 /**
- * The brief's route, resolved against whatever the document actually contains:
+ * The route, resolved against whatever the document actually contains:
  * **outside reception → past its front → the main corridor → out into the open
- * floor → into the conference room → hero wide.**
+ * floor → a run through the desk field → a hero wide in the deepest open-plan
+ * bay, facing the perimeter glazing.**
  *
  * Every stop is snapped to the best free point near its ideal position, and the
  * connections between them are left to the router — so the route survives a
  * plan whose support rooms leave only a 0.9 m slot between the corridor and the
  * desks. Missing space types are skipped, never faked.
  *
- * One deliberate departure from the brief's wording: the camera does **not**
- * drive inside the reception. On a real test-fit the reception is a 4 × 3 m
- * glazed box with a table in it — measured free clearance there is 0.3–0.6 m,
- * so an eye at 1.6 m inside it films the underside of a wall. It is glass
- * fronted, so the take opens on it from the circulation side, which is exactly
- * how the reference pack shoots its own small rooms.
+ * Two deliberate departures, both forced by measured geometry:
+ *
+ * 1. The camera does **not** drive inside the reception. On a real test-fit the
+ *    reception is a 4 × 3 m glazed box with a table in it — measured free
+ *    clearance there is 0.3–0.6 m, so an eye at 1.6 m inside it films the
+ *    underside of a wall. It is glass fronted, so the take opens on it from the
+ *    circulation side.
+ * 2. The take does **not** end inside a meeting room. It used to, and that shot
+ *    was the weakest frame in the film: from inside a 5 × 4 m white box at
+ *    1.6 m with a 70° frame, three wall planes and the ceiling fill it whatever
+ *    the camera does — measured 0.815 mean luminance and 68 % of the frame flat
+ *    for the closing ten seconds. The reference closes exactly where this now
+ *    does — its last sampled frame is *"final open-plan bay, facing the opposite
+ *    window wall"* (`video-spec.json`) — because the open floor is the only
+ *    space on a test-fit plate deep enough to carry a wide: desk banks receding
+ *    to full-height glazing, with content the whole way to the vanishing point.
  */
-export function planWalkRoute(scene: InteriorScene, state: DocState, g: ClearanceGrid): WalkRoute {
+export function planWalkRoute(
+  scene: InteriorScene,
+  state: DocState,
+  g: ClearanceGrid,
+  hfovDeg = DEFAULT_HFOV,
+): WalkRoute {
   const rooms = scene.rooms
   const pick = (...keys: InteriorRoom['finishKey'][]) => {
     for (const k of keys) {
@@ -928,22 +944,41 @@ export function planWalkRoute(scene: InteriorScene, state: DocState, g: Clearanc
   const axis: Pt = horiz ? [1, 0] : [0, 1]
   const along = (p: Pt) => (horiz ? p[0] : p[1])
 
-  // ── The conference room to finish in: the furthest one, so the take crosses
-  //    the plate rather than hopping next door.
   const start0: Pt = reception ? [reception.center.x, reception.center.y] : onSpine([cb?.minX ?? 0, cb?.minY ?? 0])
-  const conference = byAreaDesc(rooms.filter((r) => r.finishKey === 'boardroom' || r.finishKey === 'conference'))
-    .filter((r) => zoneArea(r.zone.shape) >= 9)
-    .sort(
-      (a, b) =>
-        Math.hypot(b.center.x - start0[0], b.center.y - start0[1]) -
-        Math.hypot(a.center.x - start0[0], a.center.y - start0[1]),
-    )[0]
-  const confDoor = conference ? roomDoors(state, conference)[0] : undefined
-  const finish: Pt = conference
-    ? confDoor
-      ? onSpine(offDoor(conference, confDoor, -1.4))
-      : [conference.center.x, conference.center.y]
-    : [cb?.maxX ?? 0, cb?.maxY ?? 0]
+
+  // ── The hero bay: the deepest, furthest corner of the open floor. Everything
+  //    else on the route is laid out along the spine BETWEEN the reception and
+  //    the point on the spine below it, so resolving it first is what makes the
+  //    whole take aim at one shot instead of arriving at one.
+  const perp: Pt = horiz ? [0, 1] : [1, 0]
+  const spineAt: Pt = onSpine(start0)
+  const inOpen = open ? (x: number, y: number) => pointInZoneShape(open.zone.shape, x, y) : () => true
+  let heroAt: Pt
+  if (open) {
+    const ob = zoneBBox(open.zone.shape)
+    const lo: Pt = [ob.minX, ob.minY]
+    const hi: Pt = [ob.maxX, ob.maxY]
+    // The far end ALONG the spine (whichever end is further from the reception),
+    // held a fifth of the floor's length off the end wall so the shot looks
+    // down the length of the plan rather than into its end.
+    const farAlong =
+      Math.abs(along(hi) - along(start0)) >= Math.abs(along(lo) - along(start0)) ? along(hi) : along(lo)
+    const alongPos = farAlong + Math.sign(along(start0) - farAlong) * Math.abs(along(hi) - along(lo)) * 0.22
+    // ...and deep enough OFF the spine to be inside the desk field rather than
+    // on its edge; the perpendicular half-depth of the floor, capped.
+    const side =
+      Math.sign((open.center.x - start0[0]) * perp[0] + (open.center.y - start0[1]) * perp[1]) || 1
+    const depth = Math.min(9, Math.abs((horiz ? hi[1] - lo[1] : hi[0] - lo[0])) * 0.45)
+    const seed: Pt = horiz
+      ? [alongPos, spineAt[1] + side * depth]
+      : [spineAt[0] + side * depth, alongPos]
+    heroAt = bestFreePoint(g, seed[0], seed[1], 3.5, { preferOpen: true, accept: inOpen })
+  } else {
+    heroAt = snap([cb?.maxX ?? 0, cb?.maxY ?? 0], 2.2)
+  }
+  /** The spine point below the hero — the far end of the axis every other stop
+   *  is interpolated along. */
+  const finish: Pt = onSpine(heroAt)
 
   const stops: WalkStop[] = []
 
@@ -986,11 +1021,9 @@ export function planWalkRoute(scene: InteriorScene, state: DocState, g: Clearanc
   //      camera lands in a real aisle instead of a 0.6 m slot between two
   //      support rooms.
   if (open) {
-    const perp: Pt = horiz ? [0, 1] : [1, 0]
     const side = Math.sign(
       (open.center.x - head[0]) * perp[0] + (open.center.y - head[1]) * perp[1],
     ) || 1
-    const inOpen = (x: number, y: number) => pointInZoneShape(open.zone.shape, x, y)
     /** Step off the spine and take the widest point near the landing. Seeding a
      *  lateral offset and letting width decide is what lands the camera in a
      *  real desk aisle rather than in a 0.6 m slot between two support rooms. */
@@ -1006,10 +1039,12 @@ export function planWalkRoute(scene: InteriorScene, state: DocState, g: Clearanc
     // side-on down a corridor. With two, the leg BETWEEN them is a run through
     // the desk field, which is the shot the deliverable is actually for.
     const a = dip(0.44, 6.0, 4.6)
-    // `b` sits close to the far end of the spine on purpose: the leg a→b is then
-    // the run through the desk field, and the climb back to the corridor is
-    // short instead of a second crossing of the whole plate.
-    const b = dip(0.92, 6.0, 4.6)
+    // `b` stops SHORT of the hero bay (which sits at t≈1 by construction), so
+    // the leg a→b is the long run through the desk field and b→hero is a clean
+    // final approach. Pushed any further along the spine it lands on top of the
+    // hero and the take finishes by walking a metre BACKWARDS into its own last
+    // shot — measured at t = 0.92.
+    const b = dip(0.78, 6.0, 4.6)
     // Look on down the floor's long axis, deeper in — the desk banks then
     // recede toward the vanishing point instead of sitting side-on.
     const look = bestFreePoint(
@@ -1023,65 +1058,30 @@ export function planWalkRoute(scene: InteriorScene, state: DocState, g: Clearanc
     stops.push({ name: 'open-space-far', at: b, span: 5, slow: 0.95 })
   }
 
-  // ── 3–4. Into the conference room; the last pose is the hero wide.
-  if (conference) {
-    // The widest standing point INSIDE the room, not a blind step off the door:
-    // a meeting room is mostly table, and the free space is a 0.5 m ring around
-    // it. This lands the eye in the widest part of that ring.
-    const inRoom = (x: number, y: number) => pointInZoneShape(conference.zone.shape, x, y)
-    const seed: Pt = confDoor
-      ? offDoor(conference, confDoor, 1.7)
-      : [conference.center.x, conference.center.y]
-    const heroAt = bestFreePoint(g, seed[0], seed[1], 2.2, { preferOpen: true, accept: inRoom })
-    const from: Pt = confDoor ? [confDoor.x, confDoor.y] : heroAt
-    const wall = facingWall(conference, from, scene.plate)
-    // Aim between the room's identity wall (where its display hangs) and its
-    // perimeter wall: the frame then carries the branded screen on one side and
-    // the daylight on the other, instead of a full frame of plasterboard.
-    const b2 = conference.bbox
-    const edges: Pt[] = [
-      [(b2.minX + b2.maxX) / 2, b2.minY],
-      [(b2.minX + b2.maxX) / 2, b2.maxY],
-      [b2.minX, (b2.minY + b2.maxY) / 2],
-      [b2.maxX, (b2.minY + b2.maxY) / 2],
-    ]
-    let perim: Pt | null = null
-    let pd = 0.8
-    for (const e of edges) {
-      if (Math.hypot(e[0] - from[0], e[1] - from[1]) < 1.0) continue // the door's own wall
-      const d = distToPlate(scene.plate, e[0], e[1])
-      if (d < pd) {
-        pd = d
-        perim = e
-      }
-    }
-    // Weighted toward the display wall: the branded screen should sit inside
-    // the frame's left third, with the perimeter daylight opening the right.
-    const heroLook: Pt = perim
-      ? [wall.at[0] * 0.62 + perim[0] * 0.38, wall.at[1] * 0.62 + perim[1] * 0.38]
-      : wall.at
-    if (confDoor) {
-      stops.push({
-        name: 'conference-threshold',
-        at: snap(offDoor(conference, confDoor, -1.4), 1.0),
-        look: [conference.center.x, conference.center.y],
-        lookWeight: 0.75,
-        span: 3.5,
-        slow: 0.5,
-      })
-    }
-    stops.push({
-      name: 'conference-hero',
-      at: heroAt,
-      look: heroLook,
-      lookWeight: 1,
-      span: 4.5,
-      slow: 0.5,
-    })
-  }
+  // ── 3. The hero wide, deep in the open floor.
+  //
+  //      The direction is NOT authored by hand. `bestVista` scores every heading
+  //      on the same clearance/kind field the per-frame composition bias uses,
+  //      so the closing frame is the richest one available from that standing
+  //      point — depth, content crossed, and daylight at the end of the line —
+  //      rather than whichever wall a hand-picked look target happened to face.
+  //      It is a full-circle scan, so the camera can close looking back down the
+  //      floor if that is genuinely the better shot.
+  const heroYaw = bestVista(g, heroAt[0], heroAt[1], (hfovDeg * Math.PI) / 180)
+  stops.push({
+    name: 'open-hero',
+    at: heroAt,
+    look: [heroAt[0] + Math.cos(heroYaw) * 14, heroAt[1] + Math.sin(heroYaw) * 14],
+    // Not 1: the last second is a settle, and leaving the composition bias a
+    // tenth of the yaw lets it hold the frame off a desk return that the
+    // standing-point scan could not see from the exact stop centre.
+    lookWeight: 0.9,
+    span: 5.5,
+    slow: 0.6,
+  })
 
   if (stops.length < 2) throw new Error('walkthrough: the document has no reception/corridor/open space to walk')
-  return { stops, reception, open, conference: conference ?? null }
+  return { stops, reception, open }
 }
 
 // ── 3b. Composition: what is actually in the frame ───────────────────────────
@@ -1123,6 +1123,36 @@ function rayInterest(g: ClearanceGrid, x: number, y: number, theta: number): num
   const depth = Math.min(d, 16) / 16
   const surf = hit < 0 ? 0.5 : hit === CELL_GLASS ? 0.9 : hit === CELL_CORE ? 0.35 : 0
   return 0.4 * depth + 0.35 * Math.min(1, content / 2.5) + 0.25 * surf
+}
+
+/**
+ * The heading whose FRAME is worth standing still for: a full-circle scan of
+ * `rayInterest`, scored as the sum over the frame the heading would deliver.
+ *
+ * `frameLook` below solves a different problem — a bounded, per-frame, soft
+ * correction on top of a yaw the walk already has — and cannot be reused here:
+ * it fans only ±(hfov/2 + maxBias) around a base yaw, and there is no base yaw
+ * for a hero shot. This is the unbounded, once-per-route authoring form, and it
+ * shares the scoring function so the two never disagree about what is worth
+ * looking at.
+ */
+function bestVista(g: ClearanceGrid, x: number, y: number, hfovRad: number): number {
+  const step = (FAN_STEP_DEG * Math.PI) / 180
+  const n = Math.max(8, Math.round((2 * Math.PI) / step))
+  const v = new Float64Array(n)
+  for (let j = 0; j < n; j++) v[j] = rayInterest(g, x, y, (j * 2 * Math.PI) / n)
+  const half = Math.max(1, Math.round(hfovRad / 2 / ((2 * Math.PI) / n)))
+  let best = 0
+  let bs = -Infinity
+  for (let c = 0; c < n; c++) {
+    let acc = 0
+    for (let k = -half; k <= half; k++) acc += v[(c + k + n) % n]
+    if (acc > bs) {
+      bs = acc
+      best = c
+    }
+  }
+  return (best * 2 * Math.PI) / n
 }
 
 /** Is the straight sight line from a to b unobstructed at eye height? */
@@ -1646,10 +1676,10 @@ interface DisplayRig {
 }
 
 /**
- * Mount branded displays on the walls the camera will face: the reception's and
- * the conference room's far wall, plus the service core's flank in the open
- * floor. Screens are unlit (`MeshBasicMaterial`), which is what a powered
- * display looks like next to tone-mapped plasterboard.
+ * Mount branded displays on the walls the camera will face: the reception's far
+ * wall, and the service core's flank in the open floor. Screens are unlit
+ * (`MeshBasicMaterial`), which is what a powered display looks like next to
+ * tone-mapped plasterboard.
  */
 function addBrandedDisplays(
   scene: InteriorScene,
@@ -1692,13 +1722,26 @@ function addBrandedDisplays(
   }
 
   // The rooms the ROUTE resolved — a screen the camera never sees is not
-  // branding. `facingWall` is the SAME call the hero pose aims at, so the final
-  // frame is guaranteed to have the mark in it.
+  // branding, which is why this hangs nothing in the meeting rooms: the take no
+  // longer enters one, and their doors sit at the far corner of the corridor
+  // wall, so a display on the identity wall inside is not on any sight line a
+  // camera walking past the opening has. Two screens on the route, not three in
+  // the model.
   const named = new Map(route.stops.map((s) => [s.name, s] as const))
-  for (const room of [route.reception, route.conference]) {
-    if (!room) continue
+  if (route.reception) {
+    const room = route.reception
     const doors = roomDoors(state, room)
-    const from: Pt = doors[0] ? [doors[0].x, doors[0].y] : [room.center.x, room.bbox.maxY]
+    // `from` is where the CAMERA reads the room from, not the room's own door.
+    // The two are different walls on a plan whose doors sit in a corner: shot
+    // from the reception's stop the identity wall is the one dead ahead, while
+    // shot from the door it is the flank 40° off frame — measured, and it is
+    // why the mark used to sit half outside the opening frame.
+    const stop = named.get('outside-reception')
+    const from: Pt = stop
+      ? stop.at
+      : doors[0]
+        ? [doors[0].x, doors[0].y]
+        : [room.center.x, room.bbox.maxY]
     const wall = facingWall(room, from, scene.plate)
     const span = wall.nx !== 0 ? room.bbox.maxY - room.bbox.minY : room.bbox.maxX - room.bbox.minX
     mount(wall.at, wall.nx, wall.ny, Math.min(1.7, Math.max(0.9, span * 0.45)), 1.05)
@@ -1727,7 +1770,11 @@ function addBrandedDisplays(
         best = f
       }
     }
-    mount(best.at, best.nx, best.ny, 1.7, 1.15)
+    // 1.3 m, not 1.7: the route brushes this flank at 1.7 m, and a 1.7 m screen
+    // there subtends 53° of a 70° frame — measured 0.821 mean luminance at the
+    // closest frame, i.e. a white billboard, not a building. At 1.3 m it still
+    // reads from the aisle 3 m back and the pass stays a near-field anchor.
+    mount(best.at, best.nx, best.ny, 1.3, 1.15)
   }
 
   scene.root.add(group)
@@ -2018,7 +2065,7 @@ export async function renderWalkthrough(
     const mark = await brandMarkBitmap()
 
     progress(0, 1, 'route')
-    const route = planWalkRoute(scene, state, grid)
+    const route = planWalkRoute(scene, state, grid, hfovDeg)
     const stops = route.stops
     const { path, stopS } = splineThroughStops(grid, stops)
     // Displays go up AFTER the route is known, so every screen is on a wall the

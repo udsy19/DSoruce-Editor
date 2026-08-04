@@ -119,9 +119,19 @@ for (const [name, doc] of Object.entries(docs)) {
 await browser.close()
 
 // --- 4. write the artifacts ---------------------------------------------------
+/** Write via tmp+rename, exactly as deploy/packStore.ts publishes: an artifact
+ *  under its final name is always a COMPLETE artifact, so a gate (or a second
+ *  agent) reading `out/` while this driver runs can never sample a half-written
+ *  workbook or PNG. */
+const atomicWrite = (p, buf) => {
+  const tmp = `${p}.${process.pid}.tmp`
+  fs.writeFileSync(tmp, buf)
+  fs.renameSync(tmp, p)
+}
+
 const w = (p, b64) => {
   fs.mkdirSync(path.dirname(p), { recursive: true })
-  fs.writeFileSync(p, Buffer.from(b64, 'base64'))
+  atomicWrite(p, Buffer.from(b64, 'base64'))
 }
 
 function writeCase(dir, r, withThumbs) {

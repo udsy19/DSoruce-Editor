@@ -24,9 +24,10 @@ import { platePolygonFromWalls, type Pt } from '../util/clip'
  * A room's FLOOR material is not an art direction choice: it is derived from
  * {@link FINISH_SPEC} / {@link finishTypeFor} — the very same table the workbook's
  * Inventory sheet bills from (see `export/finishSchedule.ts`). `floorKeyForZone`
- * maps a zone to one of the qbiq vocabulary's TWO floor materials, and
- * {@link floorMaterialNameForZone} returns the exact Inventory material name. A
- * render therefore cannot show timber where the takeoff sold carpet.
+ * maps a zone to one of the qbiq vocabulary's TWO floor materials. The Inventory
+ * material NAME itself comes straight from `FINISH_SPEC` at the point of use
+ * (`export/roomRenders.ts`), so a render cannot show timber where the takeoff
+ * sold carpet — and G6 hard-fails if it ever does.
  *
  * ── What E and F consume ───────────────────────────────────────────────────
  *   const scene = buildInteriorScene(state)          // one THREE.Group
@@ -126,13 +127,6 @@ function albedoLight(k: QbiqMaterialKey, gain = LIGHT_GAIN): THREE.Color {
   return toAlbedo(MATERIALS[k].range[1], gain)
 }
 
-/** Inventory ("General" sheet) material name for each floor family — the
- *  palette's own field, so the workbook and the renders name it identically. */
-export const FLOOR_MATERIAL_NAME: Record<FloorMaterialKey, string> = {
-  herringbone_parquet: MATERIALS.herringbone_parquet.inventoryMaterialName,
-  light_gray_carpet: MATERIALS.light_gray_carpet.inventoryMaterialName,
-}
-
 /**
  * Collapse a {@link FinishKey}'s India-market floor spec onto the qbiq floor
  * vocabulary: anything soft is carpet, every hard floor (stone, timber, vinyl,
@@ -150,11 +144,6 @@ export function floorKeyForFinish(k: FinishKey): FloorMaterialKey {
 /** The floor family a zone renders — same derivation the Inventory row uses. */
 export function floorKeyForZone(z: DocZone): FloorMaterialKey {
   return floorKeyForFinish(finishTypeFor(z))
-}
-
-/** The Inventory floor-material NAME for a zone (`'Carpet Light Gray'`, …). */
-export function floorMaterialNameForZone(z: DocZone): string {
-  return FLOOR_MATERIAL_NAME[floorKeyForZone(z)]
 }
 
 // ── Procedural texture kit (module scope, shared, no network assets) ─────────
@@ -551,8 +540,6 @@ export interface InteriorRoom {
   zone: DocZone
   finishKey: FinishKey
   floorKey: FloorMaterialKey
-  /** The Inventory ("General" sheet) material name — G6 cross-checks this. */
-  floorMaterialName: string
   /** Area-weighted centre of the zone (plan m). */
   center: { x: number; y: number }
   bbox: { minX: number; minY: number; maxX: number; maxY: number }
@@ -795,7 +782,6 @@ export function buildInteriorScene(state: DocState, opts: InteriorSceneOpts = {}
       zone: z,
       finishKey,
       floorKey,
-      floorMaterialName: FLOOR_MATERIAL_NAME[floorKey],
       center,
       bbox: zoneBBox(z.shape),
       focus,

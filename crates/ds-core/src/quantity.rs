@@ -922,8 +922,13 @@ mod tests {
             (perim - 2.0 * (24.0 + 16.0)).abs() <= 0.01,
             "perimeter run must be exactly the plate perimeter, got {perim:.4} m"
         );
-        assert!((wall_len(&q, WallType::PerimeterWindows) - 64.0).abs() <= 0.01);
-        assert!((wall_len(&q, WallType::PerimeterWall) - 16.0).abs() <= 0.01);
+        // The three walls authored glazed stay exactly as authored (24+16+24 =
+        // 64 m) — `layout::glaze_facade` skips anything already glazed. The
+        // fourth was authored SOLID, so the generator models the office facade
+        // module on it: a 0.6 m pier at each end and a glazed band between,
+        // adding 16 − 1.2 = 14.8 m of window and leaving 1.2 m of solid return.
+        assert!((wall_len(&q, WallType::PerimeterWindows) - 78.8).abs() <= 0.01);
+        assert!((wall_len(&q, WallType::PerimeterWall) - 1.2).abs() <= 0.01);
 
         // The generator emits room shells, so interior partitions exist and the
         // keep-out (which gets no shell walls) contributes its 14 m perimeter.

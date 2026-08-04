@@ -70,7 +70,7 @@ export function drawFurnitureSymbol(ctx: CanvasRenderingContext2D, o: FurnitureO
 
   switch (o.category) {
     case 'Desk':
-      drawDesk(ctx, w, h, line, o.detail, lw, o.fill, o.seat)
+      drawDesk(ctx, w, h, line, o.detail, lw, o.fill)
       break
     case 'Chair':
       drawChair(ctx, w, h, line, o.detail, lw, o.seat)
@@ -80,7 +80,7 @@ export function drawFurnitureSymbol(ctx: CanvasRenderingContext2D, o: FurnitureO
     // footprint. Generated rooms stopped using this category in M1 — they are
     // real walls + Door + Table now (docs/design/testfit-pro-quality.md §2).
     case 'MeetingRoom':
-      drawTable(ctx, w, h, line, o.detail, lw, o.fill, o.seat)
+      drawTable(ctx, w, h, line, lw, o.fill)
       break
     case 'Furniture':
       drawCasework(ctx, w, h, line, o.detail, lw, o.fill)
@@ -109,10 +109,14 @@ export function drawFurnitureSymbol(ctx: CanvasRenderingContext2D, o: FurnitureO
 // Symbols
 // ---------------------------------------------------------------------------
 
-// Desk workstation: a solid worktop + monitor on the back edge + keyboard + a
-// task chair in front. "Back" is -y (top in local space), the user sits toward
-// +y. Detail scales with size so an overview-zoom desk still reads (worktop +
-// chair) instead of degrading to a hollow pill.
+// Desk workstation: a solid worktop + monitor on the back edge + keyboard.
+// "Back" is -y (top in local space), the user sits toward +y — which is the side
+// `layout::seat_desk_chairs` puts the desk's REAL `Chair` component on.
+//
+// NO IMPLIED SEAT. Every generated desk carries its own task chair as a real
+// component, drawn by `drawChair` and billed in the Furniture Inventory, so
+// drawing one here too would ink the same chair twice and — worse — make the
+// plan show seating the takeoff does not bill.
 function drawDesk(
   ctx: CanvasRenderingContext2D,
   w: number,
@@ -121,14 +125,12 @@ function drawDesk(
   detail: string,
   lw: number,
   fill?: string,
-  seatFill?: string,
 ): void {
   const L = -w / 2
   const T = -h / 2
-  const B = h / 2
 
-  // The chair sits in front and overhangs the worktop slightly, so the desk
-  // occupies the back ~68% of the footprint.
+  // The seated user's chair overhangs the worktop, so the desk itself occupies
+  // the back ~68% of the footprint (the chair component tucks into the rest).
   const deskB = T + h * 0.68
   const dR = Math.min(3, h * 0.08)
   if (fill) fillRoundRect(ctx, L, T, w, deskB - T, dR, fill)
@@ -157,23 +159,17 @@ function drawDesk(
   if (kbW > 12 && minDim > 22) {
     strokeRoundRect(ctx, -kbW / 2, deskB - kbH - h * 0.07, kbW, kbH, kbH * 0.4, detail, lw * 0.9)
   }
-
-  // Task chair in front, tucked under the worktop edge. Its backrest sits toward
-  // -y (against the desk), so it reads as "someone seated at this desk". The same
-  // contoured primitive as the standalone Chair keeps the plan coherent.
-  const seat = Math.min(w * 0.46, (B - deskB) * 1.5, h * 0.44)
-  if (seat > 4) {
-    // Centre the chair in the front band; a small overlap tucks its back under
-    // the worktop rather than floating a gap.
-    const cy = deskB + seat * 0.5 - seat * 0.12
-    taskChair(ctx, 0, cy, seat, line, detail, lw, seatFill, minDim > 22)
-  }
 }
 
 // Task chair top view: a contoured, oriented seat + backrest cushion (+ arms
-// where scale allows). Drawn via the shared `taskChair` primitive so a standalone
-// chair, a desk's tucked chair, and every seat around a conference table all read
-// as the same recognisable object. Backrest sits toward local -y ("faces" +y).
+// where scale allows). THE ONLY seat symbol in the plan — a workstation's chair,
+// a cabin's chair and every seat around a meeting table are all real `Chair`
+// components and all arrive here, so every seat you can see is a seat the
+// Furniture Inventory bills. Backrest sits toward local -y ("faces" +y), which
+// is the convention `layout.rs` orients every chair it emits to.
+// Layered — arms under the seat, seat cushion, then the backrest cushion on top
+// — so it reads as a real chair, not a wire outline. `seatFill` undefined
+// (passive reference furniture) draws outline-only so the piece recedes.
 function drawChair(
   ctx: CanvasRenderingContext2D,
   w: number,
@@ -184,67 +180,65 @@ function drawChair(
   seatFill?: string,
 ): void {
   const s = Math.min(w, h)
-  taskChair(ctx, 0, 0, s, line, detail, lw, seatFill, s > 24)
+  const arms = s > 24
+  const top = -s / 2
+  // Armrests: slim cushions flanking the seat (drawn first, so the seat overlaps).
+  if (arms) {
+    const armW = s * 0.13
+    const armH = s * 0.5
+    const armY = top + s * 0.24
+    const ax = s * 0.4 + armW * 0.5
+    for (const sgn of [-1, 1]) {
+      const x = sgn * ax - armW / 2
+      if (seatFill) fillRoundRect(ctx, x, armY, armW, armH, armW * 0.45, seatFill)
+      strokeRoundRect(ctx, x, armY, armW, armH, armW * 0.45, detail, lw * 0.9)
+    }
+  }
+  // Seat cushion — the rounded body the sitter rests on.
+  const seatW = s * 0.8
+  const seatH = s * 0.62
+  const seatY = top + s * 0.26
+  if (seatFill) fillRoundRect(ctx, -seatW / 2, seatY, seatW, seatH, seatH * 0.32, seatFill)
+  strokeRoundRect(ctx, -seatW / 2, seatY, seatW, seatH, seatH * 0.32, line, lw)
+  // Backrest cushion — a wider pill across the back, over the seat's top edge.
+  const brW = s * 0.92
+  const brH = s * 0.26
+  if (seatFill) fillRoundRect(ctx, -brW / 2, top, brW, brH, brH * 0.5, seatFill)
+  strokeRoundRect(ctx, -brW / 2, top, brW, brH, brH * 0.5, line, lw)
 }
 
-// Conference / meeting table: a solid table top (a racetrack/stadium for larger
-// elongated boardroom tables, a soft rounded-rect for small square ones) with
-// contoured task chairs evenly arranged around the perimeter, each facing the
-// table. Seat count scales with the table's dimensions.
+// Conference / meeting table: the table TOP alone — a racetrack/stadium for
+// larger elongated boardroom tables, a soft rounded-rect for small square ones.
+//
+// NO IMPLIED SEATING. This symbol used to ring itself with chairs pitched in
+// SCREEN pixels, which meant the plan and the room thumbnails drew ~8 chairs per
+// meeting room that no sheet could bill (the count existed only in the
+// renderer's transform, and nothing in the model matched it). Meeting, team,
+// boardroom and collaboration tables are now seated by real `Chair` components
+// from `layout::seat_around_table`, drawn by `drawChair` — so the seats on the
+// plan, the seats in the Furniture Inventory and the room's `Headcount` are the
+// same seats.
 function drawTable(
   ctx: CanvasRenderingContext2D,
   w: number,
   h: number,
   line: string,
-  detail: string,
   lw: number,
   fill?: string,
-  seatFill?: string,
 ): void {
-  // A chairs-gap ring around the top so seats sit clear of the footprint edge.
-  const inset = Math.min(w, h) * 0.17
-  const tw = w - inset * 2
-  const th = h - inset * 2
-  const longIsW = tw >= th
-  const longLen = longIsW ? tw : th
-  const shortLen = longIsW ? th : tw
+  // The top is drawn at the component's TRUE footprint. It used to be inset 17%
+  // to leave a ring for the implied chairs; with the seats gone that inset only
+  // under-drew the table and left the real chairs looking detached from it.
+  const tw = w
+  const th = h
+  const longLen = Math.max(tw, th)
+  const shortLen = Math.min(tw, th)
   // Racetrack ends when the table is large and clearly elongated (boardroom);
   // otherwise a gently rounded rectangle (small huddle / meeting table).
   const stadium = Math.min(w, h) > 34 && longLen / shortLen > 1.5
   const tR = stadium ? shortLen / 2 : Math.min(tw, th) * 0.22
   if (fill) fillRoundRect(ctx, -tw / 2, -th / 2, tw, th, tR, fill)
   strokeRoundRect(ctx, -tw / 2, -th / 2, tw, th, tR, line, lw)
-
-  // Seat size + count: pitch the long-side chairs ~26px apart, seat sized to the
-  // gap ring so it tucks against the table without overrunning the footprint.
-  const perSide = clampInt(Math.round(longLen / 26), 2, 4)
-  const cs = Math.min(inset * 1.2, (longLen / perSide) * 0.66)
-  if (cs <= 4) return
-  const arms = cs > 26
-  // Seat-centre distance from the table centre-line on each long edge (tucked in).
-  const longOff = shortLen / 2 + cs * 0.3
-  const endOff = longLen / 2 + cs * 0.3
-
-  for (let i = 0; i < perSide; i++) {
-    const t = ((i + 0.5) / perSide - 0.5) * longLen // position along the long axis
-    if (longIsW) {
-      seatAt(ctx, t, -longOff, cs, 0, line, detail, lw, seatFill, arms) // top edge
-      seatAt(ctx, t, longOff, cs, Math.PI, line, detail, lw, seatFill, arms) // bottom
-    } else {
-      seatAt(ctx, -longOff, t, cs, -Math.PI / 2, line, detail, lw, seatFill, arms) // left
-      seatAt(ctx, longOff, t, cs, Math.PI / 2, line, detail, lw, seatFill, arms) // right
-    }
-  }
-  // A head chair at each short end once the table is big enough to seat one.
-  if (shortLen > cs * 1.3) {
-    if (longIsW) {
-      seatAt(ctx, -endOff, 0, cs, -Math.PI / 2, line, detail, lw, seatFill, arms)
-      seatAt(ctx, endOff, 0, cs, Math.PI / 2, line, detail, lw, seatFill, arms)
-    } else {
-      seatAt(ctx, 0, -endOff, cs, 0, line, detail, lw, seatFill, arms)
-      seatAt(ctx, 0, endOff, cs, Math.PI, line, detail, lw, seatFill, arms)
-    }
-  }
 }
 
 // Door plan symbol: opening jambs + leaf shown open 90° + quarter swing arc.
@@ -425,70 +419,6 @@ function fillRoundRect(
   roundRectPath(ctx, x, y, w, h, r)
   ctx.fillStyle = fill
   ctx.fill()
-}
-
-// A contoured top-view task chair centred at (cx,cy) in the CURRENT transform,
-// sized `s` (seat footprint), with the backrest toward local -y (so it "faces"
-// +y). Layered — arms under the seat, seat cushion, then the backrest cushion on
-// top — so it reads as a real chair, not a wire outline. `seatFill` undefined
-// (passive reference furniture) draws outline-only so the piece recedes.
-function taskChair(
-  ctx: CanvasRenderingContext2D,
-  cx: number,
-  cy: number,
-  s: number,
-  line: string,
-  detail: string,
-  lw: number,
-  seatFill: string | undefined,
-  arms: boolean,
-): void {
-  const top = cy - s / 2
-  // Armrests: slim cushions flanking the seat (drawn first, so the seat overlaps).
-  if (arms) {
-    const armW = s * 0.13
-    const armH = s * 0.5
-    const armY = top + s * 0.24
-    const ax = s * 0.4 + armW * 0.5
-    for (const sgn of [-1, 1]) {
-      const x = cx + sgn * ax - armW / 2
-      if (seatFill) fillRoundRect(ctx, x, armY, armW, armH, armW * 0.45, seatFill)
-      strokeRoundRect(ctx, x, armY, armW, armH, armW * 0.45, detail, lw * 0.9)
-    }
-  }
-  // Seat cushion — the rounded body the sitter rests on.
-  const seatW = s * 0.8
-  const seatH = s * 0.62
-  const seatY = top + s * 0.26
-  if (seatFill) fillRoundRect(ctx, cx - seatW / 2, seatY, seatW, seatH, seatH * 0.32, seatFill)
-  strokeRoundRect(ctx, cx - seatW / 2, seatY, seatW, seatH, seatH * 0.32, line, lw)
-  // Backrest cushion — a wider pill across the back, over the seat's top edge.
-  const brW = s * 0.92
-  const brH = s * 0.26
-  if (seatFill) fillRoundRect(ctx, cx - brW / 2, top, brW, brH, brH * 0.5, seatFill)
-  strokeRoundRect(ctx, cx - brW / 2, top, brW, brH, brH * 0.5, line, lw)
-}
-
-// Place a task chair at (x,y) rotated by `angle` (so its backrest points outward,
-// away from a table). Kept cheap — a single save/rotate per seat, and tables are
-// few, so the whole plan still redraws in one frame.
-function seatAt(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  s: number,
-  angle: number,
-  line: string,
-  detail: string,
-  lw: number,
-  seatFill: string | undefined,
-  arms: boolean,
-): void {
-  ctx.save()
-  ctx.translate(x, y)
-  ctx.rotate(angle)
-  taskChair(ctx, 0, 0, s, line, detail, lw, seatFill, arms)
-  ctx.restore()
 }
 
 // Casework / credenza / storage (the neutral 'Furniture' catch-all): a tidy body

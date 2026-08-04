@@ -312,10 +312,14 @@ so the workbook, plan, renders, video and viewer cannot disagree.
 - [x] **One-action pack** — `export/deliverablePack.ts`: one click → xlsx + ground truth + plan + 4
   renders + mp4 + share link. Two sinks (server → `out/`, zip → download); in-browser H.264 via
   WebCodecs with a hand-written MP4 muxer (`export/mp4.ts`) when no GPU host is available.
-- Follow-ups (tracked in `reports/ORCHESTRATOR_LOG.md`): **Perimeter windows measures 0.00 m** where the
-  reference bills 125.47 m — no plate wall sets `glazing: true`, so facade runs bill as Perimeter wall;
-  fix belongs in the generator/importer. **Meeting rooms report headcount 0** until
-  `editor/furniture.ts` stops drawing implied seat glyphs (exact blocks in `reports/B1-3.md` §3).
+- [x] **Facade glazing + meeting-room seating** (`reports/K-1.md`, defects D4/D5/D8).
+  `layout::glaze_facade` models the facade as pier · glazed band · pier, so **Perimeter windows** bills
+  **123.20 m** (was 0.00; reference 125.47) and the plan draws the same run it bills.
+  `layout::seat_around_table` seats every meeting/team/board/collab table with REAL `Chair` components
+  and `editor/furniture.ts` drew its last implied seat, so meeting rooms report **headcount 8**, not 0.
+  `Document::zone_index_at` buckets by smallest containing zone, so identical rooms report identical
+  headcount (whole-plan 67 → 112).
+- Follow-ups (tracked in `reports/ORCHESTRATOR_LOG.md`):
   Tier-2 3D room thumbnails. `Conference_room` is the weakest still (5×4 m room, no camera solution).
 - [x] **Report cover branding + A/B/C differentiation** — client logo focal on the cover, project/address/
   floor laid out qbiq-style; per-alt accent chips + winner ribbons (shared `computeWinners` w/ the S7
