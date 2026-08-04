@@ -371,6 +371,37 @@ isolated furniture drags the boundary into space that is plausibly not the
 tenancy. It is small here; on a drawing containing a neighbouring suite it would
 not be.
 
+#### AMENDMENT — conflict resolved: the gate rule wins, wrap ships as rung 4
+
+**General principle, recorded because it will recur: when two pre-registered
+rules conflict, resolve by which rule's PREMISE survived the evidence — never by
+which licenses the outcome you want — and record the resolution as a visible
+amendment.**
+
+"Registered first" is a weak tiebreaker; temporal priority does not make a rule
+more correct. The actual resolution: the phantom-beat rule's premise was
+falsified. "Beat baseline's 0.463" assumed baseline was a legitimate comparator
+on that metric, and the containment gate then showed its 0.463 was *purchased by
+orphaning 21 desks*. **A bar set by a gate-failing candidate is not a bar.** The
+gate rule survived contact with the data; the phantom rule's foundation did not.
+
+Two supporting arguments for the same conclusion:
+
+1. **The error asymmetry runs the same direction as every threshold call in this
+   branch.** A too-large draft is visible and trimmable — the user sees the spur
+   and cuts it. A too-small draft silently excludes furniture from generation,
+   density and the takeoff, which is the silent-propagation failure this whole
+   branch exists to kill. Phantom 0.500 vs 0.463 is a slightly worse *visible*
+   draft; containment 0.985 vs 0.961 is fewer *invisible* losses. Since
+   everything below `traced-loop` is a draft the user confirms anyway, wrap's
+   phantom costs one moment of trimming while baseline's containment costs desks
+   that vanish from the numbers.
+2. **Wrap's 0.500 landed inside its own pre-registered range (0.40–0.55).** It is
+   not a bad result being excused; it is the predicted behaviour of an envelope
+   on a drawing whose true boundary genuinely is not in the file.
+
+The original tension, left in place as the record of how this was reached:
+
 #### A tension in the adoption criterion, surfaced rather than resolved
 
 Round 2 pre-registered "adoptable only if it clears the gate **and** beats
@@ -407,3 +438,20 @@ available at each drawing without either rung's weakness being able to fire.
 
 Every rung below `traced-loop` still reports `confidence: 'low'` under ADR 0002.
 The ladder improves the draft; it does not change what is asserted.
+
+### Known blind spots — recorded, deliberately not solved
+
+Both are mitigated by the draft-confirm step, and both get a future round with
+its own pre-registration **only if the calibration log shows they are common**.
+Do not build for them now.
+
+1. **The mixed case.** A drawing with a genuine re-entrant corner *and* an
+   orphaned furniture wing will fail rung 3 on containment, fall to rung 4, and
+   rung 4 will fill the corner. The user sees and cuts the filled corner. If the
+   log shows this is frequent, the future round is a hybrid — `partition-envelope`
+   unioned with wrap **only over the region rung 3 orphaned** — which would keep
+   concavity where walls define it and add area only where they do not.
+2. **The neighbouring-suite spur.** Furniture drawn in an adjacent tenancy drags
+   the boundary out; visible as a thin spur on the real plan's overlay. Nothing
+   in the drawing distinguishes a neighbour's desk from ours, so no geometric
+   rule can fix it — only the confirm step, or tenancy metadata we do not have.
