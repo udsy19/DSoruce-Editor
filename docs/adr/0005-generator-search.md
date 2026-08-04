@@ -334,3 +334,119 @@ Two things worth keeping from the round:
    "tune `cluster_cols`/`bench_pairs` when the program is capacity-bound" is a
    narrower, cheaper intervention that does not need a GA. Worth its own
    pre-registration if dense fit-outs matter commercially.
+
+## Follow-ups: the seed-insensitivity finding, banked
+
+### 1. Layouts DIFFER at equal score — Regenerate is not broken, but it is thin
+
+`sd = 0.00` on the yardstick did not distinguish "all seeds find the same plan"
+from "many different plans tie". Measured directly by hashing component
+positions of the winning layout across five seed windows:
+
+| window | best (yardstick) | winning seed | layout hash |
+|---|---|---|---|
+| 0 | 88.147 | 5 | `301dabf62918` |
+| 1000 | 88.146 | 1005 | `170c7cec58cc` |
+| 5000 | 88.146 | 5005 | `170c7cec58cc` |
+| 20000 | 88.147 | 20005 | `301dabf62918` |
+| 60000 | 88.147 | 60005 | `301dabf62918` |
+
+**Two distinct layouts at effectively identical scores (Δ 0.001).** So:
+
+- **Regenerate's premise holds** — sliding the window does produce a different
+  plan, not the same plan re-dressed. No fix to file.
+- **But diversity is thin**: five windows yield two plans, not five. The feature
+  delivers *some* variety, less than its affordance implies.
+- **Re-seeding's real value is diversity, which no metric in this branch
+  measured.** That is a footnote the null result needs: the incumbent was scored
+  only on best-score, and it may be earning its keep on a dimension the bake-off
+  never looked at. Candidate diversity — the A/B/C the user actually picks
+  among — is a genuine product dimension and currently unmeasured.
+
+Observed and not over-claimed: the winning seed is the 5th of its window in all
+five cases. Five samples is not enough to call that a pattern; noted for whoever
+looks next.
+
+### 2. The plateau is at ≤ 15 calls — the search can be cheaper
+
+Best-vs-calls on the primary fixture reaches its ceiling at **13 calls** and
+gains nothing over the next 38. The bench data confirms it is not a
+one-fixture artifact — baseline's yardstick score from 15 → 51 calls:
+
+| fixture | gain |
+|---|---|
+| real/standard, real/dense, real/pinned-rooms, lshape-concave, high-constraint | **+0.000** |
+| tilted-17deg | +0.010 |
+| small-90m2 | +0.170 |
+
+`autoGenerate`'s default (`maxIter 8`) spends **27 calls ≈ 0.9 s**; the ceiling is
+reached by 15 (≈ 0.5 s). **The default buys nothing measurable after ~13 calls.**
+
+**Recommended but NOT applied here, because of finding 1:** score plateaus at 15,
+but *diversity* may not, and diversity is the value the null suggests re-seeding
+is actually providing. Cutting the default without measuring layout diversity at
+each budget would optimise the metric we measured at the expense of the one we
+just discovered we do not. The measurement is cheap and the machinery exists;
+that is the next step, not a blind reduction.
+
+## The rules family — one failure mode, four faces
+
+Each was learned from a live mistake in this campaign, and they are the same
+error wearing different clothes: **something was read as evidence outside the
+conditions that made it evidence.**
+
+1. **Metric validity** (ADR 0004) — a metric is only readable as a score for a
+   candidate class it was defined over; otherwise UNDEFINED, not zero, not failed.
+   *From:* phantom for `column-grid`, hierarchy for `baseline`, totals across
+   differently-scoped engines.
+2. **Late metrics** (ADR 0004 amendment) — a metric added after candidates exist
+   is post-hoc: marked, given its own validity declaration at the moment of
+   addition, and ADVISORY until it survives a round it did not shape.
+   *From:* the accuracy metric fitted to the candidates' shapes.
+3. **Fixed yardstick** (this ADR) — **any process able to modify the objective
+   must be scored on a yardstick outside its reach.**
+   *From:* two search candidates mutating the weights `total` is computed from,
+   producing a false positive worth +6 to +9 points.
+4. **Provenance of evidence** (ADR 0003) — evidence must carry how it was
+   obtained; detection of the untrusted party fails open, so require positive
+   proof of the trusted one.
+   *From:* an automated confirm polluting the calibration log, and
+   `navigator.webdriver` failing to catch it.
+
+The fourth instance of the family will come. When it does, add it here rather
+than treating it as new.
+
+## Untested claim, routed with a trigger
+
+`hard-constraints` claimed zero code violations and that claim is **untested** —
+`violations()` returned 2 for every candidate including baseline, which measures
+nothing (see above). It is not resurrected here: it lost on score and its
+adoption question is moot.
+
+But the unresolved gate revealed something larger than one candidate. **The
+product claims NBC 2016-grounded generation and an ADA/IBC-grounded circulation
+score, and we currently have no metric able to verify a compliance claim.**
+`min_corridor_width` is a global occupancy-grid minimum including furniture pinch
+points — not corridor compliance as any code defines it.
+
+> **Trigger: before any production or marketing claim of code compliance, a
+> validated compliance metric must exist** — measuring corridor width as the code
+> defines it, not a grid minimum.
+
+Same species as "our IFC is viewer-grade": a product assertion whose truth is
+unmeasured. `hard-constraints`' claim is recorded as *untested-pending-that-metric*
+so that if the metric is ever built, its one question is an afternoon's work.
+
+## Branch 4b — deferred on its own evidence rule
+
+Tier 2 is empty (no `ANTHROPIC_API_KEY`) and tier 3 is empty (no live sessions
+yet). Building the validator now means building against tier 1 alone — hand-
+authored failures we imagined — which is exactly the trap the tier system was
+designed to avoid.
+
+> **Trigger: 4b opens when tier 2 has a first elicited batch (key present) or
+> tier 3 has its first live rows, whichever comes first.**
+
+Tier-3 capture shipped with this branch (`persist/proposalLog.ts`, DB v4), so the
+trigger is real rather than aspirational. Deferring a branch because its evidence
+does not exist yet is the discipline.

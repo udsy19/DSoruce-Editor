@@ -119,6 +119,11 @@ export const ADJUST_PROGRAM_TOOL = {
           type: 'integer',
           description: 'desks per cluster row — higher packs a denser open field (2–8)',
         },
+        bench_pairs: {
+          type: 'boolean',
+          description:
+            'back-to-back paired desk rows (bench desking). Pairing packs more seats into a capacity-bound plate; unpairing gives each row its own circulation. Measured to matter mainly when the program is capacity-bound (ADR 0005)',
+        },
         adjacency_emphasis: {
           type: 'number',
           description:

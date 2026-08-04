@@ -24,6 +24,15 @@ export interface ProgramDelta {
   meeting_rooms?: number
   target_corridor_m?: number
   cluster_cols?: number
+  /**
+   * Back-to-back paired desk rows. Added from branch 4a's one surviving finding
+   * (ADR 0005): a GA tuning `cluster_cols`/`bench_pairs` beat plain re-seeding by
+   * +1.73 on a capacity-bound program, and by nothing anywhere else. The gain is
+   * real but narrow, so it ships through the machinery that already exists —
+   * bounded deltas kept only on a FIXED-weight yardstick improvement — rather
+   * than as a search strategy on retainer.
+   */
+  bench_pairs?: boolean
   /** Adjacency scoring emphasis (0–1). */
   w_adjacency?: number
   /** Circulation / "walking place" scoring emphasis (0–1). */
@@ -42,6 +51,7 @@ const ACTIONABLE: (keyof ProgramDelta)[] = [
   'meeting_rooms',
   'target_corridor_m',
   'cluster_cols',
+  'bench_pairs',
   'w_adjacency',
   'w_circulation',
 ]
@@ -64,6 +74,9 @@ export function clampProgramDelta(raw: Record<string, unknown> | null | undefine
   if (Number.isFinite(corridor)) out.target_corridor_m = clamp(corridor, 0.9, 3.0)
   const cols = asInt(raw.cluster_cols)
   if (Number.isFinite(cols)) out.cluster_cols = clamp(cols, 2, 8)
+  // Boolean: accepted only when explicitly present, so an omitted field never
+  // silently flips desking mode.
+  if (typeof raw.bench_pairs === 'boolean') out.bench_pairs = raw.bench_pairs
   const adj = asNum(raw.adjacency_emphasis)
   if (Number.isFinite(adj)) out.w_adjacency = clamp(adj, 0, 1)
   const circ = asNum(raw.circulation_emphasis)
@@ -95,6 +108,7 @@ export function applyDelta(program: Program, delta: ProgramDelta): Program {
   if (delta.meeting_rooms !== undefined) p.meeting_rooms = delta.meeting_rooms
   if (delta.target_corridor_m !== undefined) p.target_corridor_m = delta.target_corridor_m
   if (delta.cluster_cols !== undefined) p.cluster_cols = delta.cluster_cols
+  if (delta.bench_pairs !== undefined) p.bench_pairs = delta.bench_pairs
   if (delta.w_adjacency !== undefined) p.w_adjacency = delta.w_adjacency
   if (delta.w_circulation !== undefined) p.w_circulation = delta.w_circulation
   return p
