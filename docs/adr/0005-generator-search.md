@@ -419,6 +419,16 @@ Each was learned from a live mistake in this campaign.
    actually spent 6, because an early-exit the config does not mention fired
    every time.
 
+5b. **Declared conditions must be the DOMINANT variables** (ADR 0006) — the
+   asset-shaped sibling of *config is not conduct*. **An asset-payload prediction
+   must declare format and channel selection alongside resolution, or it is not a
+   prediction about anything shippable.** Generally: checking *which variables
+   dominate* is part of writing a prediction, not a discovery made against it.
+   *From:* a `cc0-pbr` payload prediction that declared resolution (1–2K) and
+   delivery model, while format and channel selection moved the number **5×** —
+   more than the declared tier did. The prediction landed in range and the range
+   was **accidental**: it was satisfied by numbers it never constrained.
+
 6. **The instrument held the evidence** (ADR 0006) — **new measurement code is
    itself an untested candidate until something independent corroborates it. An
    indictment of an artifact must be verified against the ARTIFACT, not only
@@ -431,6 +441,12 @@ Each was learned from a live mistake in this campaign.
      no product identity, and derived a "self-defeating pricing" loop from it.
      Both attributes were present all along; the reader read `Name`. A five-minute
      look at the SPF would have shown `ObjectType` carrying the category.
+
+   And the rule applies to the people holding the instruments, not only the
+   code: the screenshot grid was blinded to protect the judge from expectation,
+   and the render half of branch 5 was **stopped rather than rushed** to protect
+   it from a degraded builder. Same recognition twice — *evidence quality is
+   bounded by instrument quality, and the humans and agents are instruments.*
 
    Worth recording that the second one was **ratified, not merely made**: the
    finding was called the round's sharpest *in the review*, and an issue was

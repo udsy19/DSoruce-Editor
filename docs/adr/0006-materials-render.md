@@ -281,8 +281,11 @@ alongside resolution, or it is not a prediction about anything shippable.
 ambientCG ships a **`.mtlx` MaterialX definition with every set**. The
 `materialx` candidate's premise — that MaterialX can be the schema under the
 bank — is therefore not something we would have to author; the assets already
-carry it. That does not decide the candidate, but it removes the cost I would
-have assumed for it.
+carry it.
+
+**This changes its COST side, not its verdict.** Authoring cost was assumed and is
+now zero. Round-trip fidelity through OBJ and IFC remains its only claim and the
+only thing that decides it.
 
 ### NOT RUN, and stated rather than implied
 
@@ -296,3 +299,54 @@ should start clean rather than be rushed onto the end of another.
 The blinded-grid protocol, the delivery-model rows and the falsification clauses
 stand unchanged and unrun. **No visual claim is made here, and no grid is sealed
 — there is no grid yet.**
+
+---
+
+## HANDOFF — the render half, for a fresh session
+
+**This ADR and its pre-registration are the CONTRACT.** Re-read them before
+writing any pipeline code. Do not re-derive conditions from memory; the declared
+conditions below are binding and were fixed before measurement.
+
+### Binding conditions (already declared, do not restate differently)
+
+- **Texture configuration: WebP q80, 3 maps (Color / NormalGL / Roughness),
+  1–2K.** This is the *measured shippable* configuration — 0.92 MB per material,
+  5.5 MB for six — and it is now the declared one. The library's native JPEG
+  all-maps form (10.4 MB/material, 62 MB for six) is what we do **not** ship, and
+  testing it would repeat the 8K mistake.
+- **Both delivery models measured**: bundled and fetched-on-demand.
+- **On-demand's displaced cost is already named and predicted** —
+  time-to-full-fidelity (≈TTFR bundled; TTFR + 1–4 s on-demand) and visible
+  pop-in at the fixed camera (no / **yes**). It must not win by omission.
+- **Frame time predicted within ±15 %** at 145 components, because textures cost
+  bandwidth and VRAM, not draw calls. Degradation beyond that ⇒ suspect texture
+  size or mipmapping, not material count.
+- **`materialx` is scored on round-trip fidelity only**, never on visuals.
+- **`blender-offline`** is unblocked by Part A and evaluated as a separate
+  deliverable path, not a viewer replacement.
+
+### Order of work
+
+1. Texture pipeline wired at the declared configuration.
+2. Both build configurations (bundled / on-demand).
+3. Objective metrics: TTFR · time-to-full-fidelity · pop-in at the fixed camera ·
+   frame time at 145 components.
+4. MaterialX round-trip through **OBJ and IFC** (the IFC side now has spaces and
+   quantities from Part A).
+5. Screenshot grid rendered, fixed camera / sun / document, **fixed-seed column
+   order**.
+6. **Grid sealed. Key file written separately. Neither opened.**
+
+### Stop condition
+
+Stop at the results table and the sealed grid. **The human unseals nothing until
+the pick is recorded.** No visual claim is made by the agent, in this session or
+the next.
+
+### State at handoff
+
+Part A complete and accepted (IfcSpace 29/29, reachable quantities 229/229, both
+regression guards holding, DATA-section determinism). Part B's payload half
+measured, with its prediction judged **under-specified rather than correct**.
+Render half: **nothing built, nothing claimed, no grid.**
