@@ -330,3 +330,80 @@ beats baseline's phantom; matching it is not enough to justify a fifth rung.
 - IoU above 0.90 on `rect-no-shell-only-partitions` ⇒ suspect a fixed outward
   margin fitting the fixture, not a working rung.
 - Any self-intersection ⇒ disqualified regardless.
+
+### Round 2 results
+
+| fixture | metric | predicted | actual | verdict |
+|---|---|---|---|---|
+| `lshape-shell-fragments` | IoU | 0.96 – 0.99 | **0.734** | **BELOW** |
+| `notched-shell-fragments` | IoU | 0.90 – 0.96 | 0.950 | in range |
+| `rect-no-shell-only-partitions` | IoU | 0.80 – 0.90 | **0.719** | **BELOW** |
+| `rect-regular-column-grid` | IoU | 0.80 – 0.90 | **0.650** | **BELOW** |
+| `real-furniture-plan` | containment | **≥ 0.98 (YES)** | **0.985** | **correct** |
+| `real-furniture-plan` | phantom | 0.40 – 0.55 | 0.500 | in range |
+
+**The gate prediction was right, and it is the only rung that passes both gates
+on the real plan** — containment 0.985 where baseline manages 0.961 and
+`partition-envelope` 0.762. The stated mechanism held: closing cannot extend past
+its input, so adding furniture put input in the orphaned region and the contour
+reached it.
+
+**The mechanism prediction for the shell-fragment fixtures was wrong, and that is
+the round's real finding.** "No change: furniture is inside the walls" predicted
+0.96–0.99 on `lshape-shell-fragments`; the actual is **0.734, down from
+`partition-envelope`'s 0.979**. The furniture field is a scattered point cloud
+with no concavity of its own, so closing over it **fills the re-entrant corner
+the walls correctly defined**. Wrapping furniture does not merely add area where
+furniture sits — it *destroys concavity*. The same effect costs it
+`rect-regular-column-grid` (0.650) and shows up even on clean fixtures, where
+`rect-clean` drops from a perfect 1.000 to 0.9835.
+
+So the two rungs have opposite and complementary weaknesses:
+
+| | shell fragments exist | no shell |
+|---|---|---|
+| `partition-envelope` | **0.979** — recovers the true boundary | fails containment (0.762 real) |
+| `partition-envelope-wrap` | 0.734 — fills concavity | **0.985 containment** |
+
+**The predicted "furniture outside the tenancy" failure mode is visible.** The
+real-plan overlay shows a thin spur protruding left from the envelope, where
+isolated furniture drags the boundary into space that is plausibly not the
+tenancy. It is small here; on a drawing containing a neighbouring suite it would
+not be.
+
+#### A tension in the adoption criterion, surfaced rather than resolved
+
+Round 2 pre-registered "adoptable only if it clears the gate **and** beats
+baseline's phantom (0.463)". It clears the gate and scores 0.500 — so by that
+sentence, not adoptable.
+
+But the gate rule from `6754e72` says *"a candidate must pass both gates before
+its phantom number means anything"*, and **baseline fails the containment gate**
+(0.961 < 0.98). Under that rule baseline's 0.463 is not a number wrap can be
+required to beat, because it was bought by orphaning 21 desks.
+
+The two rules disagree, and the disagreement was not visible until both had
+numbers. Recorded here rather than settled by picking the reading that licenses
+the outcome. **The gate rule should win** — it is the more fundamental of the two
+and was registered first — but that is a recommendation for the merge gate, not
+a decision taken here.
+
+### Recommended ladder (revised after round 2)
+
+`partition-envelope-wrap` is **not** a replacement for `partition-envelope`; it
+is a lower rung, because their weaknesses are complementary:
+
+1. `traced-loop`
+2. `column-grid` — both axes pass the IQR guard
+3. `partition-envelope` — contour contains ≥ 98 % of furniture
+4. `partition-envelope-wrap` — contour contains ≥ 98 % of furniture
+5. `grid-contour`
+6. `hull`
+
+Verified against the data: on `lshape-shell-fragments` rung 3 both wins (0.979)
+and passes containment, so rung 4 is never reached; on the real plan rung 3 fails
+containment (0.762) and rung 4 passes (0.985). The ordering takes the best
+available at each drawing without either rung's weakness being able to fire.
+
+Every rung below `traced-loop` still reports `confidence: 'low'` under ADR 0002.
+The ladder improves the draft; it does not change what is asserted.
