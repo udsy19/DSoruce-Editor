@@ -473,7 +473,73 @@ diversity carries the product is the open half.
 
 ### Results
 
-_Not yet run._
+**Q2 — do the three A/B/C cards differ from each other? YES, 3 of 3**, at every
+window and both budgets (scores 88.15 / 87.73 / 87.17). Strategy-side diversity
+carries the product; the cards the user picks among are genuinely different
+plans. No product finding here.
+
+**Q1 — does Regenerate change the card set? NO.** One distinct card set across
+four windows, at both budgets. Pooled across all windows × strategies: **3
+distinct plans out of 12** — and those 3 are exactly the 3 strategies.
+
+**This contradicts, and corrects, the earlier finding in this ADR.** The previous
+"layouts DIFFER at equal score (2 of 5)" was measured with a position hash, and
+that hash is too brittle to support a diversity claim — one chair moving reads as
+a new layout. Under the declared definition, different seed windows produce
+**equivalent** plans. The earlier conclusion is withdrawn; declaring the
+definition first is what surfaced the error.
+
+### The decision rule's premise was void — and the reason is the finding
+
+The rule said: *diversity@15 ≈ diversity@27 ⇒ cut the default to 15 and bank the
+speed-up.* Diversity is indeed equal. **But there is no speed-up to bank**, because
+the premise "the default spends 27 calls" is false.
+
+A faithful replay of `autoGenerate` **with production settings** (`maxIter: 18`,
+`target: 82`, early-exit ACTIVE — which benching correctly disabled but production
+does not):
+
+| configuration | calls | wall-clock |
+|---|---|---|
+| **production default (18, target 82)** | **6** | **129 ms** |
+| same, early-exit disabled | 57 | 1930 ms |
+| maxIter 4, target 82 | 6 | 106 ms |
+| Regenerate round 1 / 2 / 3 (maxIter 26 / 34 / 42) | **6 / 6 / 6** | ~107 ms each |
+
+**The search does not search.** `target: 82` is below what seed 1 of each strategy
+already scores (~87–90 raw), so every strategy exits after its first draw. Three
+generates plus three snapshot re-generates = 6 calls, and that number does not
+move whatever `maxIter` says.
+
+Three consequences:
+
+1. **No speed-up exists.** Cutting `maxIter` changes nothing; the earlier "free
+   0.4 s" claim in this ADR was reasoned from the benched configuration and is
+   withdrawn.
+2. **`maxIter` is dead configuration on this plate**, and `GenerateStep`'s
+   "grow the budget each Regenerate round" (`18 + round*8`) does nothing at all.
+3. **The bake-off's budgets did not match production.** 15/27/51 were derived
+   from `maxIter` 4/8/16 without checking what production actually spends — 6.
+   The null likely holds a fortiori (less search cannot beat more), but the
+   budgets were 2.5–8.5× reality, and that is my error to own: **I read a config
+   value as the spend instead of measuring the spend.** Same family as the rest —
+   evidence read outside the conditions that made it evidence.
+
+### Filed with a trigger, not fixed here
+
+> **The search effectively performs one draw per strategy.** Whether `target: 82`
+> is the right threshold is a product question — it trades exploration for
+> latency, currently at 129 ms with almost no exploration. Raising it (or making
+> it adaptive) would make `maxIter`, the Regenerate round-growth, and this whole
+> branch's budget axis mean something.
+>
+> **Trigger: revisit when candidate diversity becomes a product priority**, or
+> when a plate is found where seed 1 does *not* clear the target — the case where
+> today's behaviour silently degrades to a real search and the latency changes
+> under the user.
+
+Not fixed here because it is a deliberate latency/quality trade someone chose,
+and changing it is a product decision with a user-visible cost, not a bug fix.
 
 ## Untested claim, routed with a trigger
 
