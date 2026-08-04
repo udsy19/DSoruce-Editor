@@ -147,6 +147,55 @@ silently destroyed a lane's work. (Matches the known "worktree agent integration
 and committing stays with the orchestrator. **Do not run agents concurrently in one worktree again
 without either this prohibition up front or `isolation: "worktree"` per agent.**
 
+---
+
+## Cycles 3-6 — B3, D, B1 landed. Board 0/10 → 7/10.
+
+| Commit | Slice | Board |
+| --- | --- | --- |
+| `671a8b3` | B1 core quantities · B2 writer · C plan+thumbs | 0/10 |
+| `61ee354` | gates: resolve Playwright from `web/node_modules` | 0/10 |
+| `24f3d5e` | **B3 — the 12-sheet formula-wired workbook** | 6/10 |
+| `c369804` | D renders on a shared material theme · drop dead core API | 7/10 |
+| (pending) | B1 — task chairs (63 desks / 9 chairs → 63/72) | 7/10 |
+
+### The most important finding of the whole run
+**B3 rasterised the workbook, looked at it, and found the master plan rendering as a
+~19×3 px smudge — while G1–G5 were all PASSING.** Root cause in `workbook.ts`: the image
+extent was derived as `to.colOff − from.colOff`, true only when an anchor starts and ends in
+the SAME cell (the thumbnails). Across cells it omits every intervening column. Excel ignores
+the extent so it looked fine there; LibreOffice honours it. Orchestrator fixed it properly —
+cross-cell anchors size from intrinsic pixels (PNG IHDR / JPEG SOFn / GIF descriptor) — with a
+regression test pinning 9906000×7429500 EMU.
+**Lesson: keep "open it and LOOK at it" in every brief. A purely gate-driven run ships a smudge
+with a green board.**
+
+### Rulings issued this stretch
+- **`Editor::ground_truth_json` → DELETED, not reinstated.** B1's argument accepted: a second,
+  independently-computed room set would make G3 pass by *coincidence*. Today Inventory rows,
+  ground-truth rooms and plan labels all descend from one `planRoomList` call, so G3 passes by
+  *construction* — reinstating the core emitter would hand the gate its own answer to check
+  against. Key vocabulary preserved via `ground_truth_key_vocabulary_is_pinned`.
+- **Chairs fixed in `layout.rs`, not in the renderer.** D found 63 desks / 9 chairs. Adding seats
+  in the renderer would have put furniture in a still that isn't in the takeoff, breaking the
+  render↔QTO agreement the mission rests on. Fixed at source: Furniture Inventory 86 → 149 items.
+- **Conference-table seating deliberately NOT added.** `furniture.ts::drawTable` already draws a
+  ring of implied chairs pitched in screen pixels; emitting components would visibly double the
+  seating on the plan — trading a deliverable-2 regression for a deliverable-1 fix.
+
+### Open defects (tracked, not gate-blocking)
+1. **`Perimeter windows` = 0.00 m on all three cases; the reference bills 125.47 m.** Not a
+   classifier bug — no plate wall sets `glazing: true`, so facade runs correctly bill as
+   `Perimeter wall`. Fix is upstream in the generator/importer. A side-by-side reviewer WILL see this.
+2. **Meeting rooms report `headcount 0`.** Blocked on `furniture.ts` dropping its implied-seat
+   glyphs (exact blocks identified in `reports/B1-3.md` §3). Deferred until E/F land — it touches
+   `drawFurnitureSymbol`, which G4/G5 measure.
+3. **`real_building_plate_spreads_the_program` asserts a 150 ms debug wall-clock budget** and is
+   flaky under concurrent load (failed 3/4 baseline runs before any change). Should become a
+   non-timing assertion.
+4. `Conference_room` is the weakest still; the demo's 5×4 m meeting room cannot yield the
+   reference's corridor-through-glass shot.
+
 ### Known defect (deferred to final cleanup, not gate-blocking)
 `scripts/gates/lib/gen_spec_md.py:198` still narrates the seven writer gaps as open and cites the now
 -deleted `sheetXml`/`takeoffToXlsx` symbols. It is a spec-doc generator, **not invoked by

@@ -31,6 +31,7 @@ import {
   claudeComplete,
   bankFetch,
 } from './apiCore'
+import { handleShareApi, sharePageId } from './shareStore'
 
 const PORT = Number(process.env.PORT || 8790)
 const HOST = process.env.HOST || '127.0.0.1'
@@ -257,6 +258,26 @@ async function handlePlans(req: IncomingMessage, res: ServerResponse, pathname: 
 }
 
 // ---------------------------------------------------------------------------
+// /share/:id — the shareable web 3D viewer (deliverable 4). The /api/share
+// store handler is SHARED with the dev middleware in web/vite.config.ts
+// (./shareStore, one implementation); only the page differs, and here it is the
+// SPA build's second entry, dist/viewer.html. The viewer derives its id from
+// the URL and fetches /api/share/:id itself, so the HTML is served verbatim —
+// nothing is templated into it.
+
+async function handleSharePage(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const file = path.join(STATIC_DIR, 'viewer.html')
+  const stat = await fs.stat(file).catch(() => null)
+  if (!stat) return sendJson(res, 404, { error: 'Viewer not built (no dist/viewer.html?)' })
+  res.statusCode = 200
+  res.setHeader('content-type', MIME['.html'])
+  res.setHeader('cache-control', 'no-cache')
+  res.setHeader('content-length', String(stat.size))
+  if (req.method === 'HEAD') return void res.end()
+  await pipeline(createReadStream(file), res)
+}
+
+// ---------------------------------------------------------------------------
 // Static SPA from STATIC_DIR with fallback to index.html for client routes.
 
 const MIME: Record<string, string> = {
@@ -322,7 +343,11 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
   if (p === '/api/dwg') return handleDwg(req, res)
   if (p === '/api/bank' || p.startsWith('/api/bank/')) return handleBank(req, res, url)
   if (p === '/api/plans' || p.startsWith('/api/plans/')) return handlePlans(req, res, p)
+  if (p === '/api/share' || p.startsWith('/api/share/')) {
+    return handleShareApi(req, res, p.slice('/api/share'.length).replace(/^\//, ''), PLANS_DIR)
+  }
   if (p.startsWith('/api/')) return sendJson(res, 404, { error: 'Unknown API endpoint' })
+  if (sharePageId(p)) return handleSharePage(req, res)
   return handleStatic(req, res, p)
 }
 

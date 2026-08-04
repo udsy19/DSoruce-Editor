@@ -36,6 +36,7 @@ import { exportPNG, triggerDownload } from './export/png'
 import { exportPlanPDF, exportDrawingPDF } from './export/pdf'
 import { downloadIFC } from './export/ifc'
 import { downloadOBJ } from './export/obj'
+import { publishShareLink, downloadPlanGlb } from './export/share'
 import { exportSpacePlanningReport } from './export/report'
 import { exportDrawingSet } from './export/sheetSet'
 import { zoneAtPoint } from './export/takeoff'
@@ -1399,6 +1400,10 @@ function ExportMenu({
   onOpenSheets: () => void
 }) {
   const [open, setOpen] = useState(false)
+  /** "Copy share link" feedback — the action publishes, so it needs a state. */
+  const [share, setShare] = useState<{ phase: 'idle' | 'busy' | 'done' | 'saved' | 'error'; text?: string }>({
+    phase: 'idle',
+  })
   const importMode = mode === 'import' && !!drawing
   // Real project identity → exporter meta; falls back to the legacy placeholder
   // on the dev #/editor route (no project). (workflow.md §2 replaces App.tsx's
@@ -1479,6 +1484,36 @@ function ExportMenu({
     if (!ec) return
     downloadOBJ(ec.getState(), 'dsource-plan') // emits .obj + .mtl
     setOpen(false)
+  }
+
+  /**
+   * Publish the plan as a shareable web 3D link — DSource's answer to qbiq's
+   * Autodesk-APS model link, on our own stack. The scene is the render
+   * pipeline's own (`buildInteriorScene`), serialized to glTF-binary and PUT on
+   * the server's share store; the client opens `/share/<id>` and orbits or walks
+   * it. Deployments without a store (Vercel, no disk) hand the designer the
+   * .glb itself rather than a link that would 404.
+   */
+  const copyShareLink = async () => {
+    if (!ec || share.phase === 'busy') return
+    setShare({ phase: 'busy' })
+    try {
+      const link = await publishShareLink(ec.getState(), { name: projectName })
+      let copied = true
+      try {
+        await navigator.clipboard.writeText(link.url)
+      } catch {
+        copied = false // clipboard blocked (insecure origin / permission)
+      }
+      setShare({ phase: 'done', text: copied ? link.url : `Open ${link.url}` })
+    } catch {
+      try {
+        await downloadPlanGlb(ec.getState(), `${projectName.replace(/\s+/g, '-')}.glb`)
+        setShare({ phase: 'saved', text: 'No share server here — .glb downloaded' })
+      } catch (e2) {
+        setShare({ phase: 'error', text: e2 instanceof Error ? e2.message : String(e2) })
+      }
+    }
   }
 
   // qbiq-style multi-page report over the last A/B/C candidates (falls back to
@@ -1655,9 +1690,28 @@ function ExportMenu({
           <div className="export-item disabled" aria-disabled="true">
             RVT <span className="hint">via IFC</span>
           </div>
-          <div className="export-item disabled" aria-disabled="true">
-            Share… <span className="hint">soon</span>
-          </div>
+          {!importMode && (
+            <div
+              className={`export-item${share.phase === 'busy' ? ' disabled' : ''}`}
+              role="menuitem"
+              onClick={() => void copyShareLink()}
+              data-testid="export-share-link"
+              title={share.text ?? 'Publish this plan to a web 3D viewer and copy the link'}
+            >
+              {share.phase === 'busy'
+                ? 'Publishing 3D model…'
+                : share.phase === 'done'
+                  ? 'Share link copied ✓'
+                  : share.phase === 'saved'
+                    ? 'Model downloaded'
+                    : share.phase === 'error'
+                      ? 'Share failed'
+                      : 'Copy share link'}
+              <span className="hint">
+                {share.phase === 'idle' || share.phase === 'busy' ? 'web 3D viewer' : (share.text ?? '')}
+              </span>
+            </div>
+          )}
         </div>
       )}
     </div>

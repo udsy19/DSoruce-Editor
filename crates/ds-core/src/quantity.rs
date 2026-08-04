@@ -353,18 +353,31 @@ fn keepout_perimeter(k: &KeepOut) -> f64 {
     2.0 * (k.w.abs() + k.h.abs())
 }
 
-/// Measured seats in a zone: non-reference `Desk` + `Chair` components whose
-/// center falls inside it. The generator places desks *without* a chair
-/// component and meeting tables *with* chairs, so the two never double-count.
+/// Measured seats in a zone, from placed furniture only.
+///
+/// A **workstation** is one desk *plus* its task chair and seats ONE person, so a
+/// zone that holds desks is counted by its desks — counting chairs too would
+/// double every open-plan headcount the moment `layout::seat_desk_chairs` seats
+/// the field. A zone with no desks (a meeting room, a breakout) is counted by its
+/// chairs, which are then the only seats present. Reference (imported) furniture
+/// never counts, exactly as in `metrics().workstations`.
 fn headcount(z: &Zone, components: &[Component]) -> u32 {
-    z.component_ids
-        .iter()
-        .filter(|&&cid| {
-            components.iter().any(|c| {
-                c.id == cid && !c.reference && (c.category == "Desk" || c.category == "Chair")
+    let count = |cat: &str| {
+        z.component_ids
+            .iter()
+            .filter(|&&cid| {
+                components
+                    .iter()
+                    .any(|c| c.id == cid && !c.reference && c.category == cat)
             })
-        })
-        .count() as u32
+            .count() as u32
+    };
+    let desks = count("Desk");
+    if desks > 0 {
+        desks
+    } else {
+        count("Chair")
+    }
 }
 
 /// Human-readable `ZoneType`, used as the workbook's "Space Type".

@@ -814,6 +814,19 @@ const DOOR_JAMB: f64 = 0.15;
 /// headroom over the evaluator's 0.15 m cells).
 const TABLE_CLEAR: f64 = 0.95;
 
+/// Task-chair footprint (m). Matches the seats `furnish_room` already emits, so
+/// every `Chair` in the document is one recognisable object at one size.
+const CHAIR_SIZE: f64 = 0.5;
+/// How far a seated chair projects BEYOND its desk's near edge (m). A bench pair
+/// shares one `desk_clearance_m` aisle between two chair backs, so the projection
+/// is capped at `(clear − CHAIR_AISLE_KEEP) / 2` and floored so the seat never
+/// vanishes entirely under the worktop.
+const CHAIR_PROJECT: f64 = 0.35;
+/// Walkable gap (m) preserved between two chair backs sharing an aisle.
+const CHAIR_AISLE_KEEP: f64 = 0.2;
+/// Smallest projection (m) worth drawing — below this the chair is fully tucked.
+const CHAIR_PROJECT_MIN: f64 = 0.05;
+
 // ---- M4: drawn circulation (spec §3) ----
 
 /// Primary spine width (m): NBC 2016 corridor minimum 1.5 m; planning guidance
@@ -1114,6 +1127,127 @@ fn furnish_room(doc: &mut Document, cx: f64, cy: f64, w: f64, h: f64, side: Corr
             }
         }
         RoomFurniture::Empty => {}
+    }
+}
+
+/// Seat ONE task chair at every generated `Desk` — the workstation's other half.
+///
+/// Runs as a POST-PASS over the finished layout rather than inside the packer:
+/// desk placement stays byte-identical (desk counts, determinism and every
+/// `LayoutScore` term are unaffected), and the seating rule lives in one place
+/// regardless of which packer — axis-aligned `pack_desks` or `pack_desks_oriented`
+/// — placed the desk.
+///
+/// **Which side.** A desk's user sits on its local **+y** side: the monitor is on
+/// the −y back edge and `web/src/editor/furniture.ts::drawDesk` states "the user
+/// sits toward +y". Bench pairs butt their two desks together with
+/// `SPINE_GAP == 0`, so for a paired desk that side is solid desk and the seat
+/// falls back to −y — the outer aisle, and the only place a person can physically
+/// sit in a back-to-back run. Trying +y then −y therefore seats BOTH the paired
+/// and the single-row regimes correctly without this pass knowing which one ran.
+///
+/// **Tuck.** The chair overlaps its own desk and projects `CHAIR_PROJECT` into the
+/// aisle, capped so two chairs sharing one `clear` aisle keep `CHAIR_AISLE_KEEP`
+/// of walkable floor between their backs. Candidates are rejected if they leave
+/// the plate, foul an interior wall, or touch ANY component other than their own
+/// desk, so a desk pinned against architecture keeps a fully-tucked seat and a
+/// desk with no room at all gets none — never an overlapping one.
+///
+/// Chairs are deliberately NOT added to the packer's obstacle list and are NOT
+/// blocking in the circulation raster (see `circulation::rasterize_components`):
+/// a task chair is loose furniture that tucks away, not fixed construction, so it
+/// cannot narrow a code-measured clear width.
+fn seat_desk_chairs(
+    doc: &mut Document,
+    plate: Option<&[Point]>,
+    iwalls: &[(Point, Point, f64)],
+    clear: f64,
+) {
+    // Two chair backs share one aisle in a bench run, so each may claim at most
+    // half of it less the walkable keep.
+    let project = CHAIR_PROJECT
+        .min(((clear - CHAIR_AISLE_KEEP) / 2.0).max(CHAIR_PROJECT_MIN))
+        .max(CHAIR_PROJECT_MIN);
+    let half_chair = CHAIR_SIZE / 2.0;
+
+    // Every existing component as a world AABB, so a candidate seat can be tested
+    // against all of them at once. Rebuilt per desk only in the sense that the
+    // desk's own entry is skipped by index.
+    let boxes: Vec<(f64, f64, f64, f64)> = doc
+        .components
+        .iter()
+        .map(|c| {
+            let (ww, wh) = world_extents(c.w, c.h, c.rotation);
+            (c.x, c.y, ww, wh)
+        })
+        .collect();
+
+    let desks: Vec<usize> = (0..doc.components.len())
+        .filter(|&i| doc.components[i].category == "Desk" && !doc.components[i].reference)
+        .collect();
+
+    // Seats decided first, pushed after — `push_component` borrows `doc` mutably.
+    let mut seats: Vec<(f64, f64, f64)> = Vec::new();
+    // Chair AABBs already committed in this pass, so two seats can never collide.
+    let mut placed: Vec<(f64, f64, f64, f64)> = Vec::new();
+
+    for &di in &desks {
+        let d = &doc.components[di];
+        // R(θ)·(0,1) — the desk's local +y in world space (the user's side).
+        let (s, c) = d.rotation.sin_cos();
+        let (ux, uy) = (-s, c);
+        let half_depth = d.h / 2.0;
+        // An existing user-placed/frozen chair already at this desk: don't add a
+        // second one (a Confirmed chair survives `keep_confirmed` regeneration).
+        let already = doc.components.iter().enumerate().any(|(j, o)| {
+            j != di
+                && o.category == "Chair"
+                && (o.x - d.x).abs() < d.w
+                && (o.y - d.y).abs() < d.h + CHAIR_SIZE
+        });
+        if already {
+            continue;
+        }
+
+        let mut seated = false;
+        'sides: for side in [1.0f64, -1.0] {
+            // Chair faces its desk: on the +y side it looks back along −y (rot+π);
+            // on the −y side its own +y already points at the worktop (rot).
+            let rot = if side > 0.0 {
+                d.rotation + std::f64::consts::PI
+            } else {
+                d.rotation
+            };
+            for proj in [project, project * 0.5, CHAIR_PROJECT_MIN] {
+                let dist = half_depth + proj - half_chair;
+                let cx = snap_module(d.x + side * ux * dist);
+                let cy = snap_module(d.y + side * uy * dist);
+                let (cw, ch) = world_extents(CHAIR_SIZE, CHAIR_SIZE, rot);
+                if !slot_fits_plate(plate, cx, cy, cw, ch, 0.0)
+                    || !slot_clears_walls(iwalls, cx, cy, cw, ch)
+                    || footprint_overlaps(&placed, cx, cy, cw, ch, -1e-6)
+                {
+                    continue;
+                }
+                // Free of every component except the desk it belongs to.
+                let fouls = boxes
+                    .iter()
+                    .enumerate()
+                    .any(|(j, &b)| j != di && footprint_overlaps(&[b], cx, cy, cw, ch, -1e-6));
+                if fouls {
+                    continue;
+                }
+                seats.push((cx, cy, rot));
+                placed.push((cx, cy, cw, ch));
+                seated = true;
+                break 'sides;
+            }
+        }
+        let _ = seated;
+    }
+
+    for (x, y, rot) in seats {
+        push_component(doc, "Chair", x, y, CHAIR_SIZE, CHAIR_SIZE, rot);
     }
 }
 
@@ -1951,6 +2085,10 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
             fill_untyped_as_circulation(doc, poly);
         }
     }
+
+    // Seat every generated desk. Last, so it sees the final desk set (including
+    // the cross-region top-up pass) and so desk placement above is untouched.
+    seat_desk_chairs(doc, plate.as_deref(), &iwalls, clear);
 
     // Fill each zone's component_ids by point-in-zone on component centers.
     doc.reassign_components();
@@ -5177,7 +5315,20 @@ mod tests {
             .find(|z| z.zone_type == ZoneType::Workspace)
             .expect("a workspace zone");
         let desks = doc.components.iter().filter(|c| c.category == "Desk").count();
-        assert_eq!(ws.component_ids.len(), desks, "all desks in workspace");
+        // Count DESKS among the workspace's members: since `seat_desk_chairs` the
+        // zone also holds each desk's task chair, so the raw member count is
+        // desks + chairs. The invariant under test is "every desk is in the
+        // Workspace zone", not "the zone holds nothing else".
+        let ws_desks = ws
+            .component_ids
+            .iter()
+            .filter(|&&cid| {
+                doc.components
+                    .iter()
+                    .any(|c| c.id == cid && c.category == "Desk")
+            })
+            .count();
+        assert_eq!(ws_desks, desks, "all desks in workspace");
     }
 
     #[test]
@@ -5278,9 +5429,11 @@ mod tests {
                 "frozen desk moved"
             );
             assert_eq!(kept.decision, DecisionState::Confirmed);
-            // No other component overlaps this frozen footprint.
+            // No other component overlaps this frozen footprint — except the task
+            // chair `seat_desk_chairs` seats AT it, which tucks under the worktop
+            // by design (same exemption as `assert_no_overlaps`).
             for c in &doc.components {
-                if c.id == *id {
+                if c.id == *id || c.category == "Chair" {
                     continue;
                 }
                 let overlaps = (c.x - x).abs() < (c.w + program.desk_w) / 2.0
@@ -5909,14 +6062,206 @@ mod tests {
             && (a.y - b.y).abs() < (ah + bh) / 2.0 - 1e-6
     }
 
+    /// A worksurface a task chair is allowed to tuck under.
+    fn is_worksurface(c: &crate::model::Component) -> bool {
+        c.category == "Desk" || c.category == "Table"
+    }
+
+    /// **Every generated desk carries its task chair.** A takeoff that bills 63
+    /// desks and 9 chairs is simply wrong for an office fit-out — chairs flow into
+    /// `Furniture Inventory`, its Summary, the Inventory sheet's "Furniture
+    /// Elements" string and the cost model — and a 3D still of an unseated desk
+    /// run is the visible half of the same bug. Asserted as a strict 1:1 matching
+    /// (each desk claims its OWN chair, so N desks sharing one seat cannot pass),
+    /// with the chair adjacent to its desk, no chair colliding with another, and
+    /// every seat inside the plate.
+    fn assert_chairs_are_seated(doc: &Document, poly: &[Point], ctx: &str) {
+        let desks: Vec<&crate::model::Component> = doc
+            .components
+            .iter()
+            .filter(|c| c.category == "Desk" && !c.reference)
+            .collect();
+        let chairs: Vec<&crate::model::Component> =
+            doc.components.iter().filter(|c| c.category == "Chair").collect();
+        assert!(
+            chairs.len() >= desks.len(),
+            "{ctx}: {} desks but only {} chairs",
+            desks.len(),
+            chairs.len()
+        );
+
+        // Strict matching: each desk consumes a distinct adjacent chair.
+        let mut used = vec![false; chairs.len()];
+        for d in &desks {
+            // Centre-to-centre reach of a seated chair: half the desk depth, plus
+            // the projection, less the chair's own half depth — plus one module
+            // for the coordinate snap (and, on the oriented packer, its rotation).
+            let reach = d.h / 2.0 + CHAIR_PROJECT + MODULE;
+            let pick = (0..chairs.len())
+                .filter(|&k| !used[k])
+                .filter(|&k| {
+                    let c = chairs[k];
+                    (c.x - d.x).hypot(c.y - d.y) <= reach + 1e-6
+                })
+                .min_by(|&a, &b| {
+                    let da = (chairs[a].x - d.x).hypot(chairs[a].y - d.y);
+                    let db = (chairs[b].x - d.x).hypot(chairs[b].y - d.y);
+                    da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
+                });
+            let k = pick.unwrap_or_else(|| {
+                panic!("{ctx}: {} has no task chair within {reach:.2} m", d.label)
+            });
+            used[k] = true;
+        }
+
+        // ...and no desk is DOUBLE-seated. Every chair sitting within reach of any
+        // desk must be one of the matched seats, so a second pass (or a
+        // `keep_confirmed` regenerate over already-seated desks) cannot quietly
+        // stack a spare chair at a workstation. Room seating lives behind
+        // partitions, well beyond `reach` of any desk, so it is not counted here.
+        let near_a_desk = chairs
+            .iter()
+            .filter(|c| {
+                desks
+                    .iter()
+                    .any(|d| (c.x - d.x).hypot(c.y - d.y) <= d.h / 2.0 + CHAIR_PROJECT + MODULE + 1e-6)
+            })
+            .count();
+        assert_eq!(
+            near_a_desk,
+            desks.len(),
+            "{ctx}: {} chairs sit at {} desks — a desk is double-seated",
+            near_a_desk,
+            desks.len()
+        );
+
+        // Seats never collide with each other, and never escape the plate.
+        for i in 0..chairs.len() {
+            assert!(
+                footprint_in_plate(chairs[i], poly),
+                "{ctx}: {} escapes the plate",
+                chairs[i].label
+            );
+            for j in (i + 1)..chairs.len() {
+                assert!(
+                    !footprints_overlap(chairs[i], chairs[j]),
+                    "{ctx}: {} overlaps {}",
+                    chairs[i].label,
+                    chairs[j].label
+                );
+            }
+        }
+    }
+
+    /// The seating pass, across the three packing regimes (single rectangular
+    /// region, multi-wing decomposition, and the real irregular plate that drives
+    /// the oriented field) and several seeds.
+    ///
+    /// Also pins the accounting: a chair must never inflate the workstation count
+    /// or a zone's headcount — a workstation is a desk *and* its chair seating ONE
+    /// person, so `metrics().workstations` and `quantity` headcount stay
+    /// desk-driven (see `quantity::headcount`).
+    #[test]
+    fn every_generated_desk_gets_exactly_one_task_chair() {
+        let mut program = Program::default();
+        program.desks = 60;
+        for (name, mk) in [
+            ("rect", (|| room(24.0, 16.0)) as fn() -> Document),
+            ("l-plate", l_room as fn() -> Document),
+            ("real-plate", real_plate_doc as fn() -> Document),
+        ] {
+            for seed in [1u64, 3, 7] {
+                let mut doc = mk();
+                generate(&mut doc, &program, seed, false);
+                let poly = poly_of(&doc);
+                let ctx = format!("{name} seed {seed}");
+                let desks = doc.components.iter().filter(|c| c.category == "Desk").count();
+                assert!(desks > 0, "{ctx}: no desks placed, test is vacuous");
+                assert_chairs_are_seated(&doc, &poly, &ctx);
+                assert_no_overlaps(&doc, &ctx);
+
+                // Accounting: chairs must not become workstations, and a zone that
+                // holds desks reports its DESKS as headcount, not desks + chairs.
+                let q = crate::quantity::quantities(&doc);
+                for r in &q.rooms {
+                    let z = doc.zones.iter().find(|z| z.id == r.room_id).unwrap();
+                    let zone_desks = z
+                        .component_ids
+                        .iter()
+                        .filter(|&&cid| {
+                            doc.components
+                                .iter()
+                                .any(|c| c.id == cid && c.category == "Desk" && !c.reference)
+                        })
+                        .count() as u32;
+                    if zone_desks > 0 {
+                        assert_eq!(
+                            r.headcount, zone_desks,
+                            "{ctx}: zone {} headcount must be its desk count, not desks + chairs",
+                            r.room_id
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    /// Regenerating must not accumulate seats: the chair pass is idempotent, and
+    /// a Confirmed (frozen) desk keeps exactly one chair across runs.
+    #[test]
+    fn regenerate_does_not_accumulate_chairs() {
+        let mut program = Program::default();
+        program.desks = 40;
+        let mut doc = room(20.0, 14.0);
+        generate(&mut doc, &program, 5, false);
+        let first = doc.components.iter().filter(|c| c.category == "Chair").count();
+        assert!(first > 0);
+
+        generate(&mut doc, &program, 5, false);
+        assert_eq!(
+            doc.components.iter().filter(|c| c.category == "Chair").count(),
+            first,
+            "a clean regenerate must re-seat, not stack, chairs"
+        );
+
+        // Freeze every desk + chair, regenerate: each frozen desk keeps exactly ONE
+        // chair — `seat_desk_chairs` must recognise the seat that survived the
+        // freeze and not add a second. (The room program legitimately differs on a
+        // keep_confirmed run, so total chair COUNT is not the invariant; "one seat
+        // per desk" is, and `assert_chairs_are_seated` checks it in both
+        // directions.)
+        for c in doc.components.iter_mut() {
+            if c.category == "Desk" || c.category == "Chair" {
+                c.decision = DecisionState::Confirmed;
+            }
+        }
+        generate(&mut doc, &program, 5, true);
+        let poly = poly_of(&doc);
+        assert_chairs_are_seated(&doc, &poly, "keep_confirmed regenerate");
+        assert_no_overlaps(&doc, "keep_confirmed regenerate");
+    }
+
+    /// No two footprints may overlap — with ONE deliberate exemption: a `Chair`
+    /// tucks under its worktop, which is what "seated at the desk" means (see
+    /// `seat_desk_chairs`, and `furniture.ts::drawDesk`, whose glyph tucks the
+    /// chair the same way). The exemption is deliberately narrow: chair↔chair and
+    /// worksurface↔worksurface stay strict, and `assert_chairs_are_seated` below
+    /// asserts each chair tucks under at MOST one worksurface, so the exemption
+    /// cannot hide a chair sprawled across two desks.
     fn assert_no_overlaps(doc: &Document, ctx: &str) {
         for i in 0..doc.components.len() {
             for j in (i + 1)..doc.components.len() {
+                let (a, b) = (&doc.components[i], &doc.components[j]);
+                let tucked = (a.category == "Chair" && is_worksurface(b))
+                    || (b.category == "Chair" && is_worksurface(a));
+                if tucked {
+                    continue;
+                }
                 assert!(
-                    !footprints_overlap(&doc.components[i], &doc.components[j]),
+                    !footprints_overlap(a, b),
                     "{ctx}: {} overlaps {}",
-                    doc.components[i].label,
-                    doc.components[j].label
+                    a.label,
+                    b.label
                 );
             }
         }

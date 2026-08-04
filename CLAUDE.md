@@ -74,12 +74,18 @@ Two deploy targets share the API logic via **`deploy/apiCore.ts`** — the singl
 implementation of `/api/agent`, `/api/claude`, `/api/bank` (imported by both servers below).
 
 - **VPS** (`deploy/server.ts`): one Node service (`dsource-api`) serves the built SPA + all `/api/*`
-  routes (agent/claude/dwg/bank/plans), behind Caddy at `app.46.202.179.28.sslip.io`.
+  routes (agent/claude/dwg/bank/plans/share) + the share viewer page, behind Caddy at
+  `app.46.202.179.28.sslip.io`.
   `./deploy/deploy.sh` builds, rsyncs, starts everything (idempotent; needs SSH). Full backend.
 - **Vercel** (`vercel.json` + `api/*.ts`): SPA on the CDN + `/api/*` as serverless functions.
   `web/src/wasm/` is **committed** so Vercel builds without Rust (rebuild + commit after Rust changes).
-  Two routes degrade gracefully: `/api/dwg` → 503 (needs the LibreDWG binary; DXF still works),
-  `/api/plans` → 501 (needs disk; plan library is IndexedDB). Full guide: `deploy/VERCEL.md`.
+  Three routes degrade gracefully: `/api/dwg` → 503 (needs the LibreDWG binary; DXF still works),
+  `/api/plans` → 501 (needs disk; plan library is IndexedDB), `/api/share` → 501 (needs disk; the
+  Export menu falls back to downloading the .glb and `/share/<id>` says so). Guide: `deploy/VERCEL.md`.
+- **Shareable 3D viewer**: `/share/<id>` serves `web/viewer.html` (the SPA build's second entry,
+  `web/src/viewer/`) over a GLB published by `web/src/export/share.ts`. The store + `/api/share/*`
+  handler is **one implementation** — `deploy/shareStore.ts`, imported by `deploy/server.ts` AND the
+  dev middleware in `web/vite.config.ts` (dev bundles land in `web/.dev-plans/share/`).
 
 **Lockstep:** the dev middlewares in `web/vite.config.ts` remain the dev source of truth for
 agent/claude/bank — change them and `deploy/apiCore.ts` together.

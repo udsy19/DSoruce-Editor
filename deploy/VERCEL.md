@@ -25,6 +25,8 @@ source of truth — keep them in lockstep with `apiCore.ts`.)
   - `GET /api/bank/*` — reverse proxy to the material-bank origin.
   - `/api/dwg` → `503` (see Limitations).
   - `/api/plans/*` → `501` (see Limitations).
+  - `/api/share/*` → `501` (see Limitations). `/share/<id>` itself still serves
+    the viewer page: `vercel.json` rewrites it to the built `viewer.html`.
 
 ## Deploy
 
@@ -63,6 +65,17 @@ Never commit keys — set them in Vercel. (Local dev reads `web/.env.local`.)
   the 501 as "offline" and leaves local data intact. For sync, use the VPS
   deploy, or back `api/plans/[[...path]].ts` with a durable store (Vercel
   Blob/KV).
+- **Shareable 3D links** — "Export ▸ Copy share link" publishes a glTF-binary
+  scene to `/api/share/<id>`, which the VPS stores under `PLANS_DIR/share/`.
+  Vercel keeps no disk, so that route returns **501** and no link can be
+  published there. Two things still work by design, so nothing dead-ends:
+  the Export menu falls back to **downloading the `.glb`** (open it in any glTF
+  viewer, or host it yourself), and **`/share/<id>` still loads the viewer**,
+  which reads the 501 and says so instead of spinning on a model that will never
+  arrive. For real share links, run the VPS deploy (`deploy/server.ts`, with a
+  persistent `PLANS_DIR`), or back `api/share/[[...path]].ts` with a blob store —
+  `deploy/shareStore.ts` is the whole contract: `putShare` / `getShareMeta` /
+  `getShareModel`.
 - **Function duration** — `vercel.json` sets `maxDuration: 60`. On the Hobby
   plan the ceiling is 60s; long Claude calls (the multi-objective designer) are
   fine within that but a very large batch could approach it.
