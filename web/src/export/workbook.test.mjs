@@ -355,6 +355,17 @@ if plan:
 
 z = zipfile.ZipFile(p)
 names = z.namelist()
+
+# Regression: a twoCellAnchor spanning MULTIPLE cells must size from the image's
+# intrinsic pixels. Deriving it from (to.colOff - from.colOff) omits every column
+# in between and collapses the 1040x780 plan to ~19x3 px — Excel ignores the
+# extent and looked fine, but LibreOffice honours it and rendered a smudge.
+import re as _re
+_exts = []
+for _n in [n for n in names if n.startswith('xl/drawings/drawing')]:
+    _exts += _re.findall(r'<a:ext cx="(\\d+)" cy="(\\d+)"', z.read(_n).decode())
+ck(('9906000', '7429500') in [(a, b) for a, b in _exts],
+   "cross-cell plan anchor sized from intrinsic 1040x780 px, not collapsed (got %r)" % (_exts,))
 media = sorted(n for n in names if n.startswith('xl/media/'))
 ck(len(media) == 4, "media de-duped to 4 parts (logo used twice) (got %r)" % media)
 ck(sum(1 for n in media if n.endswith('.jpeg')) == 1, "exactly one jpeg part")

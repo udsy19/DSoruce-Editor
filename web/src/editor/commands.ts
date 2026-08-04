@@ -119,6 +119,7 @@ export function buildCommands(rail: RailTool[], catalog: CatItem[]): Command[] {
     { id: 'action:open', title: 'Open project', keywords: ['open', 'load', 'file', 'dsource'], group: 'Actions', run: (c) => c.open() },
     { id: 'action:report', title: 'Export space-planning report', keywords: ['export', 'report', 'pdf', 'planning'], group: 'Actions', run: (c) => c.fire('export-report') },
     { id: 'action:takeoff', title: 'Export quantity takeoff', keywords: ['export', 'takeoff', 'excel', 'quantity', 'boq'], group: 'Actions', run: (c) => c.fire('export-takeoff') },
+    { id: 'action:pack', title: 'Export deliverable pack', keywords: ['export', 'pack', 'zip', 'workbook', 'plan', 'deliverable'], group: 'Actions', run: (c) => c.fire('export-deliverable-pack') },
     {
       id: 'action:undo',
       title: 'Undo',

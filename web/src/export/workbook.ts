@@ -649,6 +649,39 @@ function picXml(id: number, name: string, relId: string, cx: number, cy: number)
   )
 }
 
+/** Intrinsic pixel size of an encoded image, as EMU. PNG carries width/height
+ *  as big-endian u32s in the IHDR chunk at a fixed offset; JPEG needs a scan for
+ *  a SOFn marker. Returns null if the bytes don't parse — callers then fall back
+ *  to the anchor span rather than failing the export over a sizing hint. */
+function intrinsicEmu(
+  data: Uint8Array,
+  format: 'png' | 'jpeg' | 'gif',
+): { cx: number; cy: number } | null {
+  const be32 = (o: number) => (data[o] << 24) | (data[o + 1] << 16) | (data[o + 2] << 8) | data[o + 3]
+  if (format === 'png') {
+    // 8-byte signature, then length+"IHDR", then width, height.
+    if (data.length < 24 || data[12] !== 0x49 || data[13] !== 0x48) return null
+    return { cx: pxToEmu(be32(16) >>> 0), cy: pxToEmu(be32(20) >>> 0) }
+  }
+  if (format === 'gif') {
+    // Logical screen descriptor: width/height as little-endian u16s at byte 6.
+    if (data.length < 10) return null
+    return { cx: pxToEmu(data[6] | (data[7] << 8)), cy: pxToEmu(data[8] | (data[9] << 8)) }
+  }
+  for (let i = 2; i + 9 < data.length; ) {
+    if (data[i] !== 0xff) { i++; continue }
+    const marker = data[i + 1]
+    // SOF0..SOF15, excluding the non-frame markers DHT/JPG/DAC.
+    if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
+      const h = (data[i + 5] << 8) | data[i + 6]
+      const w = (data[i + 7] << 8) | data[i + 8]
+      return { cx: pxToEmu(w), cy: pxToEmu(h) }
+    }
+    i += 2 + ((data[i + 2] << 8) | data[i + 3])
+  }
+  return null
+}
+
 /** Drawing part XML + the media names it references, in rel order. */
 function drawingXml(images: SheetImage[], media: MediaTable): { xml: string; rels: string[] } {
   const rels: string[] = []
@@ -660,10 +693,22 @@ function drawingXml(images: SheetImage[], media: MediaTable): { xml: string; rel
     const name = img.name ?? `Picture ${i + 1}`
 
     if (img.to) {
-      // Extent is informational for a twoCellAnchor (the anchors drive the box),
-      // but Excel still reads it — derive it from the anchor span where we can.
-      const cx = img.ext?.cx ?? Math.max(0, (img.to.colOff ?? 0) - (img.from.colOff ?? 0))
-      const cy = img.ext?.cy ?? Math.max(0, (img.to.rowOff ?? 0) - (img.from.rowOff ?? 0))
+      // Extent is informational for a twoCellAnchor in Excel (the anchors drive
+      // the box), but LibreOffice honours it — so a wrong extent renders a
+      // collapsed smudge rather than the image.
+      //
+      // `to.colOff - from.colOff` is only the true span when the anchor starts
+      // and ends in the SAME cell (the per-row thumbnails). Across cells it
+      // omits every column in between and collapses to a few pixels, so fall
+      // back to the image's intrinsic size — what Excel itself uses on insert.
+      const sameCell = img.to.col === img.from.col && img.to.row === img.from.row
+      const span = {
+        cx: Math.max(0, (img.to.colOff ?? 0) - (img.from.colOff ?? 0)),
+        cy: Math.max(0, (img.to.rowOff ?? 0) - (img.from.rowOff ?? 0)),
+      }
+      const natural = intrinsicEmu(img.data, img.format)
+      const cx = img.ext?.cx ?? (sameCell ? span.cx : (natural?.cx ?? span.cx))
+      const cy = img.ext?.cy ?? (sameCell ? span.cy : (natural?.cy ?? span.cy))
       return (
         `<xdr:twoCellAnchor editAs="${img.editAs ?? 'oneCell'}">` +
         anchorPtXml('from', img.from) +

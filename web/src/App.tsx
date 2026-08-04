@@ -2,6 +2,7 @@ import { forwardRef, useEffect, useImperativeHandle, useMemo, useReducer, useRef
 import {
   EditorCanvas,
   DocComponent,
+  DocState,
   DocZone,
   Metrics,
   Program,
@@ -37,7 +38,9 @@ import { downloadIFC } from './export/ifc'
 import { downloadOBJ } from './export/obj'
 import { exportSpacePlanningReport } from './export/report'
 import { exportDrawingSet } from './export/sheetSet'
-import { exportQuantityTakeoff, zoneAtPoint } from './export/takeoff'
+import { zoneAtPoint } from './export/takeoff'
+import { exportDeliverablePack, exportQtoWorkbook, type Quantities } from './export/qtoWorkbook'
+import { classifyWalls } from './export/wallTypes'
 import { restrictDrawing } from './import/area'
 import { healWalls } from './import/heal'
 import type { RoomMarker } from './import/markers'
@@ -1522,14 +1525,47 @@ function ExportMenu({
     setOpen(false)
   }
 
+  /**
+   * The 12-sheet qbiq-parity Quantity Takeoff. ONE client-side action: the plan
+   * graphic, the per-room thumbnails and every formula are produced in the
+   * browser — no server round-trip.
+   *
+   * Wall runs / door counts / room areas come from `Editor.quantities()`, and
+   * the plan is coloured from `Editor.wall_types()`, so the drawing and the
+   * bill classify each wall identically.
+   */
   const exportTakeoff = () => {
     if (!ec) return
     const state = ec.getState()
     // Room markers dropped in the Space step win the Room ID where they sit
     // inside a generated zone (workflow.md §3.2); re-resolved against live zones.
     const roomRefs = buildRoomRefs(state.zones ?? [], roomMarkers.current ?? [])
-    exportQuantityTakeoff(state, { bindings, floor: floorLabel, project: projectName, roomRefs })
+    void exportQtoWorkbook(state, ec.ed.quantities() as Quantities, qtoOpts(state, roomRefs))
     setOpen(false)
+  }
+
+  /** The whole client-side deliverable pack (workbook + plan + thumbnails +
+   *  ground truth) as one .zip, from one click — gate G10's single action. */
+  const exportPack = () => {
+    if (!ec) return
+    const state = ec.getState()
+    const roomRefs = buildRoomRefs(state.zones ?? [], roomMarkers.current ?? [])
+    void exportDeliverablePack(state, ec.ed.quantities() as Quantities, qtoOpts(state, roomRefs))
+    setOpen(false)
+  }
+
+  /** Shared inputs for both takeoff actions. */
+  function qtoOpts(state: DocState, roomRefs: Map<number, string>) {
+    if (!ec) throw new Error('no editor')
+    return {
+      bindings,
+      floor: floorLabel,
+      project: projectName,
+      roomRefs,
+      // `circulation()` is degenerate with 0 walls (CLAUDE.md) — guard it.
+      circulation: state.walls.length > 0 ? ec.circulation() : null,
+      wallSpans: classifyWalls(state, ec.ed.wall_types() as never),
+    }
   }
 
   const source = importMode ? 'imported plan' : 'generated plan'
@@ -1597,7 +1633,15 @@ function ExportMenu({
                 onClick={exportTakeoff}
                 data-testid="export-takeoff"
               >
-                Quantity takeoff <span className="hint">Excel</span>
+                Quantity Takeoff <span className="hint">Excel · 12 sheets</span>
+              </div>
+              <div
+                className="export-item"
+                role="menuitem"
+                onClick={exportPack}
+                data-testid="export-deliverable-pack"
+              >
+                Deliverable pack <span className="hint">workbook · plan · data</span>
               </div>
             </>
           )}
