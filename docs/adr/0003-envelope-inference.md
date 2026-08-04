@@ -137,4 +137,100 @@ a winner.
 
 ## Results
 
-_Not yet run._
+`pnpm bench plate`, 15 fixtures × 3 implementations. Predicted ranges were frozen
+in commit `6a6da3b`; containment gates in `6754e72`. Neither was touched after
+candidates ran.
+
+### Against the pre-registered ranges
+
+| fixture | rung | predicted | actual | verdict |
+|---|---|---|---|---|
+| `lshape-shell-fragments` | partition-envelope | 0.85 – 0.93 | **0.979** | **ABOVE** |
+| `notched-shell-fragments` | partition-envelope | 0.90 – 0.95 | 0.925 | in range |
+| `rect-no-shell-only-partitions` | partition-envelope | 0.70 – 0.82 | 0.646 | **BELOW** |
+| `rect-regular-column-grid` | partition-envelope | 0.70 – 0.85 | 0.605 | **BELOW** |
+| `rect-regular-column-grid` | column-grid | ≥ 0.97 | **1.000** | in range (exact) |
+| `rect-no-shell-only-partitions` | column-grid | reject | rejected | as predicted |
+| `real-furniture-plan` | column-grid | reject | rejected | as predicted |
+
+### What surprised us
+
+**1. `gridContour` is a morphological closing, so `partition-envelope` can bridge
+gaps but can never extrapolate.** It dilates the linework then erodes by the same
+box, which recovers a boundary that gaps have broken — hence 0.979 on
+`lshape-shell-fragments`, well above prediction — but cannot reach a boundary the
+linework never touched. That is why both no-shell fixtures came in BELOW: the
+partitions are inset from the truth, so no dilation reaches it. The failures are
+structural, not tuning. This should have been foreseen from the closing property
+and was not.
+
+**2. The containment gate changed the winner on the real plan.** On
+`real-furniture-plan`, `partition-envelope` scores phantom **0.437 against the
+baseline's 0.463** — on the headline truth-free metric alone it wins. Its
+furniture containment is **0.762 against the baseline's 0.961**: it achieves the
+better phantom by hugging wall linework on the left and centre and excluding the
+entire right-hand region, where furniture exists but walls do not. Without the
+gate added in `6754e72` this branch would have adopted it. The gate was proposed
+against exactly this failure mode and caught it on its first run.
+
+**3. `column-grid` behaved exactly as pre-registered — including its rejections.**
+IoU **1.000** on the fixture built for it (the half-bay rule recovers the truth
+exactly), and correct rejection on both negative cases. Its phantom fraction on
+its own winning fixture is **1.000**, i.e. 100 % of its boundary rests on no wall
+— *correctly*, because the columns are inside the plate and there is no shell.
+**Phantom fraction is therefore not a valid score for a column-derived envelope**,
+and must not be used to rank this rung against contour-derived ones.
+
+**4. No rung passes both gates on the real DWG.** baseline 0.961 containment
+(just under the 0.98 gate), partition-envelope 0.762, column-grid rejects. This
+is a legitimate null result for that drawing, recorded rather than resolved by
+picking a winner.
+
+**5. A correction to this branch's own framing.** ADR 0002 and earlier notes
+described the baseline plate on the real DWG as "a convex hull fitted to
+disconnected fragments" and "not a measurement of anything". The overlay render
+shows that is too harsh: the boundary follows real walls along its left, top and
+much of its stepped right edge, and contains 96.1 % of the furniture. What is
+true is narrower — roughly half its perimeter (46 %) is inferred rather than
+traced, concentrated on the right and bottom where no linework exists. It is a
+plausible envelope with unsupported stretches, not an arbitrary one.
+
+### `raster-roundtrip` — parked, with reasoning
+
+Not built, per the timebox. The environment is not the blocker: `torch 2.7.1` is
+present and the network is reachable. Weights, model architecture and service
+plumbing (plus mandatory Vercel degradation) all are.
+
+The stronger reason to park it: on a shell-less drawing a raster path **without**
+learned priors adds nothing over `gridContour` — flood-fill from outside reaches
+everywhere when there is no enclosure, and morphological closing is already what
+the incumbent does. So the entire value of this rung is the learned prior, which
+is precisely the expensive part. It cannot be cheaply approximated to test the
+hypothesis first.
+
+Revisit when there is a reason to stand up a Python inference service anyway
+(`ifc-cost` in branch 2 is the likely trigger — same class B plumbing).
+
+### Recommendation
+
+Adopt as a ladder, ordered by trustworthiness, each rung guarded:
+
+1. `traced-loop` — unchanged.
+2. `column-grid` — when both axes pass the IQR guard. Narrow but *exact* when it
+   applies, and it declines cleanly when it does not.
+3. `partition-envelope` — when its contour contains ≥ 98 % of the furniture.
+   Wins decisively where shell fragments exist (0.730 → 0.979) and must be
+   prevented from firing where they do not.
+4. `grid-contour` / `hull` — unchanged last resorts.
+
+Every rung below `traced-loop` still produces `confidence: 'low'` under ADR 0002,
+so all of them are proposals the user confirms. The ladder improves the *draft*;
+it does not change what is asserted.
+
+### Not adopted, and why
+
+`partition-envelope` fed with furniture bounding boxes (as the incumbent's `wrap`
+rung does) would plausibly fix its containment collapse. It is **not** tested here
+because it was conceived after seeing results — adding it now is the post-hoc
+tuning that pre-registration exists to prevent. Recorded as a candidate for a
+future round with its own pre-registered range.
