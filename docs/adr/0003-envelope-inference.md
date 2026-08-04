@@ -227,10 +227,106 @@ Every rung below `traced-loop` still produces `confidence: 'low'` under ADR 0002
 so all of them are proposals the user confirms. The ladder improves the *draft*;
 it does not change what is asserted.
 
-### Not adopted, and why
+### Which metrics are meaningful for which rung
 
-`partition-envelope` fed with furniture bounding boxes (as the incumbent's `wrap`
-rung does) would plausibly fix its containment collapse. It is **not** tested here
-because it was conceived after seeing results — adding it now is the post-hoc
-tuning that pre-registration exists to prevent. Recorded as a candidate for a
-future round with its own pre-registered range.
+Recorded so a future round does not rediscover this. `column-grid` scoring
+phantom **1.000** on the fixture it wins *exactly* is the proof: its boundary
+rests on no wall because the columns are inside the plate and no shell exists.
+
+| rung | IoU | phantom | containment | notes |
+|---|---|---|---|---|
+| `traced-loop` | ranking | ranking | gate | boundary is linework by construction |
+| `grid-contour` | ranking | ranking | gate | contour of linework |
+| `partition-envelope` | ranking | ranking | gate | contour of linework |
+| `column-grid` | ranking | **undefined** | gate | envelope is not derived from a linework contour |
+| `hull` | ranking | ranking | gate | contour, however loose |
+
+**Phantom fraction is undefined as a ranking metric for any envelope not derived
+from a linework contour**, and must never be used to rank such a rung against a
+contour-derived one. It stays valid as a *diagnostic* everywhere.
+
+### Reusable test for ML candidates in this codebase
+
+Recorded verbatim, because it generalizes beyond this rung:
+
+> On a shell-less drawing, a closing without learned priors adds nothing over
+> gridContour — the entire value is the prior, and the prior is the expensive
+> part.
+
+Identify what the learned component adds over the deterministic incumbent
+*before* paying for weights and serving.
+
+## Round 2 — furniture-wrap, pre-registered
+
+Written **before the candidate exists**. Conceived post-hoc in round 1 and
+deliberately not tested there; registering it first is what makes testing it now
+legitimate. Timeboxed to one round, existing fixtures, no new machinery beyond
+feeding furniture bboxes into the existing dilation input.
+
+### Mechanism expected
+
+`gridContour` is a morphological closing, so it cannot extend beyond the extent
+of its input (round 1, finding 1). Adding furniture bbox outlines to the segment
+set therefore extends the *input* to cover the furniture field, and the resulting
+contour should reach at least the furniture extent. Note that closing does not
+overshoot by the dilation radius — dilate-then-erode restores the outer extent —
+so the boundary should hug the furniture field rather than balloon past it.
+
+### Where it should help
+
+The orphaned right-hand region of the real plan is orphaned precisely because it
+holds furniture and no walls. Putting linework there is the whole idea, so
+containment should rise sharply from 0.762.
+
+### Where it inherits the hull's weakness
+
+Wrapping furniture bakes in the assumption that **furniture extent defines
+occupiable extent** — the same assumption the incumbent's coverage hull makes,
+and the reason the incumbent scores phantom 0.463. Two consequences predicted:
+
+1. **Phantom will get worse, by construction.** The boundary comes to rest on
+   furniture bboxes rather than walls, and a furniture bbox is not linework a
+   plate boundary may legitimately sit on. This is a straight trade of phantom
+   for containment, not a free win.
+2. **Furniture outside the tenancy pulls the envelope with it.** Anything drawn
+   in an adjacent suite — plausible here, since the bottom-left rooms and stair
+   may not be the same tenancy — becomes part of the plate with no way for the
+   rung to tell. This failure mode is invisible on synthetic fixtures, where all
+   furniture is inside the truth by construction, so it can only be judged on
+   the real plan's overlay.
+
+### Predicted values
+
+| fixture | metric | round-1 best | predicted (wrap) |
+|---|---|---|---|
+| `lshape-shell-fragments` | IoU | 0.979 (partition-env) | 0.96 – 0.99 (no change: furniture is inside the walls) |
+| `notched-shell-fragments` | IoU | 0.925 (partition-env) | 0.90 – 0.96 |
+| `rect-no-shell-only-partitions` | IoU | 0.646 (partition-env) | **0.80 – 0.90** |
+| `rect-regular-column-grid` | IoU | 1.000 (column-grid) | 0.80 – 0.90 (wrap is not this fixture's rung) |
+| `real-furniture-plan` | containment | 0.961 (baseline) | **0.98 – 1.00** |
+| `real-furniture-plan` | phantom | 0.437 (partition-env) | **0.40 – 0.55** |
+
+The synthetic IoU ceiling on the no-shell fixtures is set by the generator:
+furniture centres sit ~0.9 m inside the truth boundary, so a furniture-hugging
+envelope tops out near 28×18 / 30×20 ≈ 0.84. An IoU above 0.90 there would again
+be suspicious rather than successful.
+
+### Explicit gate prediction
+
+**Does wrap-augmented partition-envelope clear containment ≥ 0.98 on the real
+plan? Predicted: YES.** The orphaned region has furniture, so adding furniture
+puts input there, and closing preserves outer extent.
+
+Phantom is predicted to land at or slightly better than the baseline's 0.463 —
+i.e. this rung is expected to converge toward baseline behaviour, buying
+containment with phantom. It is adoptable only if it clears the gate **and**
+beats baseline's phantom; matching it is not enough to justify a fifth rung.
+
+### Falsification
+
+- Containment below 0.98 on the real plan ⇒ the stated mechanism is wrong, not
+  merely the number.
+- Phantom above 0.55 ⇒ worse than the incumbent it would replace; drop.
+- IoU above 0.90 on `rect-no-shell-only-partitions` ⇒ suspect a fixed outward
+  margin fitting the fixture, not a working rung.
+- Any self-intersection ⇒ disqualified regardless.
