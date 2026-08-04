@@ -413,6 +413,23 @@ Each was learned from a live mistake in this campaign.
    proof of the trusted one.
    *From:* an automated confirm polluting the calibration log, and
    `navigator.webdriver` failing to catch it.
+5. **Config is not conduct** (this ADR) — **a config value read as the spend,
+   instead of the spend measured.** An allowance is not a behaviour.
+   *From:* budgets of 15/27/51 derived from `maxIter` 4/8/16 while production
+   actually spent 6, because an early-exit the config does not mention fired
+   every time.
+
+**And a standing requirement that falls out of the same discipline: every
+trigger needs a SENSOR.** A trigger without something watching for it is a wish.
+Audited across the campaign:
+
+| trigger | sensor | status |
+|---|---|---|
+| 1a activates on a real-world plate correction | `plateLog` outcomes | exists |
+| 4b opens on tier-2/tier-3 corpus rows | `proposalLog` + `corpusSizes()` | exists |
+| IFC upgrade is pre-work for `blender-offline` | Agent 5's own scope | exists |
+| compliance metric before any compliance claim | *(human gate — no sensor possible)* | declared |
+| **`target: 82` revisit** | **`searchLog` — added in this change** | **now exists** |
 
 The fourth instance of the family will come. When it does, add it here rather
 than treating it as new.
@@ -527,19 +544,41 @@ Three consequences:
 
 ### Filed with a trigger, not fixed here
 
-> **The search effectively performs one draw per strategy.** Whether `target: 82`
-> is the right threshold is a product question — it trades exploration for
-> latency, currently at 129 ms with almost no exploration. Raising it (or making
-> it adaptive) would make `maxIter`, the Regenerate round-growth, and this whole
-> branch's budget axis mean something.
+> ### PRODUCT FINDING: Regenerate delivers no new plans
 >
-> **Trigger: revisit when candidate diversity becomes a product priority**, or
-> when a plate is found where seed 1 does *not* clear the target — the case where
-> today's behaviour silently degrades to a real search and the latency changes
-> under the user.
+> Both halves together: seed windows produce **equivalent** plans under the
+> declared definition, **and** every strategy exits on its first draw. So the
+> Regenerate button re-serves the same three plans, while the `maxIter` it grows
+> each round (`18 + round*8`) changes nothing. **It is a user-visible control
+> that appears to act and does not.**
+>
+> Not a config nuance, and not fixed here — variety costs either exploration
+> (raise `target`, eat 129 ms → 1.9 s) or diversity-aware selection (keep N
+> distinct layouts, new logic), and that trade belongs to a product owner. Filed
+> so the decision is made looking at the actual behaviour.
+>
+> **Trigger:** a plate where seed 1 does *not* clear the target (today's
+> behaviour silently becomes a 1.9 s search), or diversity becoming a priority.
+> **Sensor:** `persist/searchLog.ts` — records calls made vs `maxIter` allowed,
+> which strategies exited early, wall-clock, and Regenerate presses.
+> `searchTriggers()` answers both halves directly. Without it the trigger could
+> never fire, because nobody was watching.
 
-Not fixed here because it is a deliberate latency/quality trade someone chose,
-and changing it is a product decision with a user-visible cost, not a bug fix.
+## 4a's closing conclusion
+
+Adopt-nothing stands *a fortiori*: production runs **6** calls, the bake-off
+tested 15–51, and no candidate won even at 2.5–8.5× production's budget.
+
+But the branch's real conclusion is different in kind from "no challenger won":
+
+> **The product's search quality is currently determined by one knob (`target`)
+> and the generator's seed-1 strength — not by the search loop at all.**
+
+Every strategy clears the bar on its first draw, which is why `maxIter` is inert,
+why Regenerate re-serves the same plans, why variance across seed windows is
+~0.00, and why no search strategy could separate. It is also a compliment to
+`layout.rs`: the generator is good enough that its *first* attempt is good
+enough. That single fact explains every number in this branch.
 
 ## Untested claim, routed with a trigger
 

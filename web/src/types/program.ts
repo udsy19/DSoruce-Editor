@@ -84,6 +84,24 @@ export interface GenResult {
   seed: number
   /** Top-K distinct candidates, best first. */
   candidates: Candidate[]
+  /**
+   * What the search ACTUALLY spent, as opposed to what `maxIter` allows.
+   *
+   * These differ enormously and silently: measured on the real plate, the
+   * production default (`maxIter 18`, `target 82`) spends **6** generate calls,
+   * not 57, because every strategy clears the target on its first draw (ADR
+   * 0005). Reporting the spend is the SENSOR for that ADR's trigger — a plate
+   * where seed 1 does NOT clear the target turns a 129 ms search into a 1.9 s
+   * one, and nothing would otherwise notice.
+   */
+  spend: {
+    /** `generate()` calls made, including the per-strategy snapshot re-draw. */
+    calls: number
+    /** Strategies that stopped early because the target was already met. */
+    earlyExitStrategies: string[]
+    maxIter: number
+    target: number
+  }
 }
 
 /** Default program — the single source used by the generate card and the AI. */

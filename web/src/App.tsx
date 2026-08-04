@@ -12,6 +12,7 @@ import { Icon } from './ui/icons'
 import { ToolDock, type DockTool } from './ui/ToolDock'
 import { StatsPanel } from './ui/StatsPanel'
 import { BomPanel } from './ui/BomPanel'
+import { logSearch } from './persist/searchLog'
 import { RoomTools } from './ui/RoomTools'
 import { ObjectInspector } from './ui/ObjectInspector'
 import { LayersPanel } from './ui/LayersPanel'
@@ -1829,9 +1830,24 @@ function GenerateCard({
     setRefine(null)
     setBusy(true)
     const seedOffset = regenRef.current * SEED_WINDOW
+    const regenerateRound = regenRef.current
     regenRef.current += 1
     window.setTimeout(() => {
+      const t0 = performance.now()
       const res = ec.autoGenerate(program, { maxIter: 18, target: 82, keepConfirmed, seedOffset })
+      // ADR 0005's sensor. `maxIter` is an allowance; this records the conduct —
+      // and `earlyExitStrategies.length < 3` is the alarm for the plate where the
+      // 129 ms search silently becomes a 1.9 s one.
+      void logSearch({
+        at: new Date().toISOString(),
+        calls: res.spend.calls,
+        earlyExitStrategies: res.spend.earlyExitStrategies,
+        maxIter: res.spend.maxIter,
+        target: res.spend.target,
+        bestTotal: res.best.total,
+        regenerateRound,
+        ms: Math.round(performance.now() - t0),
+      })
       setResult(res)
       setActiveSeed(res.seed)
       onCandidates?.(res.candidates) // lift to App for the report exporter

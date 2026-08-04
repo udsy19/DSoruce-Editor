@@ -134,6 +134,9 @@ export function autoGenerate(host: SearchHost, program: Program, opts: SearchOpt
   const offset = seedWindowOffset(opts.seedOffset ?? 0, opts.maxIter)
   const candidates: Candidate[] = []
   let iterations = 0
+  // Actual spend, for ADR 0005's sensor. `maxIter` is an allowance, not conduct.
+  let calls = 0
+  const earlyExitStrategies: string[] = []
   STRATEGIES.forEach((strategy, si) => {
     const sp: Program = { ...program, strategy }
     let best: LayoutScore | null = null
@@ -142,14 +145,19 @@ export function autoGenerate(host: SearchHost, program: Program, opts: SearchOpt
       iterations++
       const actual = si * STRIDE + offset + seed
       const sc = host.ed.generate(sp, BigInt(actual), keep) as LayoutScore
+      calls++
       if (!best || sc.total > best.total) {
         best = sc
         bestSeed = actual
       }
-      if (best.total >= opts.target) break
+      if (best.total >= opts.target) {
+        earlyExitStrategies.push(strategy)
+        break
+      }
     }
     // Re-generate the strategy's winning seed to capture its snapshot + thumb.
     const finalSc = host.ed.generate(sp, BigInt(bestSeed), keep) as LayoutScore
+    calls++
     candidates.push({
       seed: bestSeed,
       strategy,
@@ -165,7 +173,10 @@ export function autoGenerate(host: SearchHost, program: Program, opts: SearchOpt
   host.hydrateCad()
   host.ed.clear_selection()
   host.commit()
-  return { best: best.score, iterations, seed: best.seed, candidates }
+  return {
+    best: best.score, iterations, seed: best.seed, candidates,
+    spend: { calls, earlyExitStrategies, maxIter: opts.maxIter, target: opts.target },
+  }
 }
 
 /**

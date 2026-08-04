@@ -1,0 +1,164 @@
+# ADR 0006 — Branch 5: materials & 3D render quality
+
+**Status:** pre-registered — predictions recorded, nothing built
+**Date:** 2026-08-04
+
+**Code anchors:** `buildFurniture3D`, `TEXTURES` (`web/src/three/furniture3d.ts`) ·
+`Viewer3D`, `applyPipeline`, `applySunToSky` (`web/src/three/Viewer3D.ts`) ·
+`THEMES` (`web/src/three/theme.ts`) · `docStateToIFC` (`web/src/export/ifc.ts`) ·
+`docStateToObj` (`web/src/export/obj.ts`) · material bank
+`web/src/materialBank/`
+
+## Two parts, deliberately not one bake-off
+
+**Part A — the IFC upgrade is ENGINEERING, not a bake-off.** It has no
+candidates and no predictions beyond "the consumer now sees spaces, quantities
+and stable identity". Scoped, deterministic, and accepted by round-trip through a
+strict consumer. It is branch 5's routed pre-work because `blender-offline` needs
+exactly these semantics to carry materials and spaces (ADR 0004).
+
+**Part B — materials and render quality** is the bake-off, and it is the first
+branch in this campaign whose primary question is **subjective**. That changes
+the protocol, not the rigour.
+
+---
+
+## Part A — IFC semantics upgrade (engineering)
+
+Branch 2 measured our IFC as **exchange-grade for geometry, viewer-grade for
+semantics**: 100 % of elements carry real `IfcExtrudedAreaSolid` over
+`IfcRectangleProfileDef`, but there are **zero** `IfcSpace`, **zero**
+`IfcElementQuantity`, **zero** `IfcPropertySet`, and no classification — so a
+consumer must guess an element's category from its display `Name`, and **binding
+a product renames the element**, silently reclassifying it. Pricing an item is
+what makes it un-categorisable. Self-defeating, and entirely ours.
+
+### Scope
+
+1. **`IfcSpace` per zone**, in the spatial hierarchy, so room attribution exists.
+2. **`IfcElementQuantity`** per element (area, volume, length as applicable).
+3. **A `Tag` or classification reference carrying `product_id`** — which also
+   fixes identity riding on the display name, the root of the rename problem.
+
+### Acceptance — not a claim, a round-trip
+
+`ifcopenshell 0.8.5` is installed. The acceptance test re-runs branch 2's reader
+against the upgraded export and requires:
+
+| assertion | today | required |
+|---|---|---|
+| `IfcSpace` count | 0 | = zone count |
+| elements with declared quantities | 0 / 229 | ≥ 95 % |
+| category attribution correct | 224 / 229 (5 lost to renaming) | **229 / 229** |
+| bound products matchable to a binding | 0 / 5 | **5 / 5** |
+
+This **also finally exercises IfcOpenShell's untested half** — branch 2 measured
+what it could *read*, never whether our file could be *fixed* to satisfy it. And
+it revives `ifc-cost` for free: with quantities and identity present, its one
+blocker is removed, though its own untested Vercel prediction (native code will
+not run in that sandbox) stays registered.
+
+**No candidates, no ranges.** Determinism gate as always: the same document
+produces a byte-identical IFC.
+
+---
+
+## Part B — materials and render (bake-off)
+
+### Candidates
+
+| id | what | class | licence |
+|---|---|---|---|
+| `baseline` | current parametric PBR + Enscape-like tier (sky dome, GTAO, bloom) | A | original |
+| `materialx` | MaterialX as the *schema* under the material bank, so definitions survive OBJ/IFC round-trips without re-authoring | A (schema) | Apache-2.0 |
+| `cc0-pbr` | ambientCG / Poly Haven CC0 texture sets + real HDRIs | A (assets) | CC0 |
+| `blender-offline` | IFC → Bonsai/Cycles for hero renders, Three.js stays live | B (out-of-band) | GPL (Blender, out-of-process) |
+
+`blender-offline` is evaluated as a **separate deliverable path**, not a viewer
+replacement, and is **blocked on Part A** — without `IfcSpace` and materials in
+the file there is nothing for it to render faithfully.
+
+### The subjective half — protocol, pre-agreed
+
+Visual quality is not scoreable by me. So:
+
+- Render a **fixed-camera screenshot matrix** — same document, same camera, same
+  sun angle — one column per candidate.
+- **I do not declare a visual winner.** The grid is produced and flagged for
+  human review, exactly as ADR 0003 handled the real plate's undecidable truth.
+- Everything else is measured objectively and reported alongside, so the human
+  judgement is made *with* the costs visible rather than after them.
+
+### PREDICTION — `cc0-pbr`'s network cost, before measuring
+
+Registered now because *"biggest visual lever"* and *"web app load budget"* are
+on a collision course, and a visual win that doubles time-to-first-render must
+appear in the table as that trade rather than be discovered in production.
+
+**Declared test conditions** (without these the numbers are meaningless):
+
+- **Resolution tier: 1–2K**, not the 4–8K the libraries advertise. 8K PBR sets
+  are tens of MB per material and are not a web-app option; testing at the
+  advertised tier would be testing a configuration we would never ship.
+- **Delivery model: BOTH measured** — bundled (in the JS/asset bundle) and
+  fetched-on-demand (lazy, per material) — because it changes both the numbers
+  and the architecture, and the honest comparison names which one it is.
+
+**Predictions:**
+
+| metric | baseline | `cc0-pbr` predicted |
+|---|---|---|
+| asset payload | ~0 (procedural) | **+4 to +12 MB** bundled at 1–2K for ~6 materials; **+0 MB** initial if fetched-on-demand |
+| time-to-first-render | current | **+1.5× to +3×** bundled; **≈ unchanged** on-demand, with progressive material pop-in |
+| frame time @ 145 components | current | **within ±15 %** — texture *memory* rises, per-frame cost barely moves at this component count |
+| HDRI sky | procedural dome | **+2 to +6 MB** for a usable 2K HDRI |
+
+**Mechanism:** textures cost *bandwidth and VRAM*, not draw calls. At 145
+components the GPU is nowhere near limited, so the visual gain should be large
+and the frame-time cost near zero — the entire real cost is delivery. **If frame
+time degrades more than 15 %, suspect texture size or mipmapping, not the
+material count.**
+
+**Falsification:** if bundled payload lands under 2 MB at 1–2K, my sense of PBR
+set sizes is wrong and the delivery question is moot — the honest and welcome
+outcome.
+
+### Metric validity per candidate
+
+| metric | baseline | materialx | cc0-pbr | blender-offline |
+|---|---|---|---|---|
+| visual quality | **human only** | human only | human only | human only |
+| asset payload delta | ranking | **≈0 by construction** | ranking | n/a (out-of-band) |
+| time-to-first-render | ranking | ranking | ranking | n/a |
+| frame time @ real component count | ranking | ranking | ranking | n/a |
+| material survives OBJ round-trip | ranking | **ranking (its whole claim)** | ranking | n/a |
+| material survives IFC round-trip | ranking | **ranking (its whole claim)** | ranking | gate (needs Part A) |
+| offline capability | pass | pass | pass by construction if bundled | **fails — out-of-band by design** |
+| render wall-clock | n/a | n/a | n/a | diagnostic |
+
+`materialx` is a **schema** change: scoring it on visual quality would be scoring
+it on not being a texture pack. Its claim is round-trip fidelity, and that is
+where it is ranked. Per the standing rules, this table is fixed **now**, and any
+metric added later is post-hoc and advisory.
+
+### Fixtures
+
+The real 930.1 m² plan at seed 3 (branch 2's pinned document, 125 components) is
+primary — the same document every other branch measured, so numbers compose. Plus
+a single-room close-up, because material quality is judged at reading distance
+and a whole-floor view hides exactly what a texture pack buys.
+
+### Falsification
+
+- `materialx`: a material does not survive OBJ **and** IFC round-trip ⇒ its only
+  claim fails; drop.
+- `cc0-pbr`: bundled payload or time-to-first-render lands outside the ranges
+  above ⇒ the mechanism claim is wrong, whatever the screenshots show.
+- `blender-offline`: cannot render the Part-A IFC faithfully ⇒ the pre-work did
+  not deliver what it was scoped for, which is a Part-A finding, not a Part-B one.
+- All candidates visually indistinguishable in the human grid ⇒ null result,
+  recorded as such, and the branch's value is Part A alone.
+
+## Results
+
+_Not yet run._
