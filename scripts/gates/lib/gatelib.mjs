@@ -4,7 +4,8 @@
 // and a MISSING artifact is a clean FAIL rather than a stack trace.
 import fs from 'node:fs'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+import { createRequire } from 'node:module'
 
 export const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..')
 export const OUT = path.join(REPO, 'out')
@@ -86,9 +87,23 @@ export function loadJson(p, what = 'json') {
   return JSON.parse(fs.readFileSync(p, 'utf8'))
 }
 
-/** Load Playwright, or fail loudly with the exact install command. */
+/** Load Playwright, or fail loudly with the exact install command.
+ *
+ *  Playwright lives in `web/node_modules` (it is a devDependency of the web
+ *  package, not of the repo root). A bare `import('playwright')` from this file
+ *  resolves upward from `scripts/gates/lib/` and never reaches it, so try the
+ *  web package's resolver first and only then fall back to bare specifiers. */
 export async function loadPlaywright() {
-  for (const mod of ['playwright', 'playwright-core', '@playwright/test']) {
+  const candidates = ['playwright', 'playwright-core', '@playwright/test']
+  const webRequire = createRequire(path.join(REPO, 'web', 'package.json'))
+  for (const mod of candidates) {
+    try {
+      const m = await import(pathToFileURL(webRequire.resolve(mod)).href)
+      if (m.chromium) return m.chromium
+      if (m.default?.chromium) return m.default.chromium
+    } catch { /* try the next candidate */ }
+  }
+  for (const mod of candidates) {
     try {
       const m = await import(mod)
       if (m.chromium) return m.chromium
