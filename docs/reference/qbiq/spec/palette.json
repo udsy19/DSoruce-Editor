@@ -1,0 +1,350 @@
+{
+  "$comment": [
+    "SHARED SOURCE OF TRUTH for the DSource deliverable pack.",
+    "`plan` drives BOTH the 2D plan renderer AND the workbook's Plan-sheet legend chips \u2014",
+    "gate G4 asserts the legend chip fills equal these hexes EXACTLY.",
+    "`materials` drives the 3D render/walkthrough look and the Inventory floor/ceiling material names.",
+    "",
+    "Provenance:",
+    "  plan.*        = exact pixel values counted in xl/media/image1.png (the reference master plan PNG),",
+    "                  cross-checked against the workbook's custom xl/styles.xml <indexedColors> palette.",
+    "  materials.*   = median of a targeted patch sampled from the 3840x2160 reference renders",
+    "                  (docs/reference/qbiq/media/*.png). These are AS-RENDERED under warm interior",
+    "                  lighting, so they read warmer than the physical swatch; the hueRange/target",
+    "                  fields are what gate G6 tests, not exact equality.",
+    "Regenerate with: python3 scripts/gates/lib/extract_palette.py"
+  ],
+  "plan": {
+    "background": "#FFFFFF",
+    "room_fill": "#FFFFFF",
+    "drywall": "#FFDC60",
+    "half_drywall": "#72BDA1",
+    "glass": "#77DBF1",
+    "core": "#A0A0A0",
+    "perimeter_windows": "#DCDBEE",
+    "perimeter_wall": "#AEB6FF",
+    "door_swing": "#FFC393",
+    "circulation": "#FFE6E6",
+    "circulation_source": {
+      "rgba": [
+        255,
+        0,
+        0,
+        25
+      ],
+      "note": "Drawn as pure red at alpha 25/255 (~9.8%); composites to #FFE6E6 over white."
+    },
+    "room_label_text": "#000000",
+    "linework": "#000000",
+    "_legendChipOrder": [
+      {
+        "cell": "Q5",
+        "label": "Drywall",
+        "hex": "#FFDC60"
+      },
+      {
+        "cell": "Q6",
+        "label": "Half Drywall",
+        "hex": "#72BDA1"
+      },
+      {
+        "cell": "Q7",
+        "label": "Glass",
+        "hex": "#77DBF1"
+      },
+      {
+        "cell": "Q8",
+        "label": "Core",
+        "hex": "#A0A0A0"
+      },
+      {
+        "cell": "Q9",
+        "label": "Perimeter windows",
+        "hex": "#DCDBEE"
+      },
+      {
+        "cell": "Q10",
+        "label": "Perimeter wall",
+        "hex": "#AEB6FF"
+      },
+      {
+        "cell": "Q11",
+        "label": "Door_length",
+        "hex": "#FFC393"
+      }
+    ],
+    "_legendChrome": {
+      "headerCell": "Q4",
+      "headerText": "Wall type",
+      "headerMerge": "Q4:R4",
+      "headerFill": "#0B67F9",
+      "headerFontColor": "#FFFFFF",
+      "headerFontSize": 10,
+      "labelCellFill": "#FCF5F2",
+      "labelColumn": "R",
+      "borderStyle": "thin",
+      "_deviation": "The reference's Q8 Core chip is #D5BDD6 while the plan PNG draws core as #A0A0A0. DSource unifies on #A0A0A0 so plan and legend agree; G4 enforces the unified value."
+    },
+    "_workbookChrome": {
+      "headerBandFill": "#0B67F9",
+      "headerBandFontColor": "#FFFFFF",
+      "subHeaderFill": "#91B1F5",
+      "bodyFill": "#F9F9FA",
+      "sheetWash": "#FFFFFF",
+      "mutedText": "#7D8EA2",
+      "gridStroke": "#AAAAAA"
+    }
+  },
+  "materials": {
+    "herringbone_parquet": {
+      "hex": "#5D4030",
+      "range": [
+        "#48342A",
+        "#826250"
+      ],
+      "hueRange": [
+        15,
+        32
+      ],
+      "satRange": [
+        0.18,
+        0.48
+      ],
+      "lumRange": [
+        0.15,
+        0.48
+      ],
+      "_bandEvidence": "The four reference stills measure H 19.5-23.8, S 0.22-0.25, L 0.33-0.41 on their parquet bands; the ranges are widened around that envelope so lighting variation does not trip the gate while a carpet/concrete floor still would.",
+      "usedFor": "Circulation spines, reception, open-space and lounge floors. Dark-stained oak laid in a herringbone pattern; the single strongest identity move in the reference.",
+      "inventoryMaterialName": "Parquet Herringbone - dark",
+      "generalRow": "General!B10 (Floors, Material ID 2230, m^2)",
+      "sampledFrom": [
+        "Reception 0.72-0.92 x 0.74-0.88",
+        "Conference_room 0.60-0.75 x 0.88-0.98",
+        "Work_stations 0.72-0.88 x 0.80-0.95"
+      ]
+    },
+    "light_gray_carpet": {
+      "hex": "#988F80",
+      "range": [
+        "#8C8478",
+        "#C2B49D"
+      ],
+      "hueRange": [
+        28,
+        48
+      ],
+      "satRange": [
+        0.03,
+        0.24
+      ],
+      "lumRange": [
+        0.45,
+        0.8
+      ],
+      "_bandEvidence": "Conference_room's carpet band measures H 37.5, S 0.10, L 0.55.",
+      "usedFor": "Enclosed rooms: conference rooms, offices, focus rooms, workstation zones. Reads near-neutral warm gray under the render's warm key light.",
+      "inventoryMaterialName": "Carpet Light Gray",
+      "generalRow": "General!B9 (Floors, Material ID 2241, m^2)",
+      "sampledFrom": [
+        "Conference_room 0.14-0.42 x 0.84-0.94",
+        "Reception 0.05-0.16 x 0.68-0.75"
+      ]
+    },
+    "sage_green_feature_wall": {
+      "hex": "#9EA17D",
+      "range": [
+        "#8F8D69",
+        "#B2B593"
+      ],
+      "hueRange": [
+        55,
+        70
+      ],
+      "satRange": [
+        0.1,
+        0.25
+      ],
+      "lumRange": [
+        0.4,
+        0.62
+      ],
+      "usedFor": "Reception backdrop (with circular timber insets), open-space alcove/pod walls, and the round column drums. The one saturated accent in an otherwise neutral scheme.",
+      "sampledFrom": [
+        "Reception 0.60-0.67 x 0.48-0.62",
+        "Conference_room 0.94-0.99 x 0.25-0.55",
+        "Open_space sage pouf 0.60-0.72 x 0.72-0.80"
+      ]
+    },
+    "perforated_bronze_screen": {
+      "hex": "#40261A",
+      "range": [
+        "#40261A",
+        "#8E6951"
+      ],
+      "hueRange": [
+        14,
+        30
+      ],
+      "satRange": [
+        0.25,
+        0.55
+      ],
+      "lumRange": [
+        0.08,
+        0.35
+      ],
+      "usedFor": "Bookcase/library backs, storage-wall infill and ceiling-height room dividers. Dark bronze-anodised perforated metal; reads as a fine dot-matrix texture.",
+      "sampledFrom": [
+        "Work_stations 0.42-0.58 x 0.22-0.32"
+      ],
+      "_bandEvidence": "Measured #40261A H=18.9 S=0.42 L=0.18 on Work_stations. Ranges are widened around the measurement so lighting variation passes while a different material family does not."
+    },
+    "white_oak_furniture": {
+      "hex": "#C2A687",
+      "range": [
+        "#B28461",
+        "#D2AE85"
+      ],
+      "hueRange": [
+        23,
+        36
+      ],
+      "satRange": [
+        0.28,
+        0.55
+      ],
+      "lumRange": [
+        0.45,
+        0.75
+      ],
+      "usedFor": "Desks, workstation benches, bar counters, reception desk fluting, tall vertical slat screens, storage credenzas. The dominant furniture tone.",
+      "sampledFrom": [
+        "Reception slat 0.21-0.27 x 0.30-0.60",
+        "Conference_room slat 0.62-0.70 x 0.30-0.60",
+        "Open_space bar 0.16-0.34 x 0.60-0.66"
+      ],
+      "_bandEvidence": "Measured across three stills: H 25.9-31.9, S 0.34-0.46, L 0.54-0.67. Ranges are widened around the measurement so lighting variation passes while a different material family does not."
+    },
+    "black_ring_luminaire": {
+      "hex": "#1B130C",
+      "range": [
+        "#1B130C",
+        "#463B34"
+      ],
+      "hueRange": [
+        18,
+        34
+      ],
+      "satRange": [
+        0.08,
+        0.48
+      ],
+      "lumRange": [
+        0.03,
+        0.3
+      ],
+      "usedFor": "Suspended circular rings over reception and rectangular linear frames over open space; also the black track/pendant stems and chair bases. Matte near-black with a warm cast.",
+      "sampledFrom": [
+        "Reception ring 0.24-0.48 x 0.09-0.20 (5th-pct luminance)",
+        "Open_space frame 0.32-0.55 x 0.02-0.17 (5th-pct luminance)"
+      ],
+      "_bandEvidence": "Measured (5th-pct luminance) H 23.3-28.0, S 0.15-0.38, L 0.08-0.24. Ranges are widened around the measurement so lighting variation passes while a different material family does not."
+    },
+    "ceiling_white": {
+      "hex": "#DBCAB8",
+      "range": [
+        "#DBCAB8",
+        "#F8F1E9"
+      ],
+      "hueRange": [
+        24,
+        42
+      ],
+      "satRange": [
+        0.02,
+        0.42
+      ],
+      "lumRange": [
+        0.7,
+        0.97
+      ],
+      "usedFor": "Plasterboard soffits and bulkheads. Physically white; renders warm-off-white under the 3000K key.",
+      "inventoryMaterialName": "Drywall",
+      "generalRow": "General!F9 (Ceilings, Material ID 1111, m^2)",
+      "_bandEvidence": "Measured #DBCAB8 H=30.9 S=0.33 L=0.79 on Reception. Ranges are widened around the measurement so lighting variation passes while a different material family does not."
+    },
+    "black_exposed_ceiling": {
+      "hex": "#2E241D",
+      "range": [
+        "#1B130C",
+        "#4C382B"
+      ],
+      "hueRange": [
+        16,
+        34
+      ],
+      "satRange": [
+        0.05,
+        0.32
+      ],
+      "lumRange": [
+        0.03,
+        0.28
+      ],
+      "usedFor": "Open-plenum zones: exposed slab, blacked-out services and the white perforated cable-basket trays read against it.",
+      "inventoryMaterialName": "Black exposed",
+      "generalRow": "General!F10 (Ceilings, Material ID 1117, m^2)",
+      "_bandEvidence": "NOT independently sampled (the four hero stills show no open-plenum zone). Ranges are inherited from upholstery_charcoal, which shares the same near-black warm family. Re-measure if a render ever features an exposed ceiling."
+    },
+    "upholstery_charcoal": {
+      "hex": "#2E241D",
+      "range": [
+        "#241C16",
+        "#3A2E25"
+      ],
+      "hueRange": [
+        16,
+        34
+      ],
+      "satRange": [
+        0.1,
+        0.32
+      ],
+      "lumRange": [
+        0.06,
+        0.24
+      ],
+      "usedFor": "Reception lounge tub chairs and ottomans.",
+      "_bandEvidence": "Measured #2E241D H=24.7 S=0.23 L=0.15 on Reception. Ranges are widened around the measurement so lighting variation passes while a different material family does not."
+    },
+    "glass_partition": {
+      "hex": "#D5C6AF",
+      "range": [
+        "#C6B49B",
+        "#FCF3EB"
+      ],
+      "usedFor": "Full-height framed glazing to conference/focus rooms. Slim white-painted mullions on a ~1.2 m module; the glass itself is near-clear with a faint warm reflection.",
+      "inventoryMaterialName": "Glass Partitions",
+      "generalRow": "General!O9 (Glass Partitions, Material ID 4446, m)",
+      "mullionHex": "#F2ECE4"
+    }
+  },
+  "renderMood": {
+    "keyLightKelvin": 3000,
+    "description": "Warm interior key + cool daylight through full-height glazing. Global mean luminance of the four reference stills sits in a narrow band; no crushed blacks and no blown highlights.",
+    "referenceMeanLuminance": {
+      "Reception": 0.587,
+      "Open_space": 0.6128,
+      "Work_stations": 0.5692,
+      "Conference_room": 0.634,
+      "_measure": "PIL grayscale mean / 255 after thumbnail((800,800))"
+    },
+    "meanLuminanceBand": [
+      0.4,
+      0.78
+    ],
+    "minStdDev": 0.1,
+    "_bandRationale": "Reference stills span 0.569-0.634. The gate band is widened to 0.40-0.78 so a legitimately darker or brighter DSource render still passes, while a black/blown/empty frame fails. minStdDev rejects flat single-colour frames."
+  }
+}

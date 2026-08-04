@@ -37,6 +37,11 @@ samples/*.dxf
 
 # Qbiq reference samples (kept on disk, not in git — large binaries)
 docs/reference/qbiq/*.zip
+docs/reference/qbiq/media/*.mp4
+docs/reference/qbiq/media/*.png
+docs/reference/qbiq/spec/media/
+# Generated deliverable packs
+/out/
 docs/reference/qbiq/extracted/Rendered Images Samples from Qbiq/
 docs/reference/qbiq/extracted/**/__MACOSX/
 **/.DS_Store

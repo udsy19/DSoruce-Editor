@@ -1,0 +1,95 @@
+{
+  "$comment": [
+    "Reference walkthrough analysis + the DSource target contract.",
+    "`reference` = measured facts about qbiq's mp4 (ffprobe + 10 sampled frames, visually inspected).",
+    "`target`    = what gate G7 asserts about the DSource-produced mp4.",
+    "Frames live in docs/reference/qbiq/spec/video-frames/ and are regenerable with:",
+    "  V=docs/reference/qbiq/media/Modern_planning_Modern_design_Video.mp4",
+    "  for i in $(seq 0 9); do T=$(python3 -c \"print(round(0.2+$i*(36.6/9),3))\"); \\",
+    "    ffmpeg -v error -ss $T -i \"$V\" -frames:v 1 -vf scale=640:-1 \\",
+    "    -y docs/reference/qbiq/spec/video-frames/frame$(printf %02d $i)_t$T.png; done"
+  ],
+
+  "reference": {
+    "file": "docs/reference/qbiq/media/Modern_planning_Modern_design_Video.mp4",
+    "container": "mov,mp4,m4a,3gp,3g2,mj2",
+    "bytes": 153067614,
+    "bitRate": 33095700,
+    "duration_s": 37.0,
+    "video": {
+      "codec": "h264",
+      "profile": "High",
+      "width": 1920,
+      "height": 1080,
+      "pixFmt": "yuv420p",
+      "rFrameRate": "60/1",
+      "avgFrameRate": "60/1",
+      "nbFrames": 2220
+    },
+    "audio": null,
+    "audioNote": "The reference mp4 has NO audio stream.",
+    "sampledFrames": [
+      { "t": 0.2,    "lum": 0.619, "sd": 0.238, "scene": "Reception lounge, facing the fluted reception desk" },
+      { "t": 4.267,  "lum": 0.611, "sd": 0.235, "scene": "Panned right; glazed conference room left, reception desk right" },
+      { "t": 8.333,  "lum": 0.638, "sd": 0.211, "scene": "Threshold pass — glass partition edge sweeps frame; qbiq logo on wall display" },
+      { "t": 12.4,   "lum": 0.630, "sd": 0.213, "scene": "Tall oak millwork wall close on left; reception desk mid-frame" },
+      { "t": 16.467, "lum": 0.615, "sd": 0.209, "scene": "Passing a freestanding portal frame; city glazing right; logo on display" },
+      { "t": 20.533, "lum": 0.619, "sd": 0.265, "scene": "Enters open-plan workstation floor; desk banks recede left" },
+      { "t": 24.6,   "lum": 0.672, "sd": 0.208, "scene": "Deep open plan; planter-topped credenzas; perforated cable baskets overhead" },
+      { "t": 28.667, "lum": 0.648, "sd": 0.237, "scene": "Wide open floor; bar-height collaboration table centre; ottomans" },
+      { "t": 32.733, "lum": 0.656, "sd": 0.230, "scene": "Tracking along perimeter glazing; parkland view; lounge chairs" },
+      { "t": 36.8,   "lum": 0.637, "sd": 0.232, "scene": "Final open-plan bay, facing the opposite window wall" }
+    ],
+    "dhashHamming": {
+      "consecutivePairs": [37, 34, 31, 28, 29, 29, 34, 33, 30],
+      "firstVsLast": 35,
+      "firstVsMid": 33,
+      "midVsLast": 38,
+      "note": "64-bit dHash. Deltas are uniformly 28-38 with no spike, which is the signature of one continuous take at steady speed — there are no hard cuts."
+    },
+    "camera_notes": "One unbroken 37-second take — no cuts, no dissolves, no speed ramps. The camera is a virtual pedestrian: eye height reads as roughly 1.5-1.6 m (the horizon consistently sits at monitor-top / desk-return height, with the ceiling grid fully visible above and floor material readable below), and it never tilts — pitch stays locked at 0, so verticals remain vertical for the whole take. Motion is a slow forward dolly at roughly 0.6-1.0 m/s, well under real walking pace, with a smooth ease-in at the head and no hand-held shake or head bob whatsoever; the impression is a gimbal on a slider rather than a person. Yaw is a continuous, unhurried right-hand turn of about 4-6 deg/s that accumulates to roughly a half-turn across the take: it opens in the reception lounge looking square at the fluted timber reception desk, arcs right past the glazed conference room, and closes deep in the open-plan floor facing the opposite window wall. The path deliberately threads at least three thresholds so the plan reads as connected space rather than a set of stills: the glass-partition edge sweeps the frame at about t=8, a freestanding portal frame passes at close range at about t=16, and a further glazed room line passes at about t=28. Each threshold pass momentarily fills a third of the frame with a near-field element, which is what sells depth. Composition keeps one strong near-field anchor on the left or right edge (millwork, a planter, a desk return) while the vanishing point sits slightly off-centre down the circulation spine. Lighting is a warm interior key around 3000K from downlights and linear pendants, balanced against bright daylight through full-height perimeter glazing; the exterior is deliberately blown out one to two stops so foliage and city read as luminous backdrop rather than detail. Shadows are soft and ambient-occlusion-driven, there are no hard sun patches on the floor, and there is a mild bloom on the window plane. Mean frame luminance holds in a very tight 0.61-0.67 band across all ten samples, i.e. the exposure never swings. Branding is IN-SCENE ONLY: the qbiq roundel plus wordmark appears on wall-mounted displays at roughly t=8.3, t=12.4 and t=16.5. There is NO title card, NO end card, NO lower-third and NO watermark anywhere in the take.",
+    "branding": {
+      "mode": "in_scene",
+      "titleCard": false,
+      "endCard": false,
+      "watermark": false,
+      "occurrences_s": [8.333, 12.4, 16.467],
+      "description": "qbiq roundel + wordmark rendered as content on wall-mounted displays."
+    }
+  },
+
+  "target": {
+    "$comment": "What gate G7 asserts about out/walkthrough.mp4. Deliberately a superset of the reference: we add a branded title card because the deliverable pack is sent to a client cold, whereas qbiq's video ships inside their own web UI.",
+    "path": "out/walkthrough.mp4",
+    "codec": "h264",
+    "width": 1920,
+    "height": 1080,
+    "minFps": 30,
+    "durationRange_s": [30, 45],
+    "minDistinctFrames": 3,
+    "sampleAt": ["first", "middle", "last"],
+    "minPHashHamming": 12,
+    "_pHashRationale": "Reference first/mid/last pairs measure 33-38. A threshold of 12 passes any genuinely moving camera while failing a frozen or duplicated frame.",
+    "frameLuminanceBand": [0.25, 0.85],
+    "minFrameStdDev": 0.06,
+    "_luminanceRationale": "Reference frames sit at 0.61-0.67 with sd 0.21-0.27. The gate band is widened so a darker scheme still passes; the floor and the stdDev check are what reject black / blown / flat-empty frames.",
+    "branding": {
+      "mode": "title_card",
+      "titleCardAt_s": 0.0,
+      "titleCardMaxStdDev": 0.22,
+      "accentHex": "#E8A13C",
+      "minAccentPixelPct": 0.05,
+      "_note": "DEVIATION FROM REFERENCE: qbiq ships no title card (branding is in-scene only). The mission brief requires 'logo detectable on the title card frame', so DSource adds one. Set branding.mode to 'in_scene' here to match qbiq exactly and G7 will skip the title-card assertion instead of failing."
+    },
+    "camera": {
+      "eyeHeight_m": 1.6,
+      "speed_mps": 0.8,
+      "yawRate_degps": 5,
+      "pitch_deg": 0,
+      "hfov_deg": 70,
+      "cuts": 0,
+      "minThresholdPasses": 3,
+      "note": "Reproduce the reference's single continuous take. Do NOT add cuts, shake, or pitch."
+    }
+  }
+}
