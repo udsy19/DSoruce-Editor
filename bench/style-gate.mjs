@@ -27,13 +27,20 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const RULES_ALL = ['hex', 'rgba', 'lineWidth']
 const GUARDED = [
   ['web/src/editor/paint.ts', ['hex', 'rgba']],
+  ['web/src/import/PlacePalette.tsx', RULES_ALL],
+  ['web/src/ui/LibraryPanel.tsx', RULES_ALL],
+  ['web/src/three/Minimap.tsx', ['hex', 'rgba']],
 ]
+
+// Values that MUST exist in both the TS table and the stylesheet, because
+// canvas cannot read a CSS variable cheaply. Duplication here is allowed only
+// because it is declared and checked. 14 dead `--zone-*` properties shadowed
+// the TS zone palette with nothing enforcing agreement; this is that lesson.
+const MIRRORS = [['ACCENT_AMBER', '--accent-amber']]
 const PENDING = [
   ['web/src/editor/paint.ts', 'Phase 2b — raw lineWidth (colour IS guarded); the ladder rewrites these call sites'],
+  ['web/src/three/Minimap.tsx', 'Phase 2b — raw lineWidth (colour IS guarded)'],
   ['web/src/editor/furniture.ts', 'Phase 2c — LOD rework touches every lineWidth here anyway'],
-  ['web/src/import/PlacePalette.tsx', 'Phase 1 completion — 18 hex'],
-  ['web/src/ui/LibraryPanel.tsx', 'Phase 1 completion — 68 hex'],
-  ['web/src/three/Minimap.tsx', 'Phase 1 completion — 2 hex'],
 ]
 /** The table itself and the stylesheet are where literals legitimately live. */
 const HEX = /#[0-9a-fA-F]{3,8}\b/g
@@ -65,6 +72,22 @@ for (const [rel, rules] of GUARDED) {
       }
     }
   })
+}
+
+// Mirror check: a declared TS/CSS pair that disagrees is worse than two
+// literals, because it renders as one value while reading as another.
+const tableSrc = fs.readFileSync(path.join(ROOT, 'web/src/editor/planStyle.ts'), 'utf8')
+const cssSrc = fs.readFileSync(path.join(ROOT, 'web/src/styles.css'), 'utf8')
+for (const [tsName, cssVar] of MIRRORS) {
+  const ts = tableSrc.match(new RegExp(`${tsName}\\s*=\\s*'(#[0-9a-fA-F]{3,8})'`))
+  const css = cssSrc.match(new RegExp(`\\${cssVar}:\\s*(#[0-9a-fA-F]{3,8})`))
+  if (!ts || !css) {
+    console.log(`  MIRROR MISSING: ${tsName} <-> ${cssVar}`)
+    violations++
+  } else if (ts[1].toLowerCase() !== css[1].toLowerCase()) {
+    console.log(`  MIRROR DRIFT: ${tsName}=${ts[1]} but ${cssVar}=${css[1]}`)
+    violations++
+  }
 }
 
 if (violations > 0) {

@@ -13,7 +13,7 @@ import { fmtMeters } from '../cad/dimEdit'
 import type { DocComponent, DocState, DocWall, DocZone } from '../types/doc'
 import {
   planStyle, strokePx, C, DECISION_DOT, ZONE,
-  WHITE, BLACK, THUMB_FILL, THUMB_OTHER,
+  WHITE, BLACK, THUMB_FILL, THUMB_OTHER, hexToRgba,
 } from './planStyle'
 import type { Metrics, ZoneStat } from '../types/metrics'
 
@@ -951,11 +951,6 @@ function clip(text: string, boxW: number): string {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text
 }
 
-/** '#rrggbb' → 'rgba(r,g,b,a)' (zone-line hairlines on tag pills). */
-function hexToRgba(hex: string, a: number): string {
-  const n = parseInt(hex.slice(1), 16)
-  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`
-}
 
 function roundRect(
   ctx: CanvasRenderingContext2D,

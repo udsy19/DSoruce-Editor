@@ -15,6 +15,7 @@ import {
   canvasToJpeg,
 } from './pdf'
 import type { DocState } from '../types/doc'
+import { ACCENT_AMBER, hexToRgba } from '../editor/planStyle'
 /** Outer page margin (pt), shared by report + drawing-set pages. */
 export const MARGIN = 40
 /** RES px per pt for embedded rasters — ~187 dpi, crisp line-work. */
@@ -30,7 +31,7 @@ export function hex2rgb(hex: string): Rgb {
 }
 
 /** Warm-amber brand accent (CLAUDE.md) — KPI bars, headings. */
-export const ACCENT: Rgb = hex2rgb('#E8A13C')
+export const ACCENT: Rgb = hex2rgb(ACCENT_AMBER)
 
 /**
  * A single PDF page: accumulates content ops (top-down y, converted to PDF
@@ -258,7 +259,7 @@ export function keyPlanJpeg(state: DocState, region: KeyRegion, wPx: number, hPx
   const Y = (m: number) => m * k + oy
 
   // Highlight fill — the covered region (amber, translucent).
-  ctx.fillStyle = 'rgba(232,161,60,0.5)'
+  ctx.fillStyle = hexToRgba(ACCENT_AMBER, 0.5)
   if (region === 'all') {
     ctx.fillRect(X(minX), Y(minY), spanX * k, spanY * k)
   } else {

@@ -26,6 +26,15 @@
   --accent-soft: #e8eefc;
   --accent-ring: rgba(45, 91, 214, 0.35);
 
+  /* The single warm-amber accent (CLAUDE.md). It marks the autonomous/AI
+     action and is deliberately the ONLY warm hue on cool content colours.
+     It was hardcoded at 21 sites before this token existed. */
+  --accent-amber: #E8A13C;
+  /* Same colour as a triplet, so a rule can set its own alpha without
+     hand-expanding the hex to decimal -- which is how five rules below ended
+     up holding copies that no search for "#E8A13C" could find. */
+  --accent-amber-rgb: 232, 161, 60;
+
   /* ---- semantic ---- */
   --ok: #2fa36b;
   --ok-soft: #e0f1e8;
@@ -33,6 +42,10 @@
   --review-soft: #fbefd9;
   --danger: #de5147;
   --danger-soft: #fbe6e4;
+  /* Deeper terracotta for sync/error status text, distinct from --danger's
+     brighter red so an inline status does not read as an alert banner. */
+  --danger-deep: #c94f38;
+  --danger-deep-wash: rgba(201, 79, 56, 0.08);
 
   /* ---- metric chip solids ---- */
   --chip-efficiency: #3b6fe0;
@@ -40,22 +53,7 @@
   --chip-carbon: #43a96b;
   --chip-cost: #2aa1a0;
 
-  /* ---- zone fills (pastel) ---- */
-  --zone-circ: #dcebfb;
-  --zone-circ-line: #4a82c4;
-  --zone-workspace: #fbf3d6;
-  --zone-workspace-line: #b99527;
-  --zone-meeting: #e9e3f7;
-  --zone-meeting-line: #7e63c0;
-  --zone-collab: #def1e2;
-  --zone-collab-line: #4b9e66;
-  --zone-core: #eceef1;
-  --zone-core-line: #8b939e;
-  --zone-office: #fce6d6;
-  --zone-office-line: #cb8150;
-  --zone-amenity: #d9f0ef;
-  --zone-amenity-line: #3f9c95;
-
+  
   /* ---- plan linework ---- */
   --wall: #2e343b;
   --wall-ext: #1e2329;
@@ -538,7 +536,7 @@ button {
 }
 .dyn-field.active {
   border-color: var(--accent, #e8a13c);
-  background: rgba(232, 161, 60, 0.1);
+  background: rgba(var(--accent-amber-rgb), 0.1);
 }
 .dyn-field .dyn-label {
   font: 600 9px var(--font-ui, 'Space Grotesk', sans-serif);
@@ -4291,10 +4289,10 @@ kbd {
 .space-plate-draft {
   margin: 10px 0 14px;
   padding: 10px 12px;
-  border: 1px solid rgba(232, 161, 60, 0.45);
+  border: 1px solid rgba(var(--accent-amber-rgb), 0.45);
   border-left: 3px solid var(--accent, #e8a13c);
   border-radius: 6px;
-  background: rgba(232, 161, 60, 0.08);
+  background: rgba(var(--accent-amber-rgb), 0.08);
   font-size: 13px;
   line-height: 1.5;
   color: var(--ink, #1a1d21);
@@ -4303,14 +4301,14 @@ kbd {
   display: inline-block;
   margin-left: 8px;
   padding: 3px 10px;
-  border: 1px solid rgba(232, 161, 60, 0.7);
+  border: 1px solid rgba(var(--accent-amber-rgb), 0.7);
   border-radius: 5px;
   background: #fff;
   font: inherit;
   font-size: 12px;
   cursor: pointer;
 }
-.space-plate-confirm:hover { background: rgba(232, 161, 60, 0.14); }
+.space-plate-confirm:hover { background: rgba(var(--accent-amber-rgb), 0.14); }
 /* An approximate figure reads as provisional, not as a measurement. */
 .space-metric-value[data-approx='true'] { opacity: 0.82; font-style: italic; }
 

@@ -167,6 +167,48 @@ export const THUMB_FILL: Record<string, string> = {
 }
 export const THUMB_OTHER = 'rgba(138, 144, 153, 0.55)'
 
+/**
+ * The single warm-amber accent. MIRRORS the `--accent-amber` custom property —
+ * canvas cannot read a CSS variable without a getComputedStyle round-trip per
+ * frame, so the value necessarily exists twice. That duplication is DECLARED
+ * and ENFORCED: `bench/style-gate.mjs` asserts this constant equals the token,
+ * and fails if they drift. An undeclared second copy is what left 14 dead
+ * `--zone-*` tokens shadowing this table.
+ */
+export const ACCENT_AMBER = '#E8A13C'
+
+/**
+ * Colour math lives with the colours. Deriving a tint from its base is what
+ * stops a hand-expanded copy going stale: the minimap's view cone was written
+ * as `rgba(232, 161, 60, 0.45)`, which is this accent in decimal and therefore
+ * invisible to any search for `#E8A13C`.
+ */
+export function hexToRgba(hex: string, a: number): string {
+  const n = parseInt(hex.slice(1), 16)
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`
+}
+
+/**
+ * Minimap (the 3D viewer's plan schematic). One cool grey at three weights —
+ * solid for the label, 0.85 for wall lines, 0.35 for furniture dots. They share
+ * a base on purpose, so the schematic reads as one material.
+ */
+export const MINIMAP = {
+  accent: ACCENT_AMBER,
+  ink: '#5c626c',
+  wallLine: 'rgba(92, 98, 108, 0.85)',
+  dot: 'rgba(92, 98, 108, 0.35)',
+  /** View cone — a radial fade of the accent to fully transparent. */
+  coneInner: hexToRgba(ACCENT_AMBER, 0.45),
+  coneOuter: hexToRgba(ACCENT_AMBER, 0),
+  /** Viewer puck outline. */
+  viewerOutline: 'rgba(24, 26, 30, 0.6)',
+  /** The floating box's own chrome (warm translucent paper over the 3D view). */
+  boxBorder: 'rgba(0,0,0,0.08)',
+  boxBg: 'rgba(243, 241, 236, 0.72)',
+  boxShadow: '0 2px 10px rgba(0,0,0,0.16)',
+}
+
 /** Reference column fill (spec `palette.column_fill`). */
 const COLUMN_FILL = '#a0a0a0'
 

@@ -91,7 +91,7 @@ export function CandidateGallery({
   )
 }
 
-const ACCENT = 'var(--accent, #E8A13C)'
+const ACCENT = 'var(--accent)'
 const LETTER = (i: number) => String.fromCharCode(65 + (i % 26))
 
 const S: Record<string, CSSProperties> = {
@@ -156,7 +156,7 @@ const S: Record<string, CSSProperties> = {
     fontSize: 9.5,
     fontWeight: 600,
     color: ACCENT,
-    background: 'rgba(232, 161, 60, 0.12)',
+    background: 'rgba(var(--accent-amber-rgb), 0.12)',
     borderRadius: 3,
     padding: '0 4px',
   },

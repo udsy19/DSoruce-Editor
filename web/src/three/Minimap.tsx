@@ -7,6 +7,7 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from 'react'
 import type { Pose } from './Viewer3D'
+import { MINIMAP } from '../editor/planStyle'
 
 /**
  * Live top-down minimap for the first-person walkthrough. A small translucent
@@ -53,9 +54,7 @@ export interface MinimapHandle {
 
 const SIZE = 170 // CSS px of the (square) map box
 const PAD = 12 // inner letterbox padding, world geometry never touches the edge
-const ACCENT = '#E8A13C'
-const WALL_LINE = 'rgba(92, 98, 108, 0.85)' // cool gray
-const DOT = 'rgba(92, 98, 108, 0.35)' // faint furniture dots
+const { accent: ACCENT, ink: INK, wallLine: WALL_LINE, dot: DOT } = MINIMAP
 
 /** Fit transform from world (x, z) → canvas pixels (device space), preserving
  *  aspect ratio and letterboxing within the padded box. */
@@ -172,8 +171,8 @@ export const Minimap = forwardRef<MinimapHandle, MinimapProps>(function Minimap(
         const rx = hx * Math.cos(-half) - hy * Math.sin(-half)
         const ry = hx * Math.sin(-half) + hy * Math.cos(-half)
         const grad = ctx.createRadialGradient(px, py, 0, px, py, cone)
-        grad.addColorStop(0, 'rgba(232, 161, 60, 0.45)')
-        grad.addColorStop(1, 'rgba(232, 161, 60, 0)')
+        grad.addColorStop(0, MINIMAP.coneInner)
+        grad.addColorStop(1, MINIMAP.coneOuter)
         ctx.fillStyle = grad
         ctx.beginPath()
         ctx.moveTo(px, py)
@@ -188,7 +187,7 @@ export const Minimap = forwardRef<MinimapHandle, MinimapProps>(function Minimap(
         ctx.arc(px, py, 3.2 * dpr, 0, Math.PI * 2)
         ctx.fill()
         ctx.lineWidth = 1.2 * dpr
-        ctx.strokeStyle = 'rgba(24, 26, 30, 0.6)'
+        ctx.strokeStyle = MINIMAP.viewerOutline
         ctx.stroke()
       },
     }),
@@ -215,9 +214,9 @@ export const Minimap = forwardRef<MinimapHandle, MinimapProps>(function Minimap(
     width: SIZE,
     height: SIZE,
     borderRadius: 12,
-    border: '1px solid rgba(0,0,0,0.08)',
-    background: 'rgba(243, 241, 236, 0.72)',
-    boxShadow: '0 2px 10px rgba(0,0,0,0.16)',
+    border: `1px solid ${MINIMAP.boxBorder}`,
+    background: MINIMAP.boxBg,
+    boxShadow: MINIMAP.boxShadow,
     backdropFilter: 'blur(8px)',
     WebkitBackdropFilter: 'blur(8px)',
     overflow: 'hidden',
@@ -247,7 +246,7 @@ export const Minimap = forwardRef<MinimapHandle, MinimapProps>(function Minimap(
           left: 8,
           font: '500 9px/1 "IBM Plex Mono", ui-monospace, monospace',
           letterSpacing: '0.08em',
-          color: '#5c626c',
+          color: INK,
           pointerEvents: 'none',
         }}
       >

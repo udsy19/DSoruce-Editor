@@ -43,6 +43,7 @@ import {
 } from './pdf'
 import { Page, MARGIN, RES, ACCENT, hex2rgb, pageHeader, logoJpeg } from './sheet'
 import { triggerDownload } from './png'
+import { ACCENT_AMBER } from '../editor/planStyle'
 
 // ---------------------------------------------------------------------------
 // Report model (pure, testable)
@@ -332,7 +333,7 @@ export function normalizeRadar(model: ReportModel): number[][] {
 // ---------------------------------------------------------------------------
 
 /** Per-alternative accent (radar polygon, table dot, space-mix, header). */
-const ALT_COLORS = ['#7b74d4', '#E8A13C', '#3f9c95', '#c4607a', '#5b8def']
+const ALT_COLORS = ['#7b74d4', ACCENT_AMBER, '#3f9c95', '#c4607a', '#5b8def']
 const MUTED = 0.5
 
 /** Render a plan raster for an alternative into a box of the given PT size. */
