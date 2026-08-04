@@ -89,6 +89,23 @@ Visual quality is not scoreable by me. So:
 - Everything else is measured objectively and reported alongside, so the human
   judgement is made *with* the costs visible rather than after them.
 
+#### The grid is BLINDED — the human judge is also an instrument
+
+The protocol pinned the scene, camera and lighting but not the *judge*. Knowing
+which column is the incumbent and which is the shiny new CC0 set is an anchoring
+bias aimed at the only subjective measurement in the campaign — pro-novelty or
+pro-incumbent, either way expectations are holding the ruler.
+
+- Columns are labelled **neutrally (A / B / C …)**, in an order derived from a
+  fixed seed so it is reproducible but not guessable from the candidate list.
+- The mapping is written to a **separate key file** that is not shown with the
+  grid, so unblinding is mechanical rather than remembered.
+- The pick is **recorded before** unblinding.
+
+**Sixth face of the rules family: the evidence conditions apply to human
+judgements too.** Every other face guards a metric from the thing it measures;
+this guards a judgement from what the judge already believes.
+
 ### PREDICTION — `cc0-pbr`'s network cost, before measuring
 
 Registered now because *"biggest visual lever"* and *"web app load budget"* are
@@ -109,9 +126,19 @@ appear in the table as that trade rather than be discovered in production.
 | metric | baseline | `cc0-pbr` predicted |
 |---|---|---|
 | asset payload | ~0 (procedural) | **+4 to +12 MB** bundled at 1–2K for ~6 materials; **+0 MB** initial if fetched-on-demand |
-| time-to-first-render | current | **+1.5× to +3×** bundled; **≈ unchanged** on-demand, with progressive material pop-in |
+| time-to-first-render | current | **+1.5× to +3×** bundled; **≈ unchanged** on-demand |
+| **time-to-full-fidelity** | = TTFR (nothing to load) | **≈ TTFR** bundled; **TTFR + 1 to + 4 s** on-demand |
+| **visible pop-in at the fixed camera** | no | **no** bundled; **YES** on-demand |
 | frame time @ 145 components | current | **within ±15 %** — texture *memory* rises, per-frame cost barely moves at this component count |
 | HDRI sky | procedural dome | **+2 to +6 MB** for a usable 2K HDRI |
+
+**On-demand's cost does not vanish, it moves — so it is named before measuring.**
+Saying bundled costs TTFR while on-demand is "≈unchanged" is true only for the
+metric named: on-demand still pays, in **time-to-full-fidelity** and in a user
+seeing flat-shaded geometry pop to PBR. Without those two rows the table would
+show on-demand winning **by omission**, which is precisely the shape of this
+campaign's budget error — *the number that wasn't measured reads as zero.*
+The delivery comparison must be cost-vs-cost, never cost-vs-free.
 
 **Mechanism:** textures cost *bandwidth and VRAM*, not draw calls. At 145
 components the GPU is nowhere near limited, so the visual gain should be large
