@@ -245,6 +245,54 @@ the conformed polygon. A consumer wanting exact area reads the quantity, not the
 box. Recorded rather than glossed: this is a known simplification, not a claim of
 boundary fidelity.
 
-## Results — Part B
+## Results — Part B (payload measured; render half NOT run)
 
-_Not yet run._
+### The payload prediction: in range, but under conditions I failed to declare
+
+Measured against real ambientCG downloads at 1K, not estimates.
+
+| configuration | 1 material | 6 materials | vs prediction (+4 to +12 MB) |
+|---|---|---|---|
+| **library as shipped** (JPEG, all 6 maps + .blend + preview) | 10.4 MB | **62 MB** | **far outside** |
+| JPEG, 3 shippable maps (Color/Normal/Roughness) | 4.68 MB | **28.1 MB** | **outside** |
+| **WebP q80, 3 maps — what a web app ships** | 0.92 MB | **5.5 MB** | **inside** |
+
+Full 1K set contents, for the record: Color 1.70 MB · NormalGL 2.49 MB ·
+NormalDX 2.50 MB (duplicate convention — ship one) · Roughness 0.72 MB ·
+Displacement 0.72 MB · AmbientOcclusion 0.69 MB, plus a 1.1 MB `.blend`, a PNG
+preview, `.usdc`, `.tres` and `.mtlx`. At 2K the archives are 7.2–36.6 MB each.
+
+**The number landed in my range, and I am not claiming a hit.** The declared
+conditions were **resolution** (1–2K) and **delivery model** (bundled vs
+on-demand). The dominant variable turned out to be neither: **format and map
+selection move the payload 5×** — 28.1 MB → 5.5 MB — which is more than the
+resolution tier does. My prediction was implicitly assuming WebP and three maps,
+and I never said so.
+
+So the honest verdict on my own pre-registration: **under-specified**. The
+falsification clause ("under 2 MB means my size model is wrong") did not fire, but
+the range was accidentally right — it would have been wrong by 5× against the
+same textures shipped in the format the library actually hands you. A future
+prediction of an asset payload must declare **format and channel selection**
+alongside resolution, or it is not a prediction about anything shippable.
+
+### Incidental finding, relevant to a different candidate
+
+ambientCG ships a **`.mtlx` MaterialX definition with every set**. The
+`materialx` candidate's premise — that MaterialX can be the schema under the
+bank — is therefore not something we would have to author; the assets already
+carry it. That does not decide the candidate, but it removes the cost I would
+have assumed for it.
+
+### NOT RUN, and stated rather than implied
+
+The render half of Part B is not done: no bundled-vs-on-demand build comparison,
+no time-to-first-render or time-to-full-fidelity measurement, no pop-in
+observation, no frame-time-at-145-components, no MaterialX round-trip through
+OBJ/IFC, **and no screenshot grid**. Those need a texture pipeline in the app, two
+build configurations, and browser measurement — a substantial piece of work that
+should start clean rather than be rushed onto the end of another.
+
+The blinded-grid protocol, the delivery-model rows and the falsification clauses
+stand unchanged and unrun. **No visual claim is made here, and no grid is sealed
+— there is no grid yet.**
