@@ -11,6 +11,7 @@
 import { drawFurnitureSymbol } from './furniture'
 import { fmtMeters } from '../cad/dimEdit'
 import type { DocComponent, DocState, DocWall, DocZone } from '../types/doc'
+import { planStyle, strokePx } from './planStyle'
 import type { Metrics, ZoneStat } from '../types/metrics'
 
 /** A point in screen or world space (the function names say which). */
@@ -181,6 +182,66 @@ export function drawGlazing(v: PaintView, a: Pt, b: Pt) {
  * user walls medium, generated partitions lightest. Stroke is proportional
  * to true thickness with min/max clamps so hierarchy survives any zoom.
  */
+/**
+ * Draw a wall the way the reference actually draws one (ADR: Phase 2a).
+ *
+ * MEASURED, not assumed: the qbiq reference has NO dark poché anywhere. Walls
+ * are thin DOUBLE LINES with an unfilled interior — 463 paths per page at the
+ * 2× tier carrying `fill=None`. The brief called filled poché "the single
+ * highest-leverage change"; Phase 0 falsified that, and implementing it would
+ * have moved us away from the reference. What carries the drawing is the
+ * WEIGHT LADDER (furniture 1× → wall 2× → room enclosure 7×), not fill.
+ *
+ * So: offset the centreline by ±thickness/2, stroke both faces at the wall
+ * tier, cap the ends. The interior stays empty and the background shows
+ * through — which is exactly what makes furniture and zone fill read as the
+ * content rather than competing with a black slab.
+ */
+export function drawWall(v: PaintView, w: DocWall, exterior: boolean) {
+  const style = planStyle(v.presentation ? 'paper' : 'editor')
+  const el = exterior ? style.wallCut : style.wallInterior
+  const dpr = typeof devicePixelRatio === 'number' ? devicePixelRatio : 1
+  const width = strokePx(el.tier ?? 'wall', v.scale, dpr)
+  const color = el.stroke ?? '#000000'
+
+  const dx = w.b.x - w.a.x
+  const dy = w.b.y - w.a.y
+  const len = Math.hypot(dx, dy)
+  if (len < 1e-9) return
+  // Half-thickness perpendicular, in WORLD units so the two faces track the
+  // real wall as the view zooms — the faces are geometry, the strokes are not.
+  const h = (w.thickness > 0 ? w.thickness : 0.1) / 2
+  const nx = (-dy / len) * h
+  const ny = (dx / len) * h
+
+  const a1 = { x: w.a.x + nx, y: w.a.y + ny }
+  const b1 = { x: w.b.x + nx, y: w.b.y + ny }
+  const a2 = { x: w.a.x - nx, y: w.a.y - ny }
+  const b2 = { x: w.b.x - nx, y: w.b.y - ny }
+  drawSegment(v, a1, b1, width, color)
+  drawSegment(v, a2, b2, width, color)
+  // End caps close the wall so it reads as a solid element rather than two
+  // stray parallel lines.
+  drawSegment(v, a1, a2, width, color)
+  drawSegment(v, b1, b2, width, color)
+}
+
+/**
+ * Punch an opening through a wall by overdrawing in WHITE — the reference's own
+ * mechanism (31 white strokes per page at the 8.5× tier). Called after walls so
+ * the punch lands on top; this is how a wall line breaks at a door.
+ */
+export function punchOpening(v: PaintView, a: Pt, b: Pt, thickness: number) {
+  const style = planStyle(v.presentation ? 'paper' : 'editor')
+  const dpr = typeof devicePixelRatio === 'number' ? devicePixelRatio : 1
+  // The punch must be at least as wide as the wall it erases.
+  const width = Math.max(
+    strokePx(style.opening.tier ?? 'openingPunch', v.scale, dpr),
+    thickness * v.scale,
+  )
+  drawSegment(v, a, b, width, style.opening.stroke ?? '#ffffff')
+}
+
 export function wallStyle(
   v: PaintView,
   w: DocWall,

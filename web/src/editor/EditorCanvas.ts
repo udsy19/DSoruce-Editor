@@ -34,7 +34,7 @@ import {
   drawZones,
   drawZoneTags,
   wallBbox,
-  wallStyle,
+  drawWall,
   type PaintView,
   type ZoneTag,
 } from './paint'
@@ -1548,8 +1548,9 @@ export class EditorCanvas {
       if (wall.glazing) {
         drawGlazing(this.host, wall.a, wall.b)
       } else {
-        const s = wallStyle(this.host, wall, this.exteriorIds)
-        drawSegment(this.host, wall.a, wall.b, s.width, s.color)
+        // Phase 2a: the MEASURED wall treatment — thin double lines at the wall
+        // tier, unfilled interior. Replaces the single fat stroked centreline.
+        drawWall(this.host, wall, this.exteriorIds.has(wall.id))
       }
     }
     if (this.tool === 'wall' && this.wallStart) {
