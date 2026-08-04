@@ -378,14 +378,22 @@ export interface GroundTruthJson {
  * The `out/ground-truth.json` payload (schema:
  * `docs/reference/qbiq/spec/ground-truth.schema.json`).
  *
- * DEVIATION from `Editor.ground_truth_json()`: the core emits one entry per
- * ZONE — including `Circulation` and `Core` — while the Inventory (and the plan
- * labels, and the thumbnails) use `planRoomList`, which drops `Core` and
- * collapses all circulation into the single aggregated `Room ID "0"` row that
- * the reference workbook itself uses (its row 35). G3 requires those three sets
- * to be identical, so the room set is filtered ONCE, here, from the same
- * `QtoModel` the Inventory sheet is written from. Wall runs, door counts and
- * the sqf factor still come verbatim from the core.
+ * This is a pure PROJECTION of `QtoModel` — it decides nothing. Every number is
+ * already resolved upstream:
+ *
+ *   * wall runs, door counts, room areas, the sqf factor → `Editor.quantities()`
+ *     (Rust core, `crates/ds-core/src/quantity.rs`), verbatim;
+ *   * the room SET → `model.rooms`, i.e. `planRoomList` — the same list the
+ *     Inventory sheet, the plan labels and the thumbnails are built from, so
+ *     G3's three-way 1:1 check cannot fail by construction rather than by luck;
+ *   * finish materials, subcategory and furniture elements → `finishSchedule.ts`
+ *     and `takeoff.ts`.
+ *
+ * The core deliberately does NOT emit this file. `ground-truth.json` is a JOIN of
+ * core geometry with data the core does not hold (the finish schedule, furniture
+ * descriptions, CAD room-marker ids) and with the renderer's drawn labels; a
+ * core-side emitter would necessarily compute a SECOND, independent room set —
+ * exactly the divergence G3 exists to catch. See `reports/B1-2.md`.
  */
 export function buildQtoGroundTruth(model: QtoModel, planLabels: string[]): GroundTruthJson {
   const walls: Record<string, { lengthM: number }> = {}

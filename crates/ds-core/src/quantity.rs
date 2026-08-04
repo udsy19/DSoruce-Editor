@@ -1,11 +1,18 @@
 //! **Quantity surface** — the geometric truth a Quantity Takeoff workbook reads.
 //!
 //! Every number here is *computed from the document geometry*, never typed. The
-//! xlsx writer (`web/src/export/`) consumes this through the `Editor` wasm
-//! boundary and must not re-derive any of it; the deliverable-pack gate
-//! `scripts/gates/g3-quantity-truth.py` cross-checks the workbook's cells
-//! against [`ground_truth_json`] to within 1 cm (walls), 0.01 m² (rooms) and
+//! xlsx writer (`web/src/export/qtoWorkbook.ts`) consumes this through the
+//! `Editor` wasm boundary and must not re-derive any of it; the deliverable-pack
+//! gate `scripts/gates/g3-quantity-truth.py` cross-checks the workbook's cells
+//! against `out/ground-truth.json` to within 1 cm (walls), 0.01 m² (rooms) and
 //! exact equality (door counts).
+//!
+//! **This module supplies geometry, not the ground-truth file.** `ground-truth.json`
+//! is a *join* of these numbers with data the core does not hold — finish
+//! materials (`finishSchedule.ts`), furniture elements (`takeoff.ts`), CAD room-
+//! marker ids and the plan renderer's drawn labels — so it is assembled by
+//! `qtoWorkbook.ts::buildQtoGroundTruth`, which takes its walls, doors, room
+//! areas and sqf factor verbatim from here. See `reports/B1-2.md`.
 //!
 //! ## Wall classification (`WallType`)
 //!
@@ -45,7 +52,6 @@ use crate::geometry::{self, Point};
 use crate::model::{Component, KeepOut, Wall, FULL_WALL_HEIGHT_M};
 use crate::zone::{Zone, ZoneType};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
 
 /// Square feet per square meter. **Exactly 10.764** by orchestrator ruling
 /// (`reports/ORCHESTRATOR_LOG.md` cycle 1, ruling 3) — not 10.76 (what the qbiq
@@ -224,43 +230,6 @@ pub struct WallClassification {
     pub plan_key: String,
     /// Centerline length, meters (so a caller can reconcile totals).
     pub length_m: f64,
-}
-
-/// A `ground-truth.json` wall entry: `{"lengthM": 105.03}`.
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GroundTruthWall {
-    pub length_m: f64,
-}
-
-/// A `ground-truth.json` room entry.
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GroundTruthRoom {
-    pub room_id: u32,
-    pub name: String,
-    pub space_type: String,
-    pub headcount: u32,
-    pub area_m2: f64,
-    pub area_sqf: f64,
-}
-
-/// `out/ground-truth.json` — the contract in
-/// `docs/reference/qbiq/spec/ground-truth.schema.json`.
-///
-/// `renders` is deliberately absent: the render agent merges it in. `plan_labels`
-/// is supplied by the **plan renderer** (it is the list of room ids actually
-/// drawn), which is exactly what makes G3's 1:1 label check meaningful — this
-/// module must never fill it from its own room list.
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GroundTruth {
-    pub sqf_per_m2: f64,
-    pub walls: BTreeMap<String, GroundTruthWall>,
-    pub doors: BTreeMap<String, usize>,
-    pub door_count: usize,
-    pub rooms: Vec<GroundTruthRoom>,
-    pub plan_labels: Vec<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -552,42 +521,6 @@ pub fn quantities(doc: &Document) -> Quantities {
     }
 }
 
-/// Build the `out/ground-truth.json` payload. `plan_labels` comes from the plan
-/// renderer (the room ids it actually drew) — see [`GroundTruth`].
-pub fn ground_truth(doc: &Document, plan_labels: &[String]) -> GroundTruth {
-    let q = quantities(doc);
-    GroundTruth {
-        sqf_per_m2: q.sqf_per_m2,
-        walls: q
-            .walls
-            .iter()
-            .map(|w| (w.label.clone(), GroundTruthWall { length_m: w.length_m }))
-            .collect(),
-        doors: q.doors.iter().map(|d| (d.label.clone(), d.count)).collect(),
-        door_count: q.door_count,
-        rooms: q
-            .rooms
-            .iter()
-            .map(|r| GroundTruthRoom {
-                room_id: r.room_id,
-                name: r.name.clone(),
-                space_type: r.space_type.clone(),
-                headcount: r.headcount,
-                area_m2: r.area_m2,
-                area_sqf: r.area_sqf,
-            })
-            .collect(),
-        plan_labels: plan_labels.to_vec(),
-    }
-}
-
-/// [`ground_truth`] serialized as pretty JSON — write this straight to
-/// `out/ground-truth.json`.
-pub fn ground_truth_json(doc: &Document, plan_labels: &[String]) -> String {
-    serde_json::to_string_pretty(&ground_truth(doc, plan_labels))
-        .unwrap_or_else(|e| format!("{{\"error\":{:?}}}", e.to_string()))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -864,53 +797,37 @@ mod tests {
         assert_eq!(quantities(&fixture()).sqf_per_m2, 10.764);
     }
 
-    /// The emitted JSON carries every key
-    /// `docs/reference/qbiq/spec/ground-truth.schema.json` requires, with the
-    /// wall keys spelled exactly as the legend / `General!J*` names.
+    /// The keys `qtoWorkbook.ts::buildQtoGroundTruth` writes into
+    /// `out/ground-truth.json` come from THIS module's `label()`s, and G3 matches
+    /// them against `General!J*` / `General!T*` by exact string. The core no
+    /// longer emits that file (see the module docs), but it still owns the
+    /// vocabulary, so the vocabulary is pinned here. The file's own shape is
+    /// checked end-to-end, on the real artifact, by G3.
     #[test]
-    fn ground_truth_json_matches_the_schema_contract() {
-        let doc = fixture();
-        let labels: Vec<String> = quantities(&doc)
-            .rooms
-            .iter()
-            .map(|r| r.room_id.to_string())
-            .collect();
-        let json = ground_truth_json(&doc, &labels);
-        let v: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
-
-        for key in ["rooms", "walls", "doors", "planLabels", "sqfPerM2", "doorCount"] {
-            assert!(v.get(key).is_some(), "ground truth missing required key '{key}'");
-        }
-        assert_eq!(v["sqfPerM2"], serde_json::json!(10.764));
-        assert_eq!(v["doorCount"], serde_json::json!(2));
-
-        let walls = v["walls"].as_object().unwrap();
-        for t in WallType::ALL {
-            let e = walls.get(t.label()).unwrap_or_else(|| panic!("missing wall type {}", t.label()));
-            assert!(e.get("lengthM").is_some(), "{} needs lengthM", t.label());
-        }
-        assert!((walls["Drywall"]["lengthM"].as_f64().unwrap() - 11.0).abs() <= 0.01);
-        assert_eq!(v["doors"]["Glass"], serde_json::json!(1));
-        assert_eq!(v["doors"]["Solid"], serde_json::json!(1));
-
-        let rooms = v["rooms"].as_array().unwrap();
-        assert_eq!(rooms.len(), 5);
-        for r in rooms {
-            assert!(r.get("roomId").is_some() && r.get("areaM2").is_some());
-        }
-        // planLabels is whatever the PLAN RENDERER drew — never synthesised here.
-        assert_eq!(v["planLabels"].as_array().unwrap().len(), 5);
-        assert!(v.get("renders").is_none(), "renders is the render agent's to merge");
-    }
-
-    /// `plan_labels` is passed through verbatim, so a room the renderer failed to
-    /// draw really does surface as a G3 failure instead of being papered over.
-    #[test]
-    fn ground_truth_never_synthesises_plan_labels() {
-        let doc = fixture();
-        let gt = ground_truth(&doc, &[]);
-        assert!(gt.plan_labels.is_empty(), "no labels in, no labels out");
-        assert_eq!(gt.rooms.len(), 5, "rooms are still reported");
+    fn ground_truth_key_vocabulary_is_pinned() {
+        let q = quantities(&fixture());
+        let wall_keys: Vec<&str> = q.walls.iter().map(|w| w.label.as_str()).collect();
+        assert_eq!(
+            wall_keys,
+            [
+                "Drywall",
+                "Half Drywall",
+                "Glass",
+                "Core",
+                "Perimeter windows",
+                "Perimeter wall"
+            ],
+            "these are the General!J9:J14 Material Names G3 matches on"
+        );
+        let door_keys: Vec<&str> = q.doors.iter().map(|d| d.label.as_str()).collect();
+        assert_eq!(door_keys, ["Glass", "Solid"], "General!T9:T10 Type Names");
+        // Keys must be unique — a collision would silently drop a row from the
+        // ground truth's `walls` / `doors` objects.
+        let mut u = wall_keys.clone();
+        u.sort_unstable();
+        u.dedup();
+        assert_eq!(u.len(), wall_keys.len());
+        assert_eq!(q.sqf_per_m2, 10.764);
     }
 
     /// Classification rules, exercised one at a time on the fixture's walls.

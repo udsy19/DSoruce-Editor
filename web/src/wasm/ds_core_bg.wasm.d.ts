@@ -20,7 +20,6 @@ export const editor_delete_zone: (a: number, b: number) => [number, number];
 export const editor_from_snapshot: (a: any) => [number, number, number];
 export const editor_generate: (a: number, b: any, c: bigint, d: number) => [number, number, number];
 export const editor_get_cad_json: (a: number) => [number, number];
-export const editor_ground_truth_json: (a: number, b: number, c: number) => [number, number];
 export const editor_layout_score: (a: number, b: any) => [number, number, number];
 export const editor_merge_zones: (a: number, b: number, c: number) => [number, number, number];
 export const editor_metrics: (a: number) => [number, number, number];

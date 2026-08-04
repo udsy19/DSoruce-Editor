@@ -67,6 +67,24 @@ export function zoneBBox(s: ZoneShape): { minX: number; minY: number; maxX: numb
   return { minX, minY, maxX, maxY }
 }
 
+/**
+ * Outline rings of the shape in world meters: `[outer, ...holes]`. A `Rect` and
+ * a `Poly` yield one ring; a `RectRing` yields the outer ring plus its hole, so
+ * a consumer that extrudes/fills a zone (3D floor plates, hatches) handles the
+ * donut correctly instead of flooding the courtyard. First vertex not repeated.
+ */
+export function zoneRings(s: ZoneShape): [number, number][][] {
+  const rect = (x: number, y: number, w: number, h: number): [number, number][] => [
+    [x - w / 2, y - h / 2],
+    [x + w / 2, y - h / 2],
+    [x + w / 2, y + h / 2],
+    [x - w / 2, y + h / 2],
+  ]
+  if (s.kind === 'Poly') return [s.pts.map(([x, y]) => [x, y] as [number, number])]
+  if (s.kind === 'RectRing') return [rect(s.x, s.y, s.w, s.h), rect(s.x, s.y, s.in_w, s.in_h)]
+  return [rect(s.x, s.y, s.w, s.h)]
+}
+
 /** True if world point `(x,y)` is inside the filled shape (ring excludes hole). */
 export function pointInZoneShape(s: ZoneShape, x: number, y: number): boolean {
   if (s.kind === 'Poly') {

@@ -238,24 +238,34 @@ const fabricPhysical = (color: THREE.ColorRepresentation, roughness: number) =>
     sheenColor: new THREE.Color(0xffffff),
   })
 
+// Every shared material carries a stable `name`. It is the ONLY handle a
+// consumer has for re-dressing this library into a different look — the render
+// pack's `three/materialTheme.ts` walks a built model and swaps by name, so the
+// qbiq palette can be applied without forking the geometry builders (and
+// without mutating these module-level materials, which the live viewer shares).
+const named = <T extends THREE.Material>(name: string, m: T): T => {
+  m.name = name
+  return m
+}
+
 const MAT = {
-  laminate: woodPhysical(0xf2ead9), // light oak worktop
-  wood: woodPhysical(0xcaa579), // warmer cabinet-cap / door-leaf oak
-  darkMetal: std(0x33373d, 0.35, 0.9), // legs / frames
-  alu: std(0x9ca2a8, 0.35, 0.9), // chair base, posts, handles
-  shell: std(0x25282d, 0.55, 0.15), // chair back-shell, monitor housing
-  fabric: fabricPhysical(0x5c6675, 0.9), // default upholstery (cool slate)
-  screen: new THREE.MeshStandardMaterial({
+  laminate: named('laminate', woodPhysical(0xf2ead9)), // light oak worktop
+  wood: named('wood', woodPhysical(0xcaa579)), // warmer cabinet-cap / door-leaf oak
+  darkMetal: named('darkMetal', std(0x33373d, 0.35, 0.9)), // legs / frames
+  alu: named('alu', std(0x9ca2a8, 0.35, 0.9)), // chair base, posts, handles
+  shell: named('shell', std(0x25282d, 0.55, 0.15)), // chair back-shell, monitor housing
+  fabric: named('fabric', fabricPhysical(0x5c6675, 0.9)), // default upholstery (cool slate)
+  screen: named('screen', new THREE.MeshStandardMaterial({
     color: 0x0e1b24,
     roughness: 0.25,
     metalness: 0.0,
     emissive: 0x16303f,
     emissiveIntensity: 0.5,
-  }),
+  })),
   // Real refractive glass. `transparent` stays false — three renders transmission
   // in its own transmissive pass (default depthWrite). Panes are thin boxes, so
   // the default FrontSide is correct and `thickness` supplies the volume.
-  glass: new THREE.MeshPhysicalMaterial({
+  glass: named('glass', new THREE.MeshPhysicalMaterial({
     color: 0xdfeef4,
     roughness: 0.05,
     metalness: 0.0,
@@ -263,16 +273,16 @@ const MAT = {
     thickness: 0.02,
     ior: 1.5,
     transparent: false,
-  }),
-  pot: new THREE.MeshStandardMaterial({
+  })),
+  pot: named('pot', new THREE.MeshStandardMaterial({
     color: 0x8d8577,
     roughness: 0.9,
     roughnessMap: TEX.plasterRough,
     metalness: 0.02,
-  }), // stone / concrete planter
-  soil: std(0x3a322b, 1.0, 0.0),
-  foliage: std(0x4f7a50, 0.85, 0.0),
-  foliageDark: std(0x3d6440, 0.95, 0.0),
+  })), // stone / concrete planter
+  soil: named('soil', std(0x3a322b, 1.0, 0.0)),
+  foliage: named('foliage', std(0x4f7a50, 0.85, 0.0)),
+  foliageDark: named('foliageDark', std(0x3d6440, 0.95, 0.0)),
 } as const
 
 // Category-tint (opts.color) upholstery/body material, cached so identical colors
@@ -283,7 +293,7 @@ function accent(color: number | string | undefined): THREE.MeshPhysicalMaterial 
   const key = String(color)
   let m = accentCache.get(key)
   if (!m) {
-    m = fabricPhysical(new THREE.Color(color as any), 0.88)
+    m = named('accent', fabricPhysical(new THREE.Color(color as any), 0.88))
     accentCache.set(key, m)
   }
   return m

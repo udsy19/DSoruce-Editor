@@ -230,28 +230,6 @@ export class Editor {
         }
     }
     /**
-     * The `out/ground-truth.json` payload as a JSON string, ready to write.
-     * `plan_labels` must be the room ids the **plan renderer actually drew** —
-     * G3's 1:1 label check is only meaningful because this method does not
-     * synthesise them from its own room list.
-     * @param {string[]} plan_labels
-     * @returns {string}
-     */
-    ground_truth_json(plan_labels) {
-        let deferred2_0;
-        let deferred2_1;
-        try {
-            const ptr0 = passArrayJsValueToWasm0(plan_labels, wasm.__wbindgen_malloc);
-            const len0 = WASM_VECTOR_LEN;
-            const ret = wasm.editor_ground_truth_json(this.__wbg_ptr, ptr0, len0);
-            deferred2_0 = ret[0];
-            deferred2_1 = ret[1];
-            return getStringFromWasm0(ret[0], ret[1]);
-        } finally {
-            wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
-        }
-    }
-    /**
      * Score the current document against a `Program` without regenerating.
      * @param {any} program
      * @returns {any}
@@ -933,16 +911,6 @@ function handleError(f, args) {
 
 function isLikeNone(x) {
     return x === undefined || x === null;
-}
-
-function passArrayJsValueToWasm0(array, malloc) {
-    const ptr = malloc(array.length * 4, 4) >>> 0;
-    for (let i = 0; i < array.length; i++) {
-        const add = addToExternrefTable0(array[i]);
-        getDataViewMemory0().setUint32(ptr + 4 * i, add, true);
-    }
-    WASM_VECTOR_LEN = array.length;
-    return ptr;
 }
 
 function passStringToWasm0(arg, malloc, realloc) {

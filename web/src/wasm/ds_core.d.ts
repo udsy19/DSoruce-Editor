@@ -92,13 +92,6 @@ export class Editor {
      */
     get_cad_json(): string;
     /**
-     * The `out/ground-truth.json` payload as a JSON string, ready to write.
-     * `plan_labels` must be the room ids the **plan renderer actually drew** —
-     * G3's 1:1 label check is only meaningful because this method does not
-     * synthesise them from its own room list.
-     */
-    ground_truth_json(plan_labels: string[]): string;
-    /**
      * Score the current document against a `Program` without regenerating.
      */
     layout_score(program: any): any;
@@ -276,7 +269,6 @@ export interface InitOutput {
     readonly editor_from_snapshot: (a: any) => [number, number, number];
     readonly editor_generate: (a: number, b: any, c: bigint, d: number) => [number, number, number];
     readonly editor_get_cad_json: (a: number) => [number, number];
-    readonly editor_ground_truth_json: (a: number, b: number, c: number) => [number, number];
     readonly editor_layout_score: (a: number, b: any) => [number, number, number];
     readonly editor_merge_zones: (a: number, b: number, c: number) => [number, number, number];
     readonly editor_metrics: (a: number) => [number, number, number];

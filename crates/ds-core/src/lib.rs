@@ -765,8 +765,9 @@ impl Editor {
 
     // ----- Quantity surface (`quantity.rs`): the geometric truth the Quantity
     // Takeoff workbook reads. Every number is computed from the document, never
-    // typed; `scripts/gates/g3-quantity-truth.py` cross-checks the workbook
-    // against `ground_truth_json`. -----
+    // typed. `qtoWorkbook.ts` joins it with the TS-only finish/furniture data to
+    // produce `out/ground-truth.json`, which `scripts/gates/g3-quantity-truth.py`
+    // then cross-checks against the workbook's cells. -----
 
     /// Wall run length + elevational area per wall type, door count/width per
     /// door type, and per-room area/headcount — all derived from geometry.
@@ -787,13 +788,6 @@ impl Editor {
             .map_err(|e| JsValue::from_str(&e.to_string()))
     }
 
-    /// The `out/ground-truth.json` payload as a JSON string, ready to write.
-    /// `plan_labels` must be the room ids the **plan renderer actually drew** —
-    /// G3's 1:1 label check is only meaningful because this method does not
-    /// synthesise them from its own room list.
-    pub fn ground_truth_json(&self, plan_labels: Vec<String>) -> String {
-        quantity::ground_truth_json(&self.doc, &plan_labels)
-    }
 }
 
 impl Default for Editor {
