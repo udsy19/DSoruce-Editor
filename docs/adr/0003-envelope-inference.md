@@ -245,6 +245,22 @@ rests on no wall because the columns are inside the plate and no shell exists.
 from a linework contour**, and must never be used to rank such a rung against a
 contour-derived one. It stays valid as a *diagnostic* everywhere.
 
+### Reusable principle: require proof of the trusted party
+
+Recorded verbatim beside the ML test below, because it is the same shape as the
+confidence ladder itself:
+
+> Detection of the untrusted party fails open; require positive proof of the
+> trusted one instead.
+
+Gating the calibration log on `navigator.webdriver` looked correct and did not
+work — a Playwright session attached to an ordinary Chrome over CDP reports
+`false`, and a live re-run wrote a row anyway. Enumerating the ways something can
+be untrustworthy leaves every unenumerated way admitted. Requiring evidence of
+trust (`Event.isTrusted`) inverts the default. The confidence ladder does the
+same thing: it does not enumerate the ways a plate can be wrong, it requires
+evidence that it is right.
+
 ### Reusable test for ML candidates in this codebase
 
 Recorded verbatim, because it generalizes beyond this rung:
@@ -555,3 +571,28 @@ tests and every `evaluate()` harness work.
   `listPlateLog` deletes rows written under any older rule — rows whose
   provenance cannot be established are not evidence, so the polluted entry is
   purged wherever it exists rather than tracked down.
+
+## Branch 1a (shell repair) — PARKED with an evidence trigger
+
+Not scheduled. Its candidates (`dxffix`, `snap-repair`, `l5in`, `iieta`) repair
+broken-topology shells, and the fixture class they would run against is the one
+the baseline already scores **0.98+** on. The class that was genuinely broken —
+fragmented shells — has been fixed by the ladder: self-intersections are gone and
+`rot17-door-gaps` is pinned at ≥ 0.98. Running 1a now means benchmarking repairs
+against fixtures the incumbent aces, whose most probable outcome is the null
+result already twice pre-agreed as legitimate.
+
+**Trigger condition — 1a activates on the first logged real-world plate where the
+user's correction diverges materially from a contour-derived proposal.**
+
+Concretely, either of:
+
+- a `confirmed-edited` or `redrawn` outcome whose accepted area differs materially
+  from the proposal, on a plate produced by `traced-loop`, `grid-contour` or
+  `partition-envelope`; or
+- a user redrawing a plate that was labelled `high` confidence — which would also
+  falsify the ADR 0002 threshold and is the more serious signal of the two.
+
+That drawing becomes 1a's fixture, and 1a then runs against a failure that
+actually exists rather than one we constructed. The calibration log is the
+trigger mechanism, which is a second reason it must stay uncontaminated.
