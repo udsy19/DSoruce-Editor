@@ -259,6 +259,9 @@ export function docStateToIFC(state: DocState, meta?: { project?: string }): str
   }
 
   const contained: string[] = []
+  // Per-element refs, so IfcElementQuantity can be related back to each element.
+  const wallRefs: string[] = []
+  const compRefs: string[] = []
 
   // Walls: length×thickness profile centered on the a→b midpoint, rotated to
   // the a→b direction (Y mirrored), extruded to WALL_HEIGHT.
@@ -274,7 +277,9 @@ export function docStateToIFC(state: DocState, meta?: { project?: string }): str
       Math.atan2(dyIfc, dx),
     )
     const shape = boxShape(len, wall.thickness > 0 ? wall.thickness : WALL_THICKNESS_FALLBACK, WALL_HEIGHT)
-    contained.push(w.add('IFCWALL', [str(gid()), oh, str(`Wall ${i + 1}`), '$', '$', pl, shape, '$']))
+    const wref = w.add('IFCWALL', [str(gid()), oh, str(`Wall ${i + 1}`), '$', '$', pl, shape, '$'])
+    wallRefs[i] = wref
+    contained.push(wref)
   })
 
   // Components: w×h footprint box, category-heuristic height, plan rotation θ
@@ -285,8 +290,7 @@ export function docStateToIFC(state: DocState, meta?: { project?: string }): str
     const z = BASE_Z[c.category] ?? 0
     const pl = placement(c.x, c.y, z, -c.rotation)
     const shape = boxShape(c.w, c.h, height)
-    contained.push(
-      w.add('IFCFURNISHINGELEMENT', [
+    const cref = w.add('IFCFURNISHINGELEMENT', [
         str(gid()),
         oh,
         str(c.label || c.category),
@@ -295,8 +299,9 @@ export function docStateToIFC(state: DocState, meta?: { project?: string }): str
         pl,
         shape,
         '$',
-      ]),
-    )
+      ])
+    compRefs.push(cref)
+    contained.push(cref)
   }
 
   if (contained.length > 0) {
@@ -304,6 +309,79 @@ export function docStateToIFC(state: DocState, meta?: { project?: string }): str
       str(gid()), oh, str('Storey contents'), '$', `(${contained.join(',')})`, storey,
     ])
   }
+
+  // ---- IfcSpace per zone (ADR 0006 Part A) ---------------------------------
+  // Room attribution: without these NO consumer can build a level -> room ->
+  // category hierarchy from our file, which is what branch 2 measured and the
+  // one export gap that survived re-checking. Aggregated under the storey, which
+  // is where a strict reader looks for them.
+  const spaces: string[] = []
+  for (const z of state.zones ?? []) {
+    const sh = z.shape
+    // Rect and RectRing have a footprint we can extrude directly; Poly zones
+    // are emitted by their bounding box, which is honest for attribution (the
+    // space exists and is placed) without claiming a boundary we would have to
+    // tessellate. A consumer wanting exact area reads the quantity, not the box.
+    let cx: number, cy: number, sw: number, sh2: number
+    if (sh.kind === 'Poly') {
+      const xs = sh.pts.map((pt) => pt[0])
+      const ys = sh.pts.map((pt) => pt[1])
+      const x0 = Math.min(...xs), x1 = Math.max(...xs)
+      const y0 = Math.min(...ys), y1 = Math.max(...ys)
+      cx = (x0 + x1) / 2; cy = (y0 + y1) / 2; sw = x1 - x0; sh2 = y1 - y0
+    } else {
+      cx = sh.x; cy = sh.y; sw = sh.w; sh2 = sh.h
+    }
+    if (!(sw > 1e-6 && sh2 > 1e-6)) continue
+    const pl = placement(cx, cy, 0, 0)
+    const shape = boxShape(sw, sh2, WALL_HEIGHT)
+    // IfcSpace: …ObjectPlacement, Representation, LongName, CompositionType,
+    // InteriorOrExteriorSpace, ElevationWithFlooring
+    spaces.push(
+      w.add('IFCSPACE', [
+        str(gid()), oh, str(z.label || z.zone_type), '$', str(z.zone_type),
+        pl, shape, str(z.label || z.zone_type), '.ELEMENT.', '.INTERNAL.', '$',
+      ]),
+    )
+  }
+  if (spaces.length > 0) {
+    w.add('IFCRELAGGREGATES', [
+      str(gid()), oh, str('Storey spaces'), '$', storey, `(${spaces.join(',')})`,
+    ])
+  }
+
+  // ---- IfcElementQuantity per element (ADR 0006 Part A) --------------------
+  // Declared quantities, so a cost engine reads them rather than deriving them
+  // from geometry. Emitted per element via IfcRelDefinesByProperties, which is
+  // what `ifcopenshell.api.cost` looks for.
+  const quantify = (ref: string, name: string, qs: string[]) => {
+    const set = w.add('IFCELEMENTQUANTITY', [
+      str(gid()), oh, str(name), '$', str('DSource'), `(${qs.join(',')})`,
+    ])
+    w.add('IFCRELDEFINESBYPROPERTIES', [
+      str(gid()), oh, str(name), '$', `(${ref})`, set,
+    ])
+  }
+  state.walls.forEach((wall, i) => {
+    const dx = wall.b.x - wall.a.x
+    const dy = wall.b.y - wall.a.y
+    const len = Math.hypot(dx, dy)
+    if (len < 1e-9) return
+    const t = wall.thickness > 0 ? wall.thickness : WALL_THICKNESS_FALLBACK
+    quantify(wallRefs[i], 'Qto_WallBaseQuantities', [
+      w.add('IFCQUANTITYLENGTH', [str('Length'), '$', '$', real(len)]),
+      w.add('IFCQUANTITYAREA', [str('GrossSideArea'), '$', '$', real(len * WALL_HEIGHT)]),
+      w.add('IFCQUANTITYVOLUME', [str('GrossVolume'), '$', '$', real(len * t * WALL_HEIGHT)]),
+    ])
+  })
+  state.components.forEach((c, i) => {
+    const height = HEIGHTS[c.category] ?? DEFAULT_HEIGHT
+    quantify(compRefs[i], 'Qto_FurnitureBaseQuantities', [
+      w.add('IFCQUANTITYAREA', [str('GrossFootprintArea'), '$', '$', real(c.w * c.h)]),
+      w.add('IFCQUANTITYVOLUME', [str('GrossVolume'), '$', '$', real(c.w * c.h * height)]),
+      w.add('IFCQUANTITYCOUNT', [str('Count'), '$', '$', '1.']),
+    ])
+  })
 
   const now = new Date().toISOString().slice(0, 19)
   return [

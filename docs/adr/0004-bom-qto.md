@@ -238,6 +238,39 @@ consumer side fixes it.
 product, so a binding cannot be matched back to an element. Recorded honestly
 rather than faked by index.
 
+### ⚠ RETRACTION (2026-08-04, from branch 5 Part A)
+
+**Two of the four findings above are wrong, and they were the sharpest two.**
+Re-reading the exported file with the correct attributes shows:
+
+| claim made above | actual |
+|---|---|
+| "the export carries no classification, so a consumer must guess category from the display `Name`" | **FALSE.** `IfcFurnishingElement.ObjectType` carries the category, populated **125/125**, and recovers the truth categories exactly (Desk 92, Door 14, Table 12, Chair 7). |
+| "nothing in the IFC identifies a bound product" | **FALSE.** `Description` carries `product:<id>` for **5/5** bound components. |
+| "binding a product renames the element, so the act of pricing makes it un-categorisable" | **FALSE.** Renaming touches `Name`; the category lives in `ObjectType`, which binding never touches. |
+
+**The cause was my reader, not the exporter.** `ifc_cost.py` inferred category
+from `str(name).split()[0]` and never looked at `ObjectType` or `Description`.
+The "self-defeating pricing loop" I called the sharpest finding of the round was
+an artifact of that.
+
+**Consequences, stated plainly:**
+
+- `ifc-cost`'s **0 priced lines and 14.3 % attribution error were my bug**, not
+  our export's. A correct reader would have scored 229/229 attribution and 5/5
+  priced lines, Σ ₹78,533.
+- **The adoption of `qto-native` still stands, but partly for different reasons.**
+  It wins on room hierarchy (`IfcSpace` genuinely IS absent, so no consumer can
+  build a room level), on being offline, and on 0.9 ms vs 150 ms — all real and
+  unaffected. It does **not** win because our IFC is broken for identity or
+  category; that part of the verdict is withdrawn.
+- Only **two** of the three Part-A scope items were ever needed. See ADR 0006.
+
+Second time in this campaign a reader/metric flaw produced a confident wrong
+conclusion about the product — after the position-hash diversity claim. Both were
+caught by re-measuring rather than by review, which is an argument for
+re-measuring before *routing* a finding, not only before adopting one.
+
 ### Verdict on `ifc-cost`
 
 Against the three verdicts the split prediction was built to distinguish: the

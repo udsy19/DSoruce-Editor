@@ -1,6 +1,6 @@
 # ADR 0006 — Branch 5: materials & 3D render quality
 
-**Status:** pre-registered — predictions recorded, nothing built
+**Status:** Part A COMPLETE and accepted · Part B pre-registered, not yet run
 **Date:** 2026-08-04
 
 **Code anchors:** `buildFurniture3D`, `TEXTURES` (`web/src/three/furniture3d.ts`) ·
@@ -33,24 +33,39 @@ consumer must guess an element's category from its display `Name`, and **binding
 a product renames the element**, silently reclassifying it. Pricing an item is
 what makes it un-categorisable. Self-defeating, and entirely ours.
 
-### Scope
+### Scope — NARROWED after re-measuring the current export
+
+Branch 2's claim that the export lacks classification and product identity was
+**wrong, and is retracted in ADR 0004**. Verified against the actual file:
+`ObjectType` already carries the category (**125/125**, recovering the truth
+categories exactly) and `Description` already carries `product:<id>`
+(**5/5** bound). My branch-2 reader used `Name` and never looked at either.
+
+So scope item 3 does not exist. What is genuinely absent:
 
 1. **`IfcSpace` per zone**, in the spatial hierarchy, so room attribution exists.
+   (Confirmed: `IfcSpace` count is 0.)
 2. **`IfcElementQuantity`** per element (area, volume, length as applicable).
-3. **A `Tag` or classification reference carrying `product_id`** — which also
-   fixes identity riding on the display name, the root of the rename problem.
+   (Confirmed: `IfcElementQuantity` count is 0.)
+
+`Tag` stays empty deliberately: `Description` already carries the identity, and
+adding a second home for it would be the dual-source bug branch 2 spent a merge
+gate removing for prices.
 
 ### Acceptance — not a claim, a round-trip
 
 `ifcopenshell 0.8.5` is installed. The acceptance test re-runs branch 2's reader
 against the upgraded export and requires:
 
-| assertion | today | required |
+| assertion | today (verified) | required |
 |---|---|---|
-| `IfcSpace` count | 0 | = zone count |
-| elements with declared quantities | 0 / 229 | ≥ 95 % |
-| category attribution correct | 224 / 229 (5 lost to renaming) | **229 / 229** |
-| bound products matchable to a binding | 0 / 5 | **5 / 5** |
+| `IfcSpace` count | **0** | = zone count (29) |
+| elements with declared quantities | **0 / 229** | ≥ 95 % |
+| category attribution via `ObjectType` | **125 / 125 already** | stays 125 / 125 |
+| bound products matchable via `Description` | **5 / 5 already** | stays 5 / 5 |
+
+The last two rows are **regression guards, not goals** — they already pass, and
+the point is that adding spaces and quantities must not break them.
 
 This **also finally exercises IfcOpenShell's untested half** — branch 2 measured
 what it could *read*, never whether our file could be *fixed* to satisfy it. And
@@ -58,8 +73,13 @@ it revives `ifc-cost` for free: with quantities and identity present, its one
 blocker is removed, though its own untested Vercel prediction (native code will
 not run in that sandbox) stays registered.
 
-**No candidates, no ranges.** Determinism gate as always: the same document
-produces a byte-identical IFC.
+**No candidates, no ranges.** Determinism gate, refined by what it caught: the
+same document must produce a **byte-identical DATA section**. The HEADER's
+`FILE_NAME` carries a real creation timestamp, so whole-file equality is not
+achievable and should not be — but the *model* must be diff-able, which is
+exactly why this exporter already derives its GUIDs deterministically rather than
+from `crypto.getRandomValues`. The timestamp difference is pre-existing and
+correct; scoping the gate to DATA is the honest form of the requirement.
 
 ---
 
@@ -186,6 +206,45 @@ and a whole-floor view hides exactly what a texture pack buys.
 - All candidates visually indistinguishable in the human grid ⇒ null result,
   recorded as such, and the branch's value is Part A alone.
 
-## Results
+## Results — Part A (complete)
+
+Verified with `bench/adapters/qto/ifc_semantics_check.py`, which reads the export
+with IfcOpenShell — an independent, strict consumer.
+
+| assertion | before | after | required |
+|---|---|---|---|
+| `IfcSpace` per zone | 0 | **29** | 29 ✓ |
+| elements with **reachable** quantities | 0 / 229 | **229 / 229** | ≥ 95 % ✓ |
+| category via `ObjectType` (regression guard) | 125 / 125 | **125 / 125** | unchanged ✓ |
+| identity via `Description` (regression guard) | 5 / 5 | **5 / 5** | unchanged ✓ |
+
+"Reachable" is deliberate: the check requires each quantity set to be related to
+its element through `IfcRelDefinesByProperties`, not merely present in the file.
+A floating quantity set is invisible to a cost engine, so counting entities would
+have passed a file no consumer could use.
+
+**Determinism:** the DATA section is byte-identical across exports (3,416 lines).
+Only the HEADER `FILE_NAME` timestamp differs — pre-existing, correct IFC
+semantics, and the reason the gate is scoped to DATA.
+
+### What this changes
+
+- **Room attribution now exists.** A consumer can build level → room → category
+  from our file; before, `IfcSpace = 0` made that impossible for anyone.
+- **`ifc-cost`'s blocker is removed**, and with the ADR 0004 retraction its
+  reported failure is now understood as my reader's bug plus this one real gap.
+  Reviving it is cheap if the Python service class is ever stood up; its untested
+  Vercel prediction stays registered.
+- **`blender-offline` is unblocked**, which was Part A's routing reason.
+
+### Scope honesty
+
+`IfcSpace` for a `Poly` zone is emitted as its bounding box. The space *exists*
+and is placed correctly, which is what attribution needs, but its boundary is not
+the conformed polygon. A consumer wanting exact area reads the quantity, not the
+box. Recorded rather than glossed: this is a known simplification, not a claim of
+boundary fidelity.
+
+## Results — Part B
 
 _Not yet run._
