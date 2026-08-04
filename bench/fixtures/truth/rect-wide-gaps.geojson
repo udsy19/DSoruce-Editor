@@ -1,0 +1,36 @@
+{
+ "type": "Feature",
+ "properties": {
+  "id": "rect-wide-gaps",
+  "why": "Gaps widened to 2.4 m — past a door leaf, where naive closing over-bridges.",
+  "source": "synthetic — truth is the generating polygon, exact by construction",
+  "areaM2": 600
+ },
+ "geometry": {
+  "type": "Polygon",
+  "coordinates": [
+   [
+    [
+     0,
+     0
+    ],
+    [
+     30,
+     0
+    ],
+    [
+     30,
+     20
+    ],
+    [
+     0,
+     20
+    ],
+    [
+     0,
+     0
+    ]
+   ]
+  ]
+ }
+}

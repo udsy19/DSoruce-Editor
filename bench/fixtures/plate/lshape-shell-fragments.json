@@ -1,0 +1,1089 @@
+{
+ "units": "m",
+ "bounds": [
+  0,
+  0,
+  34,
+  24
+ ],
+ "layers": [
+  "A-WALL",
+  "I-WALL"
+ ],
+ "entities": [
+  {
+   "kind": "polyline",
+   "layer": "A-WALL",
+   "category": "wall",
+   "pts": [
+    [
+     0,
+     0
+    ],
+    [
+     4.5826668193563815,
+     0
+    ]
+   ],
+   "closed": false
+  },
+  {
+   "kind": "polyline",
+   "layer": "A-WALL",
+   "category": "wall",
+   "pts": [
+    [
+     8.851130361063406,
+     0
+    ],
+    [
+     9.404353934433312,
+     0
+    ]
+   ],
+   "closed": false
+  },
+  {
+   "kind": "polyline",
+   "layer": "A-WALL",
+   "category": "wall",
+   "pts": [
+    [
+     12.60435393443331,
+     0
+    ],
+    [
+     34,
+     0
+    ]
+   ],
+   "closed": false
+  },
+  {
+   "kind": "polyline",
+   "layer": "A-WALL",
+   "category": "wall",
+   "pts": [
+    [
+     34,
+     0
+    ],
+    [
+     34,
+     12
+    ]
+   ],
+   "closed": false
+  },
+  {
+   "kind": "polyline",
+   "layer": "A-WALL",
+   "category": "wall",
+   "pts": [
+    [
+     34,
+     12
+    ],
+    [
+     32.70124874934554,
+     12
+    ]
+   ],
+   "closed": false
+  },
+  {
+   "kind": "polyline",
+   "layer": "A-WALL",
+   "category": "wall",
+   "pts": [
+    [
+     29.501248749345542,
+     12
+    ],
+    [
+     24.23054309077561,
+     12
+    ]
+   ],
+   "closed": false
+  },
+  {
+   "kind": "polyline",
+   "layer": "A-WALL",
+   "category": "wall",
+   "pts": [
+    [
+     20.86780850104988,
+     12
+    ],
+    [
+     18,
+     12
+    ]
+   ],
+   "closed": false
+  },
+  {
+   "kind": "polyline",
+   "layer": "A-WALL",
+   "category": "wall",
+   "pts": [
+    [
+     18,
+     12
+    ],
+    [
+     18,
+     24
+    ]
+   ],
+   "closed": false
+  },
+  {
+   "kind": "polyline",
+   "layer": "A-WALL",
+   "category": "wall",
+   "pts": [
+    [
+     18,
+     24
+    ],
+    [
+     16.386204456118868,
+     24
+    ]
+   ],
+   "closed": false
+  },
+  {
+   "kind": "polyline",
+   "layer": "A-WALL",
+   "category": "wall",
+   "pts": [
+    [
+     10.19786479892209,
+     24
+    ],
+    [
+     8.005988471582532,
+     24
+    ]
+   ],
+   "closed": false
+  },
+  {
+   "kind": "polyline",
+   "layer": "A-WALL",
+   "category": "wall",
+   "pts": [
+    [
+     4.805988471582532,
+     24
+    ],
+    [
+     0,
+     24
+    ]
+   ],
+   "closed": false
+  },
+  {
+   "kind": "polyline",
+   "layer": "A-WALL",
+   "category": "wall",
+   "pts": [
+    [
+     0,
+     24
+    ],
+    [
+     0,
+     15.906625782512128
+    ]
+   ],
+   "closed": false
+  },
+  {
+   "kind": "polyline",
+   "layer": "A-WALL",
+   "category": "wall",
+   "pts": [
+    [
+     0,
+     12.706625782512129
+    ],
+    [
+     0,
+     7.514694056659938
+    ]
+   ],
+   "closed": false
+  },
+  {
+   "kind": "polyline",
+   "layer": "A-WALL",
+   "category": "wall",
+   "pts": [
+    [
+     0,
+     2.5587199376896024
+    ],
+    [
+     0,
+     0
+    ]
+   ],
+   "closed": false
+  },
+  {
+   "kind": "polyline",
+   "layer": "I-WALL",
+   "category": "wall",
+   "pts": [
+    [
+     9.2026,
+     5.3028
+    ],
+    [
+     9.2026,
+     10.2124
+    ]
+   ],
+   "closed": false
+  },
+  {
+   "kind": "polyline",
+   "layer": "I-WALL",
+   "category": "wall",
+   "pts": [
+    [
+     25.8865,
+     10.3231
+    ],
+    [
+     29.9928,
+     10.3231
+    ]
+   ],
+   "closed": false
+  },
+  {
+   "kind": "polyline",
+   "layer": "I-WALL",
+   "category": "wall",
+   "pts": [
+    [
+     28.575,
+     8.7089
+    ],
+    [
+     31.7942,
+     8.7089
+    ]
+   ],
+   "closed": false
+  },
+  {
+   "kind": "polyline",
+   "layer": "I-WALL",
+   "category": "wall",
+   "pts": [
+    [
+     25.3435,
+     9.9712
+    ],
+    [
+     27.478,
+     9.9712
+    ]
+   ],
+   "closed": false
+  },
+  {
+   "kind": "polyline",
+   "layer": "I-WALL",
+   "category": "wall",
+   "pts": [
+    [
+     7.6019,
+     17.9096
+    ],
+    [
+     7.6019,
+     20.0226
+    ]
+   ],
+   "closed": false
+  },
+  {
+   "kind": "polyline",
+   "layer": "I-WALL",
+   "category": "wall",
+   "pts": [
+    [
+     2.1174,
+     11.504
+    ],
+    [
+     2.1174,
+     14.0178
+    ]
+   ],
+   "closed": false
+  },
+  {
+   "kind": "polyline",
+   "layer": "I-WALL",
+   "category": "wall",
+   "pts": [
+    [
+     14.1498,
+     4.3542
+    ],
+    [
+     14.1498,
+     6.5512
+    ]
+   ],
+   "closed": false
+  },
+  {
+   "kind": "polyline",
+   "layer": "I-WALL",
+   "category": "wall",
+   "pts": [
+    [
+     17.4554,
+     11.1936
+    ],
+    [
+     22.041,
+     11.1936
+    ]
+   ],
+   "closed": false
+  },
+  {
+   "kind": "polyline",
+   "layer": "I-WALL",
+   "category": "wall",
+   "pts": [
+    [
+     10.9292,
+     12.9942
+    ],
+    [
+     10.9292,
+     15.0175
+    ]
+   ],
+   "closed": false
+  },
+  {
+   "kind": "polyline",
+   "layer": "I-WALL",
+   "category": "wall",
+   "pts": [
+    [
+     28.0654,
+     8.6196
+    ],
+    [
+     28.0654,
+     10.6786
+    ]
+   ],
+   "closed": false
+  },
+  {
+   "kind": "polyline",
+   "layer": "I-WALL",
+   "category": "wall",
+   "pts": [
+    [
+     9.5897,
+     2.0672
+    ],
+    [
+     13.2893,
+     2.0672
+    ]
+   ],
+   "closed": false
+  },
+  {
+   "kind": "polyline",
+   "layer": "I-WALL",
+   "category": "wall",
+   "pts": [
+    [
+     17.1249,
+     17.0612
+    ],
+    [
+     17.1249,
+     19.2536
+    ]
+   ],
+   "closed": false
+  },
+  {
+   "kind": "polyline",
+   "layer": "I-WALL",
+   "category": "wall",
+   "pts": [
+    [
+     19.6263,
+     6.2965
+    ],
+    [
+     19.6263,
+     9.0229
+    ]
+   ],
+   "closed": false
+  },
+  {
+   "kind": "polyline",
+   "layer": "I-WALL",
+   "category": "wall",
+   "pts": [
+    [
+     23.1688,
+     3.4099
+    ],
+    [
+     23.1688,
+     6.3545
+    ]
+   ],
+   "closed": false
+  },
+  {
+   "kind": "polyline",
+   "layer": "I-WALL",
+   "category": "wall",
+   "pts": [
+    [
+     17.5176,
+     8.1641
+    ],
+    [
+     17.5176,
+     11.9898
+    ]
+   ],
+   "closed": false
+  },
+  {
+   "kind": "polyline",
+   "layer": "I-WALL",
+   "category": "wall",
+   "pts": [
+    [
+     17.9337,
+     4.8832
+    ],
+    [
+     22.686,
+     4.8832
+    ]
+   ],
+   "closed": false
+  },
+  {
+   "kind": "polyline",
+   "layer": "I-WALL",
+   "category": "wall",
+   "pts": [
+    [
+     6.7671,
+     5.1433
+    ],
+    [
+     9.6836,
+     5.1433
+    ]
+   ],
+   "closed": false
+  },
+  {
+   "kind": "polyline",
+   "layer": "I-WALL",
+   "category": "wall",
+   "pts": [
+    [
+     16.9895,
+     4.4353
+    ],
+    [
+     19.631,
+     4.4353
+    ]
+   ],
+   "closed": false
+  },
+  {
+   "kind": "polyline",
+   "layer": "I-WALL",
+   "category": "wall",
+   "pts": [
+    [
+     26.4565,
+     4.5239
+    ],
+    [
+     29.8376,
+     4.5239
+    ]
+   ],
+   "closed": false
+  },
+  {
+   "kind": "polyline",
+   "layer": "I-WALL",
+   "category": "wall",
+   "pts": [
+    [
+     13.2539,
+     19.2468
+    ],
+    [
+     17.3845,
+     19.2468
+    ]
+   ],
+   "closed": false
+  },
+  {
+   "kind": "polyline",
+   "layer": "I-WALL",
+   "category": "wall",
+   "pts": [
+    [
+     20.0792,
+     6.4884
+    ],
+    [
+     23.8169,
+     6.4884
+    ]
+   ],
+   "closed": false
+  },
+  {
+   "kind": "polyline",
+   "layer": "I-WALL",
+   "category": "wall",
+   "pts": [
+    [
+     23.0848,
+     8.8402
+    ],
+    [
+     26.4278,
+     8.8402
+    ]
+   ],
+   "closed": false
+  },
+  {
+   "kind": "polyline",
+   "layer": "I-WALL",
+   "category": "wall",
+   "pts": [
+    [
+     1.7449,
+     3.2471
+    ],
+    [
+     6.1121,
+     3.2471
+    ]
+   ],
+   "closed": false
+  },
+  {
+   "kind": "polyline",
+   "layer": "I-WALL",
+   "category": "wall",
+   "pts": [
+    [
+     16.0194,
+     8.1877
+    ],
+    [
+     16.0194,
+     9.9532
+    ]
+   ],
+   "closed": false
+  },
+  {
+   "kind": "polyline",
+   "layer": "I-WALL",
+   "category": "wall",
+   "pts": [
+    [
+     7.5146,
+     5.0174
+    ],
+    [
+     10.0466,
+     5.0174
+    ]
+   ],
+   "closed": false
+  },
+  {
+   "kind": "polyline",
+   "layer": "I-WALL",
+   "category": "wall",
+   "pts": [
+    [
+     5.8327,
+     17.5614
+    ],
+    [
+     5.8327,
+     20.2114
+    ]
+   ],
+   "closed": false
+  }
+ ],
+ "furniture": [
+  {
+   "id": 1,
+   "name": "Desk",
+   "raw": "DESK",
+   "category": "furniture",
+   "bbox": [
+    7.661144899949432,
+    6.122987814620137,
+    9.261144899949432,
+    6.922987814620138
+   ],
+   "origin": [
+    8.461144899949431,
+    6.522987814620137
+   ],
+   "rotation": 0,
+   "entities": []
+  },
+  {
+   "id": 2,
+   "name": "Desk",
+   "raw": "DESK",
+   "category": "furniture",
+   "bbox": [
+    13.30682940389961,
+    20.9457673471421,
+    14.90682940389961,
+    21.7457673471421
+   ],
+   "origin": [
+    14.10682940389961,
+    21.3457673471421
+   ],
+   "rotation": 0,
+   "entities": []
+  },
+  {
+   "id": 3,
+   "name": "Desk",
+   "raw": "DESK",
+   "category": "furniture",
+   "bbox": [
+    12.03377182483673,
+    6.710386425629258,
+    13.633771824836732,
+    7.5103864256292585
+   ],
+   "origin": [
+    12.833771824836731,
+    7.110386425629258
+   ],
+   "rotation": 0,
+   "entities": []
+  },
+  {
+   "id": 4,
+   "name": "Desk",
+   "raw": "DESK",
+   "category": "furniture",
+   "bbox": [
+    9.242835170403122,
+    11.06234800107777,
+    10.842835170403124,
+    11.862348001077772
+   ],
+   "origin": [
+    10.042835170403123,
+    11.462348001077771
+   ],
+   "rotation": 0,
+   "entities": []
+  },
+  {
+   "id": 5,
+   "name": "Desk",
+   "raw": "DESK",
+   "category": "furniture",
+   "bbox": [
+    25.368844210915267,
+    7.672812808677554,
+    26.968844210915268,
+    8.472812808677554
+   ],
+   "origin": [
+    26.168844210915267,
+    8.072812808677554
+   ],
+   "rotation": 0,
+   "entities": []
+  },
+  {
+   "id": 6,
+   "name": "Desk",
+   "raw": "DESK",
+   "category": "furniture",
+   "bbox": [
+    28.108493418246507,
+    6.682342008128762,
+    29.70849341824651,
+    7.482342008128763
+   ],
+   "origin": [
+    28.908493418246508,
+    7.082342008128762
+   ],
+   "rotation": 0,
+   "entities": []
+  },
+  {
+   "id": 7,
+   "name": "Desk",
+   "raw": "DESK",
+   "category": "furniture",
+   "bbox": [
+    7.268116045556963,
+    21.40261772684753,
+    8.868116045556963,
+    22.202617726847528
+   ],
+   "origin": [
+    8.068116045556962,
+    21.80261772684753
+   ],
+   "rotation": 0,
+   "entities": []
+  },
+  {
+   "id": 8,
+   "name": "Desk",
+   "raw": "DESK",
+   "category": "furniture",
+   "bbox": [
+    10.444667328894138,
+    2.3613684181123973,
+    12.044667328894139,
+    3.161368418112397
+   ],
+   "origin": [
+    11.244667328894138,
+    2.761368418112397
+   ],
+   "rotation": 0,
+   "entities": []
+  },
+  {
+   "id": 9,
+   "name": "Desk",
+   "raw": "DESK",
+   "category": "furniture",
+   "bbox": [
+    5.260330208390951,
+    11.71748213507235,
+    6.860330208390951,
+    12.51748213507235
+   ],
+   "origin": [
+    6.060330208390951,
+    12.11748213507235
+   ],
+   "rotation": 0,
+   "entities": []
+  },
+  {
+   "id": 10,
+   "name": "Desk",
+   "raw": "DESK",
+   "category": "furniture",
+   "bbox": [
+    24.156726257689296,
+    2.9885115440934897,
+    25.756726257689298,
+    3.7885115440934896
+   ],
+   "origin": [
+    24.956726257689297,
+    3.3885115440934896
+   ],
+   "rotation": 0,
+   "entities": []
+  },
+  {
+   "id": 11,
+   "name": "Desk",
+   "raw": "DESK",
+   "category": "furniture",
+   "bbox": [
+    4.645048382505775,
+    8.907201059535145,
+    6.245048382505774,
+    9.707201059535146
+   ],
+   "origin": [
+    5.4450483825057745,
+    9.307201059535146
+   ],
+   "rotation": 0,
+   "entities": []
+  },
+  {
+   "id": 12,
+   "name": "Desk",
+   "raw": "DESK",
+   "category": "furniture",
+   "bbox": [
+    2.754776622913778,
+    1.4243999760597945,
+    4.354776622913778,
+    2.2243999760597943
+   ],
+   "origin": [
+    3.554776622913778,
+    1.8243999760597944
+   ],
+   "rotation": 0,
+   "entities": []
+  },
+  {
+   "id": 13,
+   "name": "Desk",
+   "raw": "DESK",
+   "category": "furniture",
+   "bbox": [
+    29.000691559910774,
+    6.761226982250809,
+    30.600691559910775,
+    7.56122698225081
+   ],
+   "origin": [
+    29.800691559910774,
+    7.16122698225081
+   ],
+   "rotation": 0,
+   "entities": []
+  },
+  {
+   "id": 14,
+   "name": "Desk",
+   "raw": "DESK",
+   "category": "furniture",
+   "bbox": [
+    20.461705034412443,
+    9.199093964323401,
+    22.061705034412444,
+    9.999093964323402
+   ],
+   "origin": [
+    21.261705034412444,
+    9.599093964323401
+   ],
+   "rotation": 0,
+   "entities": []
+  },
+  {
+   "id": 15,
+   "name": "Desk",
+   "raw": "DESK",
+   "category": "furniture",
+   "bbox": [
+    12.724345407262444,
+    10.234353833273053,
+    14.324345407262445,
+    11.034353833273054
+   ],
+   "origin": [
+    13.524345407262444,
+    10.634353833273053
+   ],
+   "rotation": 0,
+   "entities": []
+  },
+  {
+   "id": 16,
+   "name": "Desk",
+   "raw": "DESK",
+   "category": "furniture",
+   "bbox": [
+    1.2966102508828043,
+    3.9794083129614592,
+    2.896610250882804,
+    4.7794083129614595
+   ],
+   "origin": [
+    2.0966102508828044,
+    4.379408312961459
+   ],
+   "rotation": 0,
+   "entities": []
+  },
+  {
+   "id": 17,
+   "name": "Desk",
+   "raw": "DESK",
+   "category": "furniture",
+   "bbox": [
+    5.859256619401276,
+    21.588743519410492,
+    7.459256619401276,
+    22.38874351941049
+   ],
+   "origin": [
+    6.659256619401276,
+    21.98874351941049
+   ],
+   "rotation": 0,
+   "entities": []
+  },
+  {
+   "id": 18,
+   "name": "Desk",
+   "raw": "DESK",
+   "category": "furniture",
+   "bbox": [
+    3.4107273023575546,
+    4.463012554123997,
+    5.010727302357554,
+    5.263012554123998
+   ],
+   "origin": [
+    4.210727302357554,
+    4.863012554123998
+   ],
+   "rotation": 0,
+   "entities": []
+  },
+  {
+   "id": 19,
+   "name": "Desk",
+   "raw": "DESK",
+   "category": "furniture",
+   "bbox": [
+    15.68615317698568,
+    12.406988118216395,
+    17.28615317698568,
+    13.206988118216396
+   ],
+   "origin": [
+    16.48615317698568,
+    12.806988118216395
+   ],
+   "rotation": 0,
+   "entities": []
+  },
+  {
+   "id": 20,
+   "name": "Desk",
+   "raw": "DESK",
+   "category": "furniture",
+   "bbox": [
+    18.414399449527263,
+    5.437672078981995,
+    20.014399449527264,
+    6.237672078981996
+   ],
+   "origin": [
+    19.214399449527264,
+    5.837672078981996
+   ],
+   "rotation": 0,
+   "entities": []
+  },
+  {
+   "id": 21,
+   "name": "Desk",
+   "raw": "DESK",
+   "category": "furniture",
+   "bbox": [
+    5.975773377157748,
+    3.981358524784446,
+    7.575773377157748,
+    4.781358524784446
+   ],
+   "origin": [
+    6.775773377157748,
+    4.381358524784446
+   ],
+   "rotation": 0,
+   "entities": []
+  },
+  {
+   "id": 22,
+   "name": "Desk",
+   "raw": "DESK",
+   "category": "furniture",
+   "bbox": [
+    8.357472418621182,
+    2.285117529705167,
+    9.957472418621183,
+    3.0851175297051667
+   ],
+   "origin": [
+    9.157472418621182,
+    2.685117529705167
+   ],
+   "rotation": 0,
+   "entities": []
+  },
+  {
+   "id": 23,
+   "name": "Desk",
+   "raw": "DESK",
+   "category": "furniture",
+   "bbox": [
+    3.339165441505611,
+    18.223176379129292,
+    4.939165441505611,
+    19.02317637912929
+   ],
+   "origin": [
+    4.139165441505611,
+    18.62317637912929
+   ],
+   "rotation": 0,
+   "entities": []
+  },
+  {
+   "id": 24,
+   "name": "Desk",
+   "raw": "DESK",
+   "category": "furniture",
+   "bbox": [
+    16.664810501784086,
+    6.465971693769097,
+    18.264810501784087,
+    7.265971693769098
+   ],
+   "origin": [
+    17.464810501784086,
+    6.865971693769097
+   ],
+   "rotation": 0,
+   "entities": []
+  }
+ ]
+}

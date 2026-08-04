@@ -1,0 +1,52 @@
+{
+ "type": "Feature",
+ "properties": {
+  "id": "notched-core",
+  "why": "Deep notch (a lift core biting into the slab) — two re-entrant corners.",
+  "source": "synthetic — truth is the generating polygon, exact by construction",
+  "areaM2": 976
+ },
+ "geometry": {
+  "type": "Polygon",
+  "coordinates": [
+   [
+    [
+     0,
+     0
+    ],
+    [
+     40,
+     0
+    ],
+    [
+     40,
+     26
+    ],
+    [
+     24,
+     26
+    ],
+    [
+     24,
+     18
+    ],
+    [
+     16,
+     18
+    ],
+    [
+     16,
+     26
+    ],
+    [
+     0,
+     26
+    ],
+    [
+     0,
+     0
+    ]
+   ]
+  ]
+ }
+}

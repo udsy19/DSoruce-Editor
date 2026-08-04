@@ -44,3 +44,4 @@ docs/reference/rayon-output/*.pdf
 
 # generated knowledge graph (rebuild with /graphify)
 graphify-out/
+bench/results/

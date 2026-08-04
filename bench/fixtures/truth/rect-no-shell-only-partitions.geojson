@@ -1,0 +1,36 @@
+{
+ "type": "Feature",
+ "properties": {
+  "id": "rect-no-shell-only-partitions",
+  "why": "PRODUCTION BUG CLASS: no exterior wall at all, only interior partitions + columns — the real DWG condition.",
+  "source": "synthetic — truth is the generating polygon, exact by construction",
+  "areaM2": 600
+ },
+ "geometry": {
+  "type": "Polygon",
+  "coordinates": [
+   [
+    [
+     0,
+     0
+    ],
+    [
+     30,
+     0
+    ],
+    [
+     30,
+     20
+    ],
+    [
+     0,
+     20
+    ],
+    [
+     0,
+     0
+    ]
+   ]
+  ]
+ }
+}

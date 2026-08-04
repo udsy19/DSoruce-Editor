@@ -1,0 +1,44 @@
+{
+ "type": "Feature",
+ "properties": {
+  "id": "lshape-shell-fragments",
+  "why": "PRODUCTION BUG CLASS: shell present only as fragments — forces hull fallback across the notch.",
+  "source": "synthetic — truth is the generating polygon, exact by construction",
+  "areaM2": 624
+ },
+ "geometry": {
+  "type": "Polygon",
+  "coordinates": [
+   [
+    [
+     0,
+     0
+    ],
+    [
+     34,
+     0
+    ],
+    [
+     34,
+     12
+    ],
+    [
+     18,
+     12
+    ],
+    [
+     18,
+     24
+    ],
+    [
+     0,
+     24
+    ],
+    [
+     0,
+     0
+    ]
+   ]
+  ]
+ }
+}

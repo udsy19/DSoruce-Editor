@@ -1,0 +1,36 @@
+{
+ "type": "Feature",
+ "properties": {
+  "id": "rot17-door-gaps",
+  "why": "Rotated 17°: every axis-aligned assumption breaks; regularisation must not force it square.",
+  "source": "synthetic — truth is the generating polygon, exact by construction",
+  "areaM2": 600
+ },
+ "geometry": {
+  "type": "Polygon",
+  "coordinates": [
+   [
+    [
+     0,
+     0
+    ],
+    [
+     28.689143,
+     8.771151
+    ],
+    [
+     22.841709,
+     27.897246
+    ],
+    [
+     -5.847434,
+     19.126095
+    ],
+    [
+     0,
+     0
+    ]
+   ]
+  ]
+ }
+}

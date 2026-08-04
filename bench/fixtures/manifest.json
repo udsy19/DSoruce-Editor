@@ -1,0 +1,80 @@
+[
+  {
+    "id": "rect-clean",
+    "why": "Control. If a candidate cannot do this, nothing else matters.",
+    "vertices": 4,
+    "entities": 4
+  },
+  {
+    "id": "rect-door-gaps",
+    "why": "Doors/windows break wall continuity — the gap-closing case (L5IN / IIETA).",
+    "vertices": 4,
+    "entities": 11
+  },
+  {
+    "id": "rect-wide-gaps",
+    "why": "Gaps widened to 2.4 m — past a door leaf, where naive closing over-bridges.",
+    "vertices": 4,
+    "entities": 10
+  },
+  {
+    "id": "rect-jitter",
+    "why": "Endpoints 8 mm off coincident — the snap/set_precision case (dxf-fix).",
+    "vertices": 4,
+    "entities": 4
+  },
+  {
+    "id": "rect-duplicated-layers",
+    "why": "A second, 40 mm-offset wall layer — overlapping-wall elimination (Wu et al.).",
+    "vertices": 4,
+    "entities": 8
+  },
+  {
+    "id": "rot17-door-gaps",
+    "why": "Rotated 17°: every axis-aligned assumption breaks; regularisation must not force it square.",
+    "vertices": 4,
+    "entities": 12
+  },
+  {
+    "id": "lshape-door-gaps",
+    "why": "Re-entrant corner: hull tracers cut the notch off — the classic phantom diagonal.",
+    "vertices": 6,
+    "entities": 17
+  },
+  {
+    "id": "notched-core",
+    "why": "Deep notch (a lift core biting into the slab) — two re-entrant corners.",
+    "vertices": 8,
+    "entities": 16
+  },
+  {
+    "id": "curved-facade",
+    "why": "Arc facade: over-regularisation destroys it, so it guards the regularise candidate.",
+    "vertices": 27,
+    "entities": 30
+  },
+  {
+    "id": "lshape-jitter-dup-gaps",
+    "why": "All three defects at once — the composed-pipeline case the research predicts.",
+    "vertices": 6,
+    "entities": 20
+  },
+  {
+    "id": "lshape-shell-fragments",
+    "why": "PRODUCTION BUG CLASS: shell present only as fragments — forces hull fallback across the notch.",
+    "vertices": 6,
+    "entities": 40
+  },
+  {
+    "id": "notched-shell-fragments",
+    "why": "PRODUCTION BUG CLASS: two re-entrant corners with a fragmented shell — worst case for a hull.",
+    "vertices": 8,
+    "entities": 46
+  },
+  {
+    "id": "rect-no-shell-only-partitions",
+    "why": "PRODUCTION BUG CLASS: no exterior wall at all, only interior partitions + columns — the real DWG condition.",
+    "vertices": 4,
+    "entities": 46
+  }
+]

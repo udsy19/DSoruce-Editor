@@ -1,0 +1,44 @@
+{
+ "type": "Feature",
+ "properties": {
+  "id": "lshape-door-gaps",
+  "why": "Re-entrant corner: hull tracers cut the notch off — the classic phantom diagonal.",
+  "source": "synthetic — truth is the generating polygon, exact by construction",
+  "areaM2": 624
+ },
+ "geometry": {
+  "type": "Polygon",
+  "coordinates": [
+   [
+    [
+     0,
+     0
+    ],
+    [
+     34,
+     0
+    ],
+    [
+     34,
+     12
+    ],
+    [
+     18,
+     12
+    ],
+    [
+     18,
+     24
+    ],
+    [
+     0,
+     24
+    ],
+    [
+     0,
+     0
+    ]
+   ]
+  ]
+ }
+}

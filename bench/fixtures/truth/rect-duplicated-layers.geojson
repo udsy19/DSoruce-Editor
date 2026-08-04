@@ -1,0 +1,36 @@
+{
+ "type": "Feature",
+ "properties": {
+  "id": "rect-duplicated-layers",
+  "why": "A second, 40 mm-offset wall layer — overlapping-wall elimination (Wu et al.).",
+  "source": "synthetic — truth is the generating polygon, exact by construction",
+  "areaM2": 600
+ },
+ "geometry": {
+  "type": "Polygon",
+  "coordinates": [
+   [
+    [
+     0,
+     0
+    ],
+    [
+     30,
+     0
+    ],
+    [
+     30,
+     20
+    ],
+    [
+     0,
+     20
+    ],
+    [
+     0,
+     0
+    ]
+   ]
+  ]
+ }
+}

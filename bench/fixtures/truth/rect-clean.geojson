@@ -1,0 +1,36 @@
+{
+ "type": "Feature",
+ "properties": {
+  "id": "rect-clean",
+  "why": "Control. If a candidate cannot do this, nothing else matters.",
+  "source": "synthetic — truth is the generating polygon, exact by construction",
+  "areaM2": 600
+ },
+ "geometry": {
+  "type": "Polygon",
+  "coordinates": [
+   [
+    [
+     0,
+     0
+    ],
+    [
+     30,
+     0
+    ],
+    [
+     30,
+     20
+    ],
+    [
+     0,
+     20
+    ],
+    [
+     0,
+     0
+    ]
+   ]
+  ]
+ }
+}
