@@ -512,3 +512,46 @@ Recommendation: **(1) for now, (2) with the next real-world recalibration.** The
 false-lows are in the safe direction, the ladder is a strict geometric
 improvement, and option 3 is a larger behavioural change than this branch should
 make on 15 synthetic fixtures.
+
+## INVARIANT — the calibration log records humans only
+
+ADR 0003 makes the calibration log the *only* evidence that can promote an
+inference rung to high confidence, explicitly never fixtures, "because we build
+the fixtures". An automated agent driving the wizard is the same failure in a
+different costume: it is not a user accepting a boundary, and every E2E run of
+the confirm flow would append another `confirmed-unedited`, manufacturing the
+very evidence the rule forbids manufacturing.
+
+**This was a real defect, not a hypothetical.** The Playwright run that verified
+the Space-step wiring confirmed a plate through the UI and left a
+`confirmed-unedited` row in the store.
+
+### Detection failed; proof-of-human works
+
+The first fix excluded automation by `navigator.webdriver`. **It did not work** —
+a live re-run wrote a row anyway, because a Playwright session attached to an
+ordinary Chrome over CDP reports `navigator.webdriver === false`. Detection is an
+arms race that **fails open**, which is the wrong direction for evidence.
+
+The gate is therefore inverted: require positive proof of a human. A log write
+needs a **trusted input event** (`Event.isTrusted`) within the last 30 s.
+`isTrusted` is set by the browser from real hardware and cannot be forged from
+page script, so no `element.click()`, dispatched event, or `evaluate()` harness
+can contribute evidence.
+
+Residual risk, stated rather than papered over: automation driving real CDP input
+(Playwright's own `page.click()`) produces trusted events and would still
+register. Distinguishing that from a human is not solvable in-page. What is
+guaranteed is that no *script-driven* flow can contribute — which is how these
+tests and every `evaluate()` harness work.
+
+### Regression tests
+
+- `plateRoundTrip.test.mjs` — a non-browser session is never evidence.
+- Live: the confirm flow must work **and** leave the trusted-row count unchanged.
+  Verified against a production build: draft shown, "≈ 930 m²", confirm consumed,
+  **0 log rows**.
+- `PLATE_LOG_SCHEMA` is bumped whenever the trust rule changes (now 3), and
+  `listPlateLog` deletes rows written under any older rule — rows whose
+  provenance cannot be established are not evidence, so the polluted entry is
+  purged wherever it exists rather than tracked down.

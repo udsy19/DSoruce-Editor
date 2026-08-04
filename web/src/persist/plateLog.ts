@@ -23,9 +23,19 @@
 import { dbPut, dbGetAll, dbDel } from './db'
 import type { PlateProvenance } from '../import/plateQuality'
 
+/**
+ * Bumped when the log's trustworthiness rules change. Rows written before the
+ * real-session gate existed cannot be shown to have come from a human, so they
+ * are unverifiable and `listPlateLog` deletes them on sight rather than letting
+ * them count as evidence.
+ */
+export const PLATE_LOG_SCHEMA = 3
+
 export interface PlateLogEntry {
   /** ISO timestamp — the store's key path. */
   at: string
+  /** Trust-rule version this row was written under. Absent ⇒ pre-gate ⇒ dropped. */
+  schema?: number
   /** How the boundary was derived and how far it could be trusted. */
   provenance: PlateProvenance
   /** Plate area (m²) as proposed. */
@@ -49,10 +59,59 @@ export interface PlateLogEntry {
   acceptedAreaM2?: number
 }
 
+/**
+ * **The calibration log records humans only.** An automated agent driving the
+ * wizard is not a user accepting a boundary, and every E2E run of the confirm
+ * flow would otherwise append another `confirmed-unedited` — manufacturing
+ * exactly the promotion evidence ADR 0003 forbids manufacturing, in the one
+ * store that exists to be non-synthetic.
+ *
+ * DETECTING automation was tried first and failed in practice: `navigator.
+ * webdriver` reads `false` under a Playwright session that attaches to an
+ * ordinary Chrome over CDP rather than launching with automation flags, and a
+ * live run of the confirm flow wrote a row anyway. Detection is an arms race
+ * that fails open, which is the wrong direction for evidence.
+ *
+ * So the gate is inverted: require POSITIVE proof of a human. A trusted input
+ * event is one the browser itself generated from real hardware —
+ * `Event.isTrusted` cannot be forged from page script, so a synthetic
+ * `element.click()` or dispatched event never refreshes this.
+ *
+ * Residual risk, stated rather than papered over: automation that drives real
+ * CDP input (Playwright's own `page.click()`) produces trusted events and would
+ * still register. Distinguishing that from a human is not solvable in-page. What
+ * this does guarantee is that no script-driven flow — which is how these tests
+ * and every `evaluate()` harness work — can contribute evidence.
+ */
+const TRUSTED_INPUT_WINDOW_MS = 30_000
+let lastTrustedInputAt = 0
+
+if (typeof window !== 'undefined') {
+  const mark = (e: Event) => {
+    if (e.isTrusted) lastTrustedInputAt = Date.now()
+  }
+  for (const type of ['pointerdown', 'keydown'] as const) {
+    window.addEventListener(type, mark, { capture: true, passive: true })
+  }
+}
+
+export function isRealSession(): boolean {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') return false
+  if (navigator.webdriver) return false
+  try {
+    if (import.meta.env?.DEV) return false
+  } catch {
+    /* no import.meta in this context — fall through */
+  }
+  // A decision only counts if a real hand was on the machine to make it.
+  return Date.now() - lastTrustedInputAt < TRUSTED_INPUT_WINDOW_MS
+}
+
 /** Record a proposed plate. Never throws: telemetry must not break an import. */
 export async function logPlate(entry: PlateLogEntry): Promise<void> {
+  if (!isRealSession()) return
   try {
-    await dbPut('plateLog', entry)
+    await dbPut('plateLog', { ...entry, schema: PLATE_LOG_SCHEMA })
   } catch {
     /* a full or unavailable IndexedDB is not a reason to fail the import */
   }
@@ -63,6 +122,7 @@ export async function recordPlateOutcome(
   outcome: PlateLogEntry['outcome'],
   acceptedAreaM2?: number,
 ): Promise<void> {
+  if (!isRealSession()) return
   try {
     const all = (await dbGetAll('plateLog')) as PlateLogEntry[]
     const last = all[all.length - 1]
@@ -73,9 +133,22 @@ export async function recordPlateOutcome(
   }
 }
 
+/**
+ * Every row the log will admit as evidence. Self-healing: rows written before
+ * the real-session gate existed are deleted here, because nothing about them can
+ * establish a human made the decision — including the entry an automated
+ * confirm-flow run left behind when this store first shipped.
+ */
 export async function listPlateLog(): Promise<PlateLogEntry[]> {
   try {
-    return (await dbGetAll('plateLog')) as PlateLogEntry[]
+    const all = (await dbGetAll('plateLog')) as PlateLogEntry[]
+    const trusted = all.filter((r) => (r.schema ?? 0) >= PLATE_LOG_SCHEMA)
+    if (trusted.length !== all.length) {
+      for (const r of all) {
+        if ((r.schema ?? 0) < PLATE_LOG_SCHEMA) await dbDel('plateLog', r.at)
+      }
+    }
+    return trusted
   } catch {
     return []
   }

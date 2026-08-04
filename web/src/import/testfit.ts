@@ -262,6 +262,8 @@ function contourRing(segments: Segment[], dilate: number): Pt[] | null {
 
 /** Push a plate's boundary into the editor as walls (one per polygon edge). */
 export function pushPlateToEditor(ec: EditorCanvas, plate: PlateResult, thickness = 0.15): void {
+  // The plate's trustworthiness travels with the document from here on.
+  ec.plateProvenance = plate.provenance ?? null
   const b = plate.boundary
   for (let i = 0; i < b.length; i++) {
     const [ax, ay] = b[i]

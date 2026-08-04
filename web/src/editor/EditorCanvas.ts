@@ -66,6 +66,7 @@ import type {
   ZoneType,
 } from '../types/doc'
 import type { CirculationScore, LayoutScore, Metrics, ZoneStat } from '../types/metrics'
+import type { PlateProvenance } from '../import/plateQuality'
 import type { GenResult, Program } from '../types/program'
 import { DEFAULT_PROGRAM } from '../types/program'
 
@@ -759,6 +760,19 @@ export class EditorCanvas {
     return state
   }
   private stateCache: { ed: Editor; rev: bigint; state: DocState } | null = null
+
+  /**
+   * How the floor plate under this document was derived, and how far it can be
+   * trusted (ADR 0002/0003). Set when a plate is pushed, restored on open, and
+   * written into the `.dsource` file, so a low-confidence plate still presents
+   * as approximate after a save/open round-trip instead of silently becoming a
+   * hard number — the exact bug class the plate branch removed on the import
+   * path, which would otherwise reappear through persistence.
+   *
+   * Held here rather than in the Rust `Document` because the snapshot shape is
+   * frozen; this is import metadata, not document geometry.
+   */
+  plateProvenance: PlateProvenance | null = null
   getMetrics(): Metrics {
     return this.ed.metrics() as Metrics
   }

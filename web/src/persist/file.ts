@@ -249,7 +249,11 @@ export function buildProjectFile(opts: ProjectParts): DSourceFile {
       ? { bindings: Object.fromEntries(opts.bindings) }
       : {}),
     ...(opts.ui ? { ui: opts.ui } : {}),
-    ...(opts.plateProvenance ? { plateProvenance: opts.plateProvenance } : {}),
+    // Falls back to whatever the canvas is carrying, so neither save path can
+    // silently drop it: ⌘S and the plan library both land here.
+    ...((opts.plateProvenance ?? opts.ec.plateProvenance)
+      ? { plateProvenance: opts.plateProvenance ?? opts.ec.plateProvenance! }
+      : {}),
   }
 }
 
@@ -278,4 +282,8 @@ export async function openProject(file: File): Promise<DSourceFile> {
 export function applyProject(ec: EditorCanvas, f: DSourceFile): void {
   ec.restore(f.snapshot)
   ec.program = { ...DEFAULT_PROGRAM, ...f.program }
+  // Restore the plate's confidence state. Without this a low-confidence plate
+  // reopens presenting as a hard number — the bug this branch removed on import,
+  // reappearing through save/open.
+  ec.plateProvenance = f.plateProvenance ?? null
 }
