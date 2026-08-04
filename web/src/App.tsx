@@ -572,22 +572,7 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
     frameEditor() // frame the loaded saved plan (cold-reload of #/p/:pid/f/:planId)
   }
 
-  // Cold-reload floor-open (Known bug): a hard reload of #/p/:pid/f/:planId lands
-  // here with `openPlanId` set but an empty wasm doc (the in-session pick→edit
-  // path went through openCandidate, which set `currentPlanId`). Once the editor
-  // is ready, load the saved plan via the SAME library open path (getPlan →
-  // openSavedPlan = applyProject). The ref latch + the currentPlanId guard stop a
-  // double-load of the in-session pick.
   const openedPlanRef = useRef<string | null>(null)
-  useEffect(() => {
-    if (!ready || !openPlanId) return
-    if (openPlanId === currentPlanId || openPlanId === openedPlanRef.current) return
-    openedPlanRef.current = openPlanId
-    void getPlan(openPlanId).then((p) => {
-      if (p) openSavedPlan(p)
-    })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, openPlanId, currentPlanId])
 
   const restoreHistory = async (e: HistoryEntry) => {
     const ec = ecRef.current
@@ -634,6 +619,32 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
     metrics.wall_count === 0 &&
     metrics.component_count === 0 &&
     (ec?.cad.store.entities.length ?? 0) === 0
+
+  // Open the floor named by the route (#/p/:pid/f/:planId) once the editor is
+  // ready, via the SAME library open path (getPlan → openSavedPlan =
+  // applyProject). This is now the PRIMARY way a user returns to their work —
+  // the project library routes straight here via `chosenPlanId` — so it has to be
+  // reliable, not best-effort.
+  //
+  // The guards skip a redundant re-load of a plan that is already open, but they
+  // are deliberately subordinate to the one condition that actually matters: IS
+  // THE DOCUMENT EMPTY? EditorView is never unmounted, so `openedPlanRef` and
+  // `currentPlanId` outlive any number of navigations, while the wasm doc can be
+  // emptied underneath them — a Generate run clears it. Re-entering the same
+  // floor afterwards hit the latch, returned early, and left the user staring at
+  // an empty canvas under the "trace your imported plan" empty state. Keying on
+  // the doc makes this self-correcting and idempotent: it loads exactly when
+  // there is nothing to show, and never otherwise.
+  useEffect(() => {
+    if (!ready || !openPlanId) return
+    const alreadyOpen = openPlanId === currentPlanId || openPlanId === openedPlanRef.current
+    if (alreadyOpen && !docEmpty) return
+    openedPlanRef.current = openPlanId
+    void getPlan(openPlanId).then((p) => {
+      if (p) openSavedPlan(p)
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, openPlanId, currentPlanId, docEmpty])
 
   const pickTool = (t: string) => {
     setTool(t)

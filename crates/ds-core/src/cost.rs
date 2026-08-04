@@ -251,6 +251,7 @@ mod tests {
             label: String::new(),
             product_id: None,
             price_inr: None,
+            seats: 0, // test fixture: seat count is irrelevant to what these assert
             decision: DecisionState::Open,
         }
     }

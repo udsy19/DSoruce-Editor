@@ -273,6 +273,7 @@ impl Editor {
     pub fn add_component(&mut self, category: String, x: f64, y: f64, w: f64, h: f64) -> u32 {
         let id = self.doc.alloc_id();
         let label = format!("{} {}", category, id);
+        let seats = crate::model::seats_for(&category, w, h);
         self.doc.components.push(Component {
             id,
             category,
@@ -283,6 +284,7 @@ impl Editor {
             rotation: 0.0,
             mirror: false,
             reference: false, // placed/generated content counts; only imported furniture is reference
+            seats,
             label,
             product_id: None,
             price_inr: None,
@@ -417,6 +419,10 @@ impl Editor {
         if let Some(c) = self.doc.component_mut(id) {
             c.w = w.max(0.05);
             c.h = h.max(0.05);
+            // Seats follow the footprint: grow a table and it seats more people.
+            // Re-resolved here so the stored count can never go stale — the whole
+            // contract is that the renderer reads `seats` and never recomputes it.
+            c.seats = crate::model::seats_for(&c.category, c.w, c.h);
         }
     }
 
@@ -425,6 +431,10 @@ impl Editor {
     pub fn set_component_category(&mut self, id: u32, category: String) {
         if let Some(c) = self.doc.component_mut(id) {
             c.category = category;
+            // Reclassifying changes what the object IS, so it changes how many
+            // people sit at it (a Desk seats 1; the same footprint as a Table
+            // seats its perimeter). Kept in lockstep with `set_component_size`.
+            c.seats = crate::model::seats_for(&c.category, c.w, c.h);
         }
     }
 
@@ -550,12 +560,33 @@ impl Editor {
                     })
                     .count();
                 let area = areas[i];
-                // The plate-spanning oriented Workspace reports its REAL seated
-                // desk count as capacity, not the area rule-of-thumb: its bbox
-                // area would imply several times the desks it actually holds, so
-                // the on-canvas "N pax" label (which reads `capacity`) would lie.
-                // Every other zone keeps the area-based `capacity()`.
-                let capacity = if Some(i) == spanning {
+                // FURNITURE WINS over the area rule-of-thumb.
+                //
+                // `Zone::capacity()` is a planning estimate (floor area ÷ m² per
+                // seat) for an EMPTY room. Once a room is furnished we know the
+                // real answer: the seats its furniture provides. Using the
+                // estimate anyway is what put "BOARDROOM 24 m² · 9 pax" over a
+                // table the plan draws with 12 chairs — the tag and the drawing
+                // disagreeing about the same room, from two different sources.
+                //
+                // Σ of `Component::seats` is the same owner the glyph renders
+                // (ui-system.md §3.6), so tag and drawing now agree by
+                // construction rather than by coincidence. An unfurnished zone
+                // has no seats and keeps the area estimate.
+                //
+                // This also subsumes the old plate-spanning-Workspace special
+                // case: every desk seats exactly 1, so Σ seats over a desk field
+                // IS its seated-desk count.
+                let furnished: u32 = z
+                    .component_ids
+                    .iter()
+                    .filter_map(|&cid| self.doc.components.iter().find(|c| c.id == cid))
+                    .filter(|c| !c.reference) // imported context furniture seats nobody
+                    .map(|c| c.seats)
+                    .sum();
+                let capacity = if furnished > 0 {
+                    furnished
+                } else if Some(i) == spanning {
                     seated as u32
                 } else {
                     z.capacity()
@@ -772,6 +803,7 @@ mod tests {
             label: format!("Desk {id}"),
             product_id: None,
             price_inr: None,
+            seats: 0, // test fixture: seat count is irrelevant to what these assert
             decision: DecisionState::Open,
         }
     }
@@ -859,6 +891,7 @@ mod tests {
             label: format!("{category} {id}"),
             product_id: price.map(|_| format!("p{id}")),
             price_inr: price,
+            seats: 0, // test fixture: seat count is irrelevant to what these assert
             decision: DecisionState::Open,
         }
     }

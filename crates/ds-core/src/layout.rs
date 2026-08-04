@@ -772,6 +772,9 @@ fn push_component(doc: &mut Document, category: &str, x: f64, y: f64, w: f64, h:
         rotation,
         mirror: false,
         reference: false, // generated fit-out counts toward every metric
+        // Resolved HERE, from world size, so the renderer reads it instead of
+        // guessing a chair count from the zoom level (ui-system.md §3.6).
+        seats: crate::model::seats_for(category, w, h),
         label: format!("{} {}", category, id),
         product_id: None,
             price_inr: None,

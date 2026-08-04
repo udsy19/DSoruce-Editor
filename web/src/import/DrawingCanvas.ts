@@ -5,7 +5,7 @@ import type { RoomMarker, RoomType } from './markers'
 import type { Backdrop } from './rasterImport'
 import { backdropBounds } from './rasterImport'
 import { normalizeFurniture } from './normalize'
-import { drawFurnitureSymbol } from '../editor/furniture'
+import { drawSymbol, seatsForSize } from '../editor/symbols'
 
 /**
  * Framework-agnostic CAD renderer for an imported {@link Drawing}. Renders
@@ -21,14 +21,22 @@ import { drawFurnitureSymbol } from '../editor/furniture'
  * we negate them when drawing.
  */
 
+// ── The CANVAS palette (docs/design/ui-system.md §4.1.1) ────────────────────
+// Canvas colour is semantic DATA, governed by what the object is — never brand.
+// The UI accent token must never appear on canvas geometry, and these must never
+// be aliased to it: gray = unbound · blue = bound/specified · amber = live.
+//
 // Mat behind the plate — matches EditorCanvas C.mat.
 const MAT = '#f2f4f7'
-// Furniture linework (gray) + a lighter secondary tone for a symbol's detail
-// (monitor, chair, glazing centerline). Mirrors EditorCanvas's stroke/detail pair.
+// Furniture linework (gray = UNBOUND) + a lighter secondary tone for a symbol's
+// detail (monitor, chair, glazing centerline). Mirrors EditorCanvas's pair.
 const FURNITURE_LINE = '#5c6670'
 const FURNITURE_DETAIL = '#9aa2ad'
-// Selection = warm amber accent; hover = a lighter amber wash. Kept distinct
-// from the blue used for product-bound items so the two never read the same.
+// Body + seat fills, identical to EditorCanvas's C.furnitureFill/C.furnitureSeat
+// so one desk renders identically on both canvases.
+const FURNITURE_FILL = 'rgba(255,255,255,0.86)'
+const FURNITURE_SEAT = '#e7eaee'
+// LIVE selection/hover = warm amber. Its one and only meaning across the app.
 const ACCENT = '#E8A13C'
 const ACCENT_HALO = 'rgba(232,161,60,0.28)'
 const HOVER = 'rgba(232,161,60,0.55)'
@@ -1600,7 +1608,13 @@ export class DrawingCanvas {
    *  (world CCW → screen CW under the Y-flip). This reproduces the same on-screen
    *  extent as the bbox while facing correctly, and it does NOT double-rotate: the
    *  un-swap removes the aspect the rotation re-applies. An unknown category falls
-   *  to `drawFurnitureSymbol`'s neutral rounded outline, never raw linework. */
+   *  to `drawSymbol`'s neutral rounded outline, never raw linework.
+   *
+   *  Uses the SAME symbol module + the same `fill`/`seat` inks as the editor
+   *  canvas, so one desk looks like itself on both surfaces. It previously
+   *  passed neither fill, which is why imported furniture rendered as hollow
+   *  outlines here and as filled objects in the editor — crossing the Space →
+   *  editor boundary looked like crossing into a different application. */
   private drawItemSymbol(it: FurnitureItem, stroke: string, detail: string, selected: boolean) {
     const norm = normalizeFurniture(it)
     // Skip degenerate/NaN footprints so we never emit NaN paths or 0-size garbage.
@@ -1611,19 +1625,24 @@ export class DrawingCanvas {
     const odd = Math.round(norm.rotation / (Math.PI / 2)) % 2 !== 0
     const nw = odd ? norm.h : norm.w
     const nh = odd ? norm.w : norm.h
-    drawFurnitureSymbol(this.ctx, {
-      category: norm.category,
-      cx: c.x,
-      cy: c.y,
-      w: nw * this.scale,
-      h: nh * this.scale,
-      rotation: -norm.rotation, // world CCW → screen CW (Y-flip)
-      mirror: norm.mirror, // door hinge hand (recovered from the swing arc)
-      stroke,
-      detail,
-      accent: ACCENT,
-      selected,
-    })
+    drawSymbol(
+      this.ctx,
+      {
+        category: norm.category,
+        cx: c.x,
+        cy: c.y,
+        w: nw, // METRES — the symbol module owns the world→screen conversion
+        h: nh,
+        rotation: -norm.rotation, // world CCW → screen CW (Y-flip)
+        mirror: norm.mirror, // door hinge hand (recovered from the swing arc)
+        // Seat count from the object's world size (the same rule the core uses),
+        // never from its size on screen.
+        seats: seatsForSize(norm.category, nw, nh),
+        selected,
+      },
+      { stroke, detail, fill: FURNITURE_FILL, seat: FURNITURE_SEAT, accent: ACCENT },
+      { pxPerM: this.scale, dpr: this.dpr },
+    )
   }
 
   private drawTexts(d: Drawing) {

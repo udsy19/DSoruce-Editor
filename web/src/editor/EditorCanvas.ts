@@ -1,6 +1,6 @@
 import init, { Editor } from '../wasm/ds_core'
 import { catByCategory } from './catalog'
-import { drawFurnitureSymbol } from './furniture'
+import { drawSymbol, seatsForSize, pen, lod, type PenWeight } from './symbols'
 import { CadController } from '../cad/controller'
 import { entityBBox } from '../cad/render'
 import type { CadEntity, SnapContext, Vec2, SnapResult } from '../cad/model'
@@ -46,6 +46,12 @@ export interface DocComponent {
    *  NOT counted in any metric (workstations, pax, cost, CO2). serde defaults false,
    *  so generated/placed content counts (see `Component::reference`, Rust core). */
   reference?: boolean
+  /** How many people sit AT this object, resolved once by the core
+   *  (`model::seats_for`) and only ever READ here — the renderer must never
+   *  recompute it (see `Component::seats`, Rust core, and ui-system.md §3.6).
+   *  Distinct from a ROOM's pax, which is `zone_stats().capacity`. serde defaults
+   *  0, so snapshots predating the facet read as 0. */
+  seats?: number
   label: string
   product_id: string | null
   decision: 'Open' | 'InReview' | 'Confirmed'
@@ -191,6 +197,9 @@ interface ZoneTag {
   cy: number
   namePx: number
   color: string
+  /** Zone area (m²) — the WORLD priority used to break tag collisions, so which
+   *  tag survives never changes as the user zooms or pans. */
+  area: number
 }
 
 // Space-planning strategies live in a dependency-free module (unit-testable in
@@ -377,6 +386,10 @@ interface DynResolved {
 
 const GRID_M = 1 // 1-meter minor grid
 const MAJOR_EVERY = 5 // heavier line every 5 m
+// Tag visibility is a WORLD decision — a room earns a name because of how big the
+// ROOM is, not how big it currently looks on screen (ui-system.md §3.5).
+const TAG_MIN_AREA_M2 = 6 // below this a room is too small to name
+const TAG_METRICS_MIN_AREA_M2 = 12 // below this, name only — no area/pax line
 const SNAP_M = 0.1 // 10 cm snap
 const RULER = 22 // px ruler gutter (top + left)
 
@@ -2357,6 +2370,12 @@ export class EditorCanvas {
     if (!parent) return
     const rect = parent.getBoundingClientRect()
     if (rect.width === 0 || rect.height === 0) return // hidden (e.g. 3D mode)
+    // Re-read the DPR on every resize. It was a field initialiser read ONCE at
+    // construction, so moving the window to a display with a different DPI (or
+    // changing browser zoom) left the backing store sized with the stale ratio —
+    // a blurry or over-sharp canvas with no way to recover short of a reload.
+    // DrawingCanvas already did this; the two now agree.
+    this.dpr = Math.max(1, window.devicePixelRatio || 1)
     this.canvas.width = Math.floor(rect.width * this.dpr)
     this.canvas.height = Math.floor(rect.height * this.dpr)
     this.canvas.style.width = `${rect.width}px`
@@ -2409,8 +2428,7 @@ export class EditorCanvas {
       if (wall.glazing) {
         this.drawGlazing(wall.a, wall.b)
       } else {
-        const s = this.wallStyle(wall)
-        this.drawSegment(wall.a, wall.b, s.width, s.color)
+        this.drawWall(wall.a, wall.b, wall)
       }
     }
     if (this.tool === 'wall' && this.wallStart) {
@@ -2500,24 +2518,80 @@ export class EditorCanvas {
   }
 
   /**
-   * Lineweight hierarchy (architect's sheet convention, cf. DrawingCanvas
-   * LINE_WEIGHT): exterior/plate walls heaviest in the darkest ink, interior
-   * user walls medium, generated partitions lightest. Stroke is proportional
-   * to true thickness with min/max clamps so hierarchy survives any zoom.
+   * Wall ink + outline pen (architect's sheet convention): exterior/plate walls
+   * heaviest in the darkest ink, interior user walls medium, generated
+   * partitions lightest.
+   *
+   * The wall's MASS is world (its true thickness, filled as poché by
+   * `drawWall`); only this OUTLINE is screen space, and it is a discrete pen
+   * weight snapped to the device-pixel grid. That replaces the old
+   * `clamp(thickness × scale, min, max)` stroke, which was three different
+   * visual laws across one zoom sweep: pinned to its floor below ~12 px/m
+   * (hierarchy compressed to nothing), proportional in the middle, and pinned to
+   * its ceiling above ~25 px/m (walls stopped thickening while the rooms around
+   * them kept growing). That is what "the line weight changes at every zoom
+   * level" was.
    */
-  private wallStyle(w: DocWall): { color: string; width: number } {
-    const t = w.thickness * this.scale
-    if (w.generated ?? false) {
-      // Lightest tier: room partitions the generator drew.
-      return { color: C.wallGen, width: clampN(t * 0.85, 1.3, 3.2) }
+  private wallStyle(w: DocWall): { color: string; pen: PenWeight } {
+    if (w.generated ?? false) return { color: C.wallGen, pen: 'thin' }
+    if (this.exteriorIds.has(w.id)) return { color: C.wallExt, pen: 'thick' }
+    return { color: C.wall, pen: 'med' }
+  }
+
+  /**
+   * Draw a wall as an architect would: a FILLED body at its true thickness in
+   * world units, outlined with a device-pixel-snapped hairline pen.
+   *
+   * A wall is a 200 mm-thick object, so it should measure 200 mm at every zoom.
+   * Below the point where its true thickness is thinner than the pen itself
+   * (~3 device px), the poché would be sub-pixel mush, so it degrades to a
+   * single stroke — faded in across a band, so nothing pops.
+   */
+  private drawWall(a: { x: number; y: number }, b: { x: number; y: number }, w: DocWall) {
+    const ctx = this.ctx
+    const s = this.wallStyle(w)
+    const pa = this.toScreen(a.x, a.y)
+    const pb = this.toScreen(b.x, b.y)
+    const tPx = w.thickness * this.scale
+    const stroke = pen(s.pen, this.dpr)
+    // Fade the poché in as the wall's true thickness overtakes its own outline.
+    const solid = lod(tPx, { exit: stroke * 1.5, enter: stroke * 4 })
+
+    if (solid < 1) {
+      // Thin-zoom fallback: the wall as a single line at its pen weight.
+      ctx.save()
+      ctx.globalAlpha = 1 - solid
+      ctx.strokeStyle = s.color
+      ctx.lineWidth = stroke
+      ctx.lineCap = 'round'
+      ctx.beginPath()
+      ctx.moveTo(pa.x, pa.y)
+      ctx.lineTo(pb.x, pb.y)
+      ctx.stroke()
+      ctx.restore()
     }
-    if (this.exteriorIds.has(w.id)) {
-      // Heaviest tier — but capped tight so the boundary reads as a crisp
-      // architectural line, not the fat black marker it was before.
-      return { color: C.wallExt, width: clampN(t, 2.4, 5) }
-    }
-    // Medium tier: interior/user walls.
-    return { color: C.wall, width: clampN(t, 1.7, 3.8) }
+    if (solid <= 0) return
+
+    // Poché: the wall's real body, filled.
+    const dx = pb.x - pa.x
+    const dy = pb.y - pa.y
+    const len = Math.hypot(dx, dy) || 1
+    const hx = (-dy / len) * (tPx / 2)
+    const hy = (dx / len) * (tPx / 2)
+    ctx.save()
+    ctx.globalAlpha = solid
+    ctx.beginPath()
+    ctx.moveTo(pa.x + hx, pa.y + hy)
+    ctx.lineTo(pb.x + hx, pb.y + hy)
+    ctx.lineTo(pb.x - hx, pb.y - hy)
+    ctx.lineTo(pa.x - hx, pa.y - hy)
+    ctx.closePath()
+    ctx.fillStyle = s.color
+    ctx.fill()
+    ctx.lineWidth = pen('hair', this.dpr)
+    ctx.strokeStyle = s.color
+    ctx.stroke()
+    ctx.restore()
   }
 
   /** Floor-plate polygon for zone clipping, cached on a cheap wall fingerprint
@@ -2661,16 +2735,17 @@ export class EditorCanvas {
         }
         const stat = this.zoneStats.get(z.id)
         const area = stat?.area ?? Math.abs(a2) / 2
-        if (area < 6 || Math.abs(a2) < 1e-6) continue
+        if (area < TAG_MIN_AREA_M2 || Math.abs(a2) < 1e-6) continue
         const wcx = cx / (3 * a2)
         const wcy = cy / (3 * a2)
         const c = this.toScreen(wcx, wcy)
         const name = z.label.toUpperCase()
-        ctx.font = '600 10px "Hanken Grotesk", system-ui, sans-serif'
         const cap = stat?.capacity ?? 0
         const metrics: string | null =
-          area >= 12 ? `${fmtArea(area)} m²${cap > 0 ? ` · ${cap} pax` : ''}` : null
-        tags.push({ name, metrics, cx: c.x, cy: c.y, namePx: 10, color: pal.line })
+          area >= TAG_METRICS_MIN_AREA_M2
+            ? `${fmtArea(area)} m²${cap > 0 ? ` · ${cap} pax` : ''}`
+            : null
+        tags.push({ name, metrics, cx: c.x, cy: c.y, namePx: 10, color: pal.line, area })
       } else if (z.shape.kind === 'RectRing') {
         const s = z.shape
         const o = this.toScreen(s.x - s.w / 2, s.y - s.h / 2)
@@ -2710,26 +2785,23 @@ export class EditorCanvas {
         }
 
         // Centered room tag: NAME over "area m² · N pax" (architect's sheet
-        // style). Skip when the zone is tiny (< 6 m²) or the tag can't fit;
-        // shrink the name one step before giving up.
+        // style). Visibility is a WORLD decision — a room earns a name because of
+        // how big the ROOM is, not because of how big it currently looks. The old
+        // screen tests (`h < 18` to drop the name, `h < 34` to drop the metrics,
+        // measureText vs the on-screen width) made room names blink in and out as
+        // the user zoomed. The whole tag layer fades out at overview zoom instead
+        // (see drawZoneTags), where a plan is read as shape, not as labels.
         const stat = this.zoneStats.get(z.id)
         const area = stat?.area ?? s.w * s.h
-        if (area < 6 || h < 18) continue
+        if (area < TAG_MIN_AREA_M2) continue
         const name = z.label.toUpperCase()
-        const maxW = w - 10
-        ctx.font = '600 10px "Hanken Grotesk", system-ui, sans-serif'
-        let namePx = 10
-        if (ctx.measureText(name).width > maxW) {
-          ctx.font = '600 8px "Hanken Grotesk", system-ui, sans-serif'
-          namePx = 8
-          if (ctx.measureText(name).width > maxW) continue
-        }
         const cap = stat?.capacity ?? 0
-        let metrics: string | null = `${fmtArea(area)} m²${cap > 0 ? ` · ${cap} pax` : ''}`
-        ctx.font = '500 9.5px "Hanken Grotesk", system-ui, sans-serif'
-        if (h < 34 || ctx.measureText(metrics).width > maxW) metrics = null
+        const metrics: string | null =
+          area >= TAG_METRICS_MIN_AREA_M2
+            ? `${fmtArea(area)} m²${cap > 0 ? ` · ${cap} pax` : ''}`
+            : null
         const c = this.toScreen(s.x, s.y)
-        tags.push({ name, metrics, cx: c.x, cy: c.y, namePx, color: pal.line })
+        tags.push({ name, metrics, cx: c.x, cy: c.y, namePx: 10, color: pal.line, area })
       }
     }
     if (clipped) ctx.restore()
@@ -2745,9 +2817,23 @@ export class EditorCanvas {
     const ctx = this.ctx
     const NAME_FONT = (px: number) => `600 ${px}px "Hanken Grotesk", system-ui, sans-serif`
     const MET_FONT = '500 9.5px "Hanken Grotesk", system-ui, sans-serif'
+    // Annotation is for READING a plan, not for surveying it. Below ~10 px/m the
+    // constant-size pills swamp the drawing they annotate (at 8 px/m they used to
+    // collide into an unreadable mat), so the whole layer fades out.
+    const layerAlpha = lod(this.scale, { exit: 7, enter: 12 })
+    if (layerAlpha <= 0) return
+
+    // De-collide by WORLD priority: when two pills overlap, the smaller ROOM
+    // yields. Priority is a world quantity, so which tag survives is stable
+    // under zoom and pan — it never flickers as the user moves.
+    const ordered = [...tags].sort((a, b) => b.area - a.area)
+    const placed: { x0: number; y0: number; x1: number; y1: number }[] = []
+
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
-    for (const t of tags) {
+    ctx.save()
+    ctx.globalAlpha = layerAlpha
+    for (const t of ordered) {
       ctx.font = NAME_FONT(t.namePx)
       const nameW = ctx.measureText(t.name).width
       ctx.font = MET_FONT
@@ -2757,6 +2843,13 @@ export class EditorCanvas {
       const pillH = t.metrics ? 32 : 19
       const px = t.cx - pillW / 2
       const py = t.cy - pillH / 2
+
+      // Yield to any larger room's pill already placed.
+      const box = { x0: px, y0: py, x1: px + pillW, y1: py + pillH }
+      if (placed.some((p) => box.x0 < p.x1 && box.x1 > p.x0 && box.y0 < p.y1 && box.y1 > p.y0)) {
+        continue
+      }
+      placed.push(box)
 
       // Soft pill: drop shadow + near-white fill + hairline border in zone color.
       ctx.save()
@@ -2782,6 +2875,7 @@ export class EditorCanvas {
         ctx.fillText(t.metrics, t.cx, t.cy + 7.5)
       }
     }
+    ctx.restore()
   }
 
   /** Per-zone Rust-truth stats (plate-clipped area, capacity), cached on a
@@ -2933,25 +3027,38 @@ export class EditorCanvas {
     // dot / frozen styling — it carries no decision state.
     const ref = c.reference === true && !selected
 
-    // Recognizable top-view CAD furniture line-symbol. The symbol carries its own
-    // solid worktop/seat fill (a filled object reads as furniture, where a hollow
-    // white plate under a hollow outline read as faint clutter over the pastel
-    // zone). Reference furniture gets no fill so it recedes into context.
-    drawFurnitureSymbol(ctx, {
-      category: c.category,
-      cx: p.x,
-      cy: p.y,
-      w,
-      h,
-      rotation: c.rotation,
-      mirror: c.mirror,
-      stroke: ref ? C.furnitureRef : frozen ? DECISION_DOT.Confirmed : C.furniture,
-      detail: ref ? C.furnitureRef : C.furnitureDetail,
-      fill: ref ? undefined : frozen ? 'rgba(47,163,107,0.10)' : C.furnitureFill,
-      seat: ref ? undefined : frozen ? 'rgba(47,163,107,0.16)' : C.furnitureSeat,
-      accent: C.accent,
-      selected,
-    })
+    // Recognizable top-view CAD symbol, specified in WORLD metres — the module
+    // owns the world→screen conversion so no part of the symbol's content can
+    // depend on the zoom level. The symbol carries its own solid worktop/seat
+    // fill (a filled object reads as furniture, where a hollow white plate under
+    // a hollow outline read as faint clutter over the pastel zone). Reference
+    // furniture gets no fill so it recedes into context.
+    drawSymbol(
+      ctx,
+      {
+        category: c.category,
+        cx: p.x,
+        cy: p.y,
+        w: c.w, // METRES
+        h: c.h,
+        rotation: c.rotation,
+        mirror: c.mirror,
+        // FROM THE MODEL. The core resolved this once when the component was
+        // created (`model::seats_for`); the renderer only ever reads it. Older
+        // snapshots predate the facet and report 0, so fall back to the same
+        // world-size rule rather than to a screen-size guess.
+        seats: c.seats || seatsForSize(c.category, c.w, c.h),
+        selected,
+      },
+      {
+        stroke: ref ? C.furnitureRef : frozen ? DECISION_DOT.Confirmed : C.furniture,
+        detail: ref ? C.furnitureRef : C.furnitureDetail,
+        fill: ref ? undefined : frozen ? 'rgba(47,163,107,0.10)' : C.furnitureFill,
+        seat: ref ? undefined : frozen ? 'rgba(47,163,107,0.16)' : C.furnitureSeat,
+        accent: C.accent,
+      },
+      { pxPerM: this.scale, dpr: this.dpr },
+    )
 
     // Label only for the selected item — zone labels carry the room names, so the
     // plan stays clean.
