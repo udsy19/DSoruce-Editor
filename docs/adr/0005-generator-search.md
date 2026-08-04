@@ -389,7 +389,7 @@ each budget would optimise the metric we measured at the expense of the one we
 just discovered we do not. The measurement is cheap and the machinery exists;
 that is the next step, not a blind reduction.
 
-## The rules family — one failure mode, four faces
+## The rules family — one failure mode, nine faces
 
 > **Four faces of one error: something read as evidence outside the conditions
 > that made it evidence.**
@@ -492,6 +492,30 @@ Each was learned from a live mistake in this campaign.
    target does not move. Verifying against the live site was worth attempting and
    worth recording as inconclusive, but promotion never depended on it.
 
+9. **A uniform error hides inside a ratio** (plan-grammar campaign) — **when a
+   system is judged on RELATIVE values, any error applied uniformly to all of
+   them is invisible in the thing being judged.** Checking the output cannot
+   find it; only a rule about the code can.
+   *From:* `strokePx` multiplied by `devicePixelRatio` while the canvas context
+   was already `setTransform(dpr, …)`, so every stroke drew at exactly 2× on a
+   retina display. The weight ladder is defined purely by ratios
+   (furniture 1× → wall 2× → enclosure 7.05×), and 2× preserves all of them
+   perfectly. It was written, reviewed and shipped in 2a, and every screenshot
+   taken to verify 2a showed a correct-looking hierarchy.
+
+   The rider is about justification, not just code: the function's docstring
+   argued *for* the multiply ("so a 2× display does not draw half-weight
+   hairlines") and a further comment reasoned carefully about clamping before
+   versus after it. Both were rigorous arguments about a term that should not
+   have existed, and the clamp comment's stated goal — the clamp meaning the
+   same physical width on every display — was precisely what the double-apply
+   destroyed. **A confident rationale attached to a value is not evidence the
+   value belongs; it is what stops anyone asking.**
+
+   Detection rule that follows: for a ratio-defined system, assert the
+   ABSOLUTE contract somewhere a uniform error cannot satisfy — here, a gate
+   rule that `strokePx` may not reference DPR at all.
+
 **And a standing requirement that falls out of the same discipline: every
 trigger needs a SENSOR.** A trigger without something watching for it is a wish.
 Audited across the campaign:
@@ -503,6 +527,9 @@ Audited across the campaign:
 | IFC upgrade is pre-work for `blender-offline` | Agent 5's own scope | exists |
 | compliance metric before any compliance claim | *(human gate — no sensor possible)* | declared |
 | **`target: 82` revisit** | **`searchLog` — added in this change** | **now exists** |
+| **`strokePx` must not re-apply DPR** | **`bench/style-gate.mjs` DPR-contract rule** | **now exists** |
+| **no style literal in the plan render path** | **`bench/style-gate.mjs` (4 files guarded)** | **exists** |
+| **`ACCENT_AMBER` must equal `--accent-amber`** | **`bench/style-gate.mjs` MIRRORS check** | **now exists** |
 
 The fourth instance of the family will come. When it does, add it here rather
 than treating it as new.
