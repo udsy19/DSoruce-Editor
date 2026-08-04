@@ -25,6 +25,7 @@ import { SpaceStep } from './steps/SpaceStep'
 import { ProgramStep } from './steps/ProgramStep'
 import { GenerateStep } from './steps/GenerateStep'
 import { getProject, type ProjectRecord } from '../persist/projects'
+import { DeliverablePackAction } from './DeliverablePackAction'
 
 export function AppShell() {
   const route = useRoute()
@@ -72,6 +73,30 @@ export function AppShell() {
       alive = false
     }
   }, [activePid])
+
+  /**
+   * Mount the editor if it is not already and wait for its controller. The
+   * landing route deliberately renders without paying the wasm boot cost, so
+   * the deliverable-pack action (which can be pressed from anywhere) has to be
+   * able to bring it up. Polls rather than using a callback because the latch
+   * above is a plain `useState` — one render tick, not a subscription.
+   */
+  const ensureEditor = async (): Promise<EditorController> => {
+    if (editorRef.current?.ec()) return editorRef.current
+    setEditorMounted(true)
+    // Bring the editor into view as well: the pack is about to generate the
+    // sample test-fit, and watching a progress bar over a blank library page
+    // would hide the very plan being exported.
+    if (route.name === 'projects' || route.name === 'create') navigate({ name: 'editor' })
+    // Wait for the wasm document too, not just the React ref: the controller
+    // exists from the editor's first render, its `EditorCanvas` only once the
+    // core has booted.
+    for (let i = 0; i < 600; i++) {
+      await new Promise((r) => setTimeout(r, 50))
+      if (editorRef.current?.ec()) return editorRef.current
+    }
+    throw new Error('The editor did not start up in time')
+  }
 
   // Clicking a completed step in the stepper jumps back to it. Property (the
   // project set-up) lives before the wizard, so it returns to the library.
@@ -179,6 +204,12 @@ export function AppShell() {
           />
         </div>
       )}
+      {/* The deliverable pack is the product's headline output, so its one
+          control lives here — on every route, exactly once in the document.
+          On the landing route the editor is not mounted yet; `ensureEditor`
+          mounts it (and its wasm doc) on demand, which is also what the very
+          first click of a fresh session does. */}
+      <DeliverablePackAction ensureEditor={ensureEditor} />
     </>
   )
 }

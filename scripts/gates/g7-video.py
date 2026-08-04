@@ -116,6 +116,44 @@ def body(g: G.Gate):
                         f"{la} and {lb} frames are perceptually identical "
                         f"(dHash Hamming {d} <= {thr}) — the camera is not moving")
 
+        # ---- dense luminance sweep ----------------------------------------
+        # Sampling three frames cannot police a PER-FRAME ceiling. The first
+        # walkthrough shipped G7-green while frames at t=30/31 sat at 0.870 and
+        # 0.889 — above this gate's own 0.85 limit — simply because nothing ever
+        # looked at them. Walk the whole take at ~1 s spacing so a blown or dead
+        # stretch anywhere fails, not just at the three sampled instants.
+        sweep_dt = float(G.arg("--sweep-step", "1.0"))
+        worst_hi = (-1.0, -1.0)  # (mean, t)
+        worst_lo = (2.0, -1.0)
+        worst_sd = (1e9, -1.0)
+        n = 0
+        t = 0.5
+        while t < dur - 0.2:
+            p = frame_at(vp, t, os.path.join(tmp, f"sweep{n:03d}.png"))
+            mean, sd = G.mean_luma(G.open_rgb(p, f"sweep frame t={t:.1f}"))
+            if mean > worst_hi[0]:
+                worst_hi = (mean, t)
+            if mean < worst_lo[0]:
+                worst_lo = (mean, t)
+            if sd < worst_sd[0]:
+                worst_sd = (sd, t)
+            if not keep:
+                os.unlink(p)
+            n += 1
+            t += sweep_dt
+        g.note(f"swept {n} frames @{sweep_dt}s — luminance "
+               f"[{worst_lo[0]:.3f}@{worst_lo[1]:.1f}s, {worst_hi[0]:.3f}@{worst_hi[1]:.1f}s] "
+               f"min stddev {worst_sd[0]:.3f}@{worst_sd[1]:.1f}s")
+        g.check(worst_hi[0] <= hi,
+                f"frame at t={worst_hi[1]:.1f}s mean luminance {worst_hi[0]:.3f} > {hi} — "
+                "blown out (the 3-frame sample would have missed this)")
+        g.check(worst_lo[0] >= lo,
+                f"frame at t={worst_lo[1]:.1f}s mean luminance {worst_lo[0]:.3f} < {lo} — "
+                "dead/black stretch (the 3-frame sample would have missed this)")
+        g.check(worst_sd[0] >= min_sd,
+                f"frame at t={worst_sd[1]:.1f}s stddev {worst_sd[0]:.3f} < {min_sd} — "
+                "flat stretch (the 3-frame sample would have missed this)")
+
         # ---- branding ------------------------------------------------------
         br = tgt.get("branding", {})
         if br.get("mode") != "title_card":

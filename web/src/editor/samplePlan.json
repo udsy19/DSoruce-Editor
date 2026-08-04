@@ -1,0 +1,35 @@
+{
+  "$comment": "The seeded demo test-fit — ONE definition, used by the app's sample plan (editor/samplePlan.ts) and by every headless deliverable-pack harness (scripts/lib/demo-doc.mjs). Kept as JSON precisely so both a TypeScript bundle and a plain Node script can read it without either forking the numbers. Changing anything here changes every gate artifact.",
+  "name": "DSource sample test-fit",
+  "plate": [
+    [0, 0],
+    [40, 0],
+    [40, 24],
+    [0, 24]
+  ],
+  "wallThickness": 0.2,
+  "entry": [20, 0],
+  "core": { "x": 20, "y": 12, "w": 6, "h": 5, "label": "Core" },
+  "seed": 7,
+  "program": {
+    "desks": 60,
+    "meeting_rooms": 4,
+    "desk_w": 1.4,
+    "desk_h": 0.7,
+    "meeting_w": 5,
+    "meeting_h": 4,
+    "cluster_cols": 4,
+    "target_corridor_m": 1.6,
+    "desk_clearance_m": 0.9,
+    "bench_pairs": true,
+    "support_spaces": true,
+    "headcount": 70,
+    "w_capacity": 1,
+    "w_adjacency": 1,
+    "w_circulation": 1,
+    "w_density": 1,
+    "w_program": 1,
+    "w_daylight": 1,
+    "w_entry": 1
+  }
+}

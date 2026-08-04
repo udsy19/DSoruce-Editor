@@ -29,7 +29,6 @@ import { PLAN_LEGEND_CHIPS, WORKBOOK_CHROME } from './qbiqPalette'
 import { buildTakeoffModel, type TakeoffOptions } from './takeoff'
 import { buildXlsx, colName, pxToEmu, type Cell, type SheetSpec, type StyleSpec } from './workbook'
 import { triggerDownload } from './png'
-import { zipStore } from './zip'
 
 // ---------------------------------------------------------------------------
 // The core quantity surface — the shape `Editor.quantities()` returns.
@@ -1030,32 +1029,4 @@ export async function exportQtoWorkbook(
   })
   triggerDownload(blob, filename)
   return pack.xlsx
-}
-
-/**
- * The deliverable pack as one .zip, from one click: the workbook, the master
- * plan (plus its determinism twin), the per-room thumbnails and
- * `ground-truth.json`. The 3D renders, the walkthrough and the share link are
- * appended by their own owners; this is the client-side half.
- */
-export async function exportDeliverablePack(
-  state: DocState,
-  quantities: Quantities,
-  opts: QtoRenderOptions = {},
-  filename = 'dsource-deliverable-pack.zip',
-): Promise<QtoPack> {
-  const pack = await buildQtoPack(state, quantities, opts)
-  const enc = new TextEncoder()
-  const files = [
-    { name: 'quantity-takeoff.xlsx', data: pack.xlsx },
-    { name: 'plan.png', data: pack.planPng },
-    { name: 'plan.repeat.png', data: pack.planRepeatPng },
-    {
-      name: 'ground-truth.json',
-      data: enc.encode(JSON.stringify(pack.groundTruth, null, 2)),
-    },
-    ...pack.thumbs.map((t) => ({ name: `thumbs/${t.id}.png`, data: t.png })),
-  ]
-  triggerDownload(new Blob([zipStore(files) as unknown as BlobPart], { type: 'application/zip' }), filename)
-  return pack
 }

@@ -196,6 +196,46 @@ with a green board.**
 4. `Conference_room` is the weakest still; the demo's 5×4 m meeting room cannot yield the
    reference's corridor-through-glass shot.
 
+---
+
+## Cycles 7-9 — viewer, video, framing. Board 9/10.
+
+| Commit | Slice | Board |
+| --- | --- | --- |
+| `db28137` | F web 3D viewer (no Autodesk) · B1 task chairs | 8/10 |
+| `4e3d577` | E walkthrough video | 9/10 |
+| (pending) | E2 walkthrough framing fix | 9/10 |
+
+### A SECOND gate blind spot — found the same way as the first
+Agent E2 ran a **dense 41-frame sweep** and found the blank-partition defect was worse than
+reported: baseline frames at t=30/t=31 were **82%/85% blank at luminance 0.870/0.889 — above
+G7's OWN 0.85 ceiling**. G7 samples only first/middle/last frames, so those frames never got
+looked at and **the video shipped green while violating the gate's own limit**.
+
+Root cause of the framing itself: `buildPoses` aimed at a fixed 7.5 m look-ahead. On a test-fit
+plate a corner IS a partition, so for ~2 s before every turn the camera pointed squarely into the
+blank flank of the room it was about to pass. Fixed with `visibleLookAhead()` (aim at the furthest
+point actually visible), a composition bias on the clearance grid, and bounded lateral centring —
+all camera/route, no post filters, no dimming.
+
+| | baseline | after |
+| --- | --- | --- |
+| t=11 s blank fraction (eye level) | 71.9% | **4.4%** |
+| worst frame anywhere | 84.6% | **50.2%** |
+| frames >50% blank at eye level | 9 of 42 | **2 of 42** |
+| max frame luminance | 0.889 (over ceiling) | **0.815** |
+
+**This is the second time a "look at the actual output" pass caught something all structural gates
+missed** (the first was the 19×3 px plan smudge). ACTION: harden G7 to sample densely rather than
+three frames — a gate that checks 3 of 1290 frames cannot police a luminance ceiling.
+
+### INCIDENT 2: concurrent write corrupted `out/walkthrough.mp4`
+E2 and Agent H both write `out/walkthrough.mp4`. A completed render came back corrupt
+(`moov atom not found` / `Invalid NAL unit size`), which the orchestrator reproduced independently.
+Not a content failure — a write collision between two concurrent agents sharing one `out/`.
+**G7 MUST be re-run on the final artifact after H's pack lands.** Same root cause class as the
+`git stash` near-miss: parallel agents sharing mutable state.
+
 ### Known defect (deferred to final cleanup, not gate-blocking)
 `scripts/gates/lib/gen_spec_md.py:198` still narrates the seven writer gaps as open and cites the now
 -deleted `sheetXml`/`takeoffToXlsx` symbols. It is a spec-doc generator, **not invoked by

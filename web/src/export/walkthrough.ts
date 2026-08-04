@@ -85,8 +85,22 @@ const MIN_CLEARANCE = 0.3
 /** Clearance the route cost is happy with; below this it pays quadratically,
  *  which is what pulls the path onto the corridor centreline. */
 const PREF_CLEARANCE = 1.15
-/** Metres ahead on the path the camera looks. */
+/** Furthest the camera looks ahead on the path (m). It only ever looks this far
+ *  when it can SEE that far — see `visibleLookAhead`. */
 const LOOK_AHEAD_M = 7.5
+/** Shortest look-ahead; below this the heading gets noisy. */
+const LOOK_AHEAD_MIN_M = 1.4
+/** Clearance a sight line needs to count as unobstructed (m). Below a doorway's
+ *  own 0.45 m half-width, so a threshold does not read as a wall. */
+const SIGHT_CLEAR_M = 0.32
+/** How far the composition bias may yaw the camera off its travel/look direction
+ *  (deg). A pedestrian looks around by this much without it reading as a pan;
+ *  beyond it the walk starts to look like it is going sideways. */
+const LOOK_BIAS_MAX_DEG = 30
+/** Angular resolution of the interest fan (deg). */
+const FAN_STEP_DEG = 1.5
+/** How far an interest ray marches before it counts as "open" (m). */
+const RAY_MAX_M = 22
 /** Ceiling-luminaire grid (m) — `materialTheme`'s `DOWNLIGHT_SPACING`. Snapping
  *  the follow-light focus to THIS pitch is what makes a moving rig flicker-free:
  *  lamps only ever enter/leave at the reach boundary, where a decay-2 light of
@@ -95,6 +109,18 @@ const LAMP_PITCH = 2.4
 const LAMP_REACH_M = 11
 
 // ── Public shapes ────────────────────────────────────────────────────────────
+
+/** What a cell holds, for the composition heuristic. Free space and furniture
+ *  are both see-through at eye height; only the last three stop a sight line. */
+export const CELL_FREE = 0
+/** Blank interior partition — the surface this take must not stare at. */
+export const CELL_WALL = 1
+/** Glazed partition or the (spandrel + glazing) perimeter: worth looking at. */
+export const CELL_GLASS = 2
+/** The service core. Solid, but it carries the wayfinding display. */
+export const CELL_CORE = 3
+/** A furniture footprint: content. A sight line passes over it at 1.6 m. */
+export const CELL_CONTENT = 4
 
 /** Distance-to-nearest-obstacle field over the plan, in metres. */
 export interface ClearanceGrid {
@@ -105,6 +131,8 @@ export interface ClearanceGrid {
   oy: number
   /** Metres from each cell centre to the nearest blocked cell (0 when blocked). */
   dist: Float32Array
+  /** `CELL_*` per cell — what the camera would be looking at there. */
+  kind: Uint8Array
 }
 
 /** One authored waypoint on the route. */
@@ -206,6 +234,12 @@ export interface WalkthroughSummary {
    *  straights, and a right-angle turn at walking pace unavoidably peaks. */
   maxYawRateDegS: number
   meanYawRateDegS: number
+  /** Largest yaw the composition bias applied (deg), and the worst fraction of
+   *  any frame that is near blank surface before and after it — the evidence
+   *  that the camera stopped staring at partitions. */
+  maxLookBiasDeg: number
+  worstBlankBefore: number
+  worstBlankAfter: number
   /** Frames whose eye had to be pushed out of a solid's AABB. Should be 0. */
   containmentFixes: number
   /** Where those frames were, so a non-zero count is diagnosable, not a mystery. */
@@ -253,6 +287,7 @@ export function buildClearanceGrid(state: DocState, plate: Pt[] | null, cell = 0
   const cols = Math.max(4, Math.ceil((maxX - minX + 2 * pad) / cell))
   const rows = Math.max(4, Math.ceil((maxY - minY + 2 * pad) / cell))
   const blocked = new Uint8Array(cols * rows)
+  const kind = new Uint8Array(cols * rows)
   const idx = (cx: number, cy: number) => cy * cols + cx
 
   const stampRect = (
@@ -262,6 +297,7 @@ export function buildClearanceGrid(state: DocState, plate: Pt[] | null, cell = 0
     hh: number,
     rot: number,
     value: 0 | 1,
+    cellKind: number = CELL_WALL,
   ) => {
     const c = Math.cos(rot)
     const s = Math.sin(rot)
@@ -279,17 +315,25 @@ export function buildClearanceGrid(state: DocState, plate: Pt[] | null, cell = 0
         // Into the rect's own frame.
         const lx = dx * c + dy * s
         const ly = -dx * s + dy * c
-        if (Math.abs(lx) <= hw && Math.abs(ly) <= hh) blocked[idx(gx, gy)] = value
+        if (Math.abs(lx) <= hw && Math.abs(ly) <= hh) {
+          const i = idx(gx, gy)
+          blocked[i] = value
+          kind[i] = value ? cellKind : CELL_FREE
+        }
       }
     }
   }
 
-  // Walls, at true thickness.
+  // Walls, at true thickness. A run whose whole length sits on the plate edge is
+  // the building envelope — which renders as a spandrel with a glazed band above
+  // it, so it is daylight, not a blank surface. Glazed partitions read the same.
   for (const w of state.walls) {
     const dx = w.b.x - w.a.x
     const dy = w.b.y - w.a.y
     const len = Math.hypot(dx, dy)
     if (len < 1e-6) continue
+    const onPlate =
+      distToPlate(plate, w.a.x, w.a.y) < 0.5 && distToPlate(plate, w.b.x, w.b.y) < 0.5
     stampRect(
       (w.a.x + w.b.x) / 2,
       (w.a.y + w.b.y) / 2,
@@ -297,6 +341,7 @@ export function buildClearanceGrid(state: DocState, plate: Pt[] | null, cell = 0
       Math.max(cell * 0.6, w.thickness / 2),
       Math.atan2(dy, dx),
       1,
+      w.glazing || onPlate ? CELL_GLASS : CELL_WALL,
     )
   }
 
@@ -305,22 +350,27 @@ export function buildClearanceGrid(state: DocState, plate: Pt[] | null, cell = 0
   const SKIP = new Set(['Door', 'Window', 'FallCeiling'])
   for (const c of state.components) {
     if (SKIP.has(c.category)) continue
-    stampRect(c.x, c.y, c.w / 2, c.h / 2, -c.rotation, 1)
+    stampRect(c.x, c.y, c.w / 2, c.h / 2, -c.rotation, 1, CELL_CONTENT)
   }
 
   // The service core is solid all the way up.
   for (const z of state.zones ?? []) {
     if (z.zone_type !== 'Core') continue
     const b = zoneBBox(z.shape)
-    stampRect((b.minX + b.maxX) / 2, (b.minY + b.maxY) / 2, (b.maxX - b.minX) / 2, (b.maxY - b.minY) / 2, 0, 1)
+    stampRect((b.minX + b.maxX) / 2, (b.minY + b.maxY) / 2, (b.maxX - b.minX) / 2, (b.maxY - b.minY) / 2, 0, 1, CELL_CORE)
   }
 
-  // Outside the plate is not walkable.
+  // Outside the plate is not walkable. A sight line that reaches it has gone out
+  // through the glazing, so it is looking at daylight.
   if (plate && plate.length >= 3) {
     for (let gy = 0; gy < rows; gy++) {
       const wy = oy + (gy + 0.5) * cell
       for (let gx = 0; gx < cols; gx++) {
-        if (!pointInPolygon(plate, ox + (gx + 0.5) * cell, wy)) blocked[idx(gx, gy)] = 1
+        if (!pointInPolygon(plate, ox + (gx + 0.5) * cell, wy)) {
+          const i = idx(gx, gy)
+          if (!blocked[i]) kind[i] = CELL_GLASS
+          blocked[i] = 1
+        }
       }
     }
   }
@@ -333,7 +383,7 @@ export function buildClearanceGrid(state: DocState, plate: Pt[] | null, cell = 0
     stampRect(d.x, d.y, halfW, halfW, -d.rotation, 0)
   }
 
-  return { cols, rows, cell, ox, oy, dist: distanceTransform(blocked, cols, rows, cell) }
+  return { cols, rows, cell, ox, oy, kind, dist: distanceTransform(blocked, cols, rows, cell) }
 }
 
 /** Exact Euclidean distance transform (Felzenszwalb & Huttenlocher), in metres. */
@@ -602,6 +652,71 @@ function pushToClearance(g: ClearanceGrid, p: Pt, want: number, steps = 24): Pt 
 }
 
 /**
+ * Slide every sample sideways onto the local clearance ridge, bounded.
+ *
+ * The router already prefers width, but a spline through its output can still
+ * pass a partition at half arm's length — and a wall 0.6 m off the eye fills
+ * most of a 70° frame however the camera is pointed. This walks the route down
+ * the middle of whatever it is passing through instead, WITHOUT changing where
+ * it goes: the shift is perpendicular to travel only, capped, smoothed along
+ * the path so it cannot wobble, and tapered to zero at both ends so the
+ * authored opening and hero poses stay exactly where they were placed.
+ */
+function centreLaterally(g: ClearanceGrid, path: Pt[], maxOffset = 0.8): Pt[] {
+  const n = path.length
+  if (n < 5) return path
+  const off = new Float64Array(n)
+  const steps = Math.max(1, Math.round(maxOffset / g.cell))
+  for (let i = 1; i < n - 1; i++) {
+    const tx = path[i + 1][0] - path[i - 1][0]
+    const ty = path[i + 1][1] - path[i - 1][1]
+    const m = Math.hypot(tx, ty) || 1
+    const px = -ty / m
+    const py = tx / m
+    let best = 0
+    let bestC = clearanceAt(g, path[i][0], path[i][1])
+    for (let k = -steps; k <= steps; k++) {
+      if (k === 0) continue
+      const t = k * g.cell
+      const c = clearanceAt(g, path[i][0] + px * t, path[i][1] + py * t)
+      // Strictly better, and cheaper the less it moves: this centres a corridor
+      // pass without dragging the route off a doorway it has to thread.
+      if (c - Math.abs(t) * 0.12 > bestC) {
+        bestC = c - Math.abs(t) * 0.12
+        best = t
+      }
+    }
+    off[i] = best
+  }
+  // Smooth over ~1 m of path, then taper the ends.
+  const win = Math.max(1, Math.round(0.5 / Math.max(1e-3, arcLengths(path)[n - 1] / n)))
+  const sm = new Float64Array(n)
+  for (let i = 0; i < n; i++) {
+    let acc = 0
+    let cnt = 0
+    for (let k = -win; k <= win; k++) {
+      const j = Math.min(n - 1, Math.max(0, i + k))
+      acc += off[j]
+      cnt++
+    }
+    sm[i] = acc / cnt
+  }
+  const cum = arcLengths(path)
+  const total = cum[n - 1]
+  const out: Pt[] = []
+  for (let i = 0; i < n; i++) {
+    const taper = Math.min(1, cum[i] / 1.5, (total - cum[i]) / 1.5)
+    const tx = path[Math.min(n - 1, i + 1)][0] - path[Math.max(0, i - 1)][0]
+    const ty = path[Math.min(n - 1, i + 1)][1] - path[Math.max(0, i - 1)][1]
+    const m = Math.hypot(tx, ty) || 1
+    const t = sm[i] * Math.max(0, taper)
+    const cand: Pt = [path[i][0] + (-ty / m) * t, path[i][1] + (tx / m) * t]
+    out.push(clearanceAt(g, cand[0], cand[1]) >= clearanceAt(g, path[i][0], path[i][1]) ? cand : path[i])
+  }
+  return out
+}
+
+/**
  * Route through every stop, simplify, spline, and re-seat the spline in free
  * space. Splining is what turns a staircase of grid cells into a camera move;
  * re-seating is what stops a Catmull-Rom's overshoot on a tight corner from
@@ -639,6 +754,8 @@ export function splineThroughStops(g: ClearanceGrid, stops: WalkStop[]): { path:
       }
     }
   }
+
+  path = centreLaterally(g, path)
 
   // Where each stop ended up along the finished path — the anchor for its look
   // target and its threshold slowdown.
@@ -967,6 +1084,164 @@ export function planWalkRoute(scene: InteriorScene, state: DocState, g: Clearanc
   return { stops, reception, open, conference: conference ?? null }
 }
 
+// ── 3b. Composition: what is actually in the frame ───────────────────────────
+
+/**
+ * Score one sight line: how much is there to see along it?
+ *
+ * The ray marches the `kind` field. Furniture does NOT stop it — an eye at
+ * 1.6 m looks over a 0.75 m desk — so a desk bank is accumulated as *content*
+ * and the ray carries on to the surface behind it. Only a partition, the core,
+ * the envelope or the edge of the plate ends the line.
+ *
+ * Three things make a direction worth pointing a camera at, and this is all
+ * three: depth (a vanishing point rather than a wall at arm's length), content
+ * crossed (desks, pods, tables), and what the line finally lands on (daylight
+ * and glazed fronts are worth framing; blank plasterboard is not).
+ */
+function rayInterest(g: ClearanceGrid, x: number, y: number, theta: number): number {
+  const dx = Math.cos(theta)
+  const dy = Math.sin(theta)
+  const step = g.cell * 2
+  let content = 0
+  let hit = -1
+  let d = step
+  for (; d < RAY_MAX_M; d += step) {
+    const gx = Math.floor((x + dx * d - g.ox) / g.cell)
+    const gy = Math.floor((y + dy * d - g.oy) / g.cell)
+    if (gx < 0 || gy < 0 || gx >= g.cols || gy >= g.rows) break
+    const k = g.kind[gy * g.cols + gx]
+    if (k === CELL_CONTENT) {
+      content += step
+      continue
+    }
+    if (k !== CELL_FREE) {
+      hit = k
+      break
+    }
+  }
+  const depth = Math.min(d, 16) / 16
+  const surf = hit < 0 ? 0.5 : hit === CELL_GLASS ? 0.9 : hit === CELL_CORE ? 0.35 : 0
+  return 0.4 * depth + 0.35 * Math.min(1, content / 2.5) + 0.25 * surf
+}
+
+/** Is the straight sight line from a to b unobstructed at eye height? */
+function sightClear(g: ClearanceGrid, ax: number, ay: number, bx: number, by: number): boolean {
+  const d = Math.hypot(bx - ax, by - ay)
+  const n = Math.max(1, Math.ceil(d / (g.cell * 1.5)))
+  for (let i = 1; i <= n; i++) {
+    const t = i / n
+    if (clearanceAt(g, ax + (bx - ax) * t, ay + (by - ay) * t) < SIGHT_CLEAR_M) return false
+  }
+  return true
+}
+
+/**
+ * The furthest point on the path within `LOOK_AHEAD_M` that the eye can
+ * actually SEE from here.
+ *
+ * This is the fix for the take's worst framing defect. A FIXED look-ahead makes
+ * the camera start turning a corner 7.5 m before it reaches it, and on a
+ * test-fit plate a corner is a partition — so for the two seconds before every
+ * turn the camera was aimed squarely into the blank flank of the room it was
+ * about to walk past, with the corridor it was actually in pushed out to the
+ * frame edge. Measured on the demo plate, that is exactly what produced the two
+ * >50 %-blank moments (the turn off the corridor and the climb back out).
+ *
+ * Looking at the furthest VISIBLE point holds the frame down the corridor until
+ * the corner opens up, then turns through it — which is also what a person
+ * walking the building does with their head.
+ */
+function visibleLookAhead(
+  g: ClearanceGrid,
+  path: Pt[],
+  cum: Float64Array,
+  s: number,
+  total: number,
+  x: number,
+  y: number,
+): Pt {
+  let best = sampleAt(path, cum, Math.min(total, s + LOOK_AHEAD_MIN_M))
+  for (let L = LOOK_AHEAD_MIN_M + 0.4; L <= LOOK_AHEAD_M; L += 0.4) {
+    const q = sampleAt(path, cum, Math.min(total, s + L))
+    if (!sightClear(g, x, y, q[0], q[1])) break
+    best = q
+  }
+  return best
+}
+
+/** How the frame at a pose reads, and the yaw offset that would improve it. */
+interface FrameLook {
+  /** Radians to add to the yaw so the open/occupied side fills the frame. */
+  biasRad: number
+  /** Fraction of the UNBIASED frame that is a near blank surface (0–1). */
+  blankFraction: number
+}
+
+/**
+ * The fix for the take's one real composition defect: at a couple of instants a
+ * blank partition being walked past filled more than half the frame, because
+ * the camera was aimed square at it by pure look-ahead.
+ *
+ * A fan of sight lines is scored across the frame plus the bias range either
+ * side, then every admissible yaw offset is scored as the mean over the window
+ * it would frame, minus a quadratic penalty on turning at all. The offset is a
+ * SOFT argmax (a temperature-weighted mean, not a pick), so it varies
+ * continuously along the walk — a hard pick would step and put a kink in the
+ * pan that the yaw smoother could not absorb.
+ *
+ * This is a framing change, not a dressing change: no geometry moves, no filter
+ * is laid over the image. The camera simply stops staring at plasterboard.
+ */
+function frameLook(
+  g: ClearanceGrid,
+  x: number,
+  y: number,
+  baseYaw: number,
+  hfovRad: number,
+  maxBias: number,
+): FrameLook {
+  const step = (FAN_STEP_DEG * Math.PI) / 180
+  const half = Math.round(hfovRad / 2 / step)
+  const bias = Math.round(maxBias / step)
+  const n = 2 * (half + bias) + 1
+  const v = new Float64Array(n)
+  for (let j = 0; j < n; j++) v[j] = rayInterest(g, x, y, baseYaw + (j - half - bias) * step)
+
+  const mean = (c: number) => {
+    let acc = 0
+    for (let k = c - half; k <= c + half; k++) acc += v[k]
+    return acc / (2 * half + 1)
+  }
+  const centre = half + bias
+  let blank = 0
+  for (let k = centre - half; k <= centre + half; k++) if (v[k] < 0.1) blank++
+
+  // Soft argmax over the offsets. TURN_PENALTY is what keeps the camera honest:
+  // a small gain never buys a turn, and only a frame that is genuinely dominated
+  // by a flat near surface moves it the whole way.
+  const TURN_PENALTY = 0.1
+  const TAU = 0.06
+  let wSum = 0
+  let acc = 0
+  let bestScore = -Infinity
+  const scores = new Float64Array(2 * bias + 1)
+  for (let o = -bias; o <= bias; o++) {
+    const s = mean(centre + o) - (bias > 0 ? TURN_PENALTY * (o / bias) * (o / bias) : 0)
+    scores[o + bias] = s
+    if (s > bestScore) bestScore = s
+  }
+  for (let o = -bias; o <= bias; o++) {
+    const w = Math.exp((scores[o + bias] - bestScore) / TAU)
+    wSum += w
+    acc += w * o * step
+  }
+  return {
+    biasRad: wSum > 0 ? acc / wSum : 0,
+    blankFraction: blank / (2 * half + 1),
+  }
+}
+
 // ── 4. Poses ─────────────────────────────────────────────────────────────────
 
 /** Smooth compact bump on [-1, 1]. */
@@ -984,6 +1259,13 @@ interface PoseTrack {
   /** Peak yaw rate at FULL frame rate — the "is it a pan or a whip?" number. */
   maxYawRateDegS: number
   meanYawRateDegS: number
+  /** Largest composition bias applied (deg) — how hard the camera was turned
+   *  off pure look-ahead to keep a blank partition out of the frame. */
+  maxLookBiasDeg: number
+  /** Worst fraction of any frame that would have been near blank surface
+   *  BEFORE the bias, and the same figure after it. */
+  worstBlankBefore: number
+  worstBlankAfter: number
 }
 
 /**
@@ -1005,6 +1287,7 @@ function buildPoses(
   frames: number,
   fps: number,
   eyeY: number,
+  hfovDeg: number,
 ): PoseTrack {
   const cum = arcLengths(path)
   const total = cum[cum.length - 1]
@@ -1084,11 +1367,16 @@ function buildPoses(
   const sTrack = walk((lo + hi) / 2)
 
   // Desired yaw per frame.
+  const hfov = (hfovDeg * Math.PI) / 180
+  const maxBias = (LOOK_BIAS_MAX_DEG * Math.PI) / 180
   const yaw = new Float64Array(frames)
+  /** How free each frame's yaw is: 0 where the shot is authored, 1 on pure
+   *  look-ahead. The composition bias inherits it. */
+  const freedom = new Float64Array(frames)
   for (let i = 0; i < frames; i++) {
     const s = sTrack[i]
     const [x, y] = sampleAt(path, cum, s)
-    const [ax, ay] = sampleAt(path, cum, Math.min(total, s + LOOK_AHEAD_M))
+    const [ax, ay] = visibleLookAhead(g, path, cum, s, total, x, y)
     let vx = ax - x
     let vy = ay - y
     const m0 = Math.hypot(vx, vy)
@@ -1120,6 +1408,12 @@ function buildPoses(
     const fx = vx * (1 - W) + bx * (wSum ? W / wSum : 0)
     const fy = vy * (1 - W) + by * (wSum ? W / wSum : 0)
     yaw[i] = Math.atan2(fy, fx)
+    // An authored shot is a composition someone chose, so the composition bias
+    // must not drag it off its subject: it inherits only the share of the yaw
+    // that is NOT authored. (A floor under this was tried and measured — it
+    // changed nothing, because where the authored shots still carry a blank
+    // flank the bias already reports no better yaw exists.)
+    freedom[i] = 1 - W
   }
   // Unwrap, then Gaussian-smooth: no kinks, no 2π snaps.
   for (let i = 1; i < frames; i++) {
@@ -1128,18 +1422,48 @@ function buildPoses(
     while (d < -Math.PI) d += 2 * Math.PI
     yaw[i] = yaw[i - 1] + d
   }
-  const sigma = Math.max(2, Math.round(fps * 0.75))
-  const kernel: number[] = []
-  for (let k = -3 * sigma; k <= 3 * sigma; k++) kernel.push(Math.exp((-k * k) / (2 * sigma * sigma)))
-  const kSum = kernel.reduce((a, b) => a + b, 0)
-  const smooth = new Float64Array(frames)
-  for (let i = 0; i < frames; i++) {
-    let acc = 0
-    for (let k = 0; k < kernel.length; k++) {
-      const j = Math.min(frames - 1, Math.max(0, i + k - 3 * sigma))
-      acc += yaw[j] * kernel[k]
+  const gauss = (src: Float64Array, seconds: number): Float64Array => {
+    const sigma = Math.max(2, Math.round(fps * seconds))
+    const kernel: number[] = []
+    for (let k = -3 * sigma; k <= 3 * sigma; k++) kernel.push(Math.exp((-k * k) / (2 * sigma * sigma)))
+    const kSum = kernel.reduce((a, b) => a + b, 0)
+    const out = new Float64Array(frames)
+    for (let i = 0; i < frames; i++) {
+      let acc = 0
+      for (let k = 0; k < kernel.length; k++) {
+        acc += src[Math.min(frames - 1, Math.max(0, i + k - 3 * sigma))] * kernel[k]
+      }
+      out[i] = acc / kSum
     }
-    smooth[i] = acc / kSum
+    return out
+  }
+  const smooth = gauss(yaw, 0.75)
+
+  // ── Composition bias, applied to the SMOOTHED yaw.
+  //
+  // It has to run here, not before the smoother: the smoother averages over
+  // ±0.75 s, so a bias folded into the raw yaw is diluted by its neighbours and
+  // the frame that actually ships is still the one aimed at the partition. Here
+  // the bias measures the delivered frame and corrects it, and it is smoothed on
+  // its own shorter kernel — enough to guarantee no kink, short enough that the
+  // correction still lands where it was needed.
+  const rawBias = new Float64Array(frames)
+  let worstBlankBefore = 0
+  for (let i = 0; i < frames; i++) {
+    const [x, y] = sampleAt(path, cum, sTrack[i])
+    const fl = frameLook(g, x, y, smooth[i], hfov, maxBias)
+    if (fl.blankFraction > worstBlankBefore) worstBlankBefore = fl.blankFraction
+    rawBias[i] = fl.biasRad * freedom[i]
+  }
+  const bias = gauss(rawBias, 0.4)
+  let maxBiasApplied = 0
+  let worstBlankAfter = 0
+  for (let i = 0; i < frames; i++) {
+    smooth[i] += bias[i]
+    maxBiasApplied = Math.max(maxBiasApplied, Math.abs(bias[i]))
+    const [x, y] = sampleAt(path, cum, sTrack[i])
+    const after = frameLook(g, x, y, smooth[i], hfov, 0)
+    if (after.blankFraction > worstBlankAfter) worstBlankAfter = after.blankFraction
   }
 
   let minClear = Infinity
@@ -1171,6 +1495,9 @@ function buildPoses(
     thresholdPasses,
     maxYawRateDegS: Number(maxRate.toFixed(1)),
     meanYawRateDegS: Number((sumRate / Math.max(1, frames - 1)).toFixed(1)),
+    maxLookBiasDeg: Number(((maxBiasApplied * 180) / Math.PI).toFixed(1)),
+    worstBlankBefore: Number(worstBlankBefore.toFixed(3)),
+    worstBlankAfter: Number(worstBlankAfter.toFixed(3)),
   }
 }
 
@@ -1669,6 +1996,7 @@ export async function renderWalkthrough(
   const H = opts.height ?? DEFAULT_HEIGHT
   const fps = opts.fps ?? DEFAULT_FPS
   const eyeY = opts.eyeHeightM ?? EYE_HEIGHT
+  const hfovDeg = opts.hfovDeg ?? DEFAULT_HFOV
   const titleS = Math.max(0, opts.titleCardS ?? DEFAULT_TITLE_S)
   const fadeS = Math.min(titleS, opts.fadeS ?? DEFAULT_FADE_S)
   const progress = opts.onProgress ?? (() => {})
@@ -1707,7 +2035,7 @@ export async function renderWalkthrough(
     const cardFrames = Math.round((titleS - fadeS) * fps)
     const walkFrames = total - cardFrames
 
-    const track = buildPoses(grid, state, path, stops, stopS, walkFrames, fps, eyeY)
+    const track = buildPoses(grid, state, path, stops, stopS, walkFrames, fps, eyeY, hfovDeg)
 
     progress(0, total, 'render')
     renderer = new WalkRenderer(scene, W, H, opts)
@@ -1767,7 +2095,7 @@ export async function renderWalkthrough(
       frames: total,
       durationS: total / fps,
       titleCardS: titleS,
-      hfovDeg: opts.hfovDeg ?? DEFAULT_HFOV,
+      hfovDeg,
       eyeHeightM: eyeY,
       pathLengthM: Number(track.pathLengthM.toFixed(2)),
       meanSpeedMps: Number((track.pathLengthM / (walkFrames / fps)).toFixed(3)),
@@ -1779,6 +2107,9 @@ export async function renderWalkthrough(
       thresholdPasses: track.thresholdPasses,
       maxYawRateDegS: track.maxYawRateDegS,
       meanYawRateDegS: track.meanYawRateDegS,
+      maxLookBiasDeg: track.maxLookBiasDeg,
+      worstBlankBefore: track.worstBlankBefore,
+      worstBlankAfter: track.worstBlankAfter,
       minClearanceM: Number(track.minClearanceM.toFixed(3)),
       containmentFixes,
       containmentAt,

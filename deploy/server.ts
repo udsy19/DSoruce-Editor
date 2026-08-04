@@ -32,11 +32,16 @@ import {
   bankFetch,
 } from './apiCore'
 import { handleShareApi, sharePageId } from './shareStore'
+import { handlePackApi } from './packStore'
 
 const PORT = Number(process.env.PORT || 8790)
 const HOST = process.env.HOST || '127.0.0.1'
 const STATIC_DIR = path.resolve(process.env.STATIC_DIR || 'dist')
 const PLANS_DIR = path.resolve(process.env.PLANS_DIR || 'plans')
+// Where the one-action deliverable pack lands, and (when the full repo is
+// present) the checkout whose scripts/render-walkthrough.mjs shoots the video.
+const PACK_OUT_DIR = path.resolve(process.env.PACK_OUT_DIR || 'out')
+const PACK_REPO_DIR = process.env.PACK_REPO_DIR ? path.resolve(process.env.PACK_REPO_DIR) : undefined
 const MAX_BODY = 25 * 1024 * 1024 // request-body cap, all endpoints
 
 // ---------------------------------------------------------------------------
@@ -345,6 +350,12 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
   if (p === '/api/plans' || p.startsWith('/api/plans/')) return handlePlans(req, res, p)
   if (p === '/api/share' || p.startsWith('/api/share/')) {
     return handleShareApi(req, res, p.slice('/api/share'.length).replace(/^\//, ''), PLANS_DIR)
+  }
+  if (p === '/api/pack' || p.startsWith('/api/pack/')) {
+    return handlePackApi(req, res, p.slice('/api/pack'.length).replace(/^\//, ''), {
+      outDir: PACK_OUT_DIR,
+      repoRoot: PACK_REPO_DIR,
+    })
   }
   if (p.startsWith('/api/')) return sendJson(res, 404, { error: 'Unknown API endpoint' })
   if (sharePageId(p)) return handleSharePage(req, res)

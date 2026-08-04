@@ -40,7 +40,14 @@ import { publishShareLink, downloadPlanGlb } from './export/share'
 import { exportSpacePlanningReport } from './export/report'
 import { exportDrawingSet } from './export/sheetSet'
 import { zoneAtPoint } from './export/takeoff'
-import { exportDeliverablePack, exportQtoWorkbook, type Quantities } from './export/qtoWorkbook'
+import { exportQtoWorkbook, type Quantities } from './export/qtoWorkbook'
+import {
+  buildDeliverablePack,
+  detectPackSink,
+  type DeliverablePackResult,
+  type PackProgressFn,
+} from './export/deliverablePack'
+import { seedSamplePlan } from './editor/samplePlan'
 import { classifyWalls } from './export/wallTypes'
 import { restrictDrawing } from './import/area'
 import { healWalls } from './import/heal'
@@ -238,6 +245,9 @@ export interface EditorController {
   /** Current room refs: { zone.id → user ref } resolved against live zones —
    *  the AI/engine + takeoff read this to reference "room 502". */
   roomRefs(): Map<number, string>
+  /** The whole qbiq-parity deliverable pack from one action (gate G10). With an
+   *  empty document it generates the sample test-fit first. */
+  deliverablePack(onProgress?: PackProgressFn): Promise<DeliverablePackResult>
 }
 
 /** The active project (from the wizard/editor route) — threads real identity
@@ -903,6 +913,58 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
     ec.applyCandidate(best.snap)
   }
 
+  /**
+   * The one-action deliverable pack (gate G10): the 12-sheet workbook, the
+   * master plan, the per-room thumbnails, ground truth, the four hero stills,
+   * the walkthrough video and a share link — from a single click, wherever the
+   * app is running (see `export/deliverablePack.ts` for the sink split).
+   *
+   * With nothing open it first generates the SAMPLE test-fit, which is the very
+   * document `scripts/lib/demo-doc.mjs` renders — one plan definition, so what
+   * a visitor exports is what the gates measure.
+   *
+   * Assigned to a ref every render so the []-memoized controller closure reads
+   * the live project + bindings rather than the first render's.
+   */
+  const runDeliverablePack = async (
+    onProgress: PackProgressFn = () => {},
+  ): Promise<DeliverablePackResult> => {
+    const ec = ecRef.current
+    if (!ec) throw new Error('The editor is still starting up — try again in a moment.')
+    let plate: [number, number][] | null = null
+    if (ec.getState().walls.length === 0) {
+      onProgress({ stage: 'workbook', label: 'Generating a sample test-fit', fraction: 0 })
+      plate = seedSamplePlan(ec)
+      setProgramVersion((v) => v + 1) // the doc changed under React
+      frameEditor()
+    }
+    const state = ec.getState()
+    return buildDeliverablePack(
+      {
+        state,
+        quantities: ec.ed.quantities() as Quantities,
+        // Raw, so a server-side renderer classifies with the app's own
+        // `classifyWalls` instead of trusting a pre-chewed list.
+        wallTypes: ec.ed.wall_types(),
+        qto: {
+          bindings: bindingsRef.current,
+          floor: project?.floor ?? '1',
+          project: project?.name ?? 'Untitled Plan',
+          roomRefs: buildRoomRefs(state.zones ?? [], roomMarkersRef.current),
+          // `circulation()` is degenerate with 0 walls (CLAUDE.md) — guard it.
+          circulation: state.walls.length > 0 ? ec.circulation() : null,
+          wallSpans: classifyWalls(state, ec.ed.wall_types() as never),
+          plate,
+        },
+        name: project?.name ?? 'DSource test-fit',
+      },
+      await detectPackSink(),
+      onProgress,
+    )
+  }
+  const deliverablePackRef = useRef(runDeliverablePack)
+  deliverablePackRef.current = runDeliverablePack
+
   // Controller seam (workflow.md §1) — thin lifts of the closures above, so
   // the shell/wizard can drive the editor while its internals stay untouched.
   useImperativeHandle(
@@ -940,6 +1002,7 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
       ec: () => ecRef.current,
       drawingCanvas: () => drawCanvasRef.current,
       roomRefs: () => buildRoomRefs(ecRef.current?.getState().zones ?? [], roomMarkersRef.current),
+      deliverablePack: (onProgress) => deliverablePackRef.current(onProgress),
     }),
     [],
   )
@@ -1579,17 +1642,7 @@ function ExportMenu({
     setOpen(false)
   }
 
-  /** The whole client-side deliverable pack (workbook + plan + thumbnails +
-   *  ground truth) as one .zip, from one click — gate G10's single action. */
-  const exportPack = () => {
-    if (!ec) return
-    const state = ec.getState()
-    const roomRefs = buildRoomRefs(state.zones ?? [], roomMarkers.current ?? [])
-    void exportDeliverablePack(state, ec.ed.quantities() as Quantities, qtoOpts(state, roomRefs))
-    setOpen(false)
-  }
-
-  /** Shared inputs for both takeoff actions. */
+  /** Inputs for the takeoff export. */
   function qtoOpts(state: DocState, roomRefs: Map<number, string>) {
     if (!ec) throw new Error('no editor')
     return {
@@ -1669,14 +1722,6 @@ function ExportMenu({
                 data-testid="export-takeoff"
               >
                 Quantity Takeoff <span className="hint">Excel · 12 sheets</span>
-              </div>
-              <div
-                className="export-item"
-                role="menuitem"
-                onClick={exportPack}
-                data-testid="export-deliverable-pack"
-              >
-                Deliverable pack <span className="hint">workbook · plan · data</span>
               </div>
             </>
           )}

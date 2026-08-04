@@ -9,7 +9,7 @@
 //
 //   node scripts/render-walkthrough.mjs [--out out] [--seed 7] [--fps 30]
 //                                       [--duration 36] [--width 1920] [--height 1080]
-//                                       [--keep-frames] [--dry-run]
+//                                       [--state doc.json] [--keep-frames] [--dry-run]
 //
 // Writes:
 //   out/walkthrough.mp4    H.264 yuv420p, -crf 18, 1920x1080
@@ -52,10 +52,18 @@ const playwright = await import(pathToFileURL(webRequire.resolve('playwright')).
 const chromium = playwright.chromium ?? playwright.default.chromium
 
 // --- 1. the document, straight out of the Rust core --------------------------
-const { state, wallTypes, plate, circulation } = await buildDemoDoc({ seed: SEED })
+// `--state <file>` shoots the take for a document the CALLER already has — the
+// live plan the one-action deliverable pack POSTs to /api/pack/walkthrough
+// (deploy/packStore.ts). Same JSON shape `buildDemoDoc`/`readDoc` return, so
+// everything downstream is unchanged; without it the seeded demo doc is used.
+const STATE_FILE = arg('--state')
+const doc = STATE_FILE
+  ? JSON.parse(fs.readFileSync(path.resolve(STATE_FILE), 'utf8'))
+  : await buildDemoDoc({ seed: SEED })
+const { state, wallTypes, plate, circulation } = doc
 console.log(
   `doc: ${state.walls.length} walls · ${state.components.length} components · ` +
-    `${(state.zones ?? []).length} zones · seed ${SEED}`,
+    `${(state.zones ?? []).length} zones · ${STATE_FILE ? `state ${path.basename(STATE_FILE)}` : `seed ${SEED}`}`,
 )
 
 // --- 2. bundle the walkthrough for the browser --------------------------------
@@ -158,7 +166,7 @@ const gl = await page.evaluate(() => {
 console.log(`gpu: ${gl}`)
 
 const summary = await page.evaluate(
-  async ({ state, wallTypes, plate, circulation, width, height, fps, duration, seed, frameCodec }) => {
+  async ({ state, wallTypes, plate, circulation, width, height, fps, duration, title, subtitle, frameCodec }) => {
     const wallSpans = window.DS.classifyWalls(state, wallTypes)
     return await window.DS.renderWalkthrough(state, {
       width,
@@ -168,8 +176,8 @@ const summary = await page.evaluate(
       wallSpans,
       plate,
       circulation,
-      title: 'DSource Test-Fit Walkthrough',
-      subtitle: `GCC office fit-out · 40 x 24 m plate · seed ${seed}`,
+      title,
+      subtitle,
       onProgress: (done, total, phase) => {
         if (phase !== 'render') console.log(`phase: ${phase}`)
       },
@@ -179,7 +187,14 @@ const summary = await page.evaluate(
       },
     })
   },
-  { state, wallTypes, plate, circulation, width: WIDTH, height: HEIGHT, fps: FPS, duration: DURATION, seed: SEED, frameCodec: FRAME_CODEC },
+  {
+    state, wallTypes, plate, circulation,
+    width: WIDTH, height: HEIGHT, fps: FPS, duration: DURATION,
+    // A posted document carries its own plan name; the seeded demo keeps its.
+    title: doc.title ?? 'DSource Test-Fit Walkthrough',
+    subtitle: doc.subtitle ?? `GCC office fit-out · 40 x 24 m plate · seed ${SEED}`,
+    frameCodec: FRAME_CODEC,
+  },
 )
 await browser.close()
 process.stdout.write('\n')
