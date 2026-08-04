@@ -20,12 +20,21 @@ Product vision: **`vision.md`**.
     four facets: geometry · category · product-binding · decision-state).
   - `circulation.rs` — occupancy-grid + distance-transform circulation evaluator (min corridor width,
     connectivity, ADA/IBC-grounded score).
-  - `layout.rs` — deterministic seeded office generator (perimeter corridor, meeting-room band,
-    grid-packed desk clusters) + weighted `LayoutScore`.
-  - `lib.rs` — the `Editor` wasm boundary (`generate`, `layout_score`, `circulation`, plus editing).
+  - `layout.rs` — the deterministic seeded office generator. This file is the **orchestrator**:
+    `generate` drives one stage per submodule in `layout/` — `program` (what to place) · `seed` (PRNG +
+    desk lattice) · `grid` · `regions` (wings, corridors, bands) · `jobs` · `place` · `emit` ·
+    `packing` · `conform` · `score`. `generate` and `score` are the only entry points `lib.rs` calls.
+  - `lib.rs` — the `Editor` wasm boundary (`generate`, `layout_score`, `circulation`, `revision`, plus
+    editing). Every `&mut self` method bumps `revision()`; `tests::every_mutator_bumps_the_revision`
+    scans this file's source to enforce it.
 - **`web`** (Vite + React + TypeScript): a thin renderer over the core.
-  - `src/editor/EditorCanvas.ts` — 2D canvas: transforms, input, rulers, and rendering. Also the
-    TS-side **autonomous search loop** (`autoGenerate` iterates seeds, keeps the best score).
+  - `src/types/` — the shared vocabulary, an acyclic chain `program → metrics → doc` (+ `cad.ts`).
+    Import document/metrics/program types from HERE, never from a canvas.
+  - `src/editor/` — `EditorCanvas.ts` is the façade (canvas, transforms, input routing, `render()`)
+    delegating to `paint.ts` (all drawing), `interaction.ts` (drag/resize/room edits) and `search.ts`
+    (the **autonomous search loop**: `autoGenerate` iterates seeds, keeps the best score).
+  - `src/import/` — `DrawingCanvas.ts` is the façade over `drawingScene` / `drawingRender` /
+    `drawingEdit` / `drawingInput`.
   - `src/three/` — Three.js 3D viewer (`Viewer3D` + `<Scene3D>`), read-only walkthrough.
   - `src/ui/`, `src/materialBank/` (mock bank), `App.tsx`, `styles.css`.
 - Rendering is TS-side for now; it migrates to a Rust/WebGL renderer later — see
@@ -90,7 +99,9 @@ Working: 2D editor + CAD drafting layer (draw/modify/trim/extend/fillet/hatch/la
 DWG/DXF import with plate extraction + keep-outs, autonomous test-fit on irregular plates,
 circulation scoring, 2D↔3D viewer incl. Enscape-like render tier, live material bank (₹),
 AI drivers (Local/Cerebras/Claude) + Claude soft-goal evaluator, exports (CSV/PNG/DXF/PDF/IFC/OBJ),
-.dsource save/open, plan library + compare + version history (IndexedDB). Rust: 50 tests.
+.dsource save/open, plan library + compare + version history (IndexedDB). Rust: 134 tests
+(incl. `golden_generate_output_is_frozen`, which pins `generate()` output for 10 (program, seed)
+cases — if you change the generator deliberately, re-capture its expectations, never relax it).
 Parked: multiplayer (designed in `docs/design/multiplayer.md`; a presence milestone was built and
 reverted — recover from commits `3a923ea` + `706c7cf` when resumed). Next: cloud plan sync.
 See `research/08-open-questions.md`.
