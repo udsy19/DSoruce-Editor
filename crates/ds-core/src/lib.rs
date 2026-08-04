@@ -12,6 +12,7 @@ mod document;
 mod geometry;
 mod layout;
 mod model;
+mod qto;
 mod zone;
 
 use document::{Anchor, Document};
@@ -257,6 +258,13 @@ impl Editor {
             doc: Document::new(),
             rev: 0,
         }
+    }
+
+    /// Hierarchical quantity schedule (level → room → category → item) derived
+    /// from the document directly — no IFC round-trip, works offline.
+    pub fn qto_schedule(&self) -> Result<JsValue, JsValue> {
+        serde_wasm_bindgen::to_value(&qto::schedule(&self.doc))
+            .map_err(|e| JsValue::from_str(&e.to_string()))
     }
 
     /// Monotonic mutation counter. Every `&mut self` method bumps it exactly

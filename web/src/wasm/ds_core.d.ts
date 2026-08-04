@@ -122,6 +122,11 @@ export class Editor {
      */
     plate(): any;
     /**
+     * Hierarchical quantity schedule (level → room → category → item) derived
+     * from the document directly — no IFC round-trip, works offline.
+     */
+    qto_schedule(): any;
+    /**
      * Rename a zone's label (e.g. to match a reclassified type).
      */
     rename_zone(id: number, label: string): void;
@@ -262,6 +267,7 @@ export interface InitOutput {
     readonly editor_move_selected: (a: number, b: number, c: number) => void;
     readonly editor_new: () => number;
     readonly editor_plate: (a: number) => [number, number, number];
+    readonly editor_qto_schedule: (a: number) => [number, number, number];
     readonly editor_rename_zone: (a: number, b: number, c: number, d: number) => [number, number];
     readonly editor_resize_zone: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number];
     readonly editor_restore: (a: number, b: any) => [number, number];

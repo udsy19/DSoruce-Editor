@@ -98,33 +98,28 @@
     ],
     "bindings": {
       "bank-1000": {
-        "productId": "bank-1000",
-        "name": "Bound Product 1",
-        "priceInr": 19900,
+        "price": 19900,
+        "image": null,
         "supplier": "Supplier 1"
       },
       "bank-1001": {
-        "productId": "bank-1001",
-        "name": "Bound Product 2",
-        "priceInr": 4550,
+        "price": 4550,
+        "image": null,
         "supplier": "Supplier 2"
       },
       "bank-1002": {
-        "productId": "bank-1002",
-        "name": "Bound Product 3",
-        "priceInr": 12000,
+        "price": 12000,
+        "image": null,
         "supplier": "Supplier 3"
       },
       "bank-1003": {
-        "productId": "bank-1003",
-        "name": "Bound Product 4",
-        "priceInr": 8750,
+        "price": 8750,
+        "image": null,
         "supplier": "Supplier 4"
       },
       "bank-1004": {
-        "productId": "bank-1004",
-        "name": "Bound Product 5",
-        "priceInr": 33333,
+        "price": 33333,
+        "image": null,
         "supplier": "Supplier 5"
       }
     },

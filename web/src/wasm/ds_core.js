@@ -305,6 +305,18 @@ export class Editor {
         return takeFromExternrefTable0(ret[0]);
     }
     /**
+     * Hierarchical quantity schedule (level → room → category → item) derived
+     * from the document directly — no IFC round-trip, works offline.
+     * @returns {any}
+     */
+    qto_schedule() {
+        const ret = wasm.editor_qto_schedule(this.__wbg_ptr);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
      * Rename a zone's label (e.g. to match a reclassified type).
      * @param {number} id
      * @param {string} label

@@ -27,6 +27,7 @@ export const editor_move_component: (a: number, b: number, c: number, d: number)
 export const editor_move_selected: (a: number, b: number, c: number) => void;
 export const editor_new: () => number;
 export const editor_plate: (a: number) => [number, number, number];
+export const editor_qto_schedule: (a: number) => [number, number, number];
 export const editor_rename_zone: (a: number, b: number, c: number, d: number) => [number, number];
 export const editor_resize_zone: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number];
 export const editor_restore: (a: number, b: any) => [number, number];

@@ -108,7 +108,9 @@ const bound = state.components
 for (let i = 0; i < bound.length; i++) {
   const pid = `bank-${1000 + i}`
   ed.assign_product(bound[i].id, pid, `Bound Product ${i + 1}`, PRICED[i])
-  bindings[pid] = { productId: pid, name: `Bound Product ${i + 1}`, priceInr: PRICED[i], supplier: `Supplier ${i + 1}` }
+  // BindingInfo's field is `price`, not `priceInr` — using the wrong name here
+  // silently prices everything at 0, which is how this fixture first failed.
+  bindings[pid] = { price: PRICED[i], image: null, supplier: `Supplier ${i + 1}` }
 }
 const boundState = ed.state()
 const boundIds = bound.map((c) => c.id)

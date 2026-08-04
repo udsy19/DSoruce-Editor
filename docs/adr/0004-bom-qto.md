@@ -1,6 +1,6 @@
 # ADR 0004 — Branch 2: hierarchical BOM / quantity takeoff
 
-**Status:** pre-registered — ground truth committed, candidates NOT yet written
+**Status:** results in — awaiting adoption decision at the merge gate
 **Date:** 2026-08-04
 
 **Code anchors:** incumbent `buildTakeoffModel`, `takeoffToXlsx`
@@ -193,4 +193,120 @@ where the deterministic incumbent already did the job.
 
 ## Results
 
-_Not yet run._
+`node bench/runQto.mjs` against the truth frozen in `03acdaa`; predictions frozen
+in `5a88d96`. Neither was touched after candidates ran.
+
+| engine | class | gates | per-category worst err | priced lines | Σ₹ | hierarchical | depth | rollup | ms |
+|---|---|---|---|---|---|---|---|---|---|
+| `baseline` | A-port | **pass** | **0 %** | 5 | 78,533 | no | 0 | ok | 7.9 |
+| `ifc-cost` | B-service | **FAIL** | 14.3 % | **0** | 0 | yes | 1 | ok | 152.5 |
+| `qto-native` | A-port | **pass** | **0 %** | 5 | 78,533 | **yes** | **2** | ok | **0.9** |
+
+### The IFC predictions, both confirmed — and one thing neither anticipated
+
+**(a) declared quantities — CONFIRMED exactly.** `IfcElementQuantity = 0`,
+`IfcPropertySet = 0` across 229 products. `api.cost` has nothing to read.
+
+**(b) magnitudes derivable — CONFIRMED, better than predicted.** Predicted ≥ 90 %;
+actual **100 %** (229/229). Every element carries a real
+`IfcExtrudedAreaSolid` over `IfcRectangleProfileDef`, so footprint area and
+volume compute cleanly. The export is genuinely exchange-grade *for geometry*.
+
+**(b) room attribution absent — CONFIRMED.** `IfcSpace = 0`. No consumer can
+build a room level from our IFC.
+
+**Not predicted, and the sharper finding: category attribution fails too.** The
+export carries no classification, so a consumer must guess an element's category
+from its display `Name`. Binding a product renames the element — and the counts
+land in the wrong buckets:
+
+| category | ifc-cost | truth | short |
+|---|---|---|---|
+| Desk | 89 | 92 | 3 |
+| Table | 11 | 12 | 1 |
+| Chair | 6 | 7 | 1 |
+| Door | 14 | 14 | 0 |
+| | | **total short** | **5** |
+
+**Exactly the 5 bound components**, reclassified into a phantom "Bound" category.
+So `ifc-cost`'s counts are *exact*; 100 % of its error is misattribution caused by
+the exporter, and **the act of pricing an item is what makes it un-categorisable**.
+That is a self-defeating loop for a cost engine, and no amount of work on the
+consumer side fixes it.
+
+**0 priced lines**, for the same root cause: nothing in the IFC identifies a bound
+product, so a binding cannot be matched back to an element. Recorded honestly
+rather than faked by index.
+
+### Verdict on `ifc-cost`
+
+Against the three verdicts the split prediction was built to distinguish: the
+export is **viewer-grade for properties, exchange-grade for geometry, and
+unusable for attribution**. `ifc-cost` fails the cost-line gate and cannot build
+the hierarchy this branch exists to add — not because IfcOpenShell is weak, but
+because our IFC does not carry the information. **Dropped for this branch; the
+finding is about our exporter.**
+
+Its class-B costs were measured and are recorded, but did not decide it:
+cold-start ~150 ms per call vs 0.9 ms in-core, out-of-process Python, and the
+Vercel prediction (native code will not run in that sandbox ⇒ a 503 mirroring
+`/api/dwg`) stands untested because the candidate died on correctness first.
+
+### `qto-native` — and the honest limit of its accuracy score
+
+Passes every gate: per-category exact, cost-line invariant exact (5 lines,
+₹78,533), deterministic, hierarchy **depth 2** (level → room → category → item)
+with a consistent rollup, at **0.9 ms** — ~170× faster than the service round-trip
+and, unlike it, offline.
+
+**Where its score is and is not evidence**, per the independence requirement:
+
+- Per-category counts matching truth is **weak** evidence. Both read the same
+  document, so this shows the rollup does not *lose* items — worth having, not
+  probative.
+- The cost-line result is **stronger**: ₹78,533 has to survive product-grouped
+  line construction, so it exercises real logic the truth never runs.
+- Rollup consistency is **independent**: an internal invariant (every node's
+  subtotal equals its own lines plus its children), checked without reference to
+  truth at all.
+- Hierarchy depth is a **capability**, not an accuracy claim.
+
+The accuracy score did not turn out to be tautological, but it is the weakest of
+the four and should not be quoted alone.
+
+### `baseline` — correct within its scope
+
+Per-category exact on everything it covers (Desk 92, Table 12, Chair 7) and it
+passes the cost-line gate. It omits `Door` **by design** (`NON_FURNITURE`), which
+the first version of this runner scored as an 11.2 % accuracy failure — a metric
+bug, not an engine one. Flat, so hierarchy is undefined for it as pre-registered.
+
+### Two errors in this branch's own harness, recorded
+
+1. **The fixture bound prices under the wrong key** (`priceInr` where
+   `BindingInfo` declares `price`), which silently priced everything at 0 and
+   fired the pre-registered falsification "baseline fails the cost-line invariant
+   ⇒ the Track F fix regressed". It had not. **But the false alarm exposed a real
+   fragility**: the incumbent reads price from the App-layer bindings *map*, not
+   from the `price_inr` the core already carries on the component. A component
+   bound through `Editor.assign_product` is therefore unpriced in the takeoff
+   unless the App map is separately kept in sync — which is precisely the shape of
+   the Track F bug, and nothing enforces it. This raises the priority of the owed
+   App-level fixture from bookkeeping to real coverage.
+2. **The accuracy metric compared totals across engines that cover different
+   category sets**, scoring `baseline` (excludes doors) and `ifc-cost` (includes
+   walls) as failures for being correctly scoped. Now per-category over the shared
+   set, with coverage reported separately. Same lesson as the phantom metric one
+   branch earlier: **a metric must be defined per candidate class before it is
+   read as a score.**
+
+### Recommendation for the merge gate
+
+Adopt **`qto-native`**. It is the only candidate that is hierarchical, accurate,
+correctly priced, offline and fast, and it is class A — no new runtime.
+
+`ifc-cost` is dropped, but its finding is the branch's most valuable output and
+should be actioned separately: **our IFC export is viewer-grade**. Emitting
+`IfcSpace` for zones, `IfcElementQuantity` for quantities, and a classification or
+`Tag` carrying `product_id` would make it consumable by any BIM tool — worth an
+issue of its own, independent of costing.
