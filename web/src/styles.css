@@ -4285,3 +4285,31 @@ kbd {
   background: var(--danger-soft);
   color: var(--danger);
 }
+
+/* Low-confidence plate: the importer proposing a boundary rather than asserting
+   one. Amber, not red — this is a request to confirm, not an error. */
+.space-plate-draft {
+  margin: 10px 0 14px;
+  padding: 10px 12px;
+  border: 1px solid rgba(232, 161, 60, 0.45);
+  border-left: 3px solid var(--accent, #e8a13c);
+  border-radius: 6px;
+  background: rgba(232, 161, 60, 0.08);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink, #1a1d21);
+}
+.space-plate-confirm {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 3px 10px;
+  border: 1px solid rgba(232, 161, 60, 0.7);
+  border-radius: 5px;
+  background: #fff;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.space-plate-confirm:hover { background: rgba(232, 161, 60, 0.14); }
+/* An approximate figure reads as provisional, not as a measurement. */
+.space-metric-value[data-approx='true'] { opacity: 0.82; font-style: italic; }

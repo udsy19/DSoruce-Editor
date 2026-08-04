@@ -22,6 +22,9 @@ import { CategoryPlan, type CategoryPlanGroup } from '../../ui/CategoryPlan'
 import { buildCategoryGroups, type EditorController } from '../../App'
 import { extractKeepouts, type Pt, type PlateResult } from '../../import/testfit'
 import { restrictDrawing } from '../../import/area'
+import { extractPlate } from '../../import/testfit'
+import type { PlateProvenance } from '../../import/plateQuality'
+import { logPlate, recordPlateOutcome } from '../../persist/plateLog'
 import { healWalls } from '../../import/heal'
 import { derivePlate } from '../../import/plate'
 import { ROOM_TYPES, nextRoomRef, type RoomMarker, type RoomType } from '../../import/markers'
@@ -150,6 +153,15 @@ export function SpaceStep({
   // S2 area-select + S3 room markers (workflow.md §3.1/§3.2), on the preview canvas.
   const dcRef = useRef<DrawingCanvas | null>(null)
   const [areaPolygon, setAreaPolygon] = useState<Pt[] | null>(null)
+  /**
+   * Set when the importer could not trace a closed shell and has PROPOSED a
+   * boundary instead. The proposal is preloaded into area-select as an editable
+   * draft — the user confirms or adjusts it. Null means the plate was traced and
+   * needs no confirmation (ADR 0002).
+   */
+  const [plateDraft, setPlateDraft] = useState<PlateProvenance | null>(null)
+  /** The draft exactly as proposed, so an edit can be told from a confirmation. */
+  const draftRingRef = useRef<string>('')
   const [markers, setMarkers] = useState<RoomMarker[]>([])
   // S4 wall-heal (workflow.md §3.3): default ON (matches the reference). When on,
   // near-miss partition gaps are bridged before readouts + test-fit.
@@ -271,6 +283,15 @@ export function SpaceStep({
     c.onAreaChange = (poly) => {
       setAreaPolygon(poly)
       setActiveTool('none') // committing/clearing disarms the tool
+      // Editing a proposed boundary IS the answer to it: record which way the
+      // user went, so the calibration log can tell an accepted draft from a
+      // redrawn one (ADR 0003 — promotion comes from this signal only).
+      if (draftRingRef.current) {
+        const same = JSON.stringify(poly ?? []) === draftRingRef.current
+        void recordPlateOutcome(same ? 'confirmed-unedited' : poly ? 'confirmed-edited' : 'redrawn')
+        draftRingRef.current = ''
+        setPlateDraft(null)
+      }
     }
     c.onMarkerDrop = (x, y) => {
       setMarkers((prev) => [
@@ -288,6 +309,56 @@ export function SpaceStep({
     c.setArea(areaPolygon)
     c.setMarkers(markers)
     c.setBackdrop(backdrop)
+  }
+
+  /**
+   * Run the plate ladder and, when it can only INFER a boundary, hand that
+   * boundary to the user as an editable draft rather than asserting it.
+   *
+   * A high-confidence plate is traced from a real shell and needs no
+   * confirmation, so nothing is shown. A low-confidence one is preloaded into
+   * area-select with its method-specific reason — the same control the user
+   * would otherwise reach for, already holding our best guess.
+   */
+  const proposePlate = (d: Drawing) => {
+    const plate = extractPlate(d)
+    const prov = plate?.provenance ?? null
+    if (!plate || !prov) { setPlateDraft(null); return }
+    const ring: Pt[] = plate.boundary.map(([x, y]) => [x + plate.offset.x, y + plate.offset.y])
+    const inside = d.furniture.filter((f) => {
+      const cx = (f.bbox[0] + f.bbox[2]) / 2
+      const cy = (f.bbox[1] + f.bbox[3]) / 2
+      let has = false
+      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        const [xi, yi] = ring[i]
+        const [xj, yj] = ring[j]
+        if ((yi > cy) !== (yj > cy) && cx < ((xj - xi) * (cy - yi)) / (yj - yi) + xi) has = !has
+      }
+      return has
+    }).length
+    void logPlate({
+      at: new Date().toISOString(),
+      provenance: prov,
+      areaM2: plate.areaM2,
+      furnitureTotal: d.furniture.length,
+      furnitureInside: inside,
+      entityCount: d.entities.length,
+      layerCount: d.layers.length,
+      outcome: prov.confidence === 'high' ? 'auto-accepted' : 'pending',
+    })
+    if (prov.confidence === 'high') { setPlateDraft(null); return }
+    // Preload the proposal as the editable area, and remember it verbatim so a
+    // later confirmation can be told apart from an adjustment.
+    draftRingRef.current = JSON.stringify(ring)
+    setPlateDraft(prov)
+    setAreaPolygon(ring)
+    dcRef.current?.setArea(ring)
+  }
+
+  /** The user accepted the draft as-is. */
+  const confirmPlateDraft = () => {
+    void recordPlateOutcome('confirmed-unedited')
+    setPlateDraft(null)
   }
 
   const toggleAreaTool = () => {
@@ -397,6 +468,7 @@ export function SpaceStep({
       setAreaPolygon((cur) => (cur === null ? cur : null))
       setMarkers((cur) => (cur.length === 0 ? cur : []))
       setActiveTool('none')
+      proposePlate(d)
       // Fresh upload → no sub-area yet, so the plate is the whole-floor hull.
       const r = computeReadouts(d, derivePlate(d, null, healOn))
       // Also drop any §3.5 anchor pins — they were pinned to the OLD plate.
@@ -678,15 +750,39 @@ export function SpaceStep({
                 the sub-area only.
               </div>
             )}
+            {plateDraft && (
+              <div className="space-plate-draft" data-testid="plate-draft-notice" role="status">
+                <strong>Check the floor plate.</strong> {plateDraft.reason}{' '}
+                It is loaded as the editable area below — drag its handles to
+                adjust, or confirm it as-is.
+                <button
+                  type="button"
+                  className="space-plate-confirm"
+                  data-testid="plate-draft-confirm"
+                  onClick={confirmPlateDraft}
+                >
+                  Confirm boundary
+                </button>
+              </div>
+            )}
             <div className="space-metrics">
               <div className="space-metric">
                 <span className="space-metric-label">Usable area</span>
-                <span className="space-metric-value num">
+                {/* A low-confidence plate is a PROPOSAL, so every figure derived
+                    from it is approximate until confirmed — printing a hard
+                    "881 m²" for an inferred boundary is the silent assertion this
+                    whole branch exists to remove (ADR 0002). */}
+                <span className="space-metric-value num" data-approx={plateDraft ? 'true' : undefined}>
+                  {plateDraft ? '≈ ' : ''}
                   {readouts.usableAreaM2 != null ? fmt(readouts.usableAreaM2) : '—'}
                   <span className="unit"> m²</span>
                 </span>
                 <span className="space-metric-sub num">
-                  {readouts.usableAreaSf != null ? `${fmt(readouts.usableAreaSf)} sf` : 'no plate traced'}
+                  {plateDraft
+                    ? 'approximate — confirm the boundary'
+                    : readouts.usableAreaSf != null
+                      ? `${fmt(readouts.usableAreaSf)} sf`
+                      : 'no plate traced'}
                 </span>
               </div>
               <div className="space-metric">
