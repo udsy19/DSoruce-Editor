@@ -60,7 +60,14 @@ import {
 } from './import/testfit'
 import { derivePlate } from './import/plate'
 import { baseStampAround, type BaseStamp } from './import/mergeFit'
-import { saveProject, openProject, applyProject, type BindingInfo, type DSourceFile } from './persist/file'
+import {
+  saveProject,
+  openProject,
+  applyProject,
+  buildProjectFile,
+  type BindingInfo,
+  type DSourceFile,
+} from './persist/file'
 import {
   buildSavedPlan,
   listPlans,
@@ -309,6 +316,9 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
   /** Which SavedPlan the live session came from — drives the floor switcher.
    *  Cleared when the doc stops being that record (file open / fresh doc). */
   const [currentPlanId, setCurrentPlanId] = useState<string | null>(null)
+  // Read by the autosave path, which runs from a stable EditorCanvas callback.
+  const currentPlanIdRef = useRef<string | null>(null)
+  currentPlanIdRef.current = currentPlanId
   const [history, setHistory] = useState<HistoryEntry[]>([])
   /** Cloud plan sync (persist/sync.ts): last run's result + in-flight flag. */
   const [syncState, setSyncState] = useState<SyncResult | null>(null)
@@ -425,7 +435,10 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
       ecRef.current = ec
       ec.onChange = () => {
         setTick((t) => t + 1)
-        noteChange(ec, 'edit') // autosave ring (debounced/deduped in history.ts)
+        noteChange(ec, 'edit') // undo/version ring (debounced/deduped in history.ts)
+        // …and write the edit back to the open floor, so a plan opened from a
+        // project behaves like a document rather than a scratch buffer.
+        queueFloorSave()
       }
       ec.onRoom = (sel) => setRoomSel(sel)
       ec.coordEl = coordRef.current
@@ -523,6 +536,49 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
     await putPlan(saved)
     setCurrentPlanId(saved.id) // the live doc IS this record now
     await refreshLibrary()
+  }
+
+  /**
+   * Persist edits back to the OPEN FLOOR.
+   *
+   * Until now nothing did. `noteChange` wrote only to the `history` ring (a
+   * capped undo buffer), and the topbar "Save" downloaded a .dsource file — so a
+   * user could open a floor from their project, edit it, press the button
+   * labelled Save, and lose the work on reload. Measured: 133 components →
+   * delete one → 132 → reload → 133, with a file downloaded in between and no
+   * warning anywhere.
+   *
+   * A floor opened from a project is now saved like a document, not like a file:
+   * every change writes the snapshot back to its own record, keyed on the id
+   * already open. Debounced so a drag doesn't hammer IndexedDB; the history ring
+   * still captures every step, so undo and version-restore are unaffected.
+   */
+  const persistOpenFloor = async () => {
+    const ec = ecRef.current
+    const planId = currentPlanIdRef.current
+    if (!ec || !planId) return // no floor open (scratch doc) → nothing to update
+    const existing = await getPlan(planId)
+    if (!existing) return // record deleted underneath us — don't resurrect it
+    await putPlan({
+      ...existing,
+      file: buildProjectFile({ ec, drawing: drawingRef.current, bindings: bindingsRef.current, ui: { mode: modeRef.current } }),
+      thumb: renderThumb(ec.getState(), 200, 140),
+      updatedAt: new Date().toISOString(),
+    })
+  }
+  const persistOpenFloorRef = useRef(persistOpenFloor)
+  persistOpenFloorRef.current = persistOpenFloor
+
+  /** Debounce the floor write so a drag doesn't hammer IndexedDB. Longer than
+   *  the history ring's cadence — history wants every step for undo; the floor
+   *  only needs to end up correct. */
+  const floorSaveTimer = useRef<number | null>(null)
+  const queueFloorSave = () => {
+    if (floorSaveTimer.current !== null) clearTimeout(floorSaveTimer.current)
+    floorSaveTimer.current = window.setTimeout(() => {
+      floorSaveTimer.current = null
+      void persistOpenFloorRef.current()
+    }, 900)
   }
 
   /** LibraryPanel.onAssign — resolve the typed project name (case-insensitive
@@ -1062,16 +1118,26 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
               Test-fit this plan
             </button>
           )}
-          <button className="export-btn" onClick={onSave} data-testid="save-project" title="Save project (⌘S)">
-            Save
+          {/* These two move a FILE to and from disk. They were labelled "Save" /
+              "Open", which read as "save my work" — while the floor open in the
+              editor was never written back at all, so pressing Save downloaded a
+              file and lost the edit on reload. The floor now saves itself
+              (persistOpenFloor); these say what they actually do. */}
+          <button
+            className="export-btn"
+            onClick={onSave}
+            data-testid="save-project"
+            title="Download this plan as a .dsource file (⌘S). Your floor is saved automatically."
+          >
+            <Icon name="download" size={14} /> Download
           </button>
           <button
             className="export-btn"
             onClick={() => projectFileRef.current?.click()}
             data-testid="open-project"
-            title="Open a .dsource project"
+            title="Open a .dsource file from disk"
           >
-            Open
+            Open file…
           </button>
           <input
             ref={projectFileRef}

@@ -340,6 +340,17 @@ Two rules, learned the hard way while verifying these slices.
    check it carried a `Cannot access 'docEmpty' before initialization` from an intermediate HMR build
    — a real-looking error for code that had already been fixed. Match error timestamps to the current
    build, or reload and re-read, before believing one.
+3. **Confirm the dev server is serving YOUR source before trusting any browser result.** Worse than a
+   stale page is a *live, correct-looking page running someone else's code*: this repo is developed
+   in parallel git worktrees, and a `vite --strictPort` from a different worktree will happily hold
+   :5173, answer every request, and reload cleanly — while serving a different branch. That produced
+   a ~15-minute stretch here where a verified-correct fix appeared not to work. Run each worktree's
+   server on its own port, and before drawing conclusions:
+   ```sh
+   curl -s http://localhost:<port>/src/App.tsx | grep -c '<an identifier from your change>'
+   ```
+   Grep for an **identifier**, never for comment text — esbuild strips comments in dev, so a comment
+   grep returns 0 against perfectly current code and sends you chasing a phantom.
 
 ### 3.7 Acceptance test for the whole spec
 

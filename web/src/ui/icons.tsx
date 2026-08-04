@@ -307,6 +307,14 @@ export function Icon({ name, size = 19 }: Props) {
           <path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4" />
         </svg>
       )
+    // The same tray, arrow reversed — a file leaving rather than arriving.
+    case 'download':
+      return (
+        <svg {...p}>
+          <path d="M12 4v12M7 11l5 5 5-5" />
+          <path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4" />
+        </svg>
+      )
     case 'pin':
       return (
         <svg {...p}>
