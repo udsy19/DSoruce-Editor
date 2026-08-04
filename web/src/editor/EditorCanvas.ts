@@ -19,7 +19,6 @@ import { fmtMeters, parseDim, endpointForLength } from '../cad/dimEdit'
 // search loop each live in their own module; this class is the façade that owns
 // the canvas, routes input, and delegates to them (see the file docs there).
 import {
-  C,
   clampN,
   distToPoly,
   drawComponent,
@@ -38,6 +37,7 @@ import {
   type PaintView,
   type ZoneTag,
 } from './paint'
+import { C } from './planStyle'
 import { RoomInteraction, SNAP_M, updateSelectedComponent, type RoomHost } from './interaction'
 import {
   autoGenerate,

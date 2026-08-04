@@ -91,12 +91,18 @@ export function strokePx(tier: Tier, _pixelsPerMeter: number, dpr = 1): number {
 // band by adjusting S/L only, holding each hue. Keeping them here (rather than
 // in paint.ts) is what makes 2e a one-file edit.
 
+
 export interface ZoneStyle {
   fill: string
   line: string
 }
 
-export const ZONE_FILL: Record<ZoneType, ZoneStyle> = {
+// Lifted verbatim out of paint.ts so the render path holds no literals. Values
+// are unchanged by this move — 2e is what re-lands them on the Laiout palette,
+// and keeping the move and the restyle in separate commits is what makes the
+// restyle's diff legible.
+// Zone fills keyed by ZoneType serde tag → { fill, line } (Laiout pastels).
+export const ZONE: Record<string, { fill: string; line: string }> = {
   Circulation: { fill: '#dcebfb', line: '#4a82c4' },
   Workspace: { fill: '#fbf3d6', line: '#b99527' },
   Meeting: { fill: '#e9e3f7', line: '#7e63c0' },
@@ -104,6 +110,70 @@ export const ZONE_FILL: Record<ZoneType, ZoneStyle> = {
   Core: { fill: '#eceef1', line: '#8b939e' },
   ClosedOffice: { fill: '#fce6d6', line: '#cb8150' },
   Amenity: { fill: '#d9f0ef', line: '#3f9c95' },
+}
+
+export const C = {
+  surface: '#ffffff', // floor plate
+  mat: '#eef0f4', // outside the building footprint (a touch deeper so the plate lifts)
+  gridMinor: 'rgba(23,26,30,0.035)',
+  gridMajor: 'rgba(23,26,30,0.075)',
+  axis: 'rgba(45,91,214,0.18)',
+  wall: '#2b313a', // interior partitions — medium
+  wallExt: '#1b1f25', // exterior/structural — darkest, but crisp (not a fat marker)
+  wallGen: '#525a65', // generated partitions — lightest ink in the hierarchy
+  // Matches DrawingCanvas FURNITURE_LINE so generated + imported plans read alike.
+  furniture: '#565e69',
+  // Secondary furniture detail (keyboard, armrests, backrest ticks) — a mid gray
+  // that stays legible over the pastel zone (the old #b4b9c1 read as faint).
+  furnitureDetail: '#9aa1ab',
+  // Solid worktop/table fill so a desk reads as an object, not a hollow outline.
+  furnitureFill: 'rgba(255,255,255,0.86)',
+  // Chair/upholstery seat fill — a light cool neutral that sits on any pastel.
+  furnitureSeat: '#e7eaee',
+  // Passive as-drawn reference furniture (imported, not counted): muted so the
+  // generated fit reads as the primary content and context sits quietly behind it.
+  furnitureRef: '#b7bdc5',
+  labelSub: '#5f6771', // zone-tag metrics line (area · pax)
+  preview: 'rgba(45,91,214,0.70)',
+  accent: '#2d5bd6',
+  label: '#1a1d21',
+  rulerBg: '#ffffff',
+  rulerCorner: '#f7f8fa',
+  rulerText: '#9aa2ad',
+  rulerTick: 'rgba(23,26,30,0.18)',
+
+  // Glass partitions: a light cool centre line between the two wall faces.
+  glassCore: '#8fb6c9',
+  // Floating label pill (editor affordance — never on paper output).
+  pillShadow: 'rgba(23,26,30,0.14)',
+  pillFill: 'rgba(255,255,255,0.94)',
+  // Dimension/measure chips: paper-coloured when committed, accent when live.
+  chipPaper: 'rgba(255,255,255,0.9)',
+  accentDeep: '#1d47c0', // snapped-to-geometry state, deeper than `accent`
+  // Candidate thumbnails (gallery cards).
+  thumbBorder: 'rgba(23,26,30,0.30)',
+  thumbRule: 'rgba(23,26,30,0.14)',
+  thumbWall: '#2e343b',
+}
+
+/**
+ * Thumbnail fills by category — desks cool blue, meeting rooms translucent
+ * teal. Deliberately NOT the zone palette: a 180 px card cannot carry the
+ * plan's pastels legibly, so the thumbnail is a distinct, denser legend.
+ */
+export const THUMB_FILL: Record<string, string> = {
+  Desk: 'rgba(91, 141, 239, 0.85)',
+  MeetingRoom: 'rgba(70, 179, 166, 0.35)',
+}
+export const THUMB_OTHER = 'rgba(138, 144, 153, 0.55)'
+
+/** Reference column fill (spec `palette.column_fill`). */
+const COLUMN_FILL = '#a0a0a0'
+
+export const DECISION_DOT: Record<string, string> = {
+  Confirmed: '#2fa36b',
+  InReview: '#e0952b',
+  Open: '#9aa2ad',
 }
 
 // ---------------------------------------------------------------------------
@@ -141,8 +211,10 @@ export interface PlanStyle {
   labelSecondary: { color: string; sizePx: number; weight: number; upper: boolean }
 }
 
-const INK = '#1a1d21'
-const WHITE = '#ffffff'
+export const INK = '#1a1d21'
+export const WHITE = '#ffffff'
+/** Pure black. The reference's linework is true black, not our UI ink. */
+export const BLACK = '#000000'
 
 /**
  * PAPER — faithful to the measured reference.
@@ -158,13 +230,13 @@ const PAPER: PlanStyle = {
   gridOpacity: 0,
   gridMinor: { stroke: 'rgba(23,26,30,0.035)', tier: 'furniture', z: 0 },
   gridMajor: { stroke: 'rgba(23,26,30,0.075)', tier: 'furniture', z: 0 },
-  wallCut: { stroke: '#000000', tier: 'wall', z: 40 },
-  wallInterior: { stroke: '#000000', tier: 'wall', z: 40 },
+  wallCut: { stroke: BLACK, tier: 'wall', z: 40 },
+  wallInterior: { stroke: BLACK, tier: 'wall', z: 40 },
   opening: { stroke: WHITE, tier: 'openingPunch', z: 45 },
-  roomEnclosure: { stroke: '#000000', tier: 'roomEnclosure', z: 30 },
+  roomEnclosure: { stroke: BLACK, tier: 'roomEnclosure', z: 30 },
   furniture: { stroke: '#565e69', tier: 'furniture', z: 20 },
   furnitureDetail: { stroke: '#9aa1ab', tier: 'furniture', z: 20 },
-  column: { stroke: '#000000', fill: '#a0a0a0', tier: 'column', z: 35 },
+  column: { stroke: BLACK, fill: COLUMN_FILL, tier: 'column', z: 35 },
   hatch: { stroke: 'rgba(23,26,30,0.28)', tier: 'detail', z: 25 },
   // Reference: 4.35 pt on an A4-landscape page ≈ 6 px at our typical scale.
   labelPrimary: { color: INK, sizePx: 6, weight: 500, upper: true },
@@ -213,5 +285,5 @@ export function legendEntries(
 ): Array<{ kind: ZoneType; fill: string; line: string }> {
   const seen: ZoneType[] = []
   for (const z of zones) if (!seen.includes(z.zone_type)) seen.push(z.zone_type)
-  return seen.map((kind) => ({ kind, ...ZONE_FILL[kind] }))
+  return seen.map((kind) => ({ kind, ...ZONE[kind] }))
 }

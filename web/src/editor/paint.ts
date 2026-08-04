@@ -11,7 +11,10 @@
 import { drawFurnitureSymbol } from './furniture'
 import { fmtMeters } from '../cad/dimEdit'
 import type { DocComponent, DocState, DocWall, DocZone } from '../types/doc'
-import { planStyle, strokePx } from './planStyle'
+import {
+  planStyle, strokePx, C, DECISION_DOT, ZONE,
+  WHITE, BLACK, THUMB_FILL, THUMB_OTHER,
+} from './planStyle'
 import type { Metrics, ZoneStat } from '../types/metrics'
 
 /** A point in screen or world space (the function names say which). */
@@ -61,53 +64,8 @@ const MAJOR_EVERY = 5 // heavier line every 5 m
 const RULER = 22 // px ruler gutter (top + left)
 
 // Light "floor-plate" palette — mirrors styles.css tokens (Laiout aesthetic).
-export const C = {
-  surface: '#ffffff', // floor plate
-  mat: '#eef0f4', // outside the building footprint (a touch deeper so the plate lifts)
-  gridMinor: 'rgba(23,26,30,0.035)',
-  gridMajor: 'rgba(23,26,30,0.075)',
-  axis: 'rgba(45,91,214,0.18)',
-  wall: '#2b313a', // interior partitions — medium
-  wallExt: '#1b1f25', // exterior/structural — darkest, but crisp (not a fat marker)
-  wallGen: '#525a65', // generated partitions — lightest ink in the hierarchy
-  // Matches DrawingCanvas FURNITURE_LINE so generated + imported plans read alike.
-  furniture: '#565e69',
-  // Secondary furniture detail (keyboard, armrests, backrest ticks) — a mid gray
-  // that stays legible over the pastel zone (the old #b4b9c1 read as faint).
-  furnitureDetail: '#9aa1ab',
-  // Solid worktop/table fill so a desk reads as an object, not a hollow outline.
-  furnitureFill: 'rgba(255,255,255,0.86)',
-  // Chair/upholstery seat fill — a light cool neutral that sits on any pastel.
-  furnitureSeat: '#e7eaee',
-  // Passive as-drawn reference furniture (imported, not counted): muted so the
-  // generated fit reads as the primary content and context sits quietly behind it.
-  furnitureRef: '#b7bdc5',
-  labelSub: '#5f6771', // zone-tag metrics line (area · pax)
-  preview: 'rgba(45,91,214,0.70)',
-  accent: '#2d5bd6',
-  label: '#1a1d21',
-  rulerBg: '#ffffff',
-  rulerCorner: '#f7f8fa',
-  rulerText: '#9aa2ad',
-  rulerTick: 'rgba(23,26,30,0.18)',
-}
 
-const DECISION_DOT: Record<string, string> = {
-  Confirmed: '#2fa36b',
-  InReview: '#e0952b',
-  Open: '#9aa2ad',
-}
 
-// Zone fills keyed by ZoneType serde tag → { fill, line } (Laiout pastels).
-const ZONE: Record<string, { fill: string; line: string }> = {
-  Circulation: { fill: '#dcebfb', line: '#4a82c4' },
-  Workspace: { fill: '#fbf3d6', line: '#b99527' },
-  Meeting: { fill: '#e9e3f7', line: '#7e63c0' },
-  Collaboration: { fill: '#def1e2', line: '#4b9e66' },
-  Core: { fill: '#eceef1', line: '#8b939e' },
-  ClosedOffice: { fill: '#fce6d6', line: '#cb8150' },
-  Amenity: { fill: '#d9f0ef', line: '#3f9c95' },
-}
 
 // ---- grid / linework ----
 
@@ -169,7 +127,7 @@ export function drawGlazing(v: PaintView, a: Pt, b: Pt) {
   ctx.moveTo(pa.x - nx, pa.y - ny)
   ctx.lineTo(pb.x - nx, pb.y - ny)
   ctx.stroke()
-  ctx.strokeStyle = '#8fb6c9' // glass: light cool center line
+  ctx.strokeStyle = C.glassCore // glass: light cool center line
   ctx.beginPath()
   ctx.moveTo(pa.x, pa.y)
   ctx.lineTo(pb.x, pb.y)
@@ -202,7 +160,7 @@ export function drawWall(v: PaintView, w: DocWall, exterior: boolean) {
   const el = exterior ? style.wallCut : style.wallInterior
   const dpr = typeof devicePixelRatio === 'number' ? devicePixelRatio : 1
   const width = strokePx(el.tier ?? 'wall', v.scale, dpr)
-  const color = el.stroke ?? '#000000'
+  const color = el.stroke ?? BLACK
 
   const dx = w.b.x - w.a.x
   const dy = w.b.y - w.a.y
@@ -239,7 +197,7 @@ export function punchOpening(v: PaintView, a: Pt, b: Pt, thickness: number) {
     strokePx(style.opening.tier ?? 'openingPunch', v.scale, dpr),
     thickness * v.scale,
   )
-  drawSegment(v, a, b, width, style.opening.stroke ?? '#ffffff')
+  drawSegment(v, a, b, width, style.opening.stroke ?? WHITE)
 }
 
 export function wallStyle(
@@ -486,10 +444,10 @@ export function drawZoneTags(v: PaintView, tags: ZoneTag[]) {
 
     // Soft pill: drop shadow + near-white fill + hairline border in zone color.
     ctx.save()
-    ctx.shadowColor = 'rgba(23,26,30,0.14)'
+    ctx.shadowColor = C.pillShadow
     ctx.shadowBlur = 6
     ctx.shadowOffsetY = 1
-    ctx.fillStyle = 'rgba(255,255,255,0.94)'
+    ctx.fillStyle = C.pillFill
     roundRect(ctx, px, py, pillW, pillH, pillH / 2)
     ctx.fill()
     ctx.restore()
@@ -543,11 +501,11 @@ export function drawRoomSelection(
   ctx.fillStyle = C.accent
   roundRect(ctx, cx - tw / 2 - 7, by - 9, tw + 14, 18, 9)
   ctx.fill()
-  ctx.fillStyle = '#ffffff'
+  ctx.fillStyle = WHITE
   ctx.fillText(label, cx, by + 1)
 
   // 8 white square handles with an accent border.
-  ctx.fillStyle = '#ffffff'
+  ctx.fillStyle = WHITE
   ctx.strokeStyle = C.accent
   ctx.lineWidth = 1.5
   for (const p of handlePoints(box)) {
@@ -583,8 +541,8 @@ export function drawComponent(v: PaintView, c: DocComponent, selected: boolean) 
     mirror: c.mirror,
     stroke: ref ? C.furnitureRef : frozen ? DECISION_DOT.Confirmed : C.furniture,
     detail: ref ? C.furnitureRef : C.furnitureDetail,
-    fill: ref ? undefined : frozen ? 'rgba(47,163,107,0.10)' : C.furnitureFill,
-    seat: ref ? undefined : frozen ? 'rgba(47,163,107,0.16)' : C.furnitureSeat,
+    fill: ref ? undefined : frozen ? hexToRgba(DECISION_DOT.Confirmed, 0.1) : C.furnitureFill,
+    seat: ref ? undefined : frozen ? hexToRgba(DECISION_DOT.Confirmed, 0.16) : C.furnitureSeat,
     accent: C.accent,
     selected,
   })
@@ -659,10 +617,10 @@ export function drawDimChip(
   const w = ctx.measureText(label).width
   // Live (in-progress) chip reads as a filled accent pill; committed chips are
   // quiet accent-on-paper labels (dimension-label style from render.ts).
-  ctx.fillStyle = live ? (snapped ? '#1d47c0' : 'rgba(45,91,214,0.92)') : 'rgba(255,255,255,0.9)'
+  ctx.fillStyle = live ? (snapped ? C.accentDeep : hexToRgba(C.accent, 0.92)) : C.chipPaper
   roundRect(ctx, mid.x - w / 2 - 5, mid.y - 8.5, w + 10, 17, 4)
   ctx.fill()
-  ctx.fillStyle = live ? '#ffffff' : C.accent
+  ctx.fillStyle = live ? WHITE : C.accent
   ctx.fillText(label, mid.x, mid.y)
   ctx.restore()
 }
@@ -690,16 +648,16 @@ export function drawDimLabel(
   const x = cx - w / 2
   const y = cy - h / 2
   if (!hidden) {
-    ctx.fillStyle = editable ? C.accent : 'rgba(255,255,255,0.9)'
+    ctx.fillStyle = editable ? C.accent : C.chipPaper
     roundRect(ctx, x, y, w, h, 4)
     ctx.fill()
     if (!editable) {
-      ctx.strokeStyle = 'rgba(45,91,214,0.28)'
+      ctx.strokeStyle = hexToRgba(C.accent, 0.28)
       ctx.lineWidth = 1
       roundRect(ctx, x + 0.5, y + 0.5, w - 1, h - 1, 4)
       ctx.stroke()
     }
-    ctx.fillStyle = editable ? '#ffffff' : C.accent
+    ctx.fillStyle = editable ? WHITE : C.accent
     ctx.fillText(text, cx, cy)
   }
   ctx.restore()
@@ -726,7 +684,7 @@ export function drawSummary(v: PaintView, w: number, h: number, m: Metrics) {
   const y = h - H - 16
   ctx.fillStyle = C.surface
   ctx.fillRect(x, y, W, H)
-  ctx.strokeStyle = 'rgba(23,26,30,0.30)'
+  ctx.strokeStyle = C.thumbBorder
   ctx.lineWidth = 1
   ctx.strokeRect(x + 0.5, y + 0.5, W - 1, H - 1)
 
@@ -735,7 +693,7 @@ export function drawSummary(v: PaintView, w: number, h: number, m: Metrics) {
   ctx.fillStyle = C.label
   ctx.font = '700 10px "Hanken Grotesk", system-ui, sans-serif'
   ctx.fillText('TEST FIT', x + pad, y + 18)
-  ctx.strokeStyle = 'rgba(23,26,30,0.14)'
+  ctx.strokeStyle = C.thumbRule
   line(ctx, x + pad, y + 24.5, x + W - pad, y + 24.5)
 
   let ry = y + 24 + rowH - 4
@@ -811,12 +769,6 @@ export function drawRulers(v: PaintView, w: number, h: number, cursor: Pt | null
 
 // ---- thumbnails ----
 
-// Thumbnail fills by category — desks cool blue, meeting rooms translucent teal.
-const THUMB_FILL: Record<string, string> = {
-  Desk: 'rgba(91, 141, 239, 0.85)',
-  MeetingRoom: 'rgba(70, 179, 166, 0.35)',
-}
-const THUMB_OTHER = 'rgba(138, 144, 153, 0.55)'
 
 /**
  * Minimal plan schematic of a document state → dataURL, for gallery cards.
@@ -842,7 +794,7 @@ export function renderThumb(st: DocState, w = 200, h = 140): string {
       bb.maxY = Math.max(bb.maxY, c.y + c.h / 2)
     }
   }
-  ctx.fillStyle = '#ffffff'
+  ctx.fillStyle = WHITE
   ctx.fillRect(0, 0, w, h)
   if (!bb) return cv.toDataURL()
 
@@ -888,7 +840,7 @@ export function renderThumb(st: DocState, w = 200, h = 140): string {
   }
 
   // Wall outlines on top.
-  ctx.strokeStyle = '#2e343b'
+  ctx.strokeStyle = C.thumbWall
   ctx.lineCap = 'round'
   for (const wl of st.walls) {
     ctx.lineWidth = Math.max(1, wl.thickness * k)
