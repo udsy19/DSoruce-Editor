@@ -1,117 +1,298 @@
 {
   "$comment": "Phase-0 forensic style spec for the plan-visual-grammar campaign. MEASURED from vector operators in the qbiq reference PDF, not eyeballed and not pixel-sampled. This file is the pre-registration: 'looks professional' becomes 'matches these values within the stated tolerances', checkable per PR.",
-
   "provenance": {
     "source": "docs/reference/qbiq/extracted/Sample Report from Qbiq/Sample Report/Crystal Tower  Modern-2024-08-11-07-17-04.pdf",
-    "pages_measured": [3, 4, 5],
-    "page_size_pt": [841, 595],
-    "method": "PyMuPDF get_drawings() / get_text('dict') read the PDF's own vector operators. Stroke widths and fill colours are EXACT values from the file, not samples of a rasterisation — no anti-aliasing error, no DPI conversion, no colour clustering. A 150-dpi render was used only for visual confirmation and background sampling.",
+    "pages_measured": [
+      3,
+      4,
+      5
+    ],
+    "page_size_pt": [
+      841,
+      595
+    ],
+    "method": "PyMuPDF get_drawings() / get_text('dict') read the PDF's own vector operators. Stroke widths and fill colours are EXACT values from the file, not samples of a rasterisation \u2014 no anti-aliasing error, no DPI conversion, no colour clustering. A 150-dpi render was used only for visual confirmation and background sampling.",
     "method_deviation_from_brief": "The brief specified 'render to PNG at known DPI, sample and cluster hex values, measure stroke widths in px'. The plan pages are VECTOR (3495-4080 drawing ops each), so reading the operators is strictly more accurate than sampling their rasterisation. Deviation is an improvement in precision, not a change of scope.",
     "laiout_reference": "ABSENT. No Laiout export exists in the repository. This is a QBIQ-ONLY spec. Per the brief, web marketing screenshots were NOT substituted.",
     "brief_premises_corrected": [
       "The brief states the pack is in research/ and cites a prior research/qbiq-workbook-spec.json. Neither is true: the pack is in docs/reference/qbiq/, and no workbook spec exists in the repo. There was no prior spec to model this on.",
       "'AI Space Planning Report.zip' and 'Sample Report from Qbiq.zip' contain the SAME PDF. There is exactly one qbiq plan document, giving three plan pages (Alternatives A/B/C)."
-    ]
+    ],
+    "paths_corrected": {
+      "reference": "docs/reference/qbiq/",
+      "grid_third_column": "bench/style-progress/qbiq-reference-alternative-A.png"
+    }
   },
-
   "findings_that_contradict_the_brief": {
     "$comment": "Phase 0 exists to be believed over assumptions. Three brief assumptions are falsified by measurement. Each must be re-decided before the phase that depends on it.",
-
     "wall_poche": {
-      "brief_assumed": "Phase 2a: 'Walls render as filled polygons at their real thickness, dark poche fill per spec' — described as the single highest-leverage change.",
-      "measured": "There is NO dark poche anywhere in the reference. Walls are drawn as thin DOUBLE LINES with unfilled interiors: 463 paths per page at 0.2903 pt carry fill=None. The only heavy black strokes (1.0234 pt) are outlines of ZONE polygons whose fills are the pastel zone colours, i.e. enclosed-room boundaries — not poche.",
+      "brief_assumed": "Phase 2a: 'Walls render as filled polygons at their real thickness, dark poche fill per spec' \u2014 described as the single highest-leverage change.",
+      "measured": "There is NO dark poche anywhere in the reference. Walls are drawn as thin DOUBLE LINES with unfilled interiors: 463 paths per page at 0.2903 pt carry fill=None. The only heavy black strokes (1.0234 pt) are outlines of ZONE polygons whose fills are the pastel zone colours, i.e. enclosed-room boundaries \u2014 not poche.",
       "consequence": "Phase 2a as written would move DSource AWAY from the reference, not toward it. The high-leverage change is the WEIGHT HIERARCHY (2x wall over 1x furniture, 7x room enclosure), not fill. Needs an owner decision before 2a proceeds."
     },
-
     "labels": {
       "brief_assumed": "Phase 2d: 'Room labels become in-room text: name with area/pax beneath, centred in the pole of inaccessibility.'",
-      "measured": "The entire plan area contains 8 text spans at 4.35 pt — 'STOR.', 'COAT.', 'IT', 'CLEA.', 'WELL.' — abbreviations for SMALL SERVICE ROOMS ONLY. There are no room names, no areas, no seat counts anywhere in the drawing. All zone identification is carried by a LEGEND outside the plan (10.5 pt).",
+      "measured": "The entire plan area contains 8 text spans at 4.35 pt \u2014 'STOR.', 'COAT.', 'IT', 'CLEA.', 'WELL.' \u2014 abbreviations for SMALL SERVICE ROOMS ONLY. There are no room names, no areas, no seat counts anywhere in the drawing. All zone identification is carried by a LEGEND outside the plan (10.5 pt).",
       "consequence": "qbiq's label grammar is legend-driven colour identification plus tiny abbreviations for rooms too small to read by colour. Implementing name+area+pax in every room would be MORE annotation than the reference, not less. Needs an owner decision before 2d proceeds."
     },
-
     "zone_fill_lightness": {
       "brief_assumed": "Phase 2e: 'the current full-strength blue circulation wash becomes a near-white tint'.",
       "measured": "qbiq fills are high-saturation, high-lightness PASTELS, not near-white: mean S 86.2%, mean L 85.7% (S range 28-100, L range 68.4-92.4). Only IT Room is genuinely muted (S 28.0%, L 68.4%).",
-      "consequence": "'Near-white' undershoots the reference. The correct target is L 80-92% at HIGH saturation — colour stays clearly readable; it is the LIGHTNESS that carries the quietness, not desaturation."
+      "consequence": "'Near-white' undershoots the reference. The correct target is L 80-92% at HIGH saturation \u2014 colour stays clearly readable; it is the LIGHTNESS that carries the quietness, not desaturation."
     }
   },
-
   "palette": {
     "$comment": "Measured fill values. Per the brief's standing decision, DSource keeps its own HUES; these S/L levels are the discipline to adopt.",
     "background": "#ffffff",
     "page_background": "#ffffff",
-    "grid": { "present_on_presentation_output": false, "measured": "0 of 394 sampled px non-white in an empty band" },
+    "grid": {
+      "present_on_presentation_output": false,
+      "measured": "0 of 394 sampled px non-white in an empty band"
+    },
     "zone_fills": [
-      { "name": "Open Space",   "hex": "#9ec5fc", "h": 215.1, "s": 94.0, "l": 80.4 },
-      { "name": "Conf Room",    "hex": "#d0fce4", "h": 147.3, "s": 88.0, "l": 90.2 },
-      { "name": "Amenities",    "hex": "#ffe7a7", "h":  43.6, "s": 100.0, "l": 82.7 },
-      { "name": "Comfort Zone", "hex": "#fdf0cd", "h":  43.7, "s": 92.3, "l": 89.8 },
-      { "name": "Office",       "hex": "#d8e9fc", "h": 211.7, "s": 85.7, "l": 91.8 },
-      { "name": "Pantry",       "hex": "#fcddba", "h":  31.8, "s": 91.7, "l": 85.9 },
-      { "name": "Reception",    "hex": "#efd8ff", "h": 275.4, "s": 100.0, "l": 92.4 },
-      { "name": "IT Room",      "hex": "#c5b898", "h":  42.7, "s": 28.0, "l": 68.4 },
-      { "name": "Executive",    "hex": "#cbf1fe", "h": 195.3, "s": 96.2, "l": 89.6 }
+      {
+        "name": "Open Space",
+        "hex": "#9ec5fc",
+        "h": 215.1,
+        "s": 94.0,
+        "l": 80.4
+      },
+      {
+        "name": "Conf Room",
+        "hex": "#d0fce4",
+        "h": 147.3,
+        "s": 88.0,
+        "l": 90.2
+      },
+      {
+        "name": "Amenities",
+        "hex": "#ffe7a7",
+        "h": 43.6,
+        "s": 100.0,
+        "l": 82.7
+      },
+      {
+        "name": "Comfort Zone",
+        "hex": "#fdf0cd",
+        "h": 43.7,
+        "s": 92.3,
+        "l": 89.8
+      },
+      {
+        "name": "Office",
+        "hex": "#d8e9fc",
+        "h": 211.7,
+        "s": 85.7,
+        "l": 91.8
+      },
+      {
+        "name": "Pantry",
+        "hex": "#fcddba",
+        "h": 31.8,
+        "s": 91.7,
+        "l": 85.9
+      },
+      {
+        "name": "Reception",
+        "hex": "#efd8ff",
+        "h": 275.4,
+        "s": 100.0,
+        "l": 92.4
+      },
+      {
+        "name": "IT Room",
+        "hex": "#c5b898",
+        "h": 42.7,
+        "s": 28.0,
+        "l": 68.4
+      },
+      {
+        "name": "Executive",
+        "hex": "#cbf1fe",
+        "h": 195.3,
+        "s": 96.2,
+        "l": 89.6
+      }
     ],
     "zone_fill_targets": {
-      "$comment": "THE ADOPTABLE RULE — apply to DSource hues.",
-      "saturation_pct": { "mean": 86.2, "range": [85, 100], "outlier_allowed": "one muted service colour (IT Room) at S~28" },
-      "lightness_pct":  { "mean": 85.7, "range": [80, 92] }
+      "$comment": "THE ADOPTABLE RULE \u2014 apply to DSource hues.",
+      "saturation_pct": {
+        "mean": 86.2,
+        "range": [
+          85,
+          100
+        ],
+        "outlier_allowed": "one muted service colour (IT Room) at S~28"
+      },
+      "lightness_pct": {
+        "mean": 85.7,
+        "range": [
+          80,
+          92
+        ]
+      }
     },
     "line_colour": "#000000",
     "opening_colour": "#ffffff"
   },
-
   "line_weights": {
     "$comment": "Exact PDF stroke widths in points. RATIOS are the portable contract; absolutes depend on the reference's page scale and should not be copied literally.",
     "unit": "pt (1/72 inch)",
     "base_pt": 0.1452,
     "tiers": [
-      { "role": "furniture / fixtures",     "pt": 0.1452, "ratio": 1.00, "count_per_page": 2354, "fill": "none" },
-      { "role": "secondary linework",        "pt": 0.1524, "ratio": 1.05, "count_per_page": 789,  "fill": "none" },
-      { "role": "minor emphasis",            "pt": 0.2177, "ratio": 1.50, "count_per_page": 28,   "fill": "none" },
-      { "role": "walls (bulk linework)",     "pt": 0.2903, "ratio": 2.00, "count_per_page": 463,  "fill": "none (436/463)" },
-      { "role": "room / zone enclosure",     "pt": 1.0234, "ratio": 7.05, "count_per_page": 71,   "fill": "the zone colour" },
-      { "role": "opening cut (white, over walls)", "pt": 1.2339, "ratio": 8.50, "count_per_page": 31, "colour": "#ffffff" }
+      {
+        "role": "furniture / fixtures",
+        "pt": 0.1452,
+        "ratio": 1.0,
+        "count_per_page": 2354,
+        "fill": "none"
+      },
+      {
+        "role": "fine detail (hatch / glazing ticks) \u2014 STILL PROVISIONAL",
+        "pt": 0.1524,
+        "ratio": 1.05,
+        "count_per_page": 789,
+        "fill": "none",
+        "evidence": "789 paths, 760 of them a SINGLE line segment, median length 0.43 pt, no curves, no fills. Consistent with hatch strokes or glazing/mullion ticks; not isolated definitively. Kept provisional rather than promoted to a guess."
+      },
+      {
+        "role": "structural columns",
+        "pt": 0.2177,
+        "ratio": 1.5,
+        "count_per_page": 28,
+        "fill": "none",
+        "evidence": "28 paths, ALL single rectangles (\"re\"), 27/28 filled #a0a0a0 grey, median longest side 7.19 pt \u2014 small grey squares matching the columns visible in the reference render. RESOLVED by cross-check."
+      },
+      {
+        "role": "walls (bulk linework)",
+        "pt": 0.2903,
+        "ratio": 2.0,
+        "count_per_page": 463,
+        "fill": "none (436/463)"
+      },
+      {
+        "role": "room / zone enclosure",
+        "pt": 1.0234,
+        "ratio": 7.05,
+        "count_per_page": 71,
+        "fill": "the zone colour"
+      },
+      {
+        "role": "opening cut (white, over walls)",
+        "pt": 1.2339,
+        "ratio": 8.5,
+        "count_per_page": 31,
+        "colour": "#ffffff"
+      }
     ],
     "hierarchy_summary": "furniture 1x -> walls 2x -> room enclosure 7x. Openings are punched by overdrawing in WHITE at 8.5x, which is how the wall line breaks at a door.",
     "confidence": {
-      "high": ["all pt values", "all counts", "the ratio ladder"],
-      "provisional": ["role attribution for the 1.05x and 1.5x tiers — measured but their semantic use was not isolated"]
+      "high": [
+        "all pt values",
+        "all counts",
+        "the ratio ladder",
+        "0.2177 pt = structural columns (cross-checked)"
+      ],
+      "provisional": [
+        "0.1524 pt role \u2014 fine detail of some kind; implementation against real drawings should resolve it"
+      ]
     }
   },
-
   "labels": {
     "in_plan_text_spans": 8,
     "font": "DejaVuSans",
     "size_pt": 4.35,
     "casing": "UPPERCASE, abbreviated with trailing period ('STOR.', 'COAT.', 'CLEA.', 'WELL.')",
-    "content": "room-type abbreviation only — no area, no pax, no full names",
+    "content": "room-type abbreviation only \u2014 no area, no pax, no full names",
     "applies_to": "small service rooms only (storage, coat, cleaner, wellness, IT)",
     "bubbles_or_pills": "none at rest",
     "leader_lines": "none observed",
     "primary_identification": "LEGEND outside the plan, 10.5 pt, colour swatch + zone name",
     "legend_font_size_pt": 10.5,
-    "scale_bar": { "present": true, "style": "checkerboard", "ticks": [0, 10, 20, 30], "tick_font_pt": 9.0 }
+    "scale_bar": {
+      "present": true,
+      "style": "checkerboard",
+      "ticks": [
+        0,
+        10,
+        20,
+        30
+      ],
+      "tick_font_pt": 9.0
+    }
   },
-
   "scale": {
     "measured_from": "scale-bar tick x-positions (pt): 10 -> 257, 20 -> 289, 30 -> 322",
     "pt_per_10_units": 32.5,
     "units": "feet (report reports USF and sqf/person)",
     "derived": "1 pt paper = 0.308 ft real = ~93.8 mm real, i.e. roughly 1:266",
-    "confidence": "medium — unit is inferred from the report's imperial metrics, not stated on the drawing"
+    "confidence": "medium \u2014 unit is inferred from the report's imperial metrics, not stated on the drawing"
   },
-
   "tolerances": {
-    "$comment": "How conformance is checked in later phases. Scripted, not eyeballed.",
-    "palette_delta_e": 5.0,
-    "stroke_ratio_pct": 10.0,
-    "note": "Palette tolerance applies to the S/L TARGETS, not to qbiq's hexes — DSource keeps its own hues by standing decision."
+    "$comment": "Concrete acceptance thresholds for check 1, now that real numbers exist. Scripted, not eyeballed.",
+    "zone_fill_saturation_pct": {
+      "target_band": [
+        85,
+        100
+      ],
+      "tolerance": "+/-5 absolute",
+      "outlier_allowed": "one muted service colour at S~28 (IT Room equivalent)"
+    },
+    "zone_fill_lightness_pct": {
+      "target_band": [
+        80,
+        92
+      ],
+      "tolerance": "+/-3 absolute"
+    },
+    "stroke_ratio": {
+      "ladder": {
+        "furniture": 1.0,
+        "walls": 2.0,
+        "room_enclosure": 7.05,
+        "opening_punch": 8.5
+      },
+      "tolerance_pct": 10.0
+    },
+    "background": {
+      "hex": "#ffffff",
+      "delta_e_max": 2.0
+    },
+    "grid_on_paper_profile": {
+      "required": "absent or <=4% opacity"
+    },
+    "note": "Palette tolerance applies to the S/L TARGET BAND, not to qbiq hexes \u2014 DSource keeps its own hues by standing decision."
   },
-
   "out_of_scope_confirmed": [
     "Laiout comparison (no artifact in repo)",
     "3D / rendered images (branch 5)",
     "geometry, extraction, Rust document model"
-  ]
+  ],
+  "profiles": {
+    "$comment": "The ruling: paper MATCHES the measured reference; editor diverges deliberately and says why.",
+    "paper": {
+      "intent": "Faithful implementation of the measured reference. Output parity is the benchmark, and a faithful baseline is the only thing \"beat\" could later be judged against.",
+      "walls": "thin double lines at the walls tier (2x), unfilled \u2014 NO poche",
+      "room_enclosure": "heavy tier (~7x) stroked around the zone polygon, filled with the zone colour",
+      "openings": "punched by overdrawing in WHITE at ~8.5x \u2014 the reference mechanism, a rendering technique worth having regardless",
+      "labels": "service-room abbreviations only, uppercase, ~4.35pt-equivalent at scale",
+      "identification": "LEGEND beside the plan (see required_new_feature)",
+      "grid": "absent",
+      "background": "#ffffff"
+    },
+    "editor": {
+      "intent": "DECLARED DIVERGENCE, with reason: an editing surface needs in-place identification that a presentation page does not. This is a working-tool affordance, not imitation of the reference.",
+      "labels": "quiet in-room text replaces the pill bubbles \u2014 the worst element on screen",
+      "affordances": "hover/selection pills remain editor-only interactive states, never the resting drawing",
+      "grid": "on"
+    }
+  },
+  "required_new_feature": {
+    "$comment": "The measurement revealed a capability gap, not just a styling one.",
+    "legend": "Parity requires a LEGEND \u2014 the reference identifies zones by a swatch-keyed list OUTSIDE the plan, with only 8 tiny service-room abbreviations inside it. DSource has no legend. Build it keyed directly to the zone-fill tokens: paper profile renders it beside the plan on export/sheet; editor profile gains the swatch-keyed list in the side panel if absent. This is the real Phase-2d deliverable."
+  },
+  "beat_variant": {
+    "status": "NOT IMPLEMENTED",
+    "rule": "Earned, not assumed. Only after paper-profile conformance passes may a poche variant be added \u2014 one config flag given the style table \u2014 as ONE EXTRA BLINDED COLUMN in the final grid. No implementation before conformance, no self-declared winner, config-level effort only."
+  }
 }

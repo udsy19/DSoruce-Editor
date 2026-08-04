@@ -454,6 +454,23 @@ Each was learned from a live mistake in this campaign.
    the failure — the rule is not only "the measurer must check", it is "nobody
    promotes an indictment without the artifact being read directly".
 
+7. **The brief is also an instrument** (plan-visual-grammar campaign) — **a
+   reference description inside a brief is UNVERIFIED until Phase 0 confirms it
+   against the primary artifact.** An imitation-shaped claim ("the reference does
+   X, so build X") deserves the same scepticism as an indictment-shaped one.
+   *From:* a styling brief whose three highest-leverage sub-steps described the
+   qbiq reference as using dark wall poche, in-room name/area/pax labels, and
+   near-white zone fills. Measured against the artifact sitting in the repo, the
+   reference uses **none** of those — thin unfilled double-line walls, eight tiny
+   service-room abbreviations with all identification in a legend, and
+   high-saturation pastels at L 80–92%. The brief also asserted a file path and a
+   prior spec (`research/qbiq-workbook-spec.json`) that do not exist, from stale
+   context.
+
+   The instruction was to build to the description; the artifact was two
+   directories away. Checking it — rather than producing a spec that agreed with
+   the brief — is what the phase was for.
+
 **And a standing requirement that falls out of the same discipline: every
 trigger needs a SENSOR.** A trigger without something watching for it is a wish.
 Audited across the campaign:
