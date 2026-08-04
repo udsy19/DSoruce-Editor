@@ -2032,9 +2032,46 @@ export class EditorCanvas {
     this.canvas.addEventListener('mouseleave', this.onLeave)
     this.canvas.addEventListener('wheel', this.onWheel, { passive: false })
     this.canvas.addEventListener('contextmenu', this.onCtx)
-    window.addEventListener('keydown', this.onKey)
-    window.addEventListener('keyup', this.onKeyUp)
     window.addEventListener('resize', this.onResize)
+    this.setActive(true)
+  }
+
+  /** Whether the window-level KEY listeners are currently bound. */
+  private keysBound = false
+
+  /**
+   * Bind or unbind this canvas's window-level keyboard listeners.
+   *
+   * These are on `window` (not the canvas) because the canvas isn't focusable and
+   * shortcuts must work with the pointer anywhere over the editor. The cost is
+   * that they keep firing when the editor is merely HIDDEN — and EditorView is
+   * deliberately never unmounted, so it is hidden behind every wizard step. That
+   * let `Delete` remove a component from a document the user could not see
+   * (133 → 132, no click, no feedback), `p` toggle Presentation, and `Escape`
+   * clear the selection, all from the upload screen.
+   *
+   * The fix is structural rather than a check inside each handler: when the
+   * editor is not the active surface the listeners are NOT BOUND, so a handler
+   * added later inherits the behaviour instead of having to remember a guard.
+   * Mouse and resize listeners stay — the canvas has no pointer events while
+   * `display:none`, and resize must keep the backing store correct so the view
+   * is right the moment it is shown again.
+   */
+  setActive(on: boolean): void {
+    if (on === this.keysBound) return
+    this.keysBound = on
+    if (on) {
+      window.addEventListener('keydown', this.onKey)
+      window.addEventListener('keyup', this.onKeyUp)
+    } else {
+      window.removeEventListener('keydown', this.onKey)
+      window.removeEventListener('keyup', this.onKeyUp)
+      // Drop transient modifier state so returning to the editor doesn't resume
+      // mid-gesture (a Space-pan armed before navigating away, say).
+      this.shiftDown = false
+      this.altDown = false
+      this.spaceDown = false
+    }
   }
   dispose() {
     this.canvas.removeEventListener('mousedown', this.onDown)
@@ -2043,8 +2080,7 @@ export class EditorCanvas {
     this.canvas.removeEventListener('mouseleave', this.onLeave)
     this.canvas.removeEventListener('wheel', this.onWheel)
     this.canvas.removeEventListener('contextmenu', this.onCtx)
-    window.removeEventListener('keydown', this.onKey)
-    window.removeEventListener('keyup', this.onKeyUp)
+    this.setActive(false)
     window.removeEventListener('resize', this.onResize)
     this.containerObserver?.disconnect()
     this.dynEl?.remove()

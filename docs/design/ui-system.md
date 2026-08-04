@@ -326,6 +326,21 @@ The glyph therefore draws exactly `spec.seats` chairs. The *arrangement* of thos
 function of the object's world dimensions and a world seat pitch — so both the count and the layout
 are zoom-invariant by construction, not by threshold tuning.
 
+### 3.6.1 Verification method — how to not fool yourself in the browser
+
+Two rules, learned the hard way while verifying these slices.
+
+1. **After any crash — WebGL especially — `goto` to the same URL + hash does NOT reload.** The page
+   keeps a React root that has already unmounted itself, so the next thing you measure is a corpse.
+   This produced a *false regression*: the app looked broken on a route that doesn't even mount the
+   editor. Force an explicit `location.reload()` before drawing any conclusion. The dangerous version
+   of this mistake is the inverse — a stale *working* DOM answering questions about code that no
+   longer runs, i.e. a **false green**, which is the one that survives review.
+2. **The console is a log of the session, not a description of current source.** During the same
+   check it carried a `Cannot access 'docEmpty' before initialization` from an intermediate HMR build
+   — a real-looking error for code that had already been fixed. Match error timestamps to the current
+   build, or reload and re-read, before believing one.
+
 ### 3.7 Acceptance test for the whole spec
 
 A zoom sweep at 8 / 20 / 45 / 110 / 300 px/m on the same plan, in both canvases, at DPR 1 and 2, in

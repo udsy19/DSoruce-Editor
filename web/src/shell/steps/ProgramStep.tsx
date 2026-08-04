@@ -144,7 +144,8 @@ export function ProgramStep({
   // its kind's requested rooms (or adding one if none was requested).
   const handleAnchorCanvas = (c: DrawingCanvas | null) => {
     dcRef.current = c
-    if (import.meta.env.DEV) (window as unknown as { __programdc: DrawingCanvas | null }).__programdc = c
+    // No per-step dev seam — see SpaceStep: `window.__dc` resolves to the visible
+    // canvas, which is this one while the user is on the Program step.
     if (!c) return
     c.onAnchorDrop = (x, y) => {
       setAnchors((prev) => [...prev, { id: crypto.randomUUID(), kind: anchorKindLive.current, x, y }])

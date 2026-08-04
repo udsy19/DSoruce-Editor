@@ -247,10 +247,27 @@ export interface EditorViewProps {
    *  reload lands straight on the saved floor. Guarded against double-loading the
    *  in-session pick. */
   openPlanId?: string
+  /**
+   * Is the editor the screen the user is actually looking at?
+   *
+   * EditorView is deliberately never unmounted (the wasm doc, canvas transform
+   * and the `__ec` seam must survive navigation), so during every wizard step it
+   * is alive behind the step with `display:none`. That made its window-level
+   * listeners fire on a document nobody could see: `Delete` removed a component
+   * (133 → 132, no click, no feedback), `⌘S` wrote a .dsource file from the
+   * upload screen, `p` toggled Presentation, `Escape` cleared the selection, and
+   * `⌘K` opened the editor's command palette over the wizard.
+   *
+   * The rule is NOT "guard each handler" — that leaves the next handler someone
+   * adds broken by default. It is: **a hidden EditorView does not listen.** This
+   * flag gates the BINDING, so when the editor is not the active surface those
+   * listeners do not exist at all.
+   */
+  active?: boolean
 }
 
 export const EditorView = forwardRef<EditorController, EditorViewProps>(function EditorView(
-  { project = null, openPlanId },
+  { project = null, openPlanId, active = true },
   ref,
 ) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -584,7 +601,11 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
 
   // Global "?" opens the shortcut help; Escape closes it; ⌘S saves. Ignored
   // while typing so it never steals focus from search or program fields.
+  //
+  // NOT BOUND while the editor is hidden behind a wizard step (see `active`):
+  // ⌘S here was writing a .dsource file from the Space upload screen.
   useEffect(() => {
+    if (!active) return
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null
       const typing =
@@ -601,7 +622,23 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [])
+  }, [active])
+
+  // Hand the same active/hidden fact to the canvas, which owns Delete, Escape
+  // and 'p' on its own window listeners. `setActive(false)` UNBINDS them.
+  //
+  // Transient overlays close too. They are React state on a component that never
+  // unmounts, so an open command palette or help sheet SURVIVED navigation into
+  // the wizard: invisible there (the whole subtree is display:none), then still
+  // open when the user came back, over a screen they had since left. A hidden
+  // editor holds no open overlays.
+  useEffect(() => {
+    ecRef.current?.setActive(active)
+    if (!active) {
+      setCmdkOpen(false)
+      setHelpOpen(false)
+    }
+  }, [active, ready])
 
   // Success notices fade on their own; warnings stay until dismissed.
   useEffect(() => {
@@ -714,11 +751,17 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
   const letterMapRef = useRef(letterMap)
   letterMapRef.current = letterMap
 
-  // ⌘K / Ctrl+K toggles the palette (works anywhere). Single-letter tool
-  // shortcuts fire only in 2D, with no modifier, when not typing and the palette
-  // is closed. Presentation 'P' is intentionally NOT here — EditorCanvas.onKey
-  // owns it (re-wiring would toggle twice); `letterShortcuts` already excludes it.
+  // ⌘K / Ctrl+K toggles the palette (works anywhere IN THE EDITOR). Single-letter
+  // tool shortcuts fire only in 2D, with no modifier, when not typing and the
+  // palette is closed. Presentation 'P' is intentionally NOT here —
+  // EditorCanvas.onKey owns it (re-wiring would toggle twice); `letterShortcuts`
+  // already excludes it.
+  //
+  // NOT BOUND while the editor is hidden (see `active`): "anywhere" used to
+  // include the wizard, so ⌘K opened the editor's tool palette over the Space
+  // step.
   useEffect(() => {
+    if (!active) return
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault()
@@ -739,7 +782,7 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [])
+  }, [active])
 
   // The grouped tool dock's data — assembled from the SAME sources the flat rail
   // used (select/wall + CATALOG + CAD_RAIL), so there is still one tool list.
@@ -1128,7 +1171,8 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
                 onChange={() => setDrawVer((v) => v + 1)}
                 onCanvas={(c) => {
                   drawCanvasRef.current = c
-                  if (import.meta.env.DEV) (window as unknown as { __dc: DrawingCanvas | null }).__dc = c
+                  // `window.__dc` is owned by DrawingView now (it resolves to the
+                  // VISIBLE canvas of however many are mounted), so nothing to set.
                 }}
                 price={selItem?.productId ? bindings.get(selItem.productId)?.price : undefined}
                 image={selItem?.productId ? bindings.get(selItem.productId)?.image : undefined}

@@ -210,6 +210,12 @@ export class DrawingCanvas {
    *  The owner assigns the id/kind and re-arms the tool for the next drop. */
   onAnchorDrop: ((x: number, y: number) => void) | null = null
 
+  /** The backing element — read-only, so callers can measure whether this
+   *  instance is the one currently on screen (see DrawingView's `__dc` seam). */
+  get canvasEl(): HTMLCanvasElement {
+    return this.canvas
+  }
+
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas
     const ctx = canvas.getContext('2d')

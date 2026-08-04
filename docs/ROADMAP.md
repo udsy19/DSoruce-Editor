@@ -301,6 +301,29 @@ Audit + design system from a full naive-user walkthrough on the real DWG. Shippi
   headless browser — instantiating `Scene3D` throws and unmounts the app — so only the 2D side is
   browser-proven. Consistent with the existing Track H note that 3D needs a real GPU. Verify on a
   real display before treating this as done.
+- [x] **A hidden EditorView must not listen — data loss on the primary flow.** Chasing the general
+  form of the duplicate-testid bug (one component live in two trees) found the load-bearing version:
+  EditorView is deliberately never unmounted, so during EVERY wizard step it is alive behind the step
+  with `display:none` — and its window-level listeners kept firing on a document nobody could see.
+  Reproduced live on the Space step:
+  | Key | Before | After |
+  |---|---|---|
+  | `Delete` / `Backspace` | **deleted a component, 133 → 132**, no click, no feedback | 222 → 222 |
+  | `⌘S` | **wrote a .dsource file** from the upload screen | not bound |
+  | `p` | toggled Presentation on the hidden canvas | false → false |
+  | `Escape` | cleared the hidden selection | 447 → 447 |
+  | `⌘K` | opened the editor's command palette over the wizard | does not open |
+  | `window.__dc` | resolved to the hidden 300×150 editor canvas | the visible 728px one |
+  The `Delete` case is the serious one: the persisted record still read 133, so the loss surfaced
+  later on the next save or export. **The fix is structural, not a guard per handler** — a guard
+  leaves the next handler someone adds broken by default. `EditorView` takes `active` (AppShell's
+  existing `editorVisible`) and the listeners are NOT BOUND when hidden; `EditorCanvas.setActive()`
+  unbinds its own. Transient overlays (command palette, help) close on deactivate — they were React
+  state on a never-unmounting component, so an open palette survived navigation and was still open on
+  return. `window.__dc` is now a getter resolving to the VISIBLE DrawingCanvas of however many are
+  mounted, replacing three ad-hoc names (`__dc`/`__spacedc`/`__programdc` — the previous answer to
+  the collision was to add more names). Control verified: every shortcut still works in the editor.
+  Rust 134/134, JS 22/22.
 - [ ] Slice 4 — workflow repairs · [ ] Slice 5 — typography/tokens.
 
 ## Track B — Test-fit generator quality (`docs/design/testfit-pro-quality.md`)

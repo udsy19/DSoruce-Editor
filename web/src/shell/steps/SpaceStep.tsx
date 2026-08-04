@@ -265,8 +265,9 @@ export function SpaceStep({
   // Grab the preview canvas + wire the tool callbacks (once, at mount).
   const handleCanvas = (c: DrawingCanvas | null) => {
     dcRef.current = c
-    // Dev/E2E seam for the Space-step preview canvas (mirrors App's __dc/__ec).
-    if (import.meta.env.DEV) (window as unknown as { __spacedc: DrawingCanvas | null }).__spacedc = c
+    // No per-step dev seam: `window.__dc` (DrawingView) now resolves to whichever
+    // DrawingCanvas is actually visible, so this step's preview IS `__dc` while
+    // the user is on it.
     if (!c) return
     c.onAreaChange = (poly) => {
       setAreaPolygon(poly)

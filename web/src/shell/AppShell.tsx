@@ -202,6 +202,12 @@ export function AppShell() {
             ref={editorRef}
             project={activeProject}
             openPlanId={route.name === 'editor' ? route.planId : undefined}
+            // The editor is alive behind every wizard step. `active` is what
+            // stops its window-level listeners existing while it is hidden —
+            // Delete was reaching the invisible document and removing components
+            // from it. Same fact as `editorVisible`, passed down rather than
+            // re-derived, so there is one answer to "is this the live surface".
+            active={editorVisible}
           />
         </div>
       )}
