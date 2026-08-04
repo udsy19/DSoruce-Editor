@@ -41,13 +41,33 @@ and cost lines come out right?
 is the importer's job, covered by `import/*.test.mjs` — a different branch's
 truth, deliberately not conflated with this one.
 
+**Inherited limit, stated plainly.** Mechanical truth verifies the ROLLUP
+CONTRACT against the document. If the document itself miscounts — a wall dedup
+bug, say — truth inherits that error silently, because both read the same
+`Editor.state()`. In scope for this branch to *note*; out of scope to solve.
+
+**Independence requirement — the condition under which `qto-native`'s accuracy
+score means anything.** Where a truth generator and a candidate share logic,
+agreement is tautology rather than verification, and "exact by construction" is
+the warning label for it. Therefore: the truth stays a **deliberately dumb, flat
+summation** over the serialized `Editor.state()` in JS, while `qto-native` is a
+rollup over the in-memory `Document` in Rust — **zero shared aggregation code**.
+Its leaf totals are scored against that independent summation and its hierarchy
+on internal consistency. If the cleanest implementation of `qto-native` ever
+becomes "the code that computes truth, plus grouping", that must be said out
+loud: at that moment its accuracy score stops being evidence and the branch's
+real question narrows to hierarchy-correctness and the class-A-vs-B trade-offs.
+
 **Known limitation of the regression fixture, stated up front.** The ROADMAP
 Track F bug was that *the re-imagine panel's binds never reached the App bindings
 map*, so priced binds surfaced neither price nor supplier. The fixture binds via
 `Editor.assign_product`, i.e. the **core** path — so it tests core → takeoff, and
 the original defect lived in App-state → takeoff, one layer above. It is a real
 regression test for the cost-line invariant but **not** a faithful reproduction of
-that bug. Closing that gap needs an App-level fixture and is recorded as owed.
+that bug. **Due before this branch's merge gate**, not owed indefinitely: "every priced
+binding reaches a cost line" is this branch's pre-registered regression case, the
+historical bug lived at the App layer, and a gate exercising only the core path
+certifies the layer that did not break while skipping the one that did.
 
 ## Pre-registration
 
@@ -92,17 +112,42 @@ export → `ifcopenshell.api.cost` → hierarchical schedule with parametric qua
 links. Needs no new export format, which is why it is the highest-leverage
 candidate on paper.
 
-> **Prediction: our IFC will NOT survive a strict consumer intact.**
-> `export/ifc.ts` hand-writes SPF (`SpfWriter`, `guidGen`, an FNV-1a GUID). Files
-> written that way typically parse but carry no `IfcElementQuantity` /
-> `IfcPropertySet`, and often an incomplete unit assignment and geometric
-> representation context. Concretely predicted: **IfcOpenShell opens the file and
-> finds fewer than 10 % of the 125 components as quantity-bearing entities.**
+The original single prediction conflated two separable questions. Split, and
+sharpened by first reading what `export/ifc.ts` actually emits — which changed
+the answer:
 
-That prediction is cheap and **its failure is the most useful surprise available**
-— if the IFC does survive, we learn the export is exchange-grade, which matters
-far beyond this branch. If it does not, we learn the export is viewer-grade, and
-that is a finding worth having even though it loses the branch.
+**(a) Does the file carry declared quantities?**
+> **Predicted: NO.** Verified by inspection before predicting: the exporter emits
+> **zero** `IFCELEMENTQUANTITY`, `IFCPROPERTYSET` and `IFCRELDEFINESBYPROPERTIES`.
+> So `ifcopenshell.api.cost` will find **0 of 125** components with declared
+> quantities. This is now near-certain rather than a guess, which is why it alone
+> cannot decide the candidate.
+
+**(b) Can IfcOpenShell DERIVE quantities from our geometry anyway?**
+> **Predicted: YES for magnitudes, NO for attribution.**
+>
+> The exporter is better formed than "hand-written SPF" implies. It writes real
+> `IFCEXTRUDEDAREASOLID` over `IFCRECTANGLEPROFILEDEF` — genuine swept solids,
+> not placement-plus-bounding-box — inside a complete
+> `IFCPROJECT → IFCSITE → IFCBUILDING → IFCBUILDINGSTOREY` hierarchy with
+> `IFCRELAGGREGATES`, `IFCRELCONTAINEDINSPATIALSTRUCTURE`, `IFCOWNERHISTORY` and
+> a real `IFCUNITASSIGNMENT`. So predicted derivable, for **≥ 90 % of the 125
+> components**: count (enumeration), footprint area (profile XDim × YDim),
+> volume (profile area × extrusion depth), wall length (extrusion axis).
+>
+> **What is NOT derivable: room attribution.** The exporter emits **zero
+> `IFCSPACE`** and does not export zones at all, so nothing in the file says
+> which room an element sits in. A level → **room** → category → item hierarchy
+> therefore cannot be built from our IFC by any consumer — the information is
+> absent, not merely undeclared.
+
+**Verdicts these distinguish.** (a) fails + (b) succeeds ⇒ the export is
+viewer-grade for properties but exchange-grade for geometry, and `ifc-cost`
+**lives**, with the work moved from reading to deriving. Both fail ⇒ `ifc-cost` is
+dead and the finding is about our exporter. (b)'s attribution half failing while
+its magnitude half succeeds ⇒ `ifc-cost` can produce quantities but not the
+*hierarchy* this branch exists to add, which would be the most interesting
+outcome of the three.
 
 **`qto-native` (class A — hierarchical rollup in the Rust core)** — mechanism:
 derive the hierarchy from `Document` directly, quantities from geometry, no IFC
@@ -115,8 +160,17 @@ ourselves rather than inheriting a standard.
 `ifc-cost` forces the Python service class into existence — the same plumbing
 `raster-roundtrip` is parked on (ADR 0003). Its A/B must therefore price in:
 
-- **Vercel degradation**, mirroring `/api/dwg`'s 503, since the quantity engine
-  cannot run in that sandbox.
+- **Vercel degradation**, mirroring `/api/dwg`'s 503.
+  > **Predicted: ifcopenshell's native code does not run in Vercel serverless**,
+  > so `ifc-cost`'s Vercel story is a 503 exactly like `/api/dwg`. That is a
+  > legitimate class-B cost because it is a PRODUCTION constraint.
+
+  Class-B costs are measured deliberately and scored as their own rows — wheel
+  size, native-dependency footprint, cold-start time, Vercel viability.
+  **Installation difficulty in this sandbox is NOT one of them**: the dev box's
+  package luck says nothing about production plumbing, and recording it would put
+  noise where signal belongs. (For the record, `ifcopenshell 0.8.5` installed
+  without incident.)
 - **Round-trip proof** that our IFC is well-formed enough to consume — valuable
   even if `ifc-cost` loses.
 - **Offline capability**, which it fails by construction; the takeoff is
