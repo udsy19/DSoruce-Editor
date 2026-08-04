@@ -324,6 +324,17 @@ Applied at pre-registration, not in results: every branch states its per-candida
 metric validity table before running. Two of the three instances above were caught
 that way; the third was not, and scored two correct engines as failures.
 
+**Amendment — late metrics.** The instance that escaped was the metric written
+*after* seeing the candidates' shapes, which is exactly when a metric is most at
+risk of being fitted to what exists rather than defined over what is valid. So:
+
+> **Any metric added after candidates exist is POST-HOC. It must be marked as
+> such in the ADR, carry its own per-class validity declaration at the moment of
+> addition, and its readings are ADVISORY until it survives one round it was not
+> shaped by.**
+
+Pre-registered metrics earn scores; late metrics earn scrutiny first.
+
 ## Adoption
 
 `qto-native` is shipped:
