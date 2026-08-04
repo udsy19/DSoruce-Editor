@@ -279,10 +279,44 @@ Make generated plans read like a senior architect's work, not a diagram.
 ## Track C — Qbiq-grade deliverables (`docs/reference/qbiq/`)
 - [x] **Space-planning report PDF** — cover, 3D-tour page, A/B/C KPI-rail + colored plan + legend,
   summary (comparison table + radar + space-mix). `export/report.ts`.
-- [x] **Quantity takeoff Excel** — hand-rolled .xlsx, per-room BOM + wall schedule, ₹. `export/takeoff.ts`.
+- [x] **Quantity takeoff Excel** — superseded by the 12-sheet parity workbook below;
+  `export/takeoff.ts`'s own 4-sheet xlsx layer and wall classification are deleted.
 - [x] DXF · [x] PDF sheet · [x] IFC (BIM) · [x] OBJ+MTL · [x] PNG · [x] CSV.
-- ⏸ **Photoreal renders** — deprioritized (needs 3D-asset library + path tracer / cloud render).
-- [ ] **RVT** — native Revit is proprietary; we export IFC (imports to Revit). Revit sample = web viewer.
+- [x] **Photoreal renders** — shipped (was deprioritized as "needs a path tracer"; delivered instead
+  with an offscreen tier: Neutral tone mapping → GTAO → SMAA, VSM soft shadows). `export/roomRenders.ts`.
+- [ ] **RVT** — native Revit is proprietary; we export IFC (imports to Revit). Superseded in practice by
+  the self-hosted `/share/<id>` GLB viewer below, which is what the Revit sample was actually for.
+
+### Qbiq output parity — the deliverable pack (10/10 acceptance gates green)
+Reference decomposed to machine-checkable specs in `docs/reference/qbiq/spec/`; gates in
+`scripts/gates/` (`run-all.sh` is the only trusted signal). One `Editor` state feeds every artifact,
+so the workbook, plan, renders, video and viewer cannot disagree.
+- [x] **12-sheet formula-wired QTO workbook** — `export/qtoWorkbook.ts`. qbiq's exact sheet order;
+  `General` is the only place a number is stated, everything else reaches it by reference/VLOOKUP/SUMIF
+  at **100% formula density** (300/300 body cells). Verified live: +1000 on a unit price moved the total
+  by exactly 1000 × 2.60 m × 158.70 m via LibreOffice recalc. Embeds the plan + per-room thumbnails.
+- [x] **General SpreadsheetML writer** — `export/workbook.ts` (`buildXlsx`). Formulas, drawing layer
+  (two/oneCellAnchor + EMU), gridline control, col/row sizing, merges, data validations, ARGB fills.
+  Hand-rolled, so the export stays client-side; `takeoff.ts` migrated onto it, zero duplicate paths.
+- [x] **Core quantity truth** — `crates/ds-core/src/quantity.rs`. Geometric `WallType` classification
+  (NOT the `generated` flag — an imported DWG has every wall `!generated`), per-type lengths, door
+  counts, room areas, wall heights. Half Drywall reports an honest 0.00 m.
+- [x] **Highlighted plan + room thumbnails** — `export/planGraphic.ts` / `roomThumbs.ts`, deterministic
+  (byte-identical re-render), colours imported from `spec/palette.json` so legend and linework can't drift.
+- [x] **Per-room renders** — four 3840×2160 stills on a shared material theme (`three/materialTheme.ts`),
+  floor materials resolved through `FINISH_SPEC` so renders and workbook agree.
+- [x] **Walkthrough video** — `export/walkthrough.ts`, 43 s H.264 1080p30, circulation-graph route,
+  branded title card + in-scene screens.
+- [x] **Shareable web 3D viewer** — `/share/<id>` serving a GLB into `web/viewer.html`. No Autodesk,
+  no token, no CDN. `deploy/shareStore.ts` is one implementation shared by dev middleware and prod.
+- [x] **One-action pack** — `export/deliverablePack.ts`: one click → xlsx + ground truth + plan + 4
+  renders + mp4 + share link. Two sinks (server → `out/`, zip → download); in-browser H.264 via
+  WebCodecs with a hand-written MP4 muxer (`export/mp4.ts`) when no GPU host is available.
+- Follow-ups (tracked in `reports/ORCHESTRATOR_LOG.md`): **Perimeter windows measures 0.00 m** where the
+  reference bills 125.47 m — no plate wall sets `glazing: true`, so facade runs bill as Perimeter wall;
+  fix belongs in the generator/importer. **Meeting rooms report headcount 0** until
+  `editor/furniture.ts` stops drawing implied seat glyphs (exact blocks in `reports/B1-3.md` §3).
+  Tier-2 3D room thumbnails. `Conference_room` is the weakest still (5×4 m room, no camera solution).
 - [x] **Report cover branding + A/B/C differentiation** — client logo focal on the cover, project/address/
   floor laid out qbiq-style; per-alt accent chips + winner ribbons (shared `computeWinners` w/ the S7
   gallery); summary highlights each metric's leading alternative. (Building *photo* still N/A — no source.)

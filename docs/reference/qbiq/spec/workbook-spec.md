@@ -278,20 +278,20 @@ Body rows **5–35** = **31 rooms**, and exactly **31 thumbnails** — one per r
 | `BOM - Walls` | collapsed into *Wall Schedule* | **split out**; re-wire to General |
 | `dropdowns` | absent | **new** — 6 lists |
 
-### Blocking capability gaps in the current XLSX writer
+### XLSX writer capabilities parity requires — ALL IMPLEMENTED
 
-`takeoff.ts` hand-writes OOXML (`sheetXml`/`takeoffToXlsx`) and emits **only** `inlineStr` and numeric cells. To hit parity it must also gain:
+This section was originally a gap analysis: `takeoff.ts` hand-wrote OOXML and emitted **only** `inlineStr` and numeric cells. All seven gaps are now closed in `web/src/export/workbook.ts` (`buildXlsx`), and `takeoff.ts` was migrated onto it with its inline OOXML layer deleted, so no duplicate xlsx path remains:
 
-1. **Formula cells** — `<c><f>…</f></c>`. Nothing in the writer emits `<f>` today.
-2. **Image embedding** — `xl/media/*`, `xl/drawings/drawing{n}.xml`, drawing rels, `[Content_Types]` overrides for png/jpeg. Currently no drawing layer at all.
-3. **`sheetView showGridLines="0"`** — currently every sheet ships with gridlines on.
-4. **Column widths / row heights** (`<cols>`, `<row ht=…>`) — needed for the 180pt thumbnail rows and the 70-wide column B.
+1. **Formula cells** — `<c><f>…</f></c>`, with `fullCalcOnLoad` so cached values are unneeded.
+2. **Image embedding** — `xl/media/*`, `xl/drawings/drawing{n}.xml`, drawing rels, `[Content_Types]` overrides. two/oneCellAnchor with EMU offsets.
+3. **`sheetView showGridLines="0"`** per sheet.
+4. **Column widths / row heights** (`<cols>`, `<row ht=…>`) — the 140pt thumbnail rows.
 5. **Merged cells** (`<mergeCells>`) — the legend header and `General`'s 5 category bands.
-6. **Data validation** (`<dataValidations>`).
-7. **Solid fills in `styles.xml`** — the palette currently has 2 fills and no colours.
+6. **Data validation** (`<dataValidations>`) against the `dropdowns` sheet ranges.
+7. **Solid ARGB fills in `styles.xml`** — the legend chips match `palette.json` byte-exactly.
 
 
-These are additive to the existing `zipStore`/`esc`/`cellXml` scaffolding — extend `takeoff.ts`, do not fork it (`.claude/rules/no-bloat.md`).
+One trap worth keeping in mind: a twoCellAnchor's extent must NOT be derived from `to.colOff - from.colOff` unless the anchor starts and ends in the same cell — across cells that omits every intervening column and collapses the image (the 1040x780 plan rendered as a ~19x3 px smudge, invisibly to every structural gate). Cross-cell anchors size from the image's intrinsic pixels.
 
 
 ## 10. Gate coverage

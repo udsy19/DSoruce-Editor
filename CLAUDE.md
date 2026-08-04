@@ -96,7 +96,12 @@ Working: 2D editor + CAD drafting layer (draw/modify/trim/extend/fillet/hatch/la
 DWG/DXF import with plate extraction + keep-outs, autonomous test-fit on irregular plates,
 circulation scoring, 2D↔3D viewer incl. Enscape-like render tier, live material bank (₹),
 AI drivers (Local/Cerebras/Claude) + Claude soft-goal evaluator, exports (CSV/PNG/DXF/PDF/IFC/OBJ),
-.dsource save/open, plan library + compare + version history (IndexedDB). Rust: 50 tests.
+.dsource save/open, plan library + compare + version history (IndexedDB).
+**Qbiq output parity pack** — one action emits a 12-sheet formula-wired QTO workbook (embedded plan +
+per-room thumbnails, live pricing), four 4K room renders, a 43 s 1080p walkthrough mp4, and a
+self-hosted `/share/<id>` 3D viewer; all derived from one `Editor` state. Acceptance gates live in
+`scripts/gates/` — **`bash scripts/gates/run-all.sh` is the only trusted signal** (10/10 green).
+Rust: 147 tests.
 Parked: multiplayer (designed in `docs/design/multiplayer.md`; a presence milestone was built and
 reverted — recover from commits `3a923ea` + `706c7cf` when resumed). Next: cloud plan sync.
 See `research/08-open-questions.md`.
