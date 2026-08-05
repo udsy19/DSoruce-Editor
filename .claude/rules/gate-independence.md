@@ -145,6 +145,22 @@ independently.** The fix re-derives glazed runs from wall geometry and matches d
 *that*; its falsification drops a segment **inside** the merge, proving the anchor reaches the
 geometry rather than the producer's list.
 
+## Reporting convention: scope every negative claim
+
+An Orchestrator aggregates agent reports, and **an unscoped negative aggregates into a global one.**
+Say "untouched **by this change**" or "untouched **in this mission**" — never bare "untouched".
+
+**Worked case.** An agent correctly reported `planGraphic.ts` untouched — true of *its* changes (a
+`placeNear` signature addition whose default path is byte-identical). A different agent had legitimately
+routed that file through the shared naming helper in the same mission. Aggregated without its scope,
+the true claim became a false one, and the final commit was one hygiene check away from asserting it.
+This is distinct from the failures above: not a gate trusting the wrong source, but a **scoped truth
+presented without its scope.**
+
+Same rule for "no regression", "nothing else changed" and "byte-identical" — name the population the
+claim covers. `git diff --cached --stat` against the report before committing costs ten seconds and
+catches the residue.
+
 ## In practice
 
 - **Derive from bytes or core state.** Segment the image; parse the workbook; re-project from the
