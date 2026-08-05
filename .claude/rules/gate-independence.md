@@ -47,6 +47,49 @@ Pair it with a falsification: build the wrong artifact the gate is supposed to c
 **fails**. Where practical, first reproduce the exploit against the *old* gate to confirm you are
 measuring the same thing (G6's fix reproduced the original 35-check pass exactly before closing it).
 
+## The positive complement: write the gate first, and watch it fail first
+
+Independence says what a gate must not consume. Writing it **before** the fix is what buys you a gate
+calibrated against ground truth instead of against the fix.
+
+**The canonical case — E7, eight rooms vs four.** A hand-written defect report identified four rooms
+whose furniture the plan billed but hid (145, 147, 155, 171). The gate was written first and watched
+fail on the unfixed plan. It named **eight**: `12(0.06) 155(0.15) 21(0.21) 188(0.21) 171(0.28)
+179(0.38) 147(0.44) 145(0.48)`. **The defect report had undercounted its own defect by half**, and
+rooms 12, 21, 179 and 188 would have shipped — a gate written afterwards is calibrated to pass
+whatever the fix produced, so it can only ever confirm the fix, never audit it.
+
+The same run also showed why the *shape* of the assertion has to be chosen before the fix, not after:
+E7's reported cause (a symbol library skip-drawing unknown types) was wrong, and the obvious
+count-exact **emission** gate would have passed while the defect persisted — the emission half scored
+**189/189 on the unfixed plan**. The furniture was drawn and then painted over. Hence the corollary
+already stated below: *emission is not visibility.*
+
+## Corollary: never calibrate against the population under test
+
+**A baseline or reference population drawn from the artifact under test inherits its defects.
+Calibrate against an external anchor, or against a property that holds by construction.**
+
+Two instances, one level apart, both caught only by re-measuring:
+
+- **A contaminated reference certifying its own contamination.** The first visibility metric normalised
+  each furniture instance against its same-size siblings. It was blind to rooms 145/147, whose only two
+  0.6×0.6 tables are *each other's only peer* — and both were occluded. Relative to a defective
+  population, each defect looked normal.
+- **A threshold implicitly calibrated on one population's conditions.** The first ink classifier
+  separated furniture from labels with `b > r`. That held on the seeded pack and was silently
+  invalidated by the DWG pack, whose pink circulation wash lifts red — it scored those chairs `0.00`
+  even *after* they were fixed.
+
+The landing fix is the rule in action: furniture is cool-neutral **by palette definition**
+(`b > g`), labels are pure neutral **by renderer definition** (`r == g == b`). Both anchors come from
+specifications the gate can cite, not from the data being judged. Prefer, in order: a property true by
+construction → an external specification (`palette.json`, `FINISH_SPEC`) → a population explicitly
+verified clean. Never the artifact under test.
+
+Watch for this in review — it is the third member of the family, alongside producer-supplied metadata
+and emission-vs-visibility, and it is the hardest to see because the measurement looks rigorous.
+
 ## In practice
 
 - **Derive from bytes or core state.** Segment the image; parse the workbook; re-project from the
