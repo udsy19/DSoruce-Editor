@@ -13,7 +13,7 @@ import { fmtMeters } from '../cad/dimEdit'
 import type { DocComponent, DocState, DocWall, DocZone } from '../types/doc'
 import {
   planStyle, strokePx, C, DECISION_DOT, ZONE,
-  WHITE, BLACK, THUMB_FILL, THUMB_OTHER, hexToRgba, CORE_POCHE,
+  WHITE, BLACK, THUMB_FILL, THUMB_OTHER, hexToRgba, CORE_POCHE, CHROME,
 } from './planStyle'
 import type { FillStyle } from './planStyle'
 import type { Metrics, ZoneStat } from '../types/metrics'
@@ -121,7 +121,7 @@ export function drawGlazing(v: PaintView, a: Pt, b: Pt) {
   const ny = (dx / len) * o
   ctx.lineCap = 'round'
   ctx.strokeStyle = C.wall
-  ctx.lineWidth = 1
+  ctx.lineWidth = strokePx('wall', v.scale)
   ctx.beginPath()
   ctx.moveTo(pa.x + nx, pa.y + ny)
   ctx.lineTo(pb.x + nx, pb.y + ny)
@@ -345,7 +345,7 @@ export function drawZones(
       ctx.closePath()
       ctx.fill()
       ctx.strokeStyle = hexToRgba(pal.line, 0.45)
-      ctx.lineWidth = 1
+      ctx.lineWidth = strokePx('roomEnclosure', v.scale)
       ctx.stroke()
       if (z.zone_type === 'Core') {
         let bminX = Infinity
@@ -425,7 +425,7 @@ export function drawZones(
       // Soft inset border (secondary to walls) — a refined architectural edge,
       // not a saturated toy outline.
       ctx.strokeStyle = hexToRgba(pal.line, 0.45)
-      ctx.lineWidth = 1
+      ctx.lineWidth = strokePx('roomEnclosure', v.scale)
       ctx.strokeRect(p.x + 0.5, p.y + 0.5, w - 1, h - 1)
       if (z.zone_type === 'Core') {
         fillWith(
@@ -496,7 +496,7 @@ export function drawZoneTags(v: PaintView, tags: ZoneTag[]) {
     ctx.fill()
     ctx.restore()
     ctx.strokeStyle = hexToRgba(t.color, 0.28)
-    ctx.lineWidth = 1
+    ctx.lineWidth = CHROME.hairline
     roundRect(ctx, px + 0.5, py + 0.5, pillW - 1, pillH - 1, (pillH - 1) / 2)
     ctx.stroke()
 
@@ -526,7 +526,7 @@ export function drawRoomSelection(
 
   ctx.save()
   ctx.strokeStyle = C.accent
-  ctx.lineWidth = 2
+  ctx.lineWidth = CHROME.selection
   ctx.setLineDash(ring ? [6, 4] : [])
   ctx.strokeRect(box.x + 0.5, box.y + 0.5, box.w - 1, box.h - 1)
   ctx.setLineDash([])
@@ -551,7 +551,7 @@ export function drawRoomSelection(
   // 8 white square handles with an accent border.
   ctx.fillStyle = WHITE
   ctx.strokeStyle = C.accent
-  ctx.lineWidth = 1.5
+  ctx.lineWidth = CHROME.handle
   for (const p of handlePoints(box)) {
     ctx.beginPath()
     ctx.rect(p.x - 4, p.y - 4, 8, 8)
@@ -613,7 +613,7 @@ export function drawComponent(v: PaintView, c: DocComponent, selected: boolean) 
   // selection corner ticks (CAD handles)
   if (selected) {
     ctx.strokeStyle = C.accent
-    ctx.lineWidth = 1.5
+    ctx.lineWidth = CHROME.handle
     const t = 6
     const L = -w / 2
     const R = w / 2
@@ -697,7 +697,7 @@ export function drawDimLabel(
     ctx.fill()
     if (!editable) {
       ctx.strokeStyle = hexToRgba(C.accent, 0.28)
-      ctx.lineWidth = 1
+      ctx.lineWidth = CHROME.hairline
       roundRect(ctx, x + 0.5, y + 0.5, w - 1, h - 1, 4)
       ctx.stroke()
     }
@@ -729,7 +729,7 @@ export function drawSummary(v: PaintView, w: number, h: number, m: Metrics) {
   ctx.fillStyle = C.surface
   ctx.fillRect(x, y, W, H)
   ctx.strokeStyle = C.thumbBorder
-  ctx.lineWidth = 1
+  ctx.lineWidth = CHROME.hairline
   ctx.strokeRect(x + 0.5, y + 0.5, W - 1, H - 1)
 
   ctx.textAlign = 'left'
@@ -770,7 +770,7 @@ export function drawRulers(v: PaintView, w: number, h: number, cursor: Pt | null
   ctx.font = '9px "Hanken Grotesk", system-ui, sans-serif'
   ctx.fillStyle = C.rulerText
   ctx.strokeStyle = C.rulerTick
-  ctx.lineWidth = 1
+  ctx.lineWidth = CHROME.hairline
 
   // top ruler (world X)
   const xStart = Math.ceil(v.toWorld(RULER, 0).x / stepM) * stepM
@@ -805,7 +805,7 @@ export function drawRulers(v: PaintView, w: number, h: number, cursor: Pt | null
   if (cursor) {
     const cs = v.toScreen(cursor.x, cursor.y)
     ctx.strokeStyle = C.accent
-    ctx.lineWidth = 1
+    ctx.lineWidth = CHROME.hairline
     if (cs.x >= RULER) line(ctx, cs.x + 0.5, 0, cs.x + 0.5, RULER)
     if (cs.y >= RULER) line(ctx, 0, cs.y + 0.5, RULER, cs.y + 0.5)
   }
@@ -887,7 +887,7 @@ export function renderThumb(st: DocState, w = 200, h = 140): string {
   ctx.strokeStyle = C.thumbWall
   ctx.lineCap = 'round'
   for (const wl of st.walls) {
-    ctx.lineWidth = Math.max(1, wl.thickness * k)
+    ctx.lineWidth = Math.max(CHROME.hairline, wl.thickness * k)
     ctx.beginPath()
     ctx.moveTo(X(wl.a.x), Y(wl.a.y))
     ctx.lineTo(X(wl.b.x), Y(wl.b.y))

@@ -73,6 +73,28 @@ const MAX_STROKE_PX = 6
  * weights are paper-relative too — but the parameter is threaded now so 2b can
  * turn it on without touching call sites.
  */
+/**
+ * CHROME widths — editing affordances, in CSS px.
+ *
+ * These are deliberately NOT ladder tiers, and the distinction is the point.
+ * The ladder is a DRAWING convention: it encodes how a plan's marks relate to
+ * each other on a sheet, measured from the qbiq reference. A selection handle,
+ * a ruler tick and a hover chip are not marks in the drawing — they are UI over
+ * it, they vanish from `paper` output, and forcing them onto the ladder would
+ * corrupt the ratios with values that have nothing to do with draughting.
+ *
+ * They still live here, so "no magic width in a renderer" holds for both kinds.
+ * If you are adding a width, the question is which of the two it is.
+ */
+export const CHROME = {
+  /** Hairline borders on affordances (tag pills, thumbnails, ruler ticks). */
+  hairline: 1,
+  /** Resize/selection handles and corner ticks. */
+  handle: 1.5,
+  /** Active selection outline — the heaviest chrome mark. */
+  selection: 2,
+} as const
+
 export function strokePx(tier: Tier, _pixelsPerMeter: number): number {
   const raw = BASE_STROKE_PX * TIER[tier]
   return Math.min(MAX_STROKE_PX, Math.max(MIN_STROKE_PX, raw))

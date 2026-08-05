@@ -26,7 +26,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 // states the rest. Guarding both early would force 2b's work into 1's commit.
 const RULES_ALL = ['hex', 'rgba', 'lineWidth']
 const GUARDED = [
-  ['web/src/editor/paint.ts', ['hex', 'rgba']],
+  ['web/src/editor/paint.ts', RULES_ALL],
   ['web/src/import/PlacePalette.tsx', RULES_ALL],
   ['web/src/ui/LibraryPanel.tsx', RULES_ALL],
   ['web/src/three/Minimap.tsx', ['hex', 'rgba']],
@@ -38,8 +38,12 @@ const GUARDED = [
 // the TS zone palette with nothing enforcing agreement; this is that lesson.
 const MIRRORS = [['ACCENT_AMBER', '--accent-amber']]
 const PENDING = [
-  ['web/src/editor/paint.ts', 'Phase 2b — raw lineWidth (colour IS guarded); the ladder rewrites these call sites'],
-  ['web/src/three/Minimap.tsx', 'Phase 2b — raw lineWidth (colour IS guarded)'],
+  // Minimap is EXEMPT from the lineWidth rule, not pending on it. It is the one
+  // canvas here that draws in DEVICE px: it never calls setTransform(dpr) and
+  // scales every coordinate by dpr itself. strokePx returns CSS px, so routing
+  // it through the ladder would introduce the exact INVERSE of the bug fixed in
+  // e89654b -- half-weight strokes on retina. Declared, not overlooked.
+  ['web/src/three/Minimap.tsx', 'EXEMPT (lineWidth) — draws in device px by construction, not CSS px'],
   ['web/src/editor/furniture.ts', 'Phase 2c — LOD rework touches every lineWidth here anyway'],
 ]
 /** The table itself and the stylesheet are where literals legitimately live. */
@@ -49,7 +53,10 @@ const HEX = /#[0-9a-fA-F]{3,8}\b/g
 // obfuscate the string rather than move a value, which is the opposite of the
 // point. Require the first argument to be a digit.
 const RGBA = /\brgba?\(\s*\d/g
-const LINEWIDTH = /lineWidth\s*=\s*(?!.*strokePx)/g
+// A width must come from the table: a ladder tier (strokePx) for marks in the
+// drawing, or a named CHROME width for editing affordances. Anything else is a
+// magic number.
+const LINEWIDTH = /lineWidth\s*=\s*(?!.*(strokePx|CHROME\.|widthPx))/g
 
 let violations = 0
 for (const [rel, rules] of GUARDED) {

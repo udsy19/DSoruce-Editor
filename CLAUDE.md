@@ -64,6 +64,14 @@ cd web && pnpm dev               # frontend only (uses existing wasm bindings)
 - **Units are meters** in the core; the frontend owns pixels-per-meter scale.
 - **Typography carries meaning:** all numeric/dimension data uses **IBM Plex Mono**; UI uses
   **Space Grotesk**. A single warm-amber accent (`#E8A13C`) sits on deliberately cool content colors.
+- **The amber accent means "AI action", and only that.** Amber (`--accent-amber`, or
+  `ACCENT_AMBER` on canvas) marks *the act of generating* — the sparkle FAB, Regenerate,
+  autonomous test-fit. Choosing among already-generated options is **navigation** and stays
+  `--accent` blue, including candidate-card selection. When adding a control, ask which of the two
+  it is; do not reach for amber because a control feels important.
+  Never hardcode either colour: `#E8A13C` was once written at 21 sites plus 14 more expanded to
+  `rgba(232, 161, 60, …)`, which no search for the hex could find. `bench/style-gate.mjs` enforces
+  this, including that `ACCENT_AMBER` and `--accent-amber` stay equal.
 - **No bloat** (`.claude/rules/no-bloat.md`): search for an existing symbol before adding a new one;
   delete superseded code in the same change.
 
