@@ -56,7 +56,7 @@ await build({
     },
   ],
 })
-const { groupPlans, listProjects, resolveProject, assignToProject, buildSavedPlan, putPlan } =
+const { groupPlans, listProjects, resolveProject, assignToProject, buildSavedPlan, putPlan, pickOpenFloor, snapshotIsEmpty } =
   await import(pathToFileURL(outFile).href)
 
 // --- fixtures --------------------------------------------------------------
@@ -239,6 +239,48 @@ await test('buildSavedPlan: project opt stamps the additive fields', () => {
 await test('buildSavedPlan: without project opt the fields are absent (old shape)', () => {
   const p = buildSavedPlan(fakeEc, 'Baseline')
   assert.ok(!('projectId' in p) && !('projectName' in p) && !('floor' in p))
+})
+
+// --- reopening a project: the chosenPlanId pointer is checked, not trusted ---
+// Records written before the empty-plate fix can point at a 108-byte empty
+// plan: the Generate step searched a plate that never loaded, and opening a
+// candidate saved emptiness AND repointed the project at it. Reopening then
+// landed on "Start your plan" while the real floor sat unreferenced — which is
+// indistinguishable, from the user's side, from having lost the work.
+const EMPTY_SNAP = JSON.stringify({ walls: [], components: [], zones: [] })
+const REAL_SNAP = JSON.stringify({ walls: [{ id: 1 }], components: [{ id: 2 }] })
+const withSnap = (snap, over = {}) => makePlan({ file: { format: 'dsource', version: 1, savedAt: 'x', snapshot: snap, program: {} }, ...over })
+
+await test('snapshotIsEmpty: geometry vs none vs garbage', () => {
+  assert.equal(snapshotIsEmpty(EMPTY_SNAP), true)
+  assert.equal(snapshotIsEmpty(REAL_SNAP), false)
+  assert.equal(snapshotIsEmpty(''), true)
+  assert.equal(snapshotIsEmpty('not json'), true)
+})
+
+await test('pickOpenFloor: a healthy pointer is honoured', () => {
+  const good = withSnap(REAL_SNAP, inProject('pZ', 'Z', 'L1', 0))
+  const other = withSnap(REAL_SNAP, inProject('pZ', 'Z', 'L2', 1))
+  assert.equal(pickOpenFloor([other, good], 'pZ', good.id), good.id)
+})
+
+await test('pickOpenFloor: an empty pointer falls back to the newest real floor', () => {
+  const broken = withSnap(EMPTY_SNAP, inProject('pZ', 'Z', 'L3', 2))
+  const newest = withSnap(REAL_SNAP, inProject('pZ', 'Z', 'L2', 1))
+  const older = withSnap(REAL_SNAP, inProject('pZ', 'Z', 'L1', 0))
+  // Input arrives updatedAt-desc; `newest` precedes `older`.
+  assert.equal(pickOpenFloor([broken, newest, older], 'pZ', broken.id), newest.id)
+})
+
+await test('pickOpenFloor: no real floor anywhere → null (caller sends the user to Space)', () => {
+  const broken = withSnap(EMPTY_SNAP, inProject('pQ', 'Q', 'L1', 0))
+  assert.equal(pickOpenFloor([broken], 'pQ', broken.id), null)
+})
+
+await test('pickOpenFloor: another project\'s real floor is never borrowed', () => {
+  const mineEmpty = withSnap(EMPTY_SNAP, inProject('pQ', 'Q', 'L1', 0))
+  const theirs = withSnap(REAL_SNAP, inProject('pR', 'R', 'L1', 0))
+  assert.equal(pickOpenFloor([mineEmpty, theirs], 'pQ', mineEmpty.id), null)
 })
 
 console.log(`\n${passed} tests passed${process.exitCode ? ' (with failures)' : ''}`)

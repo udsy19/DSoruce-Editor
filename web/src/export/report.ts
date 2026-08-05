@@ -269,17 +269,34 @@ export function computeWinners(kpis: AltKpis[]): Record<number, string[]> {
   const out: Record<number, string[]> = {}
   if (kpis.length < 2) return out
   const add = (i: number, label: string) => (out[i] = [...(out[i] ?? []), label])
-  const argmax = (f: (a: AltKpis) => number) => {
+  /**
+   * Index of the best alternative on `f`, or null when NOBODY is any good at
+   * it — every alternative scores 0.
+   *
+   * "Best of nothing" is not a superlative. Reloading the Generate step used to
+   * run the search on an empty plate and return three 0-workstation candidates;
+   * a plain argmax dutifully crowned the first one **"Most seats · Best
+   * daylight · Best density"**, three gold stars on a blank sheet. The bug that
+   * produced the empty plate is fixed at its source, but the rule belongs here:
+   * this function is shared by the gallery AND the branded report, so anything
+   * that can hand it a degenerate field — a plate that fails to trace, a
+   * program nothing fits, a path not yet written — inherits the honesty for
+   * free instead of re-earning it.
+   */
+  const argmax = (f: (a: AltKpis) => number): number | null => {
     let bi = 0
     kpis.forEach((a, i) => {
       if (f(a) > f(kpis[bi])) bi = i
     })
-    return bi
+    return f(kpis[bi]) > 0 ? bi : null
   }
-  add(argmax((a) => a.seats), 'Most seats')
-  add(argmax((a) => a.daylightPct), 'Best daylight')
+  const award = (i: number | null, label: string) => {
+    if (i !== null) add(i, label)
+  }
+  award(argmax((a) => a.seats), 'Most seats')
+  award(argmax((a) => a.daylightPct), 'Best daylight')
   // Densest = most workstations per m² of net internal area.
-  add(argmax((a) => (a.niaM2 > 0 ? a.workstations / a.niaM2 : 0)), 'Best density')
+  award(argmax((a) => (a.niaM2 > 0 ? a.workstations / a.niaM2 : 0)), 'Best density')
   return out
 }
 

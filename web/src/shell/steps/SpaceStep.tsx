@@ -32,6 +32,7 @@ import type { DrawingCanvas } from '../../import/DrawingCanvas'
 import type { Drawing } from '../../import/types'
 import { isRasterFile, loadRasterBackdrop, type Backdrop } from '../../import/rasterImport'
 import { SF_PER_M2 } from '../../util/units'
+import { resumeDrawing } from '../resume'
 
 /** Heal gap (m) persisted with the toggle — the healWalls default (a hairline
  *  partition break, below a door leaf). The Space step exposes on/off only. */
@@ -186,7 +187,9 @@ export function SpaceStep({
       const d = rec?.draft?.drawing ?? null
       if (d) {
         setDrawing(d)
-        controller.current?.loadDrawing(d)
+        // Shared with GenerateStep — see `shell/resume.ts` for why every step
+        // that touches the plate has to go through one function.
+        resumeDrawing(controller.current, rec)
         readyRef.current?.(true)
       }
       if (rec?.draft?.areaPolygon) setAreaPolygon(rec.draft.areaPolygon)

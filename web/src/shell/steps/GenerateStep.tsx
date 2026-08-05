@@ -23,16 +23,19 @@ import { buildReportModel, computeWinners, type AltKpis } from '../../export/rep
 import { evaluateCandidates, evaluatorAvailable, type SoftVerdict } from '../../ai/evaluator'
 import { getProject, updateDraft, updateProject, type ProjectRecord } from '../../persist/projects'
 import { defaultSpec, programSpecToProgram } from '../../program/spec'
+import { snapshotIsEmpty } from '../../persist/plans'
 import { navigate } from '../route'
+import { resumeDrawing } from '../resume'
 import { Icon } from '../../ui/icons'
 
 const LETTER = (i: number) => String.fromCharCode(65 + (i % 26))
+
 
 // Category-winner badges (Most seats / Best daylight / Best density) are
 // computed by the shared `computeWinners` in export/report.ts, so this gallery
 // and the exported space-planning report always agree.
 
-type Phase = 'running' | 'done' | 'error'
+type Phase = 'running' | 'done' | 'error' | 'noplate'
 // The soft-goal (Claude) pass runs across the WHOLE gallery, so every card
 // shares one state: 'off' (no key / batch too weak / failed → no AI on any
 // card), 'pending' (request in flight → all cards show a loading line), or
@@ -72,6 +75,10 @@ export function GenerateStep({
     readyRef.current?.(false)
     const rec = (await getProject(projectId)) ?? null
     projectRef.current = rec
+    // COLD START: the editor holds the parsed plate in React state, so a reload
+    // straight onto this step arrives with none. Re-push it from the draft
+    // before arming the editor (shell/resume.ts).
+    const hasPlate = resumeDrawing(controller.current, rec)
     const spec = rec?.draft?.spec ?? defaultSpec(rec?.draft?.readouts?.usableAreaM2 ?? null)
     const program = programSpecToProgram(spec)
     // Re-arm the editor authoritatively: rebuild the plate + push area/markers/
@@ -86,6 +93,23 @@ export function GenerateStep({
       silent: true,
     })
     controller.current?.setProgram(program)
+    // REFUSE TO INVENT A RESULT. Whatever the reason the plate is empty — a
+    // cold start with no persisted drawing, a project that never got an upload,
+    // a future path nobody has thought of yet — the generator will happily run
+    // on nothing and return three 0-workstation "alternatives", which the
+    // gallery then badges and the user can save as a floor. There is no honest
+    // gallery to draw here, so draw none. This is checked AFTER `testFit` (the
+    // plate is what testFit builds) and BEFORE the search, so no empty
+    // candidate ever reaches state.
+    // `hasPlate` is authoritative for "this project has no upload"; the wall
+    // count catches "it has one, but it traces to nothing". Reading walls ALONE
+    // was wrong: they may still belong to the project you just navigated away
+    // from.
+    if (!hasPlate || (controller.current?.ec()?.getState().walls.length ?? 0) === 0) {
+      setPhase('noplate')
+      readyRef.current?.(false)
+      return
+    }
     // Let the "generating" state paint before the synchronous wasm search.
     await new Promise((r) => setTimeout(r, 30))
     const res = controller.current?.runGenerate(program, {
@@ -156,6 +180,11 @@ export function GenerateStep({
   }
 
   const openCandidate = async (c: Candidate) => {
+    // Belt to the 'noplate' brace: never let an empty document become the
+    // project's floor. `chosenPlanId` is how a reopened project finds its way
+    // back to the user's work (AppShell §2.4) — pointing it at an empty plan is
+    // indistinguishable from having lost the plan.
+    if (snapshotIsEmpty(c.snap as string)) return
     const rec = projectRef.current
     const proj = rec ? { id: rec.id, name: rec.name, floor: rec.floor ?? '1' } : undefined
     const planId = (await controller.current?.openCandidate(c, proj)) ?? null
@@ -177,6 +206,31 @@ export function GenerateStep({
               The engine generates and scores alternatives against your program, keeping the
               strongest-scoring fits for your criteria.
             </p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (phase === 'noplate') {
+    return (
+      <div className="generate-step" data-testid="generate-step">
+        <div className="generate-error" role="alert" data-testid="generate-noplate">
+          <Icon name="warn" size={16} />
+          <div>
+            <div className="generate-error-lead">There's no floor plate to fit.</div>
+            <p>
+              This project has no CAD plate loaded, so there is nothing to generate against. Go back
+              to <strong>Space</strong> and drop a DWG/DXF — the program you set is kept.
+            </p>
+            <button
+              type="button"
+              className="btn-primary"
+              data-testid="generate-noplate-back"
+              onClick={() => navigate({ name: 'wizard', projectId, step: 'space' })}
+            >
+              Back to Space
+            </button>
           </div>
         </div>
       </div>

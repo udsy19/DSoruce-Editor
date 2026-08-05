@@ -187,6 +187,72 @@ export async function listPlans(): Promise<SavedPlan[]> {
   return plans.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
 }
 
+/**
+ * Does this snapshot carry any geometry at all? ONE predicate, shared by the
+ * Generate step (which must never save an empty candidate as a floor) and the
+ * reopen path below (which must never land a user on one).
+ *
+ * Reads the document rather than a KPI so it stays true if the metrics summary
+ * ever changes shape — the same reason `zone_stats` reads furniture instead of
+ * an area estimate.
+ */
+export function snapshotIsEmpty(snap: string | null | undefined): boolean {
+  if (!snap) return true
+  try {
+    const doc = JSON.parse(snap) as { walls?: unknown[]; components?: unknown[] }
+    return (doc.walls?.length ?? 0) === 0 && (doc.components?.length ?? 0) === 0
+  } catch {
+    return true
+  }
+}
+
+/**
+ * Which floor should reopening this project actually land on?
+ *
+ * Normally `chosenPlanId` — the pointer the Generate step writes when the user
+ * picks a test-fit, and the reason a finished plan is reachable at all
+ * (AppShell §2.4). But records written before the empty-plate fix can point at
+ * a 108-byte empty plan: reload the Generate step, the search ran on no plate,
+ * and opening a candidate saved emptiness AND repointed the project at it. Such
+ * a project reopens onto "Start your plan" while its real floor sits
+ * unreferenced in the library — indistinguishable, from the user's side, from
+ * having lost the work.
+ *
+ * So the pointer is CHECKED rather than trusted, and a broken one falls through
+ * to the most recently updated floor that actually has geometry. Same shape as
+ * `Document::backfill_seats`: repair the read path for records written before
+ * the fix, instead of asking the user to notice and recover.
+ *
+ * Returns null when the project has no non-empty floor at all — the caller then
+ * sends the user to Space, which is the truthful destination.
+ */
+export async function resolveOpenFloor(
+  projectId: string,
+  chosenPlanId?: string,
+): Promise<string | null> {
+  return pickOpenFloor(await listPlans(), projectId, chosenPlanId)
+}
+
+/** The pure selection inside {@link resolveOpenFloor} — `plans` arrives
+ *  `listPlans()`-sorted (updatedAt desc). Exported for Node tests. */
+export function pickOpenFloor(
+  plans: SavedPlan[],
+  projectId: string,
+  chosenPlanId?: string,
+): string | null {
+  const mine = plans.filter((p) => p.projectId === projectId)
+  const chosen = chosenPlanId ? mine.find((p) => p.id === chosenPlanId) : undefined
+  if (chosen && !snapshotIsEmpty(chosen.file?.snapshot)) return chosen.id
+  const fallback = mine.find((p) => !snapshotIsEmpty(p.file?.snapshot)) ?? null
+  if (chosenPlanId && chosen !== fallback) {
+    console.warn(
+      `[plans] project ${projectId}: chosenPlanId ${chosenPlanId} resolves to an empty plan; ` +
+        (fallback ? `opening ${fallback.id} instead` : 'no non-empty floor exists — starting at Space'),
+    )
+  }
+  return fallback?.id ?? null
+}
+
 /** One saved plan by id (the cold-reload floor-open path, App.tsx). */
 export function getPlan(id: string): Promise<SavedPlan | undefined> {
   return dbGet<SavedPlan>('plans', id)

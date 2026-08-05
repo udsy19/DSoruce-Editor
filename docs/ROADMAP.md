@@ -227,6 +227,39 @@ The qbiq-style flow: Project → Upload → Program → Generate → Editor → 
     adjacency/critique; the deterministic solver does geometry) is viable as a hybrid — build after the
     core is perfected. Pure-LLM geometric placement is unreliable (misalignment/overlaps, even GPT-5).
 
+- [x] **Reloading the Generate step fabricated three test-fits** (found while starting the component
+  migration; browser repro on the real project). **Repro:** be on `#/p/:id/generate` → press reload →
+  wait. **Was:** three candidate cards, "3 ALTERNATIVES · BEST 64/100", A badged *"Most seats · Best
+  daylight · Best density"* — with `0` workstations, `—` density, `0%` on every card. Opening one
+  saved a **108-byte empty plan** as a project floor and repointed `chosenPlanId` at it, so the
+  project reopened onto "Start your plan" while the real floor sat unreferenced in the library.
+  Nothing was deleted; it reads as data loss, which is the same thing to whoever it happens to.
+  Four parts, each proven in the browser:
+  1. **Root cause — a ref that updates a render too late.** `loadDrawing` called `setDrawing` (which
+     schedules) while `testFit` reads `drawingRef.current` (which the render-time mirror had not yet
+     updated) **in the same tick**. So the resume path pushed the plate and the test-fit built from
+     `null` a microsecond later. `loadDrawing` now writes the ref synchronously.
+  2. **The step never resumed at all.** `SpaceStep` re-pushed the persisted drawing on mount;
+     `GenerateStep` did not. Now shared: `shell/resume.ts` `resumeDrawing()`, used by both.
+  3. **Refuse to invent a result.** No cards and no header when there is no plate — a named
+     `noplate` state with a working *Back to Space* button — and `openCandidate` will not save an
+     empty snapshot as a floor. Written to hold *whatever* emptied the plate, not just this cause.
+  4. **`computeWinners` never awards a superlative over an all-zero field.** Fixed at the shared
+     layer (gallery **and** branded report inherit it), pinned by 3 assertions in `report.test.mjs`.
+  **Plus a second defect the fix surfaced:** the editor is a singleton that survives navigation, so
+  "does the editor have a drawing" was the wrong question — opening project B without a reload found
+  **project A's plate still loaded and generated three test-fits on it, labelled B.** `resumeDrawing`
+  now tracks *whose* drawing is loaded and clears on a project switch.
+  **Tolerance for records already written** (the `backfill_seats` precedent): `pickOpenFloor` checks
+  the `chosenPlanId` pointer instead of trusting it and falls back to the newest floor with real
+  geometry, warning to console. Note one live record had `snapLen 108` with `metrics.workstations:
+  90` — the metrics summary lied, the snapshot did not, which is why the predicate reads the
+  document. 5 assertions in `plans.test.mjs`.
+  **Verified:** reload now yields walls 114 / 90 desks and the same three real candidates
+  (90 / 7.4, 87 / 7.6, 80 / 8.2; A "Most seats"+"Best density", C "Best daylight") — **identical to
+  the slice-6b measurement, so no parity number moved.** Opening saves a 51,446-byte floor. The
+  refusal state was seen firing (screenshot: `ux-audit/after/generate-noplate.png`) on a genuinely
+  plate-less project — no test bypass shipped.
 - [ ] **Say when the brief wasn't met — briefed seats vs placed seats in `program_fit`.**
   Surfaced by slice 6b's own measurement: brief a 14-seat boardroom, the room's table physically
   seats 12, the plan reports 12, and **nothing tells the user the brief wasn't met.** The clamp's

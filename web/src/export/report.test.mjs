@@ -31,7 +31,7 @@ await build({
   stdin: {
     contents: `
       export { Editor, initSync } from '../wasm/ds_core'
-      export { buildReportModel, normalizeRadar, RADAR_AXES } from './report'
+      export { buildReportModel, computeWinners, normalizeRadar, RADAR_AXES } from './report'
     `,
     resolveDir: here,
     loader: 'ts',
@@ -45,7 +45,7 @@ await build({
 const mod = await import(pathToFileURL(outFile).href)
 fs.rmSync(outFile, { force: true })
 mod.initSync({ module: fs.readFileSync(wasmPath) })
-const { Editor, buildReportModel, normalizeRadar, RADAR_AXES } = mod
+const { Editor, buildReportModel, computeWinners, normalizeRadar, RADAR_AXES } = mod
 
 // --- build fixture snapshots: an 18×12 m plate, generated at 3 seeds --------
 const PROGRAM = {
@@ -141,6 +141,25 @@ check(
 const solo = buildReportModel([alternatives[0]], { project: 'Solo' })
 check('single-alternative model builds', solo.alternatives.length === 1)
 check('single-alternative radar: 1 row, 8 axes', normalizeRadar(solo).length === 1 && normalizeRadar(solo)[0].length === 8)
+
+// --- winner badges: "best of nothing" is not a superlative ------------------
+// Reloading the Generate step used to search an EMPTY plate and return three
+// 0-workstation candidates; a plain argmax crowned the first one "Most seats ·
+// Best daylight · Best density" — three gold stars on a blank sheet. The plate
+// bug is fixed at its source; this pins the rule at the shared layer, because
+// computeWinners feeds BOTH the gallery and the branded report.
+const zeroKpi = { seats: 0, daylightPct: 0, workstations: 0, niaM2: 0 }
+const zeroWinners = computeWinners([zeroKpi, { ...zeroKpi }, { ...zeroKpi }])
+check('all-zero field wins nothing', Object.keys(zeroWinners).length === 0)
+const oneReal = computeWinners([zeroKpi, { seats: 12, daylightPct: 40, workstations: 8, niaM2: 100 }])
+check('a real alternative still wins over a zero one', (oneReal[1] ?? []).length === 3 && !oneReal[0])
+// A genuinely tied-at-zero AXIS is silent while other axes still award.
+const mixed = computeWinners([
+  { seats: 10, daylightPct: 0, workstations: 5, niaM2: 100 },
+  { seats: 20, daylightPct: 0, workstations: 9, niaM2: 100 },
+])
+const mixedLabels = Object.values(mixed).flat()
+check('zero axis stays unawarded while others award', !mixedLabels.includes('Best daylight') && mixedLabels.includes('Most seats'))
 
 console.log(`\n${passed} passed, ${failed} failed`)
 if (failed > 0) process.exit(1)

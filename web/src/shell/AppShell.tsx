@@ -25,6 +25,7 @@ import { SpaceStep } from './steps/SpaceStep'
 import { ProgramStep } from './steps/ProgramStep'
 import { GenerateStep } from './steps/GenerateStep'
 import { getProject, type ProjectRecord } from '../persist/projects'
+import { resolveOpenFloor } from '../persist/plans'
 
 export function AppShell() {
   const route = useRoute()
@@ -93,13 +94,18 @@ export function AppShell() {
           // the editor. Only a project with no chosen floor yet starts at Space.
           // Without this the finished plan was unreachable from the landing page
           // and the user was silently restarted at "Drop the floor plate".
-          onOpen={(p) =>
-            navigate(
-              p.chosenPlanId
-                ? { name: 'editor', projectId: p.id, planId: p.chosenPlanId }
-                : { name: 'wizard', projectId: p.id, step: 'space' },
+          onOpen={(p) => {
+            // The pointer is CHECKED, not trusted — `resolveOpenFloor` falls
+            // back to the newest floor with geometry when `chosenPlanId` names
+            // an empty one (records written before the empty-plate fix).
+            void resolveOpenFloor(p.id, p.chosenPlanId).then((planId) =>
+              navigate(
+                planId
+                  ? { name: 'editor', projectId: p.id, planId }
+                  : { name: 'wizard', projectId: p.id, step: 'space' },
+              ),
             )
-          }
+          }}
         />
       )}
       {route.name === 'create' && (

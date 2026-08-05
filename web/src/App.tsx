@@ -225,6 +225,11 @@ export interface EditorController {
   importFile(f: File): Promise<Drawing | null>
   /** Push a previously-parsed Drawing into the editor (wizard reload / resume). */
   loadDrawing(d: Drawing | null): void
+  /** Does the editor already hold a parsed Drawing? The wizard's resume path
+   *  (`shell/resume.ts`) asks before re-pushing the persisted plate — a cold
+   *  start into a late step has none, and generating without one silently
+   *  produced empty candidates. */
+  hasDrawing(): boolean
   testFit(opts?: TestFitOpts): void
   /** Set the editor's live test-fit program (the Program step's output). Also
    *  re-syncs the mounted GenerateCard so its form + a Generate click use it. */
@@ -419,6 +424,13 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
    *  (a project reopened from its persisted draft). Mirrors the tail of
    *  onImportFile without re-running the DWG→DXF→parse pipeline. */
   const loadDrawing = (d: Drawing | null) => {
+    // Update the ref SYNCHRONOUSLY, not just via the render-time mirror below.
+    // `setDrawing` schedules; `drawingRef.current = drawing` only runs on the
+    // next render — but the wizard's resume path calls `loadDrawing` and then
+    // `testFit` in the same tick, so the ref was still null and the test-fit
+    // built its plate from no drawing at all. That is what made a reloaded
+    // Generate step search an empty plate.
+    drawingRef.current = d
     setDrawing(d)
     setSelItem(null)
     setMode(d ? 'import' : '2d')
@@ -1021,6 +1033,7 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
     (): EditorController => ({
       importFile: onImportFile,
       loadDrawing,
+      hasDrawing: () => !!drawingRef.current,
       testFit: testFitPlan,
       setProgram: (p) => {
         if (ecRef.current) ecRef.current.program = { ...p }
