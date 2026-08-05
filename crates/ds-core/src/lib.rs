@@ -76,6 +76,20 @@ pub struct Editor {
     doc: Document,
 }
 
+/// The open-plan share of headcount seated at open workstations.
+///
+/// **Exported because the frontend was keeping its own copies and one had already
+/// drifted.** `program/spec.ts` used 0.85 while `ai/suggestProgram.ts` used 0.90
+/// with a comment claiming it mirrored Rust — so the same headcount produced a
+/// different building depending on which path the user came in through (88
+/// people → 75 desks via the Program step, 79 via suggestProgram). A value that
+/// decides how many desks a floor gets has exactly one owner: the generator that
+/// places them. Read this; do not re-declare it.
+#[wasm_bindgen]
+pub fn open_share() -> f64 {
+    layout::OPEN_SHARE
+}
+
 /// Per-zone floor areas (m², clipped to the plate polygon) with the oriented
 /// desk-field's plate-spanning Workspace zone **de-overlapped**, plus the index
 /// of that spanning Workspace when present.

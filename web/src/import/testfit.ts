@@ -197,7 +197,17 @@ function contourRing(segments: Segment[], dilate: number): Pt[] | null {
 }
 
 /** Push a plate's boundary into the editor as walls (one per polygon edge). */
-export function pushPlateToEditor(ec: EditorCanvas, plate: PlateResult, thickness = 0.15): void {
+/** Thickness (m) of the walls an imported plate stamps into the document. The
+ *  ONE declaration — `mergeFit` used to keep its own 0.15 beside a comment
+ *  promising it "matches pushPlateToEditor's default", which is the same
+ *  unverifiable mirror that let OPEN_SHARE drift. */
+export const PLATE_WALL_THICKNESS_M = 0.15
+
+export function pushPlateToEditor(
+  ec: EditorCanvas,
+  plate: PlateResult,
+  thickness = PLATE_WALL_THICKNESS_M,
+): void {
   const b = plate.boundary
   for (let i = 0; i < b.length; i++) {
     const [ax, ay] = b[i]

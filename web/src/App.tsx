@@ -11,6 +11,7 @@ import {
   RoomSelection,
   DEFAULT_PROGRAM,
   STRATEGY_LABEL,
+  openShare,
 } from './editor/EditorCanvas'
 import { CATALOG, catByCategory } from './editor/catalog'
 import { searchBank } from './materialBank/mock'
@@ -963,7 +964,10 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
     // customized desks.
     let suggested: string | null = null
     if (areaM2 && areaM2 > 100 && ec.program.desks === DEFAULT_PROGRAM.desks) {
-      ec.program = suggestProgram(working, areaM2, ec.program)
+      // wasm is initialised by this point (ec exists), so the core can answer;
+      // the ?? guard is for the type, not a fallback policy.
+      const share = openShare()
+      if (share != null) ec.program = suggestProgram(working, areaM2, ec.program, share)
       suggested = suggestProgramSummary(ec.program)
     }
     if (coverage !== undefined || areaM2 !== undefined) {

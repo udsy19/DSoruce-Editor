@@ -222,6 +222,19 @@ export class Editor {
     zones(): any;
 }
 
+/**
+ * The open-plan share of headcount seated at open workstations.
+ *
+ * **Exported because the frontend was keeping its own copies and one had already
+ * drifted.** `program/spec.ts` used 0.85 while `ai/suggestProgram.ts` used 0.90
+ * with a comment claiming it mirrored Rust — so the same headcount produced a
+ * different building depending on which path the user came in through (88
+ * people → 75 desks via the Program step, 79 via suggestProgram). A value that
+ * decides how many desks a floor gets has exactly one owner: the generator that
+ * places them. Read this; do not re-declare it.
+ */
+export function open_share(): number;
+
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
 export interface InitOutput {
@@ -271,6 +284,7 @@ export interface InitOutput {
     readonly editor_zone_at: (a: number, b: number, c: number) => number;
     readonly editor_zone_stats: (a: number) => [number, number, number];
     readonly editor_zones: (a: number) => [number, number, number];
+    readonly open_share: () => number;
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_exn_store: (a: number) => void;

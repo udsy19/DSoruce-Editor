@@ -48,6 +48,7 @@ import {
 } from './pdf'
 import { Page, MARGIN, RES, ACCENT, hex2rgb, pageHeader, logoJpeg } from './sheet'
 import { triggerDownload } from './png'
+import { SF_PER_M2 } from '../util/units'
 
 // ---------------------------------------------------------------------------
 // Report model (pure, testable)
@@ -107,7 +108,6 @@ export interface ReportModel {
   alternatives: AltKpis[]
 }
 
-const SQF_PER_M2 = 10.7639
 /** Daylit = a workstation within this distance of the exterior (facade). */
 const DAYLIGHT_RADIUS_M = 5
 
@@ -209,7 +209,7 @@ function computeAltKpis(input: AlternativeInput): AltKpis {
     const efficiencyPct =
       m.efficiency_pct ?? (geaM2 > 0 ? (niaM2 / geaM2) * 100 : 0)
 
-    const usfSf = niaM2 * SQF_PER_M2
+    const usfSf = niaM2 * SF_PER_M2
     const densitySqf = seats > 0 ? usfSf / seats : 0
     const densityM2 = seats > 0 ? niaM2 / seats : 0
 

@@ -44,7 +44,12 @@ await build({
           namespace: 'wasm-stub',
         }))
         b.onLoad({ filter: /.*/, namespace: 'wasm-stub' }, () => ({
-          contents: 'export class Editor {}\nexport default function init() {}',
+          contents:
+            'export class Editor {}\n' +
+            // `openShare()` reads this across the boundary; the stub throws so the
+            // caller takes its documented not-ready path instead of a fake number.
+            'export function open_share() { throw new Error("wasm stub") }\n' +
+            'export default function init() {}',
           loader: 'js',
         }))
       },

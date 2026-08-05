@@ -1,4 +1,4 @@
-import init, { Editor } from '../wasm/ds_core'
+import init, { Editor, open_share } from '../wasm/ds_core'
 import { catByCategory } from './catalog'
 import { drawSymbol, seatsForSize, pen, lod, type PenWeight } from './symbols'
 import { CadController } from '../cad/controller'
@@ -350,6 +350,22 @@ export interface RefineOutcome {
 }
 
 /** Default program — the single source used by the generate card and the AI. */
+/** The core's open-plan share of headcount seated at open workstations.
+ *  THE one owner is `layout::OPEN_SHARE`; this is the boundary read, so the
+ *  frontend never keeps its own copy (two had already drifted — 0.85 vs 0.90).
+ *  Requires wasm to be initialised, so pure/node-testable modules take the value
+ *  as a parameter instead of importing this. */
+export function openShare(): number | null {
+  try {
+    return open_share()
+  } catch {
+    // wasm not initialised yet. Returning null — never a hardcoded stand-in: a
+    // fallback constant here is precisely how the 0.85 / 0.90 split happened.
+    // Callers show "—" until the core can answer.
+    return null
+  }
+}
+
 export const DEFAULT_PROGRAM: Program = {
   desks: 20,
   meeting_rooms: 2,

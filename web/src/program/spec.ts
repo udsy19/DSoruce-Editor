@@ -222,8 +222,6 @@ export function deskFootprint(size: DeskSizeKey): { w: number; d: number } {
   return { w: found.w, d: found.d }
 }
 
-/** Open-plan share of the headcount seated at open workstations (desks ≈ 0.85·N). */
-const OPEN_SHARE = 0.85
 
 /**
  * Resolve a `ProgramSpec` into the core `Program` the generator consumes.
@@ -246,7 +244,14 @@ export function programSpecToProgram(spec: ProgramSpec, base: Program = DEFAULT_
   return {
     ...base,
     headcount: spec.headcount,
-    desks: Math.max(1, Math.round(spec.headcount * OPEN_SHARE)),
+    // NOT computed here. `desk_target` in the core is
+    // `max(program.desks, ceil(headcount × OPEN_SHARE))` — an explicit `desks`
+    // is only ever an over-ask floor — so a TS-derived value below the core's
+    // share was silently dominated and never placed. That is exactly what
+    // happened: TS used 0.85 against the core's 0.90, so a headcount of 88 made
+    // the summary promise 75 desks while the generator laid out 80. Leaving this
+    // 0 hands the derivation to its one owner.
+    desks: 0,
     // Explicit rooms carry the whole room program (meetings included), so the
     // derived support program + meeting override are switched off.
     support_spaces: false,
@@ -258,10 +263,3 @@ export function programSpecToProgram(spec: ProgramSpec, base: Program = DEFAULT_
   }
 }
 
-/** One-line summary of a spec, for notices. */
-export function specSummary(spec: ProgramSpec): string {
-  const t = specTotals(spec)
-  return `${t.enclosedRooms} enclosed room${t.enclosedRooms === 1 ? '' : 's'} · ${
-    Math.round(spec.headcount * OPEN_SHARE)
-  } desks · ${spec.headcount} people`
-}

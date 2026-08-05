@@ -655,7 +655,7 @@ const TARGET_M2_PER_PERSON: f64 = 10.0;
 /// still leaving a real 10% of headcount for meeting/collab seats. Drives both
 /// `SpaceProgram::derive`'s `desks` and `desk_target` so rooms and desks scale
 /// from the SAME headcount (M5 invariant).
-const OPEN_SHARE: f64 = 0.90;
+pub const OPEN_SHARE: f64 = 0.90;
 /// Ceiling on the DERIVED support program's net area as a fraction of the plate
 /// (spec §1 / qbiq open-plan dominance). `SpaceProgram::derive` trims its most
 /// discretionary rooms until the enclosed+open support program fits under this,

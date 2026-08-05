@@ -46,6 +46,7 @@ export const editor_state: (a: number) => [number, number, number];
 export const editor_zone_at: (a: number, b: number, c: number) => number;
 export const editor_zone_stats: (a: number) => [number, number, number];
 export const editor_zones: (a: number) => [number, number, number];
+export const open_share: () => number;
 export const __wbindgen_malloc: (a: number, b: number) => number;
 export const __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
 export const __wbindgen_exn_store: (a: number) => void;

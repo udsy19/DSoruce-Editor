@@ -30,6 +30,7 @@ import {
   type ProgramSpec,
   type RoomGroup,
 } from '../../program/spec'
+import { openShare } from '../../editor/EditorCanvas'
 import type { Placement, SpaceKind } from '../../editor/EditorCanvas'
 import { getProject, updateDraft } from '../../persist/projects'
 import { DrawingView } from '../../import/DrawingView'
@@ -38,8 +39,8 @@ import type { Drawing } from '../../import/types'
 import type { Pt } from '../../import/testfit'
 import { ANCHOR_KINDS, anchorKindLabel, type AnchorPin } from '../../program/anchors'
 import { Icon } from '../../ui/icons'
+import { SF_PER_M2 } from '../../util/units'
 
-const SF_PER_M2 = 10.7639
 const PLACEMENTS: Placement[] = ['Window', 'Core', 'Flexible']
 const GROUP_ORDER: RoomGroup[] = ['offices', 'team', 'conference', 'collaboration', 'amenities']
 const hasPlacement = (g: RoomGroup): g is PlacementGroup =>
@@ -118,11 +119,21 @@ export function ProgramStep({
   const occupiedM2 = useMemo(() => {
     if (!spec || !totals) return 0
     const desk = deskFootprint(spec.deskSize)
-    const desks = Math.max(1, Math.round(spec.headcount * 0.85))
+    // The core decides how many desks a headcount gets (`desk_target`), so ask
+    // it rather than keep a copy of the share — this line held a bare 0.85
+    // literal, which is why a grep for OPEN_SHARE never found it.
+    const share = openShare()
+    if (share == null) return totals.roomArea
+    const desks = Math.max(1, Math.ceil(spec.headcount * share))
     return totals.roomArea + desks * desk.w * desk.d
   }, [spec, totals])
 
   if (!spec) return <div className="program-step" data-testid="program-step" />
+
+  // What the core will actually place for this headcount. `null` until wasm is
+  // ready — shown as "—" rather than guessed.
+  const share = openShare()
+  const deskCount = share == null ? null : Math.max(1, Math.ceil(spec.headcount * share))
 
   const patch = (p: Partial<ProgramSpec>) => setSpec((s) => (s ? { ...s, ...p } : s))
   const applyTemplate = (headcount: number, enclosedPct: number) =>
@@ -278,7 +289,7 @@ export function ProgramStep({
             </div>
             <div className="program-summary-metric">
               <span className="program-summary-value num">
-                {Math.max(1, Math.round(spec.headcount * 0.85))}
+                {deskCount ?? '—'}
               </span>
               <span className="program-summary-label">desks</span>
             </div>

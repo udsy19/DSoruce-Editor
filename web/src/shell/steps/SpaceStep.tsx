@@ -31,8 +31,8 @@ import { Icon } from '../../ui/icons'
 import type { DrawingCanvas } from '../../import/DrawingCanvas'
 import type { Drawing } from '../../import/types'
 import { isRasterFile, loadRasterBackdrop, type Backdrop } from '../../import/rasterImport'
+import { SF_PER_M2 } from '../../util/units'
 
-const SF_PER_M2 = 10.7639
 /** Heal gap (m) persisted with the toggle — the healWalls default (a hairline
  *  partition break, below a door leaf). The Space step exposes on/off only. */
 const HEAL_GAP_M = 0.25
