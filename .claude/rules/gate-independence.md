@@ -6,6 +6,22 @@ truth independently — from the artifact bytes, or from the core state.**
 Trust requires positive evidence from an independent path. A gate that reads the producer's own
 account of what it did is not measuring the producer; it is transcribing it.
 
+**The unified form.** Every section below is that one statement projected onto a different surface:
+
+> **A check is only as good as the independence of its inputs, and independence must be positively
+> established, never assumed.**
+
+Gates trusting their subject's metadata · baselines drawn from the population under test ·
+presence-matching two contaminated lists · a board trusting its gates' exit codes · a falsification
+harness endangering its own subject · an agent performing a trusted-human event — all the same
+violation, wearing the clothes of whatever surface it appeared on. The sections earn their place by
+naming a surface where it happened *in practice*, with the concrete pattern a future reader needs.
+
+**There will be a thirteenth instance, on a surface no section below describes.** Recognise it by the
+unified form, not by matching an existing example: ask what the check's inputs are, who produced them,
+and what positive evidence establishes that they did not come from the thing being checked. Then add
+the section — with its worked case and its falsification, like every one below.
+
 ## Why this is a rule and not a preference
 
 Every blocker found in the qbiq-parity mission — three of them, across two adversarial review rounds,
@@ -176,6 +192,82 @@ Generalise it: **if an artifact's worth comes from who or what produced it, prod
 worth.** Calibration logs, human review sign-offs, user-acceptance records, ground-truth labels
 collected to grade a model. Handle them like the signing key — the one step in the loop that is
 somebody else's by design.
+
+## Falsify against a disposable copy — never mutate the protected artifact
+
+**Gates are read-only with respect to what they check, and their falsification harnesses must be too.**
+Negative-case falsification runs in a scratch worktree or temp clone. Never delete, move or corrupt the
+real artifact in place.
+
+**Worked case, caught in the act.** Falsifying SG5's "the rules file exists" check was done by moving
+`.claude/rules/gate-independence.md` aside, running the gate, and moving it back. The gate takes ~10
+minutes; the command timed out **inside that window**, leaving the accumulated law of two missions
+deleted from the working tree. It was restored and verified byte-identical (md5 `f3b79cd5…`), but the
+exposure was real: any crash, timeout or interruption in that window loses the artifact.
+
+This is the recurring family in new clothes — **a verification procedure that endangered the very
+thing it verifies**, and made the protected artifact its own test fixture.
+
+The correct shape costs no more:
+
+```
+git worktree add --detach /tmp/falsify HEAD
+ln -s "$PWD/web/node_modules" /tmp/falsify/web/node_modules   # gates need their deps
+cp -R out /tmp/falsify/out                                     # so the board grades real artifacts
+rm /tmp/falsify/<the protected artifact>                       # sabotage the COPY
+cd /tmp/falsify && <run the gate>                              # expect exactly one new failure
+git worktree remove --force /tmp/falsify
+```
+
+It also buys **stronger** evidence than the unsafe version: full end-to-end gate wiring on the negative
+case, matching `GSELF`'s grade, instead of a predicate proven in isolation with the wiring untested.
+Cheaper *and* better is the usual sign the unsafe path was never the shortcut it looked like.
+
+## A one-sided threshold can be propped up by ink the check does not attribute
+
+**The surface: a coverage FLOOR measured over a shared canvas.** G11's visibility
+assertion (`g11-furniture-agreement.py`) takes each billed furniture instance,
+counts furniture line-work ink inside its footprint, and requires
+`ink / outline >= 0.70`. The intent is honest: a component the workbook bills must
+actually read on the delivered PNG.
+
+The input is not independent of the rest of the drawing. **Ink inside a
+footprint is attributed to that footprint, not to the glyph that drew it.** A
+neighbouring symbol whose decoration falls inside a real component's footprint
+raises that component's ratio. On the merged tree the concrete case is a table's
+implied seat ring landing over the real adjacent `Chair` components: decorative
+line-work propping up the very measurement meant to prove the real chair is
+legible. A genuinely faint or hidden chair can clear the floor **on borrowed
+ink**, and the gate reports it as visible.
+
+The same one-sidedness has a second consequence: the check has **no upper
+bound**, and nothing anywhere iterates the PNG looking for ink that is *not*
+billed. Over-draw — seating on a graded sheet that the Furniture Inventory does
+not bill — is invisible to it. G11 has exactly two assertions: emission compares
+the workbook's billed multiset against the core-state multiset (glyph-drawn
+seats appear in neither), and visibility is this floor. Neither can see a glyph
+drawing something nobody bills.
+
+**Why it is the unified form.** Ask the three questions: what are the check's
+inputs (ink pixels within a footprint), who produced them (any glyph that
+rendered there, not only the subject's), and what positive evidence establishes
+they did not come from something other than the thing being checked (none —
+attribution is assumed from position).
+
+**The falsification, and it is cheap.** Render the pack twice, once with implied
+seating on and once off (`implySeats: false` on the print path), and diff the
+per-instance `ink / outline` ratios. Any chair whose ratio drops below the floor
+when the implied seats disappear was being carried by ink that was never its
+own. Fixing the double-draw is necessary but not sufficient: the attribution
+weakness survives it, because any future glyph whose decoration overlaps a
+billed footprint reintroduces it.
+
+**The fix shape**, when it is addressed: attribute ink to the glyph that drew it
+rather than to the footprint it lands in — draw each billed instance to an
+isolated buffer and measure there — or add the missing upper bound so unbilled
+ink is a failure in its own right. Until then the floor is a real check with a
+stated blind spot, not a proof of legibility.
+
 
 ## Reporting convention: scope every negative claim
 

@@ -46,6 +46,40 @@ pub struct Wall {
     /// glass in 3D. Independent of `generated` so imported glazing can use it.
     #[serde(default)]
     pub glazing: bool,
+    /// **Partial-height** partition, meters. `None` (the default, and what every
+    /// generator/import path writes) means the wall runs full storey height
+    /// ([`FULL_WALL_HEIGHT_M`]). A `Some(h)` with `h < FULL_WALL_HEIGHT_M` is a
+    /// half-height screen — the qbiq legend's "Half Drywall" — and is the ONLY
+    /// way that quantity category becomes non-zero (see `quantity::classify_wall`).
+    /// `serde(default)` + `skip_serializing_if` keep pre-B1 `.dsource` snapshots
+    /// loading AND keep unset walls byte-identical on the wire, preserving the
+    /// additive-schema guarantee asserted by `wall_flags_default_false_and_round_trip`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub height_m: Option<f64>,
+}
+
+/// Full storey height of a wall, meters — the single height assumption behind
+/// every `length × height` wall-area quantity. Matches `WALL_HEIGHT` in
+/// `web/src/three/Viewer3D.ts`, so the 2D takeoff and the 3D model agree.
+pub const FULL_WALL_HEIGHT_M: f64 = 2.6;
+
+impl Wall {
+    /// Centerline length, meters.
+    pub fn length(&self) -> f64 {
+        self.a.dist(&self.b)
+    }
+
+    /// Effective height, meters: the explicit `height_m` when set, else the full
+    /// storey height.
+    pub fn height(&self) -> f64 {
+        self.height_m.unwrap_or(FULL_WALL_HEIGHT_M)
+    }
+
+    /// True when this wall is a partial-height screen (explicitly shorter than
+    /// the full storey height).
+    pub fn is_partial_height(&self) -> bool {
+        matches!(self.height_m, Some(h) if h < FULL_WALL_HEIGHT_M - 1e-9)
+    }
 }
 
 /// A permanent interior **keep-out**: the building core (stairs, lifts, shafts,
@@ -244,6 +278,7 @@ mod tests {
             thickness: 0.05,
             generated: true,
             glazing: true,
+            height_m: None,
         };
         let json = serde_json::to_string(&glass).unwrap();
         let back: Wall = serde_json::from_str(&json).unwrap();

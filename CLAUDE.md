@@ -119,6 +119,13 @@ cd web && pnpm dev               # frontend only (uses existing wasm bindings)
   live. `bench/accent-univalence.mjs` enforces this by VALUE; `bench/style-gate.mjs` pins
   `ACCENT_AMBER` equal to `--accent-amber`.
 
+- **Typography carries meaning:** all numeric/dimension data uses **IBM Plex Mono**; UI uses
+  **Space Grotesk**. A single warm-amber accent (`#E8A13C`) sits on deliberately cool content colors.
+- **Gate independence** (`.claude/rules/gate-independence.md`): a gate may not consume any value
+  produced by the system under test — it must re-derive its ground truth from the artifact bytes or
+  the core state. Every blocker in the qbiq-parity mission was one instance of violating this, each
+  against a 10/10 board. Any gate touching producer-adjacent data ships with the byte-identical-
+  under-sabotage proof.
 - **No bloat** (`.claude/rules/no-bloat.md`): search for an existing symbol before adding a new one;
   delete superseded code in the same change.
 
@@ -155,12 +162,18 @@ Two deploy targets share the API logic via **`deploy/apiCore.ts`** — the singl
 implementation of `/api/agent`, `/api/claude`, `/api/bank` (imported by both servers below).
 
 - **VPS** (`deploy/server.ts`): one Node service (`dsource-api`) serves the built SPA + all `/api/*`
-  routes (agent/claude/dwg/bank/plans), behind Caddy at `app.46.202.179.28.sslip.io`.
+  routes (agent/claude/dwg/bank/plans/share) + the share viewer page, behind Caddy at
+  `app.46.202.179.28.sslip.io`.
   `./deploy/deploy.sh` builds, rsyncs, starts everything (idempotent; needs SSH). Full backend.
 - **Vercel** (`vercel.json` + `api/*.ts`): SPA on the CDN + `/api/*` as serverless functions.
   `web/src/wasm/` is **committed** so Vercel builds without Rust (rebuild + commit after Rust changes).
-  Two routes degrade gracefully: `/api/dwg` → 503 (needs the LibreDWG binary; DXF still works),
-  `/api/plans` → 501 (needs disk; plan library is IndexedDB). Full guide: `deploy/VERCEL.md`.
+  Three routes degrade gracefully: `/api/dwg` → 503 (needs the LibreDWG binary; DXF still works),
+  `/api/plans` → 501 (needs disk; plan library is IndexedDB), `/api/share` → 501 (needs disk; the
+  Export menu falls back to downloading the .glb and `/share/<id>` says so). Guide: `deploy/VERCEL.md`.
+- **Shareable 3D viewer**: `/share/<id>` serves `web/viewer.html` (the SPA build's second entry,
+  `web/src/viewer/`) over a GLB published by `web/src/export/share.ts`. The store + `/api/share/*`
+  handler is **one implementation** — `deploy/shareStore.ts`, imported by `deploy/server.ts` AND the
+  dev middleware in `web/vite.config.ts` (dev bundles land in `web/.dev-plans/share/`).
 
 **Lockstep:** the dev middlewares in `web/vite.config.ts` remain the dev source of truth for
 agent/claude/bank — change them and `deploy/apiCore.ts` together.
@@ -177,6 +190,11 @@ ui-fixes merge, ≥157 after export — counted BY NAME, because a matching numb
 is a regression. Includes `golden_generate_output_is_frozen`, which pins `generate()` output for 10
 (program, seed) cases — if you change the generator deliberately, re-capture its expectations,
 never relax it.
+**Qbiq output parity pack** — one action emits a 12-sheet formula-wired QTO workbook (embedded plan +
+per-room thumbnails, live pricing), four 4K room renders, a 43 s 1080p walkthrough mp4, and a
+self-hosted `/share/<id>` 3D viewer; all derived from one `Editor` state. Acceptance gates live in
+`scripts/gates/` — **`bash scripts/gates/run-all.sh` is the only trusted signal** (10/10 green).
+Rust: 150 tests.
 Parked: multiplayer (designed in `docs/design/multiplayer.md`; a presence milestone was built and
 reverted — recover from commits `3a923ea` + `706c7cf` when resumed). Next: cloud plan sync.
 See `research/08-open-questions.md`.

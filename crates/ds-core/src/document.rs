@@ -95,28 +95,43 @@ impl Document {
 
     /// Index of the most-specific zone whose filled region contains world point
     /// `(x, y)`: a containing non-`Circulation` zone (e.g. the Workspace/Meeting
-    /// rect) wins over the perimeter `Circulation` ring; the last such zone in
-    /// iteration order wins ties. Returns `None` if no zone contains the point.
-    /// Shared by `reassign_components` (per-component) and `zone_at` (hit-test).
+    /// rect) wins over the perimeter `Circulation` ring, and among the winning
+    /// class the **smallest-area** zone wins — an enclosed room beats the
+    /// plate-spanning open-workspace field it sits inside. Returns `None` if no
+    /// zone contains the point. Shared by `reassign_components` (per-component)
+    /// and `zone_at` (hit-test).
+    ///
+    /// **Smallest-area, not last-in-order.** The generator emits its rooms
+    /// BEFORE the workspace field, and the oriented field is a plate-spanning
+    /// rect that encloses the band rooms, so "last one wins" silently bucketed a
+    /// meeting room's or cabin's furniture into Open Workspace — which is why
+    /// three cabins with byte-identical furniture reported headcounts of 1, 0
+    /// and 0 (only the cabins the field rect happened to miss kept their own
+    /// chairs). Smallest-area is order-independent, so identical rooms are now
+    /// bucketed identically by construction. It is also exactly the ownership
+    /// rule `layout::conform_zones_to_plate` already uses ("a cell inside one or
+    /// more zone rects is owned by the SMALLEST-area one"), so the two passes
+    /// agree on which zone owns a piece of floor.
     fn zone_index_at(&self, x: f64, y: f64) -> Option<usize> {
-        let mut chosen: Option<usize> = None;
+        let mut chosen: Option<(usize, f64)> = None;
         let mut found_non_circ = false;
         for (i, z) in self.zones.iter().enumerate() {
             if !z.shape.contains(x, y) {
                 continue;
             }
-            if z.zone_type == ZoneType::Circulation {
-                // Only fall back to circulation if no specific zone found yet.
-                if !found_non_circ {
-                    chosen = Some(i);
-                }
-            } else {
-                // Non-circulation is preferred; last one wins.
-                chosen = Some(i);
-                found_non_circ = true;
+            let circ = z.zone_type == ZoneType::Circulation;
+            if circ && found_non_circ {
+                continue; // a specific zone already outranks any circulation
+            }
+            let area = z.shape.area();
+            if !circ && !found_non_circ {
+                found_non_circ = true; // first specific zone displaces circulation
+                chosen = Some((i, area));
+            } else if chosen.is_none_or(|(_, best)| area < best) {
+                chosen = Some((i, area));
             }
         }
-        chosen
+        chosen.map(|(i, _)| i)
     }
 
     /// Rebucket every component into the zone that contains its center. Clears
@@ -572,6 +587,7 @@ mod tests {
             thickness: 0.2,
             generated: false,
             glazing: false,
+            height_m: None,
         });
         let cid = doc.alloc_id();
         let mut c = desk(cid, 3.0, 3.0);
@@ -692,6 +708,7 @@ mod tests {
             thickness: 0.2,
             generated: false,
             glazing: false,
+            height_m: None,
         }
     }
 

@@ -49,6 +49,7 @@ import {
 import type { SheetSetMeta } from './sheetSet'
 import type { DocState, DocZone } from '../types/doc'
 import { zoneArea as zoneShapeArea } from '../util/zoneGeom'
+import { roomDisplayNames } from './roomNaming'
 import { CEILING_HEIGHT } from './services'
 
 export interface FinishScheduleOpts {
@@ -75,7 +76,7 @@ export interface FinishSheet {
 // in the FINISH LEGEND / NOTES footer block on every sheet.
 // ---------------------------------------------------------------------------
 
-type FinishKey =
+export type FinishKey =
   | 'workspace'
   | 'conference'
   | 'boardroom'
@@ -93,7 +94,7 @@ type FinishKey =
   | 'core'
   | 'other'
 
-interface FinishSpec {
+export interface FinishSpec {
   floor: string
   base: string // skirting
   wall: string
@@ -101,7 +102,7 @@ interface FinishSpec {
 }
 
 /** The finish spec for every room type (floor · base/skirting · wall · ceiling). */
-const FINISH_SPEC: Record<FinishKey, FinishSpec> = {
+export const FINISH_SPEC: Record<FinishKey, FinishSpec> = {
   workspace: {
     floor: 'Carpet tile 500×500 (CPT)',
     base: 'PVC skirting 100 mm',
@@ -201,7 +202,7 @@ const FINISH_SPEC: Record<FinishKey, FinishSpec> = {
 }
 
 /** Human room-type label shown in the schedule's Room Type column. */
-const TYPE_LABEL: Record<FinishKey, string> = {
+export const TYPE_LABEL: Record<FinishKey, string> = {
   workspace: 'Open Workspace',
   conference: 'Conference',
   boardroom: 'Boardroom',
@@ -225,7 +226,7 @@ const TYPE_LABEL: Record<FinishKey, string> = {
  * "Reception", "Pantry", "Cabin 2", "Phone Booth 3", "Focus 1", "Meeting Room 4"
  * …), falling back to the broad `zone_type`. Deterministic — pure string match.
  */
-function finishTypeFor(z: DocZone): FinishKey {
+export function finishTypeFor(z: DocZone): FinishKey {
   const raw = z.label ?? ''
   const l = raw.toLowerCase()
   if (l.includes('reception')) return 'reception'
@@ -259,6 +260,24 @@ function finishTypeFor(z: DocZone): FinishKey {
   }
 }
 
+/**
+ * **The one room-type label the whole deliverable shows.** Every sheet that
+ * names a room's type reads this: the workbook's `Inventory` *Subcategory*, its
+ * `Furniture Inventory` *Room Type* (via `takeoff.ts`) and the drawing set's
+ * Room Finish Schedule *ROOM TYPE* column. There is deliberately no second
+ * vocabulary — a room that reads "Reception" on one sheet cannot read
+ * "Kitchen" on another.
+ *
+ * `null` (a component standing outside every zone) and `Circulation` are not
+ * schedulable rooms: circulation collapses onto the plan's own aggregated
+ * `Room ID "0"` row, which is labelled `Circulation`.
+ */
+export function roomTypeLabel(z: DocZone | null): string {
+  if (!z) return TYPE_LABEL.other
+  if (z.zone_type === 'Circulation') return 'Circulation'
+  return TYPE_LABEL[finishTypeFor(z)]
+}
+
 /** Enclosed area (m²) of a zone shape; rings exclude the hole, polys shoelace. */
 const zoneArea = zoneShapeArea
 
@@ -281,15 +300,19 @@ interface Row {
 function scheduleRows(state: DocState): Row[] {
   const zones = (state.zones ?? []).filter((z) => z.zone_type !== 'Circulation')
   const ordered = [...zones].sort((a, b) => a.id - b.id)
+  // The schedule prints the same disambiguated name the plans and the workbook
+  // print — `roomDisplayNames` is the single source (defect D4: three rows all
+  // reading "Open Workspace" are three rows a reader cannot use).
+  const names = roomDisplayNames(state)
   let n = 0
   return ordered.map((z) => {
     n++
     const key = finishTypeFor(z)
-    const name = (z.label && z.label.trim()) || `Room ${String(n).padStart(2, '0')}`
+    const name = names.get(z.id) ?? ((z.label && z.label.trim()) || `Room ${String(n).padStart(2, '0')}`)
     return {
       id: z.id,
       name,
-      type: TYPE_LABEL[key],
+      type: roomTypeLabel(z),
       spec: FINISH_SPEC[key],
       ceilHt: `${CEILING_HEIGHT.toFixed(2)} m`,
       area: zoneArea(z.shape).toFixed(1),

@@ -1,0 +1,347 @@
+# Orchestrator log — qbiq output parity
+
+Mission: make DSource emit a deliverable pack at parity with qbiq's output
+(12-sheet formula-wired QTO workbook · per-room renders · walkthrough mp4 · web 3D viewer).
+Gate definitions live in `scripts/gates/`; only `scripts/gates/run-all.sh` output is trusted.
+
+## Cycle 0 — setup (orchestrator)
+
+### Environment resolved
+| Tool | Status |
+| --- | --- |
+| ffmpeg / ffprobe | `/opt/homebrew/bin` — OK |
+| python3 + openpyxl 3.1.2 + PIL | OK |
+| node / pnpm / cargo / wasm-pack | OK |
+| **soffice** | **was MISSING** → installed LibreOffice 26.2.5.2 at `/Applications/LibreOffice.app/Contents/MacOS/soffice`. Not on PATH — gate scripts must resolve PATH *then* that absolute path. Unblocks G2 (recalc), G9 (round-trip), Judge rasterization. |
+
+### Deviations from the mission brief (documented, not silent)
+1. **Reference path.** Brief says `reference/qbiq/`. The repo already had `docs/reference/qbiq/`
+   containing the reference workbook + Revit HTMLs. Per no-bloat, we extend the existing tree
+   instead of creating a second one. All spec/media land under `docs/reference/qbiq/{spec,media}/`.
+2. **Reference artifacts were not in the repo**, only the workbook + Revit HTML. The video and the
+   four renders were sourced from `~/Downloads/Modern - Formal/` and staged into
+   `docs/reference/qbiq/media/`. Large binaries are gitignored (146 MB mp4, 4×~9 MB PNGs).
+3. The user supplied `qbiq-workbook-spec.json`; it is staged as
+   `docs/reference/qbiq/spec/workbook-spec.provided.json` and treated as a **hint only** —
+   Agent A regenerates the spec from the actual xlsx and diffs against it.
+
+### Repo facts that shape the briefs (orchestrator survey)
+- `web/src/export/takeoff.ts` (605 ln) is a **deliberately consolidated 4-sheet** takeoff; its header
+  comment explains it collapsed qbiq's 12 sheets on purpose. This mission reverses that decision —
+  Agent B extends this file's model (`buildTakeoffModel`), it does not fork it.
+- **Gap: the core has no wall-type enum.** `crates/ds-core/src/model.rs` `Wall` carries only
+  `thickness`, `generated`, `glazing`. The qbiq legend needs seven types (Drywall, Half Drywall,
+  Glass, Core, Perimeter windows, Perimeter wall, Door_length). Classification must be added in the
+  core and derived from: `glazing` → Glass · `KeepOut` → Core · plate-boundary adjacency → Perimeter
+  wall/windows · generated interior → Drywall · `Component{category:"Door"}` → Door_length.
+- **Materials already exist**: `finishSchedule.ts` `FINISH_SPEC` (16 room types × floor/base/wall/
+  ceiling, India-market, deterministic) with `finishTypeFor(zone)` at :228. This is the single source
+  for Inventory's Floor/Ceiling Material, the General catalog, and Agent D's palette mapping.
+- Doors are `Component`s with `category: "Door"`; zones carry `ZoneType` (7 variants) + `ZoneShape`
+  (`Rect`/`RectRing`/`Poly`).
+- ROADMAP tick-offs belong under **Track C — Qbiq-grade deliverables** (`docs/ROADMAP.md:279`).
+
+### Decision: xlsx writer — extend the hand-rolled OOXML writer, exceljs as sanctioned fallback
+The brief nominates **exceljs**. The repo instead hand-writes every exporter's byte stream on
+purpose (`zip.ts:3` — "rather than pulling a heavy dependency"), and `takeoff.ts:523`
+`takeoffToXlsx` already emits xlsx that Excel/LibreOffice/openpyxl all read, via `sheetXml` +
+`zipStore`. The parity workbook adds images (33+), data validations, ~1000 formulas, styling,
+col widths and merges — a real jump in OOXML surface, but each piece is small and well-specified
+(`xl/media/*` + `xl/drawings/*` + rels; `<dataValidations>`; `<f>` inside `<c>`).
+
+Extending wins on no-bloat and avoids a ~1 MB browser bundle in an app whose export path must stay
+**client-side, one user action** (a Python/openpyxl step would force a server round-trip and is
+therefore rejected outright for the in-app path).
+
+**Tripwire (anti-stall, decided up front):** hand-rolled OOXML risks G9 repair warnings, where
+exceljs is battle-tested. If G9 fails **twice** on the hand-rolled writer, Agent B switches to
+exceljs immediately rather than retrying harder.
+
+### Baseline (verified before any change)
+- `cargo test -p ds-core` → **131 passed, 0 failed** (CLAUDE.md's "50 tests" is stale; fix on tick-off).
+- `pnpm typecheck` → blocked, `node_modules` missing → `pnpm install` run.
+
+### Gate scoreboard
+All gates red — no gate scripts exist yet (Agent A is authoring them). Baseline pending.
+
+| Gate | Owner | Status |
+| --- | --- | --- |
+| G1 sheet structure | B | ⬜ not yet runnable |
+| G2 formula liveness | B | ⬜ |
+| G3 quantity truth | B (+core) | ⬜ |
+| G4 plan graphic | C | ⬜ |
+| G5 thumbnails | C | ⬜ |
+| G6 renders | D | ⬜ |
+| G7 video | E | ⬜ |
+| G8 web viewer | F | ⬜ |
+| G9 round-trip | B | ⬜ |
+| G10 one-action UX | orchestrator | ⬜ |
+
+### Dispatched
+- **Agent A — Reference Auditor**: DONE (`reports/A-1.md`).
+
+---
+
+## Cycle 1 — Agent A verified, rulings issued
+
+Orchestrator re-ran `bash scripts/gates/run-all.sh` on an empty `out/`: **0/10 passing**, every gate
+failing with an actionable artifact-missing message and no crashes. Gate suite accepted as the contract.
+Playwright + chromium installed (unblocks G8/G10).
+
+### Artifact contract (every agent writes to these exact paths)
+`out/quantity-takeoff.xlsx` · `out/plan.png` + `out/plan.repeat.png` (independent re-render, same seed —
+this is how G4 tests determinism) · `out/ground-truth.json` (schema:
+`docs/reference/qbiq/spec/ground-truth.schema.json`, required `rooms`/`walls`/`doors`/`planLabels`) ·
+`out/renders/` · `out/walkthrough.mp4` · `out/share.json` `{"planId","url"}` · `out/cases/<case>/` for G9.
+
+### Rulings on the four brief-vs-reference contradictions
+1. **Core colour → `#A0A0A0` (Agent A's choice CONFIRMED).** The reference contradicts itself: legend
+   chip `#D5BDD6`, plan lines `#A0A0A0` (the chip hex appears zero times in the PNG). The brief says
+   "core/structure filled dark gray", and G4's actual requirement is *legend == renderer, no drift* —
+   which unifying satisfies. Reference bug, not ours to copy.
+2. **Title card → KEEP.** qbiq brands in-scene only, but §4 and G7 both explicitly require a 1.5 s
+   title card. Explicit requirement beats reference behaviour; deliberate divergence from qbiq.
+3. **sqf factor → `10.764` exactly.** The brief self-conflicts ("×10.764" stated twice, vs "match
+   qbiq's conversion exactly" — qbiq actually uses 10.76; true value 10.7639). Taking the brief's
+   literal, twice-stated number. Gate default set to 10.764, `--sqf-factor` retained.
+4. **Circulation % → normalise against the PLATE, not the canvas (Agent A CONFIRMED).** G4's own
+   wording is ">2% of *plate* area"; 71% of the reference canvas is transparent padding. Plate-relative
+   (12.86% on the reference) is the correct denominator.
+
+### Approach change: Agent B split into three (anti-stall, applied pre-emptively)
+Agent A found `takeoff.ts`'s writer emits only `inlineStr`/numeric cells — it has **no `<f>` formulas,
+no drawing layer, no `showGridLines`, no col/row sizing, no merges, no validations, 2 colourless fills**.
+That is seven writer capabilities *before any sheet content*, on top of a Rust wall-classification gap.
+Too much for one agent, so B is split into independently-testable units:
+- **B1** — Rust quantity surface + wall-type classification (core truth; no TS).
+- **B2** — the seven OOXML writer capabilities (verifiable against a synthetic workbook alone).
+- **B3** — the 12 sheets + formula wiring (needs B1 + B2), dispatched after they land.
+B1, B2 and C are mutually independent → dispatched in parallel now.
+
+---
+
+## Cycle 2 — B2 LANDED and independently verified
+
+### B2 — OOXML writer capabilities: **ACCEPTED**. Tripwire did NOT fire.
+The hand-rolled-writer bet paid off; exceljs was not needed and no Python step was introduced, so
+the export stays client-side/one-action. New `web/src/export/workbook.ts` (`buildXlsx(SheetSpec[])`)
+is the general writer; `takeoff.ts` was **migrated onto it and its inline OOXML layer deleted**
+(`sheetXml`/`cellXml`/`STYLES_XML`/`SheetPlan` gone) — zero duplicate xlsx paths, satisfying no-bloat.
+
+Orchestrator re-ran the tests directly (not trusting the report):
+- `node web/src/export/workbook.test.mjs` → **All assertions passed**, including LibreOffice recalc
+  (`=A1*B1`→42, cross-sheet `='General'!B9`→'Carpet', VLOOKUP→1250, SUMIF→40,
+  `ROUND(General!D5*A4,2)`→120, nested IF/ISBLANK→12, and a deliberately **stale cached 0 recalculated
+  to 50000** — so B3 need not compute cached values), plus round-trip survival of sheets, gridlines-off,
+  3 images, validations, and chip ARGB `FFFFDC60`.
+- `node web/src/export/takeoff.test.mjs` → **All assertions passed** (existing 4-sheet export not
+  regressed; it is now formula-live and gridline-free as a side benefit).
+
+### INCIDENT: concurrent `git stash` in a shared worktree (near-miss data loss)
+Mid-verification, `workbook.ts`/`workbook.test.mjs` vanished and `takeoff.ts` read byte-identical to
+HEAD — the signature of a `git stash -u` run by one of the three agents sharing this single worktree.
+It was popped and everything recovered, but a stash landing during an orchestrator commit would have
+silently destroyed a lane's work. (Matches the known "worktree agent integration" hazard.)
+**Mitigation:** B1 and C were sent an explicit prohibition on `git stash`/`reset`/`checkout`/`clean`/
+`commit`, plus their file lanes, with `takeoff.ts`+`workbook.ts` declared frozen post-B2. All staging
+and committing stays with the orchestrator. **Do not run agents concurrently in one worktree again
+without either this prohibition up front or `isolation: "worktree"` per agent.**
+
+---
+
+## Cycles 3-6 — B3, D, B1 landed. Board 0/10 → 7/10.
+
+| Commit | Slice | Board |
+| --- | --- | --- |
+| `671a8b3` | B1 core quantities · B2 writer · C plan+thumbs | 0/10 |
+| `61ee354` | gates: resolve Playwright from `web/node_modules` | 0/10 |
+| `24f3d5e` | **B3 — the 12-sheet formula-wired workbook** | 6/10 |
+| `c369804` | D renders on a shared material theme · drop dead core API | 7/10 |
+| (pending) | B1 — task chairs (63 desks / 9 chairs → 63/72) | 7/10 |
+
+### The most important finding of the whole run
+**B3 rasterised the workbook, looked at it, and found the master plan rendering as a
+~19×3 px smudge — while G1–G5 were all PASSING.** Root cause in `workbook.ts`: the image
+extent was derived as `to.colOff − from.colOff`, true only when an anchor starts and ends in
+the SAME cell (the thumbnails). Across cells it omits every intervening column. Excel ignores
+the extent so it looked fine there; LibreOffice honours it. Orchestrator fixed it properly —
+cross-cell anchors size from intrinsic pixels (PNG IHDR / JPEG SOFn / GIF descriptor) — with a
+regression test pinning 9906000×7429500 EMU.
+**Lesson: keep "open it and LOOK at it" in every brief. A purely gate-driven run ships a smudge
+with a green board.**
+
+### Rulings issued this stretch
+- **`Editor::ground_truth_json` → DELETED, not reinstated.** B1's argument accepted: a second,
+  independently-computed room set would make G3 pass by *coincidence*. Today Inventory rows,
+  ground-truth rooms and plan labels all descend from one `planRoomList` call, so G3 passes by
+  *construction* — reinstating the core emitter would hand the gate its own answer to check
+  against. Key vocabulary preserved via `ground_truth_key_vocabulary_is_pinned`.
+- **Chairs fixed in `layout.rs`, not in the renderer.** D found 63 desks / 9 chairs. Adding seats
+  in the renderer would have put furniture in a still that isn't in the takeoff, breaking the
+  render↔QTO agreement the mission rests on. Fixed at source: Furniture Inventory 86 → 149 items.
+- **Conference-table seating deliberately NOT added.** `furniture.ts::drawTable` already draws a
+  ring of implied chairs pitched in screen pixels; emitting components would visibly double the
+  seating on the plan — trading a deliverable-2 regression for a deliverable-1 fix.
+
+### Open defects from cycle 9 — ALL FOUR NOW CLOSED (verified by Judge round 2)
+1. ~~`Perimeter windows` = 0.00 m~~ → `layout::glaze_facade` cuts each perimeter wall into
+   pier/glazed band/pier: **123.20 m** vs the reference's 125.47 m. Closed (K).
+2. ~~Meeting rooms `headcount 0`~~ → implied-seat glyphs deleted, real chairs emitted: **8 drawn /
+   8 billed / HC 8**. Closed (K).
+3. ~~150 ms wall-clock flake~~ → re-scoped to a 3000 ms blow-up guard. Closed (orchestrator).
+4. **`Conference_room` weakest still — IMPROVED, NOT CLOSED.** The camera was OUTSIDE the room
+   shooting through its own glass front; "inside" is now a lexicographic tier rather than a soft
+   weight, and blown-white went 23.1% → 4.0% (reference 5.1%). But D3/E6 stand: the stills are still
+   ~2.0x the reference's flatness and 0.43x its edge density. `ROADMAP.md` and `reports/N-1.md`
+   correctly still list this as open — an earlier revision of this log wrongly marked it closed.
+
+---
+
+## Cycles 10-14 — the Judge rounds. THE central lesson of this mission.
+
+**Two adversarial Judge passes found that "10/10 green" was twice untrustworthy**, and both times the
+failure was in a GATE, not the product. Every blocker was proven by *falsification* — building a
+deliberately wrong artifact and showing the gate still passed — never by argument.
+
+| Round | Board when judged | Blockers found |
+| --- | --- | --- |
+| 1 | 10/10 (321 checks) | **D1** G6's render↔model check could be switched off by the artifact under test · **D2** the runner graded a pack G10 then replaced, and G10 passed on a half-written mp4 |
+| 2 | 10/10 (363 checks) | **E1** D1's fix moved the exploit rather than closing it |
+
+### The root cause, three times running: *the gate trusted metadata supplied by the thing it tests.*
+- Round 1: the producer chose **whether** `floorMaterial` existed — omit it and G6 skipped its only
+  render-to-model assertion. Falsified with magenta floors: `G6 PASS (13 checks)`.
+- Round 2: the fix made it unconditional, so the producer instead chose **where** — `floorRect` is
+  producer-supplied and the gate never checked the crop was floor. Painting the bottom 34% magenta and
+  picking a *legal* crop in the untouched upper frame gave `G6 PASS (35 checks), 4/4 MATCHES`, sampling a
+  slat wall and a ceiling junction. Live, not hypothetical: the shipped `Conference_room` entry recorded
+  `floorRectPurity: 0.0` and was certified as "carpet under shadow" under two green boards.
+- Round 3 (Agent M) targets the **class**: the gate must establish the floor region itself; metadata is
+  acceptable only where the gate can *validate* it rather than trust it.
+
+**Corollary, learned the same way:** structural gates verify presence, not correctness. Three separate
+agents found real defects by LOOKING at output that every gate waved through — the 19x3 px plan smudge,
+frames breaching G7's own luminance ceiling, and the mullion through the conference table. "Open it and
+look at it" now sits in every brief.
+
+### Judge round 2's other findings (the majors below fixed; its E6-E10 minors remain open)
+- **The workbook billed Reception as a "Kitchen"** — worse than reported: `takeoff.ts` kept a private
+  `ROOM_TYPE` table on the core's 7 `ZoneType` values while `Inventory` used `finishTypeFor` +
+  `TYPE_LABEL` (16 types), so **14 of 18 rooms** carried two types. `Amenity` covers Reception, Pantry,
+  Print Point, Storage, Wellness and IT/Server — exactly why it said "Kitchen". One entry point
+  (`roomTypeLabel`) now feeds every sheet; 18/18 agree (O).
+- **G9's inputs were 27 minutes stale under two green boards** — `run-all.sh` never produced or watched
+  `out/cases/*` (M).
+- **`Reception` regressed as a direct cost of the D1 fix** — a 20-ray floor proxy outranked composition,
+  and the frame it discarded had a 100%-pure floor. Evidence is now decided by the rendered mask (N).
+
+### Adversarial dynamics worth keeping
+- The Judge **corrected itself**: it re-graded D11 from defect to parity (the reference's own print layout
+  is worse), and expected to file the zero unit prices as a blocker until it checked the reference and
+  found qbiq ships zeros too.
+- An implementer **corrected the Judge**: round 1's D5 evidence counted 2,406 px of `#DCDBEE` as proof the
+  plan drew windows the takeoff didn't bill. Agent K showed there were **zero** exact matches — they were
+  anti-aliased blends of `#AEB6FF` over the pink wash, inside the ±8 tolerance by coincidence. Plan and
+  takeoff were agreeing; they agreed the facade was solid, which was the real defect.
+- Agents **reverted their own work** rather than tune to green: J tried two G6 relaxations to rescue
+  Conference_room, found they shrank the margin on the three rooms that legitimately pass, and reverted
+  both. L threw away a working 168-degree door swing because the folded leaf filled the hero shot.
+
+### Open (tracked, not blocking)
+- **Headless-vs-in-app parameter divergence**: `render-rooms.mjs` passes `--lamp 2`, `deliverablePack.ts`
+  passes none — worth 5.8 pts of flat% on Conference_room. The "one code path, two hosts" claim has an
+  unshared parameter (found by N).
+- On the DWG case a component outside every zone bills to an `"OS"` catch-all with no Inventory row —
+  upstream, pre-existing (found by O).
+- Round-1 minors still open: D6, D10, D12-D17, plus the *gate* halves of D5 and D9.
+
+---
+
+## Cycles 7-9 — viewer, video, framing. Board 9/10.
+
+| Commit | Slice | Board |
+| --- | --- | --- |
+| `db28137` | F web 3D viewer (no Autodesk) · B1 task chairs | 8/10 |
+| `4e3d577` | E walkthrough video | 9/10 |
+| (pending) | E2 walkthrough framing fix | 9/10 |
+
+### A SECOND gate blind spot — found the same way as the first
+Agent E2 ran a **dense 41-frame sweep** and found the blank-partition defect was worse than
+reported: baseline frames at t=30/t=31 were **82%/85% blank at luminance 0.870/0.889 — above
+G7's OWN 0.85 ceiling**. G7 samples only first/middle/last frames, so those frames never got
+looked at and **the video shipped green while violating the gate's own limit**.
+
+Root cause of the framing itself: `buildPoses` aimed at a fixed 7.5 m look-ahead. On a test-fit
+plate a corner IS a partition, so for ~2 s before every turn the camera pointed squarely into the
+blank flank of the room it was about to pass. Fixed with `visibleLookAhead()` (aim at the furthest
+point actually visible), a composition bias on the clearance grid, and bounded lateral centring —
+all camera/route, no post filters, no dimming.
+
+| | baseline | after |
+| --- | --- | --- |
+| t=11 s blank fraction (eye level) | 71.9% | **4.4%** |
+| worst frame anywhere | 84.6% | **50.2%** |
+| frames >50% blank at eye level | 9 of 42 | **2 of 42** |
+| max frame luminance | 0.889 (over ceiling) | **0.815** |
+
+**This is the second time a "look at the actual output" pass caught something all structural gates
+missed** (the first was the 19×3 px plan smudge). ACTION: harden G7 to sample densely rather than
+three frames — a gate that checks 3 of 1290 frames cannot police a luminance ceiling.
+
+### INCIDENT 2: concurrent write corrupted `out/walkthrough.mp4`
+E2 and Agent H both write `out/walkthrough.mp4`. A completed render came back corrupt
+(`moov atom not found` / `Invalid NAL unit size`), which the orchestrator reproduced independently.
+Not a content failure — a write collision between two concurrent agents sharing one `out/`.
+**G7 MUST be re-run on the final artifact after H's pack lands.** Same root cause class as the
+`git stash` near-miss: parallel agents sharing mutable state.
+
+### Known defect (deferred to final cleanup, not gate-blocking)
+`scripts/gates/lib/gen_spec_md.py:198` still narrates the seven writer gaps as open and cites the now
+-deleted `sheetXml`/`takeoffToXlsx` symbols. It is a spec-doc generator, **not invoked by
+`run-all.sh`**, so no gate is affected. Fix (and regenerate `workbook-spec.md`) during final cleanup.
+</content>
+
+---
+
+# MISSION 2 — Drawing-set defect closure + permanent sheet gates
+
+Opened at `1a2b8d5`. The qbiq-parity pack shipped 11/11, but rasterizing all 22 sheets during
+close-out — **the first time any sheet had ever been rendered by a test, script or gate** — exposed
+four pre-existing defects. `buildDrawingSetPdf` was referenced only by `SheetsPanel.tsx` and sibling
+modules. This mission fixes them and closes the structural gap.
+
+## Baseline (orchestrator's OWN runs at `1a2b8d5`, not taken from any report)
+
+`bash scripts/gates/run-all.sh` → **11/11 passing**
+| G1 | G2 | G3 | G4 | G5 | G6 | G7 | G8 | G9 | G10 | G11 | integrity |
+| --: | --: | --: | --: | --: | --: | --: | --: | --: | --: | --: | --: |
+| 59 | 17 | 92 | 18 | 70 | 53 | 19 | 9 | 24 | 14 | 56 | 12 |
+
+= 431 gate + 12 integrity = **443 checks**. Plus `node scripts/drawing-set.test.mjs` →
+`drawing-set PASS (252 checks)`. **SG5 asserts these exact counts; any delta is a defect, even if
+every check still passes — a silently vanished check is a bug in the runner.**
+
+## The four defects (D1 confirmed by the orchestrator on a rasterized sheet)
+- **D1 A.02 schedule overflow.** The door/window schedule has no concept of its panel's capacity;
+  rows W17–W24 print over the title block, overprinting the sheet title and the "A.02" number.
+  Verified by eye on `pdftoppm` page 4 of the seeded set. Fix = paginate with "Schedule (cont.)".
+- **D2 opening tags escape the plate** (DWG); one lands inside the NOTES panel. Fix = clamp tag
+  candidates to the plate viewport, leader when displaced.
+- **D3 label clipping on A.03/A.04** ("PHON PHON PHONE BOOTH 3"). Fix = a fit ladder
+  (wrap → shrink to 70% → shared abbreviation map → displace+leader). Never a mid-word fragment.
+- **D4 three rooms named "Open Workspace"** (DWG). The naming is a generator/program-fit issue and
+  is **routed to the generator track**; the in-scope fix is drawing-layer ordinal suffixes from a
+  shared helper that the QTO workbook uses too, so plan/sheets/workbook cannot diverge.
+
+## Relevant template constants (spec → legal external anchor for gates)
+`sheet.ts`: `MARGIN = 40`, `TITLE_BLOCK_H = 116`, `PAGE_W`/`PAGE_H`.
+`sheetSet.ts`: `PANEL_W = 316` (:268, module-private), `planBox()` (:279) → plate viewport +
+panel rect; title-block band starts at `PAGE_H - MARGIN - TITLE_BLOCK_H`.
+
+## Sequence
+S0 harness (alone) → S1 gates **red on their own target defects** → S2 (D1+D2) ∥ S3 (D3+D4) →
+S4 Judge each cycle → S5 baselines last. Gates green twice consecutively on all three packs,
+Judge reporting zero open defects, before close-out.
+
+### Dispatched
+- **S0 — Sheet Harness**: running.

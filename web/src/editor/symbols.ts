@@ -73,6 +73,21 @@ export interface SymbolSpec {
    *  the same formula the core uses, so an un-migrated snapshot still renders a
    *  zoom-stable count rather than a screen-size guess. */
   seats?: number
+  /**
+   * Draw the glyph's IMPLIED seating (a desk's tucked task chair, a table's
+   * ring of chairs)?
+   *
+   * True everywhere by default, because on the editor and import canvases the
+   * implied seats are the only seating shown — nothing else draws them.
+   *
+   * FALSE on the print path. There, real `Chair` components are drawn as their
+   * own glyphs beside the desk or table they serve, so drawing implied seats too
+   * would ink the same chair twice and put seating on a graded sheet that the
+   * Furniture Inventory does not bill. This is a fact about the CONSUMER, not
+   * about the symbol: `pdf.ts` is the one caller where billed-equals-drawn is a
+   * premise, so it is the one caller that turns this off.
+   */
+  implySeats?: boolean
   selected?: boolean
 }
 
@@ -180,7 +195,7 @@ export function drawSymbol(ctx: CanvasRenderingContext2D, s: SymbolSpec, ink: In
   ctx.lineJoin = 'round'
   ctx.lineCap = 'round'
 
-  const g: G = { ctx, v, ink, line, lw, hair, a1, a2 }
+  const g: G = { ctx, v, ink, line, lw, hair, a1, a2, implySeats: s.implySeats !== false }
 
   switch (s.category) {
     case 'Desk':
@@ -228,6 +243,8 @@ interface G {
   a1: number
   /** Fine-detail alpha (keyboard, seams, tiles). */
   a2: number
+  /** Draw implied seating? See {@link SymbolSpec.implySeats}. */
+  implySeats: boolean
 }
 
 const px = (g: G, m: number) => m * g.v.pxPerM
@@ -298,7 +315,9 @@ function desk(g: G, w: number, h: number): void {
   }
 
   // Task chair, tucked under the worktop edge, facing the desk.
-  if (g.a1 > 0) {
+  // NOT gated on `seats` — a desk's chair is part of the desk glyph, which is
+  // why passing seats: 0 would not have suppressed it.
+  if (g.a1 > 0 && g.implySeats) {
     const seat = Math.min(SEAT_M, w * 0.62, (B - (T + deskD)) * 1.5)
     if (seat > 0.1) {
       g.ctx.save()
@@ -341,7 +360,7 @@ function table(g: G, w: number, h: number, seats: number): void {
   g.ctx.lineWidth = g.lw
   g.ctx.stroke()
 
-  if (g.a1 <= 0 || seats <= 0) return
+  if (g.a1 <= 0 || seats <= 0 || !g.implySeats) return
 
   // Place EXACTLY `seats` chairs — the model's number, not a second opinion.
   // This function decides only WHERE they go: ends first (if the table is deep

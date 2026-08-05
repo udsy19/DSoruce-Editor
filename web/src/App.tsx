@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useReducer, useRef, useState } from 'react'
-import type { DocComponent, DocZone, RoomSelection } from './types/doc'
+import type { DocComponent, DocState, DocZone, RoomSelection } from './types/doc'
 import type { Metrics } from './types/metrics'
 import type { Program, GenResult, Candidate } from './types/program'
 import { DEFAULT_PROGRAM } from './types/program'
@@ -30,9 +30,19 @@ import { exportPNG, triggerDownload } from './export/png'
 import { exportPlanPDF, exportDrawingPDF } from './export/pdf'
 import { downloadIFC } from './export/ifc'
 import { downloadOBJ } from './export/obj'
+import { publishShareLink, downloadPlanGlb } from './export/share'
 import { exportSpacePlanningReport } from './export/report'
 import { exportDrawingSet } from './export/sheetSet'
-import { exportQuantityTakeoff, zoneAtPoint } from './export/takeoff'
+import { zoneAtPoint } from './export/takeoff'
+import { exportQtoWorkbook, type Quantities } from './export/qtoWorkbook'
+import {
+  buildDeliverablePack,
+  detectPackSink,
+  type DeliverablePackResult,
+  type PackProgressFn,
+} from './export/deliverablePack'
+import { seedSamplePlan } from './editor/samplePlan'
+import { classifyWalls } from './export/wallTypes'
 import { restrictDrawing } from './import/area'
 import { healWalls } from './import/heal'
 import type { RoomMarker } from './import/markers'
@@ -242,6 +252,9 @@ export interface EditorController {
   /** Current room refs: { zone.id → user ref } resolved against live zones —
    *  the AI/engine + takeoff read this to reference "room 502". */
   roomRefs(): Map<number, string>
+  /** The whole qbiq-parity deliverable pack from one action (gate G10). With an
+   *  empty document it generates the sample test-fit first. */
+  deliverablePack(onProgress?: PackProgressFn): Promise<DeliverablePackResult>
 }
 
 /** The active project (from the wizard/editor route) — threads real identity
@@ -1020,6 +1033,58 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
     ec.applyCandidate(best.snap)
   }
 
+  /**
+   * The one-action deliverable pack (gate G10): the 12-sheet workbook, the
+   * master plan, the per-room thumbnails, ground truth, the four hero stills,
+   * the walkthrough video and a share link — from a single click, wherever the
+   * app is running (see `export/deliverablePack.ts` for the sink split).
+   *
+   * With nothing open it first generates the SAMPLE test-fit, which is the very
+   * document `scripts/lib/demo-doc.mjs` renders — one plan definition, so what
+   * a visitor exports is what the gates measure.
+   *
+   * Assigned to a ref every render so the []-memoized controller closure reads
+   * the live project + bindings rather than the first render's.
+   */
+  const runDeliverablePack = async (
+    onProgress: PackProgressFn = () => {},
+  ): Promise<DeliverablePackResult> => {
+    const ec = ecRef.current
+    if (!ec) throw new Error('The editor is still starting up — try again in a moment.')
+    let plate: [number, number][] | null = null
+    if (ec.getState().walls.length === 0) {
+      onProgress({ stage: 'workbook', label: 'Generating a sample test-fit', fraction: 0 })
+      plate = seedSamplePlan(ec)
+      setProgramVersion((v) => v + 1) // the doc changed under React
+      frameEditor()
+    }
+    const state = ec.getState()
+    return buildDeliverablePack(
+      {
+        state,
+        quantities: ec.ed.quantities() as Quantities,
+        // Raw, so a server-side renderer classifies with the app's own
+        // `classifyWalls` instead of trusting a pre-chewed list.
+        wallTypes: ec.ed.wall_types(),
+        qto: {
+          bindings: bindingsRef.current,
+          floor: project?.floor ?? '1',
+          project: project?.name ?? 'Untitled Plan',
+          roomRefs: buildRoomRefs(state.zones ?? [], roomMarkersRef.current),
+          // `circulation()` is degenerate with 0 walls (CLAUDE.md) — guard it.
+          circulation: state.walls.length > 0 ? ec.circulation() : null,
+          wallSpans: classifyWalls(state, ec.ed.wall_types() as never),
+          plate,
+        },
+        name: project?.name ?? 'DSource test-fit',
+      },
+      await detectPackSink(),
+      onProgress,
+    )
+  }
+  const deliverablePackRef = useRef(runDeliverablePack)
+  deliverablePackRef.current = runDeliverablePack
+
   // Controller seam (workflow.md §1) — thin lifts of the closures above, so
   // the shell/wizard can drive the editor while its internals stay untouched.
   useImperativeHandle(
@@ -1058,6 +1123,7 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
       ec: () => ecRef.current,
       drawingCanvas: () => drawCanvasRef.current,
       roomRefs: () => buildRoomRefs(ecRef.current?.getState().zones ?? [], roomMarkersRef.current),
+      deliverablePack: (onProgress) => deliverablePackRef.current(onProgress),
     }),
     [],
   )
@@ -1616,6 +1682,10 @@ function ExportMenu({
   onOpenSheets: () => void
 }) {
   const [open, setOpen] = useState(false)
+  /** "Copy share link" feedback — the action publishes, so it needs a state. */
+  const [share, setShare] = useState<{ phase: 'idle' | 'busy' | 'done' | 'saved' | 'error'; text?: string }>({
+    phase: 'idle',
+  })
   const importMode = mode === 'import' && !!drawing
   // Real project identity → exporter meta; falls back to the legacy placeholder
   // on the dev #/editor route (no project). (workflow.md §2 replaces App.tsx's
@@ -1698,6 +1768,36 @@ function ExportMenu({
     setOpen(false)
   }
 
+  /**
+   * Publish the plan as a shareable web 3D link — DSource's answer to qbiq's
+   * Autodesk-APS model link, on our own stack. The scene is the render
+   * pipeline's own (`buildInteriorScene`), serialized to glTF-binary and PUT on
+   * the server's share store; the client opens `/share/<id>` and orbits or walks
+   * it. Deployments without a store (Vercel, no disk) hand the designer the
+   * .glb itself rather than a link that would 404.
+   */
+  const copyShareLink = async () => {
+    if (!ec || share.phase === 'busy') return
+    setShare({ phase: 'busy' })
+    try {
+      const link = await publishShareLink(ec.getState(), { name: projectName })
+      let copied = true
+      try {
+        await navigator.clipboard.writeText(link.url)
+      } catch {
+        copied = false // clipboard blocked (insecure origin / permission)
+      }
+      setShare({ phase: 'done', text: copied ? link.url : `Open ${link.url}` })
+    } catch {
+      try {
+        await downloadPlanGlb(ec.getState(), `${projectName.replace(/\s+/g, '-')}.glb`)
+        setShare({ phase: 'saved', text: 'No share server here — .glb downloaded' })
+      } catch (e2) {
+        setShare({ phase: 'error', text: e2 instanceof Error ? e2.message : String(e2) })
+      }
+    }
+  }
+
   // qbiq-style multi-page report over the last A/B/C candidates (falls back to
   // the live plan as a single alternative when nothing has been generated).
   const exportReport = () => {
@@ -1742,14 +1842,37 @@ function ExportMenu({
     setOpen(false)
   }
 
+  /**
+   * The 12-sheet qbiq-parity Quantity Takeoff. ONE client-side action: the plan
+   * graphic, the per-room thumbnails and every formula are produced in the
+   * browser — no server round-trip.
+   *
+   * Wall runs / door counts / room areas come from `Editor.quantities()`, and
+   * the plan is coloured from `Editor.wall_types()`, so the drawing and the
+   * bill classify each wall identically.
+   */
   const exportTakeoff = () => {
     if (!ec) return
     const state = ec.getState()
     // Room markers dropped in the Space step win the Room ID where they sit
     // inside a generated zone (workflow.md §3.2); re-resolved against live zones.
     const roomRefs = buildRoomRefs(state.zones ?? [], roomMarkers.current ?? [])
-    exportQuantityTakeoff(state, { bindings, floor: floorLabel, project: projectName, roomRefs })
+    void exportQtoWorkbook(state, ec.ed.quantities() as Quantities, qtoOpts(state, roomRefs))
     setOpen(false)
+  }
+
+  /** Inputs for the takeoff export. */
+  function qtoOpts(state: DocState, roomRefs: Map<number, string>) {
+    if (!ec) throw new Error('no editor')
+    return {
+      bindings,
+      floor: floorLabel,
+      project: projectName,
+      roomRefs,
+      // `circulation()` is degenerate with 0 walls (CLAUDE.md) — guard it.
+      circulation: state.walls.length > 0 ? ec.circulation() : null,
+      wallSpans: classifyWalls(state, ec.ed.wall_types() as never),
+    }
   }
 
   const source = importMode ? 'imported plan' : 'generated plan'
@@ -1817,7 +1940,7 @@ function ExportMenu({
                 onClick={exportTakeoff}
                 data-testid="export-takeoff"
               >
-                Quantity takeoff <span className="hint">Excel</span>
+                Quantity Takeoff <span className="hint">Excel · 12 sheets</span>
               </div>
             </>
           )}
@@ -1831,9 +1954,28 @@ function ExportMenu({
           <div className="export-item disabled" aria-disabled="true">
             RVT <span className="hint">via IFC</span>
           </div>
-          <div className="export-item disabled" aria-disabled="true">
-            Share… <span className="hint">soon</span>
-          </div>
+          {!importMode && (
+            <div
+              className={`export-item${share.phase === 'busy' ? ' disabled' : ''}`}
+              role="menuitem"
+              onClick={() => void copyShareLink()}
+              data-testid="export-share-link"
+              title={share.text ?? 'Publish this plan to a web 3D viewer and copy the link'}
+            >
+              {share.phase === 'busy'
+                ? 'Publishing 3D model…'
+                : share.phase === 'done'
+                  ? 'Share link copied ✓'
+                  : share.phase === 'saved'
+                    ? 'Model downloaded'
+                    : share.phase === 'error'
+                      ? 'Share failed'
+                      : 'Copy share link'}
+              <span className="hint">
+                {share.phase === 'idle' || share.phase === 'busy' ? 'web 3D viewer' : (share.text ?? '')}
+              </span>
+            </div>
+          )}
         </div>
       )}
     </div>

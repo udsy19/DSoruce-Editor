@@ -63,7 +63,19 @@ pub(crate) fn emit_job(doc: &mut Document, job: &RoomJob, cx: f64, cy: f64, w: f
         let tw = snap_module((w - 1.8).clamp(0.6, 2.4).min(w - 0.2));
         let th = snap_module((h - 1.8).clamp(0.6, 1.2).min(h - 0.2));
         if tw > 0.3 && th > 0.3 {
-            push_component(doc, "Table", snap_module(cx), snap_module(cy), tw, th, 0.0);
+            let (tx, ty) = (snap_module(cx), snap_module(cy));
+            push_component(doc, "Table", tx, ty, tw, th, 0.0);
+            // A COLLABORATION setting is a table people sit around, so it is
+            // seated like any meeting table. The other open setting is the print
+            // point, whose "table" is a copier console — nobody sits at it, so it
+            // is deliberately left unseated (this is why the rule keys on the
+            // zone type and not on the presence of a `Table`).
+            if job.zone_type == ZoneType::Collaboration {
+                seat_around_table(
+                    doc, tx, ty, tw, th,
+                    (cx - w / 2.0, cy - h / 2.0, cx + w / 2.0, cy + h / 2.0),
+                );
+            }
         }
     }
 }

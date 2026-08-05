@@ -37,6 +37,11 @@ samples/*.dxf
 
 # Qbiq reference samples (kept on disk, not in git — large binaries)
 docs/reference/qbiq/*.zip
+docs/reference/qbiq/media/*.mp4
+docs/reference/qbiq/media/*.png
+docs/reference/qbiq/spec/media/
+# Generated deliverable packs
+/out/
 docs/reference/qbiq/extracted/Rendered Images Samples from Qbiq/
 docs/reference/qbiq/extracted/**/__MACOSX/
 **/.DS_Store
@@ -45,3 +50,6 @@ docs/reference/rayon-output/*.pdf
 # generated knowledge graph (rebuild with /graphify)
 graphify-out/
 bench/results/
+# Python bytecode (gate helper libs)
+__pycache__/
+*.pyc

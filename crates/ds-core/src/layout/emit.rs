@@ -121,6 +121,9 @@ pub(crate) fn push_gen_wall(doc: &mut Document, ax: f64, ay: f64, bx: f64, by: f
         thickness,
         generated: true,
         glazing,
+        // Generated partitions are always full storey height — the generator has
+        // no partial-height primitive (see `quantity::WallType::HalfDrywall`).
+        height_m: None,
     });
 }
 
@@ -334,3 +337,211 @@ pub(crate) fn furnish_room(doc: &mut Document, cx: f64, cy: f64, w: f64, h: f64,
         RoomFurniture::Empty => {}
     }
 }
+
+pub(crate) const CHAIR_SIZE: f64 = 0.5;
+pub(crate) const CHAIR_PROJECT: f64 = 0.35;
+/// Walkable gap (m) preserved between two chair backs sharing an aisle.
+pub(crate) const CHAIR_AISLE_KEEP: f64 = 0.2;
+pub(crate) const CHAIR_PROJECT_MIN: f64 = 0.05;
+pub(crate) const SEAT_PITCH: f64 = 0.75;
+
+/// Seat task chairs around a conference / meeting / collaboration table.
+///
+/// `floor(long_side / SEAT_PITCH)` seats along **each** long side, plus **one**
+/// head seat at each end — office practice takes a single person at a table end
+/// however wide it is. Every chair faces the table and tucks
+/// `CHAIR_SIZE − CHAIR_PROJECT` under its edge, projecting `CHAIR_PROJECT` into
+/// the room: the identical tuck `seat_desk_chairs` gives a workstation, so all
+/// seating in the document reads as one object at one size.
+///
+/// `clear` is the `(x0, y0, x1, y1)` rect the seats must stay inside — a walled
+/// room's INNER wall faces, or an open setting's zone rect. A seat that does not
+/// fit, or that would collide with a seat already placed at this table, is
+/// **dropped rather than forced**, so a table clamped against architecture
+/// simply carries fewer chairs and never one inside a wall.
+///
+/// These are REAL `Chair` components, which is the whole point: the 2D plan
+/// glyphs draw no implied seating (`web/src/editor/furniture.ts`), so what the
+/// plan and the room thumbnails draw is exactly what the Furniture Inventory
+/// bills and what `quantity::headcount` counts for a room with no desks.
+/// Like every other chair they are exempt from the circulation raster
+/// (`circulation::is_loose_seating`).
+pub(crate) fn seat_around_table(
+    doc: &mut Document,
+    tx: f64,
+    ty: f64,
+    tw: f64,
+    th: f64,
+    clear: (f64, f64, f64, f64),
+) {
+    use std::f64::consts::{FRAC_PI_2, PI};
+    let half = CHAIR_SIZE / 2.0;
+    // Chair centre offset BEYOND the table edge: the seat overlaps the worktop
+    // and projects CHAIR_PROJECT past it.
+    let off = (CHAIR_PROJECT - half).max(0.0);
+    let (x0, y0, x1, y1) = clear;
+
+    let long_x = tw >= th;
+    let (run, span) = if long_x { (tw, th) } else { (th, tw) };
+    let n = ((run / SEAT_PITCH).floor() as usize).max(1);
+
+    // Long sides first (they are the real capacity), heads last, so a head seat
+    // is the one dropped when a stubby table's corners would collide.
+    let side_d = snap_module(span / 2.0 + off);
+    let head_d = snap_module(run / 2.0 + off);
+    let mut seats: Vec<(f64, f64, f64)> = Vec::with_capacity(2 * n + 2);
+    for i in 0..n {
+        let t = snap_module(((i as f64 + 0.5) / n as f64 - 0.5) * run);
+        if long_x {
+            // Chair faces the table: rot maps its local +y onto the facing
+            // direction (`rot = atan2(-fx, fy)`), matching `furnish_room`.
+            seats.push((tx + t, ty - side_d, 0.0));
+            seats.push((tx + t, ty + side_d, PI));
+        } else {
+            seats.push((tx - side_d, ty + t, -FRAC_PI_2));
+            seats.push((tx + side_d, ty + t, FRAC_PI_2));
+        }
+    }
+    if long_x {
+        seats.push((tx - head_d, ty, -FRAC_PI_2));
+        seats.push((tx + head_d, ty, FRAC_PI_2));
+    } else {
+        seats.push((tx, ty - head_d, 0.0));
+        seats.push((tx, ty + head_d, PI));
+    }
+
+    let mut placed: Vec<(f64, f64, f64, f64)> = Vec::with_capacity(seats.len());
+    for (cx, cy, rot) in seats {
+        let inside = cx - half >= x0 - 1e-6
+            && cx + half <= x1 + 1e-6
+            && cy - half >= y0 - 1e-6
+            && cy + half <= y1 + 1e-6;
+        if !inside || footprint_overlaps(&placed, cx, cy, CHAIR_SIZE, CHAIR_SIZE, -1e-6) {
+            continue;
+        }
+        placed.push((cx, cy, CHAIR_SIZE, CHAIR_SIZE));
+        push_component(doc, "Chair", cx, cy, CHAIR_SIZE, CHAIR_SIZE, rot);
+    }
+}
+
+/// Seat ONE task chair at every generated `Desk` — the workstation's other half.
+///
+/// Runs as a POST-PASS over the finished layout rather than inside the packer:
+/// desk placement stays byte-identical (desk counts, determinism and every
+/// `LayoutScore` term are unaffected), and the seating rule lives in one place
+/// regardless of which packer — axis-aligned `pack_desks` or `pack_desks_oriented`
+/// — placed the desk.
+///
+/// **Which side.** A desk's user sits on its local **+y** side: the monitor is on
+/// the −y back edge and `web/src/editor/furniture.ts::drawDesk` states "the user
+/// sits toward +y". Bench pairs butt their two desks together with
+/// `SPINE_GAP == 0`, so for a paired desk that side is solid desk and the seat
+/// falls back to −y — the outer aisle, and the only place a person can physically
+/// sit in a back-to-back run. Trying +y then −y therefore seats BOTH the paired
+/// and the single-row regimes correctly without this pass knowing which one ran.
+///
+/// **Tuck.** The chair overlaps its own desk and projects `CHAIR_PROJECT` into the
+/// aisle, capped so two chairs sharing one `clear` aisle keep `CHAIR_AISLE_KEEP`
+/// of walkable floor between their backs. Candidates are rejected if they leave
+/// the plate, foul an interior wall, or touch ANY component other than their own
+/// desk, so a desk pinned against architecture keeps a fully-tucked seat and a
+/// desk with no room at all gets none — never an overlapping one.
+///
+/// Chairs are deliberately NOT added to the packer's obstacle list and are NOT
+/// blocking in the circulation raster (see `circulation::rasterize_components`):
+/// a task chair is loose furniture that tucks away, not fixed construction, so it
+/// cannot narrow a code-measured clear width.
+pub(crate) fn seat_desk_chairs(
+    doc: &mut Document,
+    plate: Option<&[Point]>,
+    iwalls: &[(Point, Point, f64)],
+    clear: f64,
+) {
+    // Two chair backs share one aisle in a bench run, so each may claim at most
+    // half of it less the walkable keep.
+    let project = CHAIR_PROJECT
+        .min(((clear - CHAIR_AISLE_KEEP) / 2.0).max(CHAIR_PROJECT_MIN))
+        .max(CHAIR_PROJECT_MIN);
+    let half_chair = CHAIR_SIZE / 2.0;
+
+    // Every existing component as a world AABB, so a candidate seat can be tested
+    // against all of them at once. Rebuilt per desk only in the sense that the
+    // desk's own entry is skipped by index.
+    let boxes: Vec<(f64, f64, f64, f64)> = doc
+        .components
+        .iter()
+        .map(|c| {
+            let (ww, wh) = world_extents(c.w, c.h, c.rotation);
+            (c.x, c.y, ww, wh)
+        })
+        .collect();
+
+    let desks: Vec<usize> = (0..doc.components.len())
+        .filter(|&i| doc.components[i].category == "Desk" && !doc.components[i].reference)
+        .collect();
+
+    // Seats decided first, pushed after — `push_component` borrows `doc` mutably.
+    let mut seats: Vec<(f64, f64, f64)> = Vec::new();
+    // Chair AABBs already committed in this pass, so two seats can never collide.
+    let mut placed: Vec<(f64, f64, f64, f64)> = Vec::new();
+
+    for &di in &desks {
+        let d = &doc.components[di];
+        // R(θ)·(0,1) — the desk's local +y in world space (the user's side).
+        let (s, c) = d.rotation.sin_cos();
+        let (ux, uy) = (-s, c);
+        let half_depth = d.h / 2.0;
+        // An existing user-placed/frozen chair already at this desk: don't add a
+        // second one (a Confirmed chair survives `keep_confirmed` regeneration).
+        let already = doc.components.iter().enumerate().any(|(j, o)| {
+            j != di
+                && o.category == "Chair"
+                && (o.x - d.x).abs() < d.w
+                && (o.y - d.y).abs() < d.h + CHAIR_SIZE
+        });
+        if already {
+            continue;
+        }
+
+        let mut seated = false;
+        'sides: for side in [1.0f64, -1.0] {
+            // Chair faces its desk: on the +y side it looks back along −y (rot+π);
+            // on the −y side its own +y already points at the worktop (rot).
+            let rot = if side > 0.0 {
+                d.rotation + std::f64::consts::PI
+            } else {
+                d.rotation
+            };
+            for proj in [project, project * 0.5, CHAIR_PROJECT_MIN] {
+                let dist = half_depth + proj - half_chair;
+                let cx = snap_module(d.x + side * ux * dist);
+                let cy = snap_module(d.y + side * uy * dist);
+                let (cw, ch) = world_extents(CHAIR_SIZE, CHAIR_SIZE, rot);
+                if !slot_fits_plate(plate, cx, cy, cw, ch, 0.0)
+                    || !slot_clears_walls(iwalls, cx, cy, cw, ch)
+                    || footprint_overlaps(&placed, cx, cy, cw, ch, -1e-6)
+                {
+                    continue;
+                }
+                // Free of every component except the desk it belongs to.
+                let fouls = boxes
+                    .iter()
+                    .enumerate()
+                    .any(|(j, &b)| j != di && footprint_overlaps(&[b], cx, cy, cw, ch, -1e-6));
+                if fouls {
+                    continue;
+                }
+                seats.push((cx, cy, rot));
+                placed.push((cx, cy, cw, ch));
+                seated = true;
+                break 'sides;
+            }
+        }
+        let _ = seated;
+    }
+
+    for (x, y, rot) in seats {
+        push_component(doc, "Chair", x, y, CHAIR_SIZE, CHAIR_SIZE, rot);
+    }
+}
+

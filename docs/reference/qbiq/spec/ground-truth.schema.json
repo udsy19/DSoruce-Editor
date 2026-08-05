@@ -1,0 +1,101 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "DSource deliverable-pack ground truth",
+  "description": "Emitted by the generator alongside out/quantity-takeoff.xlsx. This is the geometric truth the workbook, the plan PNG and the renders are all cross-checked against by gates G3 and G6. Every number here comes from the Rust core, never from the spreadsheet.",
+  "type": "object",
+  "required": ["rooms", "walls", "doors", "planLabels"],
+  "properties": {
+    "sqfPerM2": {
+      "type": "number",
+      "default": 10.7639,
+      "description": "Conversion factor used for Inventory 'Area (sqf)'. NOTE: the qbiq reference uses a rounded 10.76; DSource defaults to the true 10.7639. G3 reads --sqf-factor, not this field, so keep them in sync."
+    },
+    "walls": {
+      "type": "object",
+      "description": "Wall type -> run length. Keys must match General!J9:J* Material Name exactly. Checked to within 1 cm.",
+      "additionalProperties": {
+        "oneOf": [
+          { "type": "number" },
+          { "type": "object", "required": ["lengthM"], "properties": { "lengthM": { "type": "number" } } }
+        ]
+      },
+      "examples": [{ "Drywall": { "lengthM": 105.03 }, "Perimeter wall": { "lengthM": 6.01 }, "Perimeter windows": { "lengthM": 125.47 }, "Columns": { "lengthM": 46.336 } }]
+    },
+    "doors": {
+      "type": "object",
+      "description": "Door type -> count. Keys must match General!T9:T* Type Name exactly. Checked for EXACT equality.",
+      "additionalProperties": { "type": "integer" },
+      "examples": [{ "Glass": 13, "Solid": 3 }]
+    },
+    "doorCount": { "type": "integer", "description": "Sum of doors. Optional; checked when present." },
+    "rooms": {
+      "type": "array",
+      "description": "One entry per Inventory body row, same order.",
+      "items": {
+        "type": "object",
+        "required": ["roomId", "areaM2"],
+        "properties": {
+          "roomId": { "type": ["string", "integer"], "description": "Must appear EXACTLY once in planLabels." },
+          "name": { "type": "string", "description": "Inventory 'Program Room Name'." },
+          "spaceType": { "type": "string", "description": "Inventory 'Space Type'." },
+          "subcategory": { "type": "string" },
+          "department": { "type": "string" },
+          "headcount": { "type": "integer" },
+          "areaM2": { "type": "number", "description": "Checked to within 0.01 m2." },
+          "areaSqf": { "type": "number" },
+          "floorMaterial": { "type": "string", "description": "Must match a General!B9:B* Material Name." },
+          "ceilingMaterial": { "type": "string", "description": "Must match a General!F9:F* Material Name." },
+          "furnitureElements": { "type": "string", "description": "'{Item Description}: {qty}, ...'" }
+        }
+      }
+    },
+    "planLabels": {
+      "type": "array",
+      "description": "Every room-ID label the plan renderer actually drew on plan.png. G3 asserts a perfect 1:1 correspondence with the Inventory Room IDs — this is what catches rooms that exist in the takeoff but were never drawn (and vice versa).",
+      "items": { "type": ["string", "integer"] }
+    },
+    "renders": {
+      "type": "array",
+      "description": "Consumed by G6 to check each still's floor pixels against that room's Inventory floor material.",
+      "items": {
+        "type": "object",
+        "required": ["name", "file"],
+        "properties": {
+          "name": { "type": "string", "examples": ["Reception"] },
+          "file": { "type": "string", "description": "Path relative to the repo, or a bare filename resolved inside --renders.", "examples": ["out/renders/Reception.png"] },
+          "roomId": { "type": ["string", "integer"] },
+          "floorMaterial": { "type": "string", "examples": ["Parquet Herringbone - dark", "Carpet Light Gray"] },
+          "floorRect": {
+            "type": "array",
+            "description": "Fractional (x0,y0,x1,y1) crop of the frame that is predominantly floor. Default [0.05,0.80,0.95,0.98].",
+            "items": { "type": "number" },
+            "minItems": 4,
+            "maxItems": 4
+          }
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "sqfPerM2": 10.7639,
+      "walls": { "Drywall": { "lengthM": 105.03 }, "Perimeter wall": { "lengthM": 6.01 } },
+      "doors": { "Glass": 13, "Solid": 3 },
+      "doorCount": 16,
+      "rooms": [
+        {
+          "roomId": 186, "name": "office_m", "spaceType": "Office - Receiving Guests",
+          "subcategory": "manager", "department": "GENERAL", "headcount": 1,
+          "areaM2": 12.58, "areaSqf": 135.41,
+          "floorMaterial": "Carpet Light Gray", "ceilingMaterial": "Drywall",
+          "furnitureElements": "Desk Table W70 X L140: 1, Executive  Chairs W58 X L60: 1"
+        }
+      ],
+      "planLabels": [186],
+      "renders": [
+        { "name": "Reception", "file": "out/renders/Reception.png", "roomId": 186,
+          "floorMaterial": "Parquet Herringbone - dark", "floorRect": [0.05, 0.8, 0.95, 0.98] }
+      ]
+    }
+  ]
+}

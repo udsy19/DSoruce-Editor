@@ -595,13 +595,141 @@ Make generated plans read like a senior architect's work, not a diagram.
 ## Track C — Qbiq-grade deliverables (`docs/reference/qbiq/`)
 - [x] **Space-planning report PDF** — cover, 3D-tour page, A/B/C KPI-rail + colored plan + legend,
   summary (comparison table + radar + space-mix). `export/report.ts`.
-- [x] **Quantity takeoff Excel** — hand-rolled .xlsx, per-room BOM + wall schedule, ₹. `export/takeoff.ts`.
+- [x] **Quantity takeoff Excel** — superseded by the 12-sheet parity workbook below;
+  `export/takeoff.ts`'s own 4-sheet xlsx layer and wall classification are deleted.
 - [x] DXF · [x] PDF sheet · [x] IFC (BIM) · [x] OBJ+MTL · [x] PNG · [x] CSV.
-- ⏸ **Photoreal renders** — deprioritized (needs 3D-asset library + path tracer / cloud render).
-- [ ] **RVT** — native Revit is proprietary; we export IFC (imports to Revit). Revit sample = web viewer.
+- [x] **Photoreal renders** — shipped (was deprioritized as "needs a path tracer"; delivered instead
+  with an offscreen tier: Neutral tone mapping → GTAO → SMAA, VSM soft shadows). `export/roomRenders.ts`.
+- [ ] **RVT** — native Revit is proprietary; we export IFC (imports to Revit). Superseded in practice by
+  the self-hosted `/share/<id>` GLB viewer below, which is what the Revit sample was actually for.
+
+### Qbiq output parity — the deliverable pack (10/10 acceptance gates green)
+Reference decomposed to machine-checkable specs in `docs/reference/qbiq/spec/`; gates in
+`scripts/gates/` (`run-all.sh` is the only trusted signal). One `Editor` state feeds every artifact,
+so the workbook, plan, renders, video and viewer cannot disagree.
+- [x] **12-sheet formula-wired QTO workbook** — `export/qtoWorkbook.ts`. qbiq's exact sheet order;
+  `General` is the only place a number is stated, everything else reaches it by reference/VLOOKUP/SUMIF
+  at **100% formula density** (300/300 body cells). Verified live: +1000 on a unit price moved the total
+  by exactly 1000 × 2.60 m × 158.70 m via LibreOffice recalc. Embeds the plan + per-room thumbnails.
+- [x] **General SpreadsheetML writer** — `export/workbook.ts` (`buildXlsx`). Formulas, drawing layer
+  (two/oneCellAnchor + EMU), gridline control, col/row sizing, merges, data validations, ARGB fills.
+  Hand-rolled, so the export stays client-side; `takeoff.ts` migrated onto it, zero duplicate paths.
+- [x] **Core quantity truth** — `crates/ds-core/src/quantity.rs`. Geometric `WallType` classification
+  (NOT the `generated` flag — an imported DWG has every wall `!generated`), per-type lengths, door
+  counts, room areas, wall heights. Half Drywall reports an honest 0.00 m.
+- [x] **Highlighted plan + room thumbnails** — `export/planGraphic.ts` / `roomThumbs.ts`, deterministic
+  (byte-identical re-render), colours imported from `spec/palette.json` so legend and linework can't drift.
+- [x] **Per-room renders** — four 3840×2160 stills on a shared material theme (`three/materialTheme.ts`),
+  floor materials resolved through `FINISH_SPEC` so renders and workbook agree.
+- [x] **Walkthrough video** — `export/walkthrough.ts`, 43 s H.264 1080p60 (CRF 15), circulation-graph route,
+  branded title card + in-scene screens.
+- [x] **Shareable web 3D viewer** — `/share/<id>` serving a GLB into `web/viewer.html`. No Autodesk,
+  no token, no CDN. `deploy/shareStore.ts` is one implementation shared by dev middleware and prod.
+- [x] **One-action pack** — `export/deliverablePack.ts`: one click → xlsx + ground truth + plan + 4
+  renders + mp4 + share link. Two sinks (server → `out/`, zip → download); in-browser H.264 via
+  WebCodecs with a hand-written MP4 muxer (`export/mp4.ts`) when no GPU host is available.
+- [x] **Facade glazing + meeting-room seating** (`reports/K-1.md`, defects D4/D5/D8).
+  `layout::glaze_facade` models the facade as pier · glazed band · pier, so **Perimeter windows** bills
+  **123.20 m** (was 0.00; reference 125.47) and the plan draws the same run it bills.
+  `layout::seat_around_table` seats every meeting/team/board/collab table with REAL `Chair` components
+  and `editor/furniture.ts` drew its last implied seat, so meeting rooms report **headcount 8**, not 0.
+  `Document::zone_index_at` buckets by smallest containing zone, so identical rooms report identical
+  headcount (whole-plan 67 → 112).
+- [x] **Adversarial QA — three Judge rounds** (`reports/defects-{1,2,3}.md`). Rounds 1 and 2 each found
+  BLOCKERS against a 10/10 board, both times in a **gate**, both proven by falsification. The recurring
+  root cause was a gate trusting metadata supplied by the thing it tests: the producer chose first
+  *whether* its floor was checked, then *where*. G6 now segments the image itself and reads no producer
+  metadata (moving every `floorRect` onto a wall and deleting the field give byte-identical output).
+  Round 3 declared the pack **shippable, no blocker** — the first round where a fix survived
+  falsification instead of relocating.
+- Follow-ups (tracked in `reports/ORCHESTRATOR_LOG.md`, defect IDs in `reports/defects-*.md`):
+  - **Renders remain the weakest deliverable (D3/E6)** — ~2.0× the reference's flatness and 0.43× its
+    edge density; the video has a 40.4%-blown frame at t=22.2 that G7 structurally cannot see.
+    **ROUTED, not to be fixed ad hoc:** closing this needs a richer 3D asset library, not better
+    framing, which makes it a candidate-evaluation problem — which asset source or rendering approach
+    ports cleanly, under what licence, scored against fixtures defined *before* the candidates run.
+    Bolting assets on now would short-circuit that evaluation and manufacture a post-hoc metric.
+    It belongs in the materials/rendering bake-off track (downstream of the IFC pre-work); that track
+    is not in this repo, so the fixture targets are pre-registered here to survive the handoff:
+    **flatness 2.0× → ≤1.2× the reference; edge density 0.43× → ≥0.75×; colour count 734 → ≥1500**
+    (reference: flat 22.0, edge 34.6, colours 2439; ours at close: 44.8 / 14.8 / 734).
+  - **`Conference_room` is a program-fit problem, not a rendering one.** A 2.9 m table and 8 chairs in
+    a 5×4 m room leaves no camera solution at 1.6 m eye height, and it is why only 3 of 4 renders can
+    evidence their floor. Score it against the generator's **furnishing rules** (oversized furniture
+    selected for the room), not the render pipeline.
+  - **Only 3 of 4 renders evidence their floor, with zero headroom**, and the camera that fixed
+    `Conference_room`'s composition is what cost the fourth (7.01% on the prior camera).
+  - [x] **E7 closed** — the plan billed furniture it didn't show. Root cause was NOT a symbol-coverage
+    gap (`drawFurnitureSymbol` already has a footprint `default:`); labels drew last and `placeNear`
+    de-collided them against other labels only, painting over 12 px chairs. New **G11** asserts both
+    emission (multiset re-derived from core state) and **visibility in the delivered pixels** — an
+    emission-only gate would have passed while the defect persisted. It found 8 occluded rooms where
+    the defect report found 4.
+  - Gate coverage hardened (G4 14→18, G6 43→53 checks): G6 gained a ground-coverage assertion and
+    pairwise dHash room distinctness; G4 now reads the model and asserts billed ⇔ drawn.
+    **Residual limits ACCEPTED — do not invest further** (`reports/P-1.md` has the numbers): a
+    ≤21%-of-frame mid-band repaint survives G6, and G4 tolerates *erasing* ~50% of window pixels.
+    The threat model is regression and drift in our own code, not a producer forging outputs;
+    perceptual gates that catch a plan collapsing to a 19×3 px smudge are doing their job. The
+    producer-metadata class was different — the gate was measuring nothing — and is now closed by
+    `.claude/rules/gate-independence.md`.
+  - Headless-vs-in-app divergence: `render-rooms.mjs` passes `--lamp 2`, `deliverablePack.ts` none.
+  - [x] **Drawing-set defect closure — CLOSED.** All four originally-reported defects plus four more
+    the gates found (see `reports/sheets-defects-{1,2}.md`, `reports/SHEETS-FINAL.md`). The drawing
+    set now has standing cover it never had: a deterministic 36-sheet harness (`scripts/sheets/`)
+    and gates SG1–SG6 (`scripts/gates/sheets/`), written **before** their fixes and watched to fail.
+  - **Drawing-set defects still OPEN — all PRE-EXISTING, proven by measurement at three commits, not
+    introduced by the closure work.** Routed here rather than quiet-fixed (mission law):
+    - **D-P (major): 107 room-name / area / dimension strings print across drawn wall and door-swing
+      ink** on the 12 plan sheets. Measured **103 at `1a2b8d5` → 106 after S2/S3 → 107 now**, with
+      **106 of 107 identical coordinate-for-coordinate** across the change. Root cause is precise and
+      already known: **`sheetSet.ts:1021` starts the plan's occupancy EMPTY and never seeds it with
+      the base raster's ink**, whereas `planGraphic.ts:300-304` does — the sheets never received E7's
+      landing fix. That asymmetry is the whole defect; closing it is a contained change plus a gate.
+    - **D-Q (major): 14 room names/areas print OUTSIDE the building footprint** (up to 33 pt),
+      interleaved with the overall dimension string on testfit A.02; four `14.0 m²` struck through by
+      the shell wall on testfit A.01.
+    - dwg **A.01** is the worst sheet (labels over demolition hatch); dwg **A.03**'s ceiling grid and
+      fixtures are not clipped to the irregular building polygon; **A.08** is ~95% blank; **A.07**'s
+      cards carry placeholder `CHA`/`DES`/`TAB` thumbnails.
+    - **The drawing set is therefore not yet shippable as a CONSTRUCTION set** — it is shippable as
+      the client-facing deliverable this program targets. Treat D-P/D-Q as the entry cost for the
+      former.
+  - Tier-2 3D room thumbnails; round-1 minors D6, D10, D12–D17.
 - [x] **Report cover branding + A/B/C differentiation** — client logo focal on the cover, project/address/
   floor laid out qbiq-style; per-alt accent chips + winner ribbons (shared `computeWinners` w/ the S7
   gallery); summary highlights each metric's leading alternative. (Building *photo* still N/A — no source.)
+
+### Branch reconciliation — `export` ↔ `main` (proposed resolution recorded BEFORE the merge)
+
+`export` is 20 commits ahead; **`main` is 59 ahead**; 19 files changed on both sides, `sheetSet.ts` and
+`servicesSheets.ts` above all (this mission rewrote them heavily), plus the wasm binaries. **Do not
+resolve this with `git merge`.** Two of the conflicts decide *what the plan fundamentally is*, and a
+merge would settle them as a side effect of conflict resolution, by whoever happened to be driving.
+The law file is already safe on `main` (`869d652`), so there is no urgency forcing a bad merge.
+
+**Proposed resolution — mode separation, not adjudication.** These are two rendering *intents*, not two
+opinions about one plan, and neither branch is wrong:
+- **Circulation.** `main` `19a7837` "corridors become ground, not figure" is correct for the
+  **architectural drawing set** — in construction drawings circulation is residual space and filling it
+  is bad drafting. `export`'s pink wash is correct for the **QTO deliverable plan**, a client-facing
+  graphic where circulation is a *billed, highlighted quantity keyed to a legend*.
+  → One renderer, two named presentation modes (`architectural` / `deliverable`), **each with its own
+  gate scope**. G4's ">2% pink pixels" is a requirement *on the deliverable mode* and must be scoped to
+  it. G4 firing on the architectural plan would be the category error the pre-registration law
+  prohibits: **a metric is only readable for the class it was defined over.**
+- **Style gate.** `main`'s `bench/style-gate.mjs` bans hex/rgba outside `planStyle.ts`; `export`'s
+  `qbiqPalette.ts` reads `palette.json`. Both encode the *same* value — single source of styling truth —
+  and disagree only about where that source lives. But `palette.json` is **spec**, extracted from the
+  reference artifact, which under the external-anchor law is exactly the kind of source a gate should
+  trust. → Make the qbiq palette a **sanctioned token source**: registered alongside `planStyle.ts` as a
+  second permitted origin, or folded in as a named theme. The sensor's intent survives intact; its
+  allowlist grows by one spec-backed entry.
+  → Restates the problem as *"one branch's sensor hadn't been told about the other's sanctioned
+  anchor"* — a much smaller mission than "two branches contradict by design".
+
+Still real work: the 19 dual-touched files need careful merging, `sheetSet.ts` most of all, and both
+gate suites plus `main`'s sensors must pass afterwards.
 
 ## Track D — CAD editing (Rayon-grade)
 - [x] Draw: line/polyline/rect/circle/arc/ellipse/dimension/text/door/window/column/hatch.

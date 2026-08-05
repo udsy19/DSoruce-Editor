@@ -17,6 +17,7 @@ fn room_from_corners(corners: &[(f64, f64)]) -> Document {
             thickness: 0.1,
             generated: false,
             glazing: false,
+            height_m: None,
         });
     }
     doc
@@ -1673,7 +1674,7 @@ fn missing_bench_pairs_field_defaults_true() {
 fn add_partition(doc: &mut Document, ax: f64, ay: f64, bx: f64, by: f64) -> (Point, Point) {
     let id = doc.alloc_id();
     let (a, b) = (Point::new(ax, ay), Point::new(bx, by));
-    doc.walls.push(Wall { id, a, b, thickness: 0.1, generated: false, glazing: false });
+    doc.walls.push(Wall { id, a, b, thickness: 0.1, generated: false, glazing: false, height_m: None });
     (a, b)
 }
 
@@ -3852,16 +3853,16 @@ fn golden_generate_output_is_frozen() {
     cases.push(("explicit_rooms/l_plate/seed3".to_string(), l_room(), prog_rooms, 3));
 
     const EXPECTED: [&str; 10] = [
-        "default/rect20x14/seed1 = c39 w44 z11 desks21 total87742744 #638a1c9481ed3edd",
-        "default/rect20x14/seed2 = c43 w44 z11 desks25 total89137244 #843adbc8cb68358b",
-        "default/rect20x14/seed3 = c38 w44 z11 desks20 total86831752 #ab31aabad11d9a1a",
-        "default/real_plate/seed1 = c122 w107 z40 desks88 total92800230 #599308c6378d5a37",
-        "default/real_plate/seed2 = c122 w107 z35 desks88 total92274146 #d00ae4cb109f1f02",
-        "default/real_plate/seed3 = c122 w107 z40 desks88 total92804696 #c91b3383f19d5bf3",
+        "default/rect20x14/seed1 = c39 w44 z11 desks21 total87876523 #233279b6828661d2",
+        "default/rect20x14/seed2 = c43 w44 z11 desks25 total89274625 #784343e04018b57c",
+        "default/rect20x14/seed3 = c38 w44 z11 desks20 total86967629 #04ca66c6faba93f5",
+        "default/real_plate/seed1 = c122 w107 z40 desks88 total92930827 #155bdf888b1d5060",
+        "default/real_plate/seed2 = c122 w107 z35 desks88 total92401469 #fda42af842bbcc0c",
+        "default/real_plate/seed3 = c122 w107 z40 desks88 total92934414 #da8cbf154bc1e22e",
         "no_support/rect20x14/seed1 = c30 w14 z4 desks26 total92565832 #6dd8cac6eee770c9",
         "no_support/real_plate/seed2 = c92 w53 z38 desks88 total95848844 #9e1e591af3c93473",
-        "explicit_rooms/real_plate/seed1 = c105 w77 z26 desks88 total90705966 #16e50e2f7c0fbf16",
-        "explicit_rooms/l_plate/seed3 = c31 w21 z10 desks24 total89303586 #de933b1ae3d000dc",
+        "explicit_rooms/real_plate/seed1 = c105 w77 z26 desks88 total90772681 #a5b9cd98a888d956",
+        "explicit_rooms/l_plate/seed3 = c31 w21 z10 desks24 total89503554 #0d560c3ab7b6c47c",
     ];
     assert_eq!(cases.len(), EXPECTED.len(), "case list and expectations must line up");
 
@@ -3903,6 +3904,7 @@ fn golden_generate_output_is_frozen() {
                 doc.walls.push(crate::model::Wall {
                     id, a: Point { x: ax, y: ay }, b: Point { x: bx, y: by },
                     thickness: 0.2, generated: false, glazing: false,
+            height_m: None,
                 });
             }
             let mut program = Program::default();
