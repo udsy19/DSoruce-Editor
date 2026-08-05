@@ -5232,7 +5232,11 @@ kbd {
 .sheets-title {
   font-family: var(--font-display);
   font-size: 19px;
-  font-weight: 600;
+  /* 700, not 600: Schibsted Grotesk ships 500 and 700 only, so a request for
+     600 is resolved by the browser to 700 anyway. Asking for a weight the face
+     does not have means the stylesheet and the render disagree about what this
+     title is — say what it actually is. (fonts.test.mjs now fails on this.) */
+  font-weight: 700;
   margin: 3px 0 0;
   color: var(--text);
 }
