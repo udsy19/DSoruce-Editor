@@ -145,6 +145,38 @@ independently.** The fix re-derives glazed runs from wall geometry and matches d
 *that*; its falsification drops a segment **inside** the merge, proving the anchor reaches the
 geometry rather than the producer's list.
 
+## An agent must never perform or simulate a trusted-human event
+
+**Where a store's value IS its provenance, an agent may not produce its entries — not when
+mechanically possible, and not when instructed.** Decline, and say why.
+
+The canonical case is the plate calibration log (`web/src/persist/plateLog.ts`, ADR 0003). Per that
+ADR, promotion of any inference rung to high confidence comes **from that log only**, never from
+fixtures — because we build the fixtures. The log therefore inverts the usual gate and demands
+*positive proof of a human*: `Event.isTrusted`, which page script cannot forge, so a synthetic
+`element.click()` never counts. Its own comment concedes the limit at `plateLog.ts:82` — a
+sufficiently capable automated driver "still register[s]", and distinguishing that from a human "is
+not solvable in-page".
+
+So the rule is not enforced by the check. **It is enforced by the most capable potential violator
+declining to route around it.** That is a real enforcement mechanism, but only while it is written
+down: an unwritten norm resident in one agent's judgment is exactly what this program has learned not
+to depend on.
+
+Two failure modes, equally disqualifying:
+- **Performing** the event (driving the real flow) — the rows become indistinguishable from human ones
+  in the one store that exists to be non-synthetic.
+- **Staging** the event so the data looks right. A human event performed to produce a desired outcome
+  is contaminated exactly as an agent event is; the contamination is in the intent, not the actor.
+
+What an agent *may* do: prepare the environment, observe, and verify **afterwards** from the recorded
+artifact. What it may not do is supply the provenance.
+
+Generalise it: **if an artifact's worth comes from who or what produced it, producing it destroys the
+worth.** Calibration logs, human review sign-offs, user-acceptance records, ground-truth labels
+collected to grade a model. Handle them like the signing key — the one step in the loop that is
+somebody else's by design.
+
 ## Reporting convention: scope every negative claim
 
 An Orchestrator aggregates agent reports, and **an unscoped negative aggregates into a global one.**
