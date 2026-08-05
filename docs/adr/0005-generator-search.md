@@ -389,7 +389,7 @@ each budget would optimise the metric we measured at the expense of the one we
 just discovered we do not. The measurement is cheap and the machinery exists;
 that is the next step, not a blind reduction.
 
-## The rules family — one failure mode, nine faces
+## The rules family — one failure mode, ten faces
 
 > **Four faces of one error: something read as evidence outside the conditions
 > that made it evidence.**
@@ -547,6 +547,39 @@ Each was learned from a live mistake in this campaign.
    the reason both sensors exist: **neither error class is findable by looking
    at the output**, and they fail in opposite directions.
 
+10. **The second source has three severities, and the middle one is the
+    sneakiest** (plan-grammar campaign) — a duplicated value is one disease, but
+    what it costs depends entirely on whether anything reads the copy.
+
+    | rung | example | what ships | how it is found |
+    |---|---|---|---|
+    | **dead copy** | 14 `--zone-*` CSS properties duplicating the TS zone palette, zero consumers | nothing — costs only trust, and sets a trap for the commit that changes the original | grep for consumers |
+    | **live copy** | `stats.ZONE_META`, a full second zone palette feeding the Zones tab, donut and CSV | a VISIBLE INCONSISTENCY, on the exact commit that changes the colours, with nothing failing | reading the code before landing the change |
+    | **consumed shadow** | `price_inr` mirrored into an App-side map | WRONG DATA, silently | a fixture disagreeing with production |
+
+    The middle rung is the dangerous one: it **renders plausibly everywhere and
+    agrees nowhere**. A dead copy is inert and a shadow eventually contradicts
+    something measurable, but a live copy just quietly draws a different answer
+    in a different panel, each internally consistent.
+
+    The fix that generalises: **split by ownership, not by convenience.** The
+    stats panel keeps its LABELS — vocabulary is genuinely the panel's own — and
+    spreads its COLOURS from the style table. Ask which layer owns the value,
+    not which layer needs it.
+
+    Sensor built for the forward path rather than the instance: the asserted
+    palette values may appear in exactly one file, checked repo-wide and
+    value-based (`bench/style-gate.mjs`). It would not have caught `ZONE_META`,
+    which held the *old* hexes — that needed a human reading the code — but it
+    catches the likely recurrence, which is someone copying the CURRENT palette
+    into a new panel that no per-file gate is watching yet.
+
+> **Why 2e mattered, in one line: the loudest thing in every plan used to be the
+> part that isn't program.** DSource flooded circulation with its strongest
+> colour; Laiout fills only program zones and leaves corridors as paper ground.
+> Fixing that was not a palette swap, it was a figure/ground decision — which
+> marks are content and which are the surface content sits on.
+
 **And a standing requirement that falls out of the same discipline: every
 trigger needs a SENSOR.** A trigger without something watching for it is a wish.
 Audited across the campaign:
@@ -564,6 +597,7 @@ Audited across the campaign:
 | **a browser check must prove WHICH TREE it measures** | **`bench/assert-build.mjs` + build-provenance meta tags** | **now exists** |
 | **the weight ladder must reproduce the measured qbiq ratios** | **`bench/ladder-check.mjs`** | **now exists** |
 | **a THIRD canvas space appears (normalize, stop exempting)** | **`bench/style-gate.mjs` PENDING/EXEMPT list** | **declared** |
+| **the asserted palette is copied into a second file** | **`bench/style-gate.mjs` palette-uniqueness check** | **now exists** |
 
 The fourth instance of the family will come. When it does, add it here rather
 than treating it as new.

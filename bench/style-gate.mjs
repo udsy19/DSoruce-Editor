@@ -111,6 +111,47 @@ for (const [rel, rules] of GUARDED) {
   }
 }
 
+// PALETTE UNIQUENESS — the asserted values may live in exactly ONE file.
+//
+// The per-file gate cannot catch the likely recurrence, and that gap is the
+// reason this exists: someone copies the current palette into a NEW panel next
+// quarter, and the new file is not on the guarded list yet, so nothing fires.
+// This check is repo-wide and value-based instead of file-based.
+//
+// It would NOT have caught stats.ZONE_META, which held the OLD hexes -- that
+// one was found by reading the code. It closes the forward path. The standing
+// policy covers the rest: any file discovered carrying a zone->colour mapping
+// joins GUARDED as part of fixing it.
+{
+  const TABLE = 'web/src/editor/planStyle.ts'
+  const tableSrc = fs.readFileSync(path.join(ROOT, TABLE), 'utf8')
+  // Every asserted-or-derived palette value, read from the table itself so the
+  // list cannot go stale relative to what ships.
+  const zoneBlock = tableSrc.match(/export const ZONE: Record<[^>]*> = \{([\s\S]*?)\n\}/)
+  const values = zoneBlock ? [...zoneBlock[1].matchAll(/#[0-9a-fA-F]{6}/g)].map((m) => m[0].toLowerCase()) : []
+  const unique = [...new Set(values)]
+  const walk = (dir, out = []) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (e.name === 'node_modules' || e.name === 'wasm' || e.name.startsWith('.')) continue
+      const p = path.join(dir, e.name)
+      if (e.isDirectory()) walk(p, out)
+      else if (/\.(ts|tsx|css|mjs)$/.test(e.name)) out.push(p)
+    }
+    return out
+  }
+  for (const file of walk(path.join(ROOT, 'web/src'))) {
+    const rel = path.relative(ROOT, file)
+    if (rel === TABLE) continue
+    const src = fs.readFileSync(file, 'utf8').toLowerCase()
+    const hits = unique.filter((h) => src.includes(h))
+    if (hits.length) {
+      console.log(`  PALETTE COPY: ${rel} contains asserted zone value(s) ${hits.join(', ')}`)
+      console.log(`    The palette lives in ${TABLE}. Import ZONE; do not restate its values.`)
+      violations += hits.length
+    }
+  }
+}
+
 // Mirror check: a declared TS/CSS pair that disagrees is worse than two
 // literals, because it renders as one value while reading as another.
 const tableSrc = fs.readFileSync(path.join(ROOT, 'web/src/editor/planStyle.ts'), 'utf8')
