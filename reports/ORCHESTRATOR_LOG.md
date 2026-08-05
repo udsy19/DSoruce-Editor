@@ -300,3 +300,48 @@ Not a content failure — a write collision between two concurrent agents sharin
 -deleted `sheetXml`/`takeoffToXlsx` symbols. It is a spec-doc generator, **not invoked by
 `run-all.sh`**, so no gate is affected. Fix (and regenerate `workbook-spec.md`) during final cleanup.
 </content>
+
+---
+
+# MISSION 2 — Drawing-set defect closure + permanent sheet gates
+
+Opened at `1a2b8d5`. The qbiq-parity pack shipped 11/11, but rasterizing all 22 sheets during
+close-out — **the first time any sheet had ever been rendered by a test, script or gate** — exposed
+four pre-existing defects. `buildDrawingSetPdf` was referenced only by `SheetsPanel.tsx` and sibling
+modules. This mission fixes them and closes the structural gap.
+
+## Baseline (orchestrator's OWN runs at `1a2b8d5`, not taken from any report)
+
+`bash scripts/gates/run-all.sh` → **11/11 passing**
+| G1 | G2 | G3 | G4 | G5 | G6 | G7 | G8 | G9 | G10 | G11 | integrity |
+| --: | --: | --: | --: | --: | --: | --: | --: | --: | --: | --: | --: |
+| 59 | 17 | 92 | 18 | 70 | 53 | 19 | 9 | 24 | 14 | 56 | 12 |
+
+= 431 gate + 12 integrity = **443 checks**. Plus `node scripts/drawing-set.test.mjs` →
+`drawing-set PASS (252 checks)`. **SG5 asserts these exact counts; any delta is a defect, even if
+every check still passes — a silently vanished check is a bug in the runner.**
+
+## The four defects (D1 confirmed by the orchestrator on a rasterized sheet)
+- **D1 A.02 schedule overflow.** The door/window schedule has no concept of its panel's capacity;
+  rows W17–W24 print over the title block, overprinting the sheet title and the "A.02" number.
+  Verified by eye on `pdftoppm` page 4 of the seeded set. Fix = paginate with "Schedule (cont.)".
+- **D2 opening tags escape the plate** (DWG); one lands inside the NOTES panel. Fix = clamp tag
+  candidates to the plate viewport, leader when displaced.
+- **D3 label clipping on A.03/A.04** ("PHON PHON PHONE BOOTH 3"). Fix = a fit ladder
+  (wrap → shrink to 70% → shared abbreviation map → displace+leader). Never a mid-word fragment.
+- **D4 three rooms named "Open Workspace"** (DWG). The naming is a generator/program-fit issue and
+  is **routed to the generator track**; the in-scope fix is drawing-layer ordinal suffixes from a
+  shared helper that the QTO workbook uses too, so plan/sheets/workbook cannot diverge.
+
+## Relevant template constants (spec → legal external anchor for gates)
+`sheet.ts`: `MARGIN = 40`, `TITLE_BLOCK_H = 116`, `PAGE_W`/`PAGE_H`.
+`sheetSet.ts`: `PANEL_W = 316` (:268, module-private), `planBox()` (:279) → plate viewport +
+panel rect; title-block band starts at `PAGE_H - MARGIN - TITLE_BLOCK_H`.
+
+## Sequence
+S0 harness (alone) → S1 gates **red on their own target defects** → S2 (D1+D2) ∥ S3 (D3+D4) →
+S4 Judge each cycle → S5 baselines last. Gates green twice consecutively on all three packs,
+Judge reporting zero open defects, before close-out.
+
+### Dispatched
+- **S0 — Sheet Harness**: running.
