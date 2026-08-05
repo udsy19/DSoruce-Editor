@@ -1,0 +1,5 @@
+Panel letters come from SHA256(seed | name), seed:
+  dsource-plan-visual-grammar-sealed-grid-v1
+
+The order is reproducible and encodes no preference. It is not a ranking.
+The key is deliberately NOT in this directory: see bench/SEALED-GRID-KEY.md
