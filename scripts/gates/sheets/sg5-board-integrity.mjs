@@ -29,6 +29,7 @@
 
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
+import { statSync } from 'node:fs'
 import { REPO, runGate, GateError } from './lib/sheetlib.mjs'
 
 /** The board at `1a2b8d5`: gate id → check count. */
@@ -102,6 +103,18 @@ async function main() {
       integ ? `${integ[1]} checks` : 'no integrity line on the board',
     )
     c.ok('the board is green', /ALL GATES GREEN\./.test(board), board.split('\n').filter((l) => /^FAIL/.test(l)).join(' | '))
+
+    // ---- the law itself is load-bearing ------------------------------------
+    // `.claude/rules/gate-independence.md` is not documentation: it is input to
+    // every future mission, and five of this program's defects were instances of
+    // the classes it records. It existed on ONE branch — abandoning that branch
+    // would have lost it, and nothing watched for that. Anything the program
+    // depends on but nothing checks is the pattern this suite keeps fixing.
+    const RULES = '.claude/rules/gate-independence.md'
+    let rulesBytes = -1
+    try { rulesBytes = statSync(path.join(REPO, RULES)).size } catch { /* absent */ }
+    c.ok(`${RULES} is present and non-empty`, rulesBytes > 0,
+      rulesBytes < 0 ? 'missing — the accumulated law of this program is gone' : 'zero bytes')
 
     // ---- the runner is itself a system under test --------------------------
     // A grading system whose summary can disagree with its own rows is the
