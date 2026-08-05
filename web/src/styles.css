@@ -541,7 +541,7 @@ button {
   border: 1px solid transparent;
 }
 .dyn-field.active {
-  border-color: var(--accent, #e8a13c);
+  border-color: var(--accent);
   background: rgba(var(--accent-amber-rgb), 0.1);
 }
 .dyn-field .dyn-label {
@@ -4322,7 +4322,7 @@ kbd {
   margin: 10px 0 14px;
   padding: 10px 12px;
   border: 1px solid rgba(var(--accent-amber-rgb), 0.45);
-  border-left: 3px solid var(--accent, #e8a13c);
+  border-left: 3px solid var(--accent);
   border-radius: 6px;
   background: rgba(var(--accent-amber-rgb), 0.08);
   font-size: 13px;

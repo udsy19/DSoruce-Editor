@@ -160,7 +160,7 @@ export function LayersPanel({ layers, onToggle, onSetActive, onAdd }: LayersPane
           key={l.name}
           style={{
             ...S.row,
-            background: l.active ? 'var(--accent-soft, #e8eefc)' : 'transparent',
+            background: l.active ? 'var(--accent-soft)' : 'transparent',
             opacity: l.visible ? 1 : 0.55,
           }}
         >
@@ -182,7 +182,7 @@ export function LayersPanel({ layers, onToggle, onSetActive, onAdd }: LayersPane
             style={{
               ...S.radio,
               borderColor: l.active
-                ? 'var(--accent, #2d5bd6)'
+                ? 'var(--accent)'
                 : 'var(--hairline-strong, #d7dbe0)',
             }}
             onClick={() => onSetActive(l.name)}
@@ -193,7 +193,7 @@ export function LayersPanel({ layers, onToggle, onSetActive, onAdd }: LayersPane
                   width: 7,
                   height: 7,
                   borderRadius: '50%',
-                  background: 'var(--accent, #2d5bd6)',
+                  background: 'var(--accent)',
                 }}
               />
             )}

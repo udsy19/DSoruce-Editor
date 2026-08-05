@@ -196,7 +196,7 @@ export function CategoryPlan({
                             width: 6,
                             height: 6,
                             borderRadius: '50%',
-                            background: 'var(--accent, #2d5bd6)',
+                            background: 'var(--accent)',
                             marginRight: 6,
                             verticalAlign: 'middle',
                           }}

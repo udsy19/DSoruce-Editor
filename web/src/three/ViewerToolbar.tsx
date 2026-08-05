@@ -170,7 +170,7 @@ const renderSeg = (active: boolean): CSSProperties => ({
   ...seg(active, false),
   ...(active
     ? {
-        background: 'linear-gradient(120deg, ACCENT_AMBER 0%, #F3C778 100%)',
+        background: `linear-gradient(120deg, ${ACCENT_AMBER} 0%, #F3C778 100%)`,
         boxShadow: '0 1px 4px rgba(var(--accent-amber-rgb), 0.45)',
       }
     : {}),
@@ -257,7 +257,7 @@ function ThemeRow({ id, active, onSelect }: { id: ThemeId; active: boolean; onSe
         gap: 10,
         width: '100%',
         padding: '7px 8px',
-        border: active ? '1px solid ACCENT_AMBER' : '1px solid transparent',
+        border: active ? `1px solid ${ACCENT_AMBER}` : '1px solid transparent',
         borderRadius: 7,
         background: active ? 'rgba(var(--accent-amber-rgb), 0.10)' : 'transparent',
         cursor: 'pointer',

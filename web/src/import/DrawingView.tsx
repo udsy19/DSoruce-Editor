@@ -141,7 +141,7 @@ export function DrawingView({
             style={{
               border: 'none',
               background: 'transparent',
-              color: 'var(--accent, #2d5bd6)',
+              color: 'var(--accent)',
               fontFamily: 'inherit',
               fontSize: 12,
               fontWeight: 600,

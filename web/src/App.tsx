@@ -1930,7 +1930,7 @@ function GenerateCard({
           checked={program.bench_pairs}
           onChange={(e) => set({ bench_pairs: e.target.checked })}
           data-testid="bench-pairs"
-          style={{ accentColor: 'var(--accent, #2d5bd6)' }}
+          style={{ accentColor: 'var(--accent)' }}
         />
         Bench desking (back-to-back pairs)
       </label>
