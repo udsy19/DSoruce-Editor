@@ -322,6 +322,13 @@ export const ACCENT_AMBER = '#E8A13C'
  * that mark is amber, which a shared constant cannot.
  *
  * Never reaches paper: selection is chrome, and chrome vanishes on the sheet.
+ *
+ * DO NOT let this name absorb a third meaning. One owner of the VALUE permits
+ * many honest names; it does not permit one dishonest name. If something amber
+ * is neither an AI action nor a live selection, it gets its own token
+ * referencing the same declaration — or it is not amber. Widening
+ * `SELECTION_ACCENT` to mean "the warm one" would rebuild the vocabulary
+ * blindness this structure exists to remove (ADR 0005, face 15).
  */
 export const SELECTION_ACCENT = ACCENT_AMBER
 

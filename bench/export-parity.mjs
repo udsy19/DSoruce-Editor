@@ -127,41 +127,66 @@ check(
 {
   const DELIVERABLES = [
     'web/src/export/pdf.ts',
+    'web/src/export/sheet.ts',
+    'web/src/export/report.ts',
     'web/src/export/sheetSet.ts',
     'web/src/export/servicesSheets.ts',
   ]
-  // DEFERRED to Phase 2, stated rather than silently excluded. These two carry
-  // amber on paper and therefore violate R5.2 today. The replacement is not a
-  // free choice: R1 assigns deliverable colour to the qbiq palette, and
-  // qbiqPalette.ts arrives with the export branch in Phase 2. Inventing two
-  // deliverable hues here to turn the gate green would be choosing silently in
-  // exactly the place the campaign says to escalate.
-  const DEFERRED = [
-    ['web/src/export/sheet.ts', 'ACCENT (KPI bars/headings) + one fill — R5.2, resolve on qbiqPalette in Phase 2'],
-    ['web/src/export/report.ts', 'ALT_COLORS categorical entry — R5.2, resolve on qbiqPalette in Phase 2'],
-  ]
+  /**
+   * DEFERRED — an ENUMERATED allowlist, not a skipped file.
+   *
+   * These exact lines carry amber on paper and violate R5.2 today. R1 assigns
+   * deliverable colour to the qbiq palette, which arrives with the export
+   * branch in Phase 2, so inventing hues here would be choosing silently.
+   *
+   * The structure matters more than the contents: the files are still SCANNED,
+   * and anything that is not one of these exact lines hard-fails NOW. A
+   * deferral that merely printed would be a warning, and warnings rot — this
+   * one cannot absorb a third violation. Phase 2 exit requires this list empty.
+   */
+  const DEFERRED = {
+    'web/src/export/sheet.ts': [
+      "import { ACCENT_AMBER, hexToRgba, hexToRgb01 } from '../editor/planStyle'",
+      'export const ACCENT: Rgb = hex2rgb(ACCENT_AMBER)',
+      'ctx.fillStyle = hexToRgba(ACCENT_AMBER, 0.5)',
+    ],
+    'web/src/export/report.ts': [
+      "import { ACCENT_AMBER } from '../editor/planStyle'",
+      "const ALT_COLORS = ['#7b74d4', ACCENT_AMBER, '#3f9c95', '#c4607a', '#5b8def']",
+    ],
+  }
   const AMBER = [/#e8a13c\b/i, /\b232\s*,\s*161\s*,\s*60\b/, /\b0xe8a13c\b/i,
                  /ACCENT_AMBER/, /SELECTION_ACCENT/, /--accent-amber/, /--accent-selection/]
-  DEFERRED_LIST = DEFERRED
+  const stillDeferred = []
   for (const rel of DELIVERABLES) {
     const abs = path.join(ROOT, rel)
     if (!fs.existsSync(abs)) continue
+    const allowed = DEFERRED[rel] ?? []
     const lines = fs.readFileSync(abs, 'utf8').split('\n')
     const hits = []
     lines.forEach((l, i) => {
       const code = l.replace(/\/\/.*$/, '')
       if (code.trim().startsWith('*')) return
-      if (AMBER.some((re) => re.test(code))) hits.push(`${rel}:${i + 1}  ${code.trim().slice(0, 66)}`)
+      if (!AMBER.some((re) => re.test(code))) return
+      const t = code.trim()
+      if (allowed.includes(t)) stillDeferred.push(`${rel}:${i + 1}`)
+      else hits.push(`${rel}:${i + 1}  ${t.slice(0, 62)}`)
     })
     check(
-      `paper invariant — no amber in ${path.basename(rel)}`,
+      `paper invariant — no NEW amber in ${path.basename(rel)}`,
       hits.length === 0,
       hits.join('\n          '),
     )
   }
+  DEFERRED_LIST = stillDeferred
+  const total = Object.values(DEFERRED).reduce((n, a) => n + a.length, 0)
+  if (stillDeferred.length !== total) {
+    console.log(
+      `  note  deferral list has ${total} entries but ${stillDeferred.length} matched — ` +
+        `shrink DEFERRED in bench/export-parity.mjs if a site was fixed.`,
+    )
+  }
 }
-
-globalThis.DEFERRED_OUT = DEFERRED_LIST
 
 // 5. Colour math has one home.
 check(
@@ -176,7 +201,11 @@ if (fails > 0) {
   process.exit(1)
 }
 console.log('export parity OK — both paths read one table for colour, ground, weight and key')
-if (typeof DEFERRED_OUT !== 'undefined' && DEFERRED_OUT.length) {
-  console.log(`\nDEFERRED (${DEFERRED_OUT.length}) — asserted but not yet enforced:`)
-  for (const [f, why] of DEFERRED_OUT) console.log(`  ${f}  <- ${why}`)
+if (DEFERRED_LIST.length) {
+  console.log(
+    `\nDEFERRED (${DEFERRED_LIST.length}) — R5.2 amber-on-paper, allowlisted by exact line:\n` +
+      DEFERRED_LIST.map((d) => `  ${d}`).join('\n') +
+      `\n  Resolve on qbiqPalette in Phase 2. PHASE 2 EXIT REQUIRES THIS LIST EMPTY.\n` +
+      `  Any OTHER amber in a deliverable fails now — these files are scanned, not skipped.`,
+  )
 }

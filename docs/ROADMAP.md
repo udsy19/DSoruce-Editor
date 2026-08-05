@@ -463,3 +463,24 @@ User showed Rayon drawing-set PDFs as the output bar (`docs/reference/rayon-outp
 6. **Deploy (Track J) + signed commits — both gated on the 1Password unlock (SSH denied).** ← only blocker.
 7. Later: 80+ ws on *any* wing shape · workflow-aware AI (room-# refs) · richer 3D furniture · sync tombstones.
 7. Upside: 80+ ws (room-concentration rework); keep-existing-partitions mode.
+
+## Post-merge — three semantics on one perceptual channel
+
+`--accent-amber` (#E8A13C) and `--review` (#e0952b) are **dE76 5.2** apart —
+just above the indistinguishability threshold, against 47.8 to `--danger` and
+131.6 to `--accent`. Measured and captured side by side in
+`bench/style-progress/r5-caution-adjacency.png`: the boundary between them is
+barely perceptible, and the restricted-area note reads as the same hue as a
+selected element beside it.
+
+After R5 the product spends **three semantics on one narrow amber band**:
+caution (`--review`), live selection and AI verdict (both `--accent-amber`).
+Every sensor in the system is VALUE-keyed, so nothing will ever object — a
+neighbouring hue carries the semantic confusion without tripping anything. That
+is Face 15's lesson at the perceptual layer: matching a value certifies the
+value, not the perception.
+
+Not a merge blocker and not `.area-restricted-note`'s problem — using the
+system's declared caution token was the right call for that site. The open
+question is the caution token's HUE, and whether selection and AI-verdict should
+share a channel at all. A Laiout/qbiq-benchmark polish item.
