@@ -23,6 +23,7 @@ import type { ZoneStat } from '../types/metrics'
 import { zoneArea as zoneShapeArea } from '../util/zoneGeom'
 import { searchBank } from '../materialBank/mock'
 import { searchOfficeBank } from '../materialBank/office'
+import { ZONE } from './planStyle'
 
 // ---- formatting helpers (shared by the panel) ----
 export const intFmt = (n: number) => Math.round(n).toLocaleString('en-US')
@@ -41,14 +42,25 @@ export const inrShort = (n: number) => {
 // =========================================================================
 
 /** Room-type display label + donut/legend fill, keyed by the core ZoneType. */
+/**
+ * Panel vocabulary for each zone kind. LABELS live here because they are the
+ * panel's own words; COLOURS come from the plan style table, because a swatch
+ * in the panel and the fill on the canvas must be the same colour by
+ * construction, not by two lists agreeing.
+ *
+ * This used to hold its own hex pair per zone. That copy was a second source
+ * with real consumers: the 2e palette move would have recoloured the plan while
+ * the Zones tab and the legend kept showing the previous palette, and nothing
+ * would have failed.
+ */
 export const ZONE_META: Record<ZoneType, { label: string; fill: string; line: string }> = {
-  Workspace: { label: 'Open Workspace', fill: '#fbf3d6', line: '#b99527' },
-  Meeting: { label: 'Meeting Room', fill: '#e9e3f7', line: '#7e63c0' },
-  Collaboration: { label: 'Breakout', fill: '#def1e2', line: '#4b9e66' },
-  ClosedOffice: { label: 'Closed Office', fill: '#fce6d6', line: '#cb8150' },
-  Amenity: { label: 'Amenity', fill: '#d9f0ef', line: '#3f9c95' },
-  Circulation: { label: 'Circulation', fill: '#dcebfb', line: '#4a82c4' },
-  Core: { label: 'Core / Service', fill: '#eceef1', line: '#8b939e' },
+  Workspace: { label: 'Open Workspace', ...ZONE.Workspace },
+  Meeting: { label: 'Meeting Room', ...ZONE.Meeting },
+  Collaboration: { label: 'Breakout', ...ZONE.Collaboration },
+  ClosedOffice: { label: 'Closed Office', ...ZONE.ClosedOffice },
+  Amenity: { label: 'Amenity', ...ZONE.Amenity },
+  Circulation: { label: 'Circulation', ...ZONE.Circulation },
+  Core: { label: 'Core / Service', ...ZONE.Core },
 }
 export const ZONE_ORDER: ZoneType[] = [
   'Workspace',

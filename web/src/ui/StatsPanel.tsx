@@ -13,6 +13,7 @@ import {
 } from '../editor/stats'
 import { Icon } from './icons'
 import { Donut } from './Donut'
+import { legendEntries } from '../editor/planStyle'
 
 export function StatsPanel({ ec }: { ec: EditorCanvas }) {
   const [tab, setTab] = useState<'Statistics' | 'Regulations'>('Statistics')
@@ -63,6 +64,8 @@ export function StatsPanel({ ec }: { ec: EditorCanvas }) {
           <MetricRow label="Carbon Footprint" value={intFmt(elements.totalCo2)} unit="kgCO₂e" />
           <MetricRow label="Total Cost" value={inr(elements.totalCost)} unit="" />
 
+          {hasFit && <PlanLegend ec={ec} />}
+
           <div className="subtabs">
             {(['Areas', 'Zones', 'CO2', 'Costs'] as const).map((s) => (
               <button key={s} className={sub === s ? 'subtab on' : 'subtab'} onClick={() => setSub(s)}>
@@ -83,6 +86,44 @@ export function StatsPanel({ ec }: { ec: EditorCanvas }) {
         </>
       )}
     </div>
+  )
+}
+
+/**
+ * PLAN LEGEND — the swatch key for the drawing itself.
+ *
+ * Required by the reference grammar (spec `required_new_feature`): the plan
+ * carries no in-room identification on paper output, so the colours must be
+ * decodable from a key beside it. It is also the mitigation for 2e's SEMANTIC
+ * FLIP — blue now means workspace where it used to mean circulation — which is
+ * why it sits here, visible with the plan, rather than inside the Areas subtab
+ * where the existing donut rollup lives. A key you have to go looking for does
+ * not make a changed colour safe to read.
+ *
+ * DERIVED, never listed: `legendEntries` walks the document's actual zones, so
+ * a plan with no meeting rooms shows no meeting swatch, and a zone kind added
+ * to the model appears here with no change to this component. The swatch colour
+ * is the same `ZONE` entry the canvas fills with — one palette, not two lists
+ * that agree today.
+ */
+function PlanLegend({ ec }: { ec: EditorCanvas }) {
+  const entries = legendEntries(ec.getState().zones ?? [])
+  if (entries.length === 0) return null
+  return (
+    <>
+      <div className="panel-eyebrow gap">Plan key</div>
+      <div className="legend plan-legend">
+        {entries.map((e) => (
+          <div className="legend-row" key={e.kind}>
+            <span
+              className="legend-sq"
+              style={{ background: e.fill, borderColor: e.line }}
+            />
+            <span className="legend-name">{ZONE_META[e.kind].label}</span>
+          </div>
+        ))}
+      </div>
+    </>
   )
 }
 

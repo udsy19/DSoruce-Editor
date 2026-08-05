@@ -125,19 +125,39 @@ export interface ZoneStyle {
   line: string
 }
 
-// Lifted verbatim out of paint.ts so the render path holds no literals. Values
-// are unchanged by this move — 2e is what re-lands them on the Laiout palette,
-// and keeping the move and the restyle in separate commits is what makes the
-// restyle's diff legible.
-// Zone fills keyed by ZoneType serde tag → { fill, line } (Laiout pastels).
+// THE zone palette — Laiout, exact measured hexes (spec `laiout.palette`,
+// provenance ASSERTED: two owner app views agreeing to the exact hex, sampled
+// losslessly). Tolerance dE <= 3, covering capture colour-profile only.
+//
+// SEMANTIC FLIP, adopted deliberately (spec `laiout.semantic_flip`): DSource
+// blue used to mean CIRCULATION. It now means WORKSPACE, and cream moves from
+// workspace to amenity. We take Laiout's hue-to-program mapping wholesale
+// rather than recolouring its palette into our old semantics — a half-adopted
+// palette is neither. The risk is real: a returning user reads a familiar
+// colour as a different thing. The LEGEND is the mitigation, which is why it is
+// a required feature of this phase and not a nicety.
+//
+// LINES are DERIVED, not measured — Laiout's captures give fills, one wall grey
+// and one secondary grey, no per-zone border. Each line is its own fill's hue
+// at S x 0.75, L 48: dark enough to read on the fill, and hue-locked so the
+// border can never drift away from the swatch the legend shows.
 export const ZONE: Record<string, { fill: string; line: string }> = {
-  Circulation: { fill: '#dcebfb', line: '#4a82c4' },
-  Workspace: { fill: '#fbf3d6', line: '#b99527' },
-  Meeting: { fill: '#e9e3f7', line: '#7e63c0' },
-  Collaboration: { fill: '#def1e2', line: '#4b9e66' },
-  Core: { fill: '#eceef1', line: '#8b939e' },
-  ClosedOffice: { fill: '#fce6d6', line: '#cb8150' },
-  Amenity: { fill: '#d9f0ef', line: '#3f9c95' },
+  // INTERIM. Circulation is unfilled in Laiout — corridors are paper ground and
+  // only PROGRAM zones carry colour. That lands as its own commit with its own
+  // before/after, because it is the single largest visual change in the move.
+  // Until then it takes the measured secondary grey rather than keeping blue,
+  // which would put the same hue on circulation AND workspace mid-migration.
+  Circulation: { fill: '#d8d8d8', line: '#8b8b8b' },
+  Workspace: { fill: '#d9e7f4', line: '#487cad' }, // Laiout "open workspace"
+  Meeting: { fill: '#eae4f6', line: '#6b4ca8' }, // Laiout "meeting"
+  Core: { fill: '#d1f1d5', line: '#49ab56' }, // Laiout "core/service"
+  Amenity: { fill: '#faf4de', line: '#bea137' }, // Laiout "amenity"
+  Collaboration: { fill: '#fae0c3', line: '#c87f2d' }, // Laiout "breakout"
+  // NOT A LAIOUT VALUE. Their captures carry no closed-office role, so this is
+  // DSource-original and must never be cited as measured. Hue 350 is the widest
+  // gap in the five adopted hues (32/47/128/209/260), placed at the palette's
+  // own band (S 60, L 91) so it belongs to the set without impersonating it.
+  ClosedOffice: { fill: '#f6dadf', line: '#b14356' },
 }
 
 export const C = {

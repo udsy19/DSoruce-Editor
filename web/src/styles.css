@@ -4377,3 +4377,14 @@ kbd {
 }
 .bom-note { padding: 6px 10px 0; color: var(--muted, #6b7280); font-size: 11px; line-height: 1.5; }
 .bom-empty { padding: 12px 10px; color: var(--muted, #6b7280); }
+
+/* Plan key — the legend that makes the zone palette decodable beside the
+   drawing. Swatches carry their zone's own border colour so a swatch is the
+   same object as the fill on canvas, outline included. */
+.plan-legend {
+  margin-bottom: 4px;
+}
+.plan-legend .legend-sq {
+  border: 1px solid;
+  border-radius: 2px;
+}
