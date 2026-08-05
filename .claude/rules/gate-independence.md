@@ -177,6 +177,36 @@ worth.** Calibration logs, human review sign-offs, user-acceptance records, grou
 collected to grade a model. Handle them like the signing key — the one step in the loop that is
 somebody else's by design.
 
+## Falsify against a disposable copy — never mutate the protected artifact
+
+**Gates are read-only with respect to what they check, and their falsification harnesses must be too.**
+Negative-case falsification runs in a scratch worktree or temp clone. Never delete, move or corrupt the
+real artifact in place.
+
+**Worked case, caught in the act.** Falsifying SG5's "the rules file exists" check was done by moving
+`.claude/rules/gate-independence.md` aside, running the gate, and moving it back. The gate takes ~10
+minutes; the command timed out **inside that window**, leaving the accumulated law of two missions
+deleted from the working tree. It was restored and verified byte-identical (md5 `f3b79cd5…`), but the
+exposure was real: any crash, timeout or interruption in that window loses the artifact.
+
+This is the recurring family in new clothes — **a verification procedure that endangered the very
+thing it verifies**, and made the protected artifact its own test fixture.
+
+The correct shape costs no more:
+
+```
+git worktree add --detach /tmp/falsify HEAD
+ln -s "$PWD/web/node_modules" /tmp/falsify/web/node_modules   # gates need their deps
+cp -R out /tmp/falsify/out                                     # so the board grades real artifacts
+rm /tmp/falsify/<the protected artifact>                       # sabotage the COPY
+cd /tmp/falsify && <run the gate>                              # expect exactly one new failure
+git worktree remove --force /tmp/falsify
+```
+
+It also buys **stronger** evidence than the unsafe version: full end-to-end gate wiring on the negative
+case, matching `GSELF`'s grade, instead of a predicate proven in isolation with the wiring untested.
+Cheaper *and* better is the usual sign the unsafe path was never the shortcut it looked like.
+
 ## Reporting convention: scope every negative claim
 
 An Orchestrator aggregates agent reports, and **an unscoped negative aggregates into a global one.**

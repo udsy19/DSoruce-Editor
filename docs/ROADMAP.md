@@ -384,6 +384,37 @@ so the workbook, plan, renders, video and viewer cannot disagree.
   floor laid out qbiq-style; per-alt accent chips + winner ribbons (shared `computeWinners` w/ the S7
   gallery); summary highlights each metric's leading alternative. (Building *photo* still N/A — no source.)
 
+### Branch reconciliation — `export` ↔ `main` (proposed resolution recorded BEFORE the merge)
+
+`export` is 20 commits ahead; **`main` is 59 ahead**; 19 files changed on both sides, `sheetSet.ts` and
+`servicesSheets.ts` above all (this mission rewrote them heavily), plus the wasm binaries. **Do not
+resolve this with `git merge`.** Two of the conflicts decide *what the plan fundamentally is*, and a
+merge would settle them as a side effect of conflict resolution, by whoever happened to be driving.
+The law file is already safe on `main` (`869d652`), so there is no urgency forcing a bad merge.
+
+**Proposed resolution — mode separation, not adjudication.** These are two rendering *intents*, not two
+opinions about one plan, and neither branch is wrong:
+- **Circulation.** `main` `19a7837` "corridors become ground, not figure" is correct for the
+  **architectural drawing set** — in construction drawings circulation is residual space and filling it
+  is bad drafting. `export`'s pink wash is correct for the **QTO deliverable plan**, a client-facing
+  graphic where circulation is a *billed, highlighted quantity keyed to a legend*.
+  → One renderer, two named presentation modes (`architectural` / `deliverable`), **each with its own
+  gate scope**. G4's ">2% pink pixels" is a requirement *on the deliverable mode* and must be scoped to
+  it. G4 firing on the architectural plan would be the category error the pre-registration law
+  prohibits: **a metric is only readable for the class it was defined over.**
+- **Style gate.** `main`'s `bench/style-gate.mjs` bans hex/rgba outside `planStyle.ts`; `export`'s
+  `qbiqPalette.ts` reads `palette.json`. Both encode the *same* value — single source of styling truth —
+  and disagree only about where that source lives. But `palette.json` is **spec**, extracted from the
+  reference artifact, which under the external-anchor law is exactly the kind of source a gate should
+  trust. → Make the qbiq palette a **sanctioned token source**: registered alongside `planStyle.ts` as a
+  second permitted origin, or folded in as a named theme. The sensor's intent survives intact; its
+  allowlist grows by one spec-backed entry.
+  → Restates the problem as *"one branch's sensor hadn't been told about the other's sanctioned
+  anchor"* — a much smaller mission than "two branches contradict by design".
+
+Still real work: the 19 dual-touched files need careful merging, `sheetSet.ts` most of all, and both
+gate suites plus `main`'s sensors must pass afterwards.
+
 ## Track D — CAD editing (Rayon-grade)
 - [x] Draw: line/polyline/rect/circle/arc/ellipse/dimension/text/door/window/column/hatch.
 - [x] Modify: move/copy/rotate/mirror/scale/offset, **grip-drag**, trim/extend/fillet, layers panel.
