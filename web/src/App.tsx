@@ -1653,7 +1653,7 @@ function EmptyState(
             <button className="empty-btn" onClick={props.onGoToPlan}>
               Go to Plan
             </button>
-            <button className="empty-btn primary" onClick={props.onTestFit}>
+            <button className="empty-btn primary ai-action" onClick={props.onTestFit}>
               <Icon name="sparkles" size={15} /> Test-fit this plan
             </button>
           </div>
@@ -1895,7 +1895,7 @@ function GenerateCard({
     <div className="panel-body" style={{ borderTop: '1px solid var(--hairline)' }}>
       <DesignWithAI ec={ec} aiReady={aiReady} hasPlate={(metrics?.wall_count ?? 0) > 0} />
 
-      <div className="panel-eyebrow" style={{ marginTop: 18 }}>
+      <div className="panel-eyebrow ai-action" style={{ marginTop: 18 }}>
         <Icon name="sparkles" size={13} /> Autonomous test-fit
       </div>
       <p className="panel-lead">

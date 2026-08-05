@@ -43,6 +43,10 @@ const PENDING = [
   // scales every coordinate by dpr itself. strokePx returns CSS px, so routing
   // it through the ladder would introduce the exact INVERSE of the bug fixed in
   // e89654b -- half-weight strokes on retina. Declared, not overlooked.
+  // TRIGGER FOR REVISITING: a THIRD canvas space. Two are tolerable as a
+  // declared pair; three means the space is a property worth modelling, not an
+  // exception worth listing. At that point normalize -- make the space explicit
+  // at the boundary and convert -- rather than exempting again.
   ['web/src/three/Minimap.tsx', 'EXEMPT (lineWidth) — draws in device px by construction, not CSS px'],
   ['web/src/editor/furniture.ts', 'Phase 2c — LOD rework touches every lineWidth here anyway'],
 ]

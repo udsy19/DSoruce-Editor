@@ -1107,6 +1107,25 @@ button {
   opacity: 0.6;
   cursor: progress;
 }
+/* AI-ACTION MODIFIER. See CLAUDE.md: amber marks THE ACT OF GENERATING;
+   choosing among generated options is navigation and stays --accent blue.
+   Add `ai-action` to a control that generates. It is a modifier rather than a
+   set of one-off overrides so the next such control is one class, not another
+   rule -- `.cta-ghost` and `.empty-btn.primary` are both shared by ordinary
+   buttons that must stay blue. */
+.ai-action {
+  color: var(--accent-amber);
+}
+.empty-btn.primary.ai-action {
+  background: var(--accent-amber);
+  border-color: var(--accent-amber);
+  color: var(--accent-ink);
+}
+.empty-btn.primary.ai-action:hover {
+  background: var(--accent-amber-hover);
+  border-color: var(--accent-amber-hover);
+}
+
 /* Autonomous-reasoning affordance — amber to read as the AI action, distinct
  * from the blue Generate/Regenerate. */
 .cta-refine {

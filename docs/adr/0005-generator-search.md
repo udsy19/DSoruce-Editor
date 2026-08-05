@@ -532,6 +532,21 @@ Each was learned from a live mistake in this campaign.
    ABSOLUTE contract somewhere a uniform error cannot satisfy — here, a gate
    rule that `strokePx` may not reference DPR at all.
 
+   **The two sensors face 9 produced are a COMPLEMENTARY PAIR, and neither
+   subsumes the other. Do not delete one believing the other covers it.**
+
+   | sensor | catches | invisible to |
+   |---|---|---|
+   | code-shape rule: `strokePx` may never mention DPR (`bench/style-gate.mjs`) | a UNIFORM error — every tier scaled equally | any ratio check, which it satisfies perfectly |
+   | ratio check: tiers must reproduce the measured qbiq ladder (`bench/ladder-check.mjs`) | an UNEQUAL error — clamping flattens the ladder's top | any single width, each of which stays reasonable |
+
+   Demonstrated rather than asserted: raising `BASE_STROKE_PX` 0.4 → 0.8, an
+   entirely plausible "make it bolder" edit, pushes `openingPunch` onto the MAX
+   clamp and flattens the ladder by **11.74%** — while every individual width
+   remains a sensible number. That is the converse of the original defect, and
+   the reason both sensors exist: **neither error class is findable by looking
+   at the output**, and they fail in opposite directions.
+
 **And a standing requirement that falls out of the same discipline: every
 trigger needs a SENSOR.** A trigger without something watching for it is a wish.
 Audited across the campaign:
@@ -547,6 +562,8 @@ Audited across the campaign:
 | **no style literal in the plan render path** | **`bench/style-gate.mjs` (4 files guarded)** | **exists** |
 | **`ACCENT_AMBER` must equal `--accent-amber`** | **`bench/style-gate.mjs` MIRRORS check** | **now exists** |
 | **a browser check must prove WHICH TREE it measures** | **`bench/assert-build.mjs` + build-provenance meta tags** | **now exists** |
+| **the weight ladder must reproduce the measured qbiq ratios** | **`bench/ladder-check.mjs`** | **now exists** |
+| **a THIRD canvas space appears (normalize, stop exempting)** | **`bench/style-gate.mjs` PENDING/EXEMPT list** | **declared** |
 
 The fourth instance of the family will come. When it does, add it here rather
 than treating it as new.
