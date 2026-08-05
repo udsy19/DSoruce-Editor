@@ -389,7 +389,7 @@ each budget would optimise the metric we measured at the expense of the one we
 just discovered we do not. The measurement is cheap and the machinery exists;
 that is the next step, not a blind reduction.
 
-## The rules family — one failure mode, twelve faces
+## The rules family — one failure mode, fourteen faces
 
 > **Four faces of one error: something read as evidence outside the conditions
 > that made it evidence.**
@@ -615,6 +615,46 @@ Each was learned from a live mistake in this campaign.
     expected to need. **Ask what the cheapest way to satisfy a rule is, and
     whether you would be happy if everyone took it.**
 
+13. **A workaround outlives its justification unless a sensor or a search kills
+    it** (plan-grammar campaign) — **documentation of the reason is not a link
+    to the reason.**
+    *From:* the fourth zone palette. `pdf.ts` held its own copy of the zone
+    hexes, and its comment stated exactly why: *"same Laiout pastels as
+    EditorCanvas's (unexported) ZONE fills"*. The justification was true when
+    written and correctly recorded. Then Phase 1 exported the table — and
+    nothing anywhere connected that event to this copy. The reason died; the
+    copy did not. It was still serving the PRE-2e palette, so every PDF rendered
+    the old colours while the canvas rendered the new ones.
+
+    An honest comment did not save it. Comments record a reason; they do not
+    WATCH it. What killed it was contact with the export path — a human reading
+    the code for a different purpose — which is not a mechanism you can rely on.
+
+    So the rule has a mechanical half: when you remove the constraint that
+    forced a workaround, **search for the workaround in the same change.** And a
+    sensor half: `bench/style-gate.mjs`'s palette-uniqueness check now covers the
+    sheet exactly as it covers the panels, and `pdf.ts` joined the guarded list
+    as part of the fix, per the standing policy that a file found carrying a
+    zone→colour mapping gets guarded rather than merely corrected.
+
+14. **Anchor an assertion to the semantics it certifies, not to text that
+    travels with them** (plan-grammar campaign).
+    *From two instances in one pass, which is what makes it a rule rather than a
+    slip:*
+    - The export-parity ground check string-matched
+      `groundZones.includes(z.zone_type)` **anywhere in the file**. The ZONE KEY
+      loop legitimately contains that string, so deleting the FILL guard still
+      passed — the check would have certified a sheet that fills circulation.
+      Re-anchored to the fill loop.
+    - The wall-form check matched exact whitespace, so a formatter run would
+      have broken it while the drawing stayed correct. Re-anchored to the
+      GEOMETRY (a half-thickness perpendicular offset).
+
+    Both were caught while proving the suite fails correctly — the discipline
+    auditing itself, which is the only reason they were caught at all. **A check
+    that passes when the property is broken is worse than no check: it
+    certifies the bug**, and it does so with the authority of a green run.
+
 **And a standing requirement that falls out of the same discipline: every
 trigger needs a SENSOR — and a check that cannot run is not a sensor.** A
 Playwright-driven acceptance script in a repo without Playwright is a wish with
@@ -635,7 +675,8 @@ Audited across the campaign:
 | **a browser check must prove WHICH TREE it measures** | **`bench/assert-build.mjs` + build-provenance meta tags** | **now exists** |
 | **the weight ladder must reproduce the measured qbiq ratios** | **`bench/ladder-check.mjs`** | **now exists** |
 | **a THIRD canvas space appears (normalize, stop exempting)** | **`bench/style-gate.mjs` PENDING/EXEMPT list** | **declared** |
-| **the asserted palette is copied into a second file** | **`bench/style-gate.mjs` palette-uniqueness check** | **now exists** |
+| **the asserted palette is copied into a second file** | **`bench/style-gate.mjs` palette-uniqueness check (panels AND sheet)** | **now exists** |
+| **canvas and exported sheet drift apart** | **`bench/export-parity.mjs`** | **now exists** |
 
 The fourth instance of the family will come. When it does, add it here rather
 than treating it as new.

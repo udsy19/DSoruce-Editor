@@ -19,7 +19,7 @@ import { drawFurnitureSymbol } from '../editor/furniture'
 import type { Drawing, DrawEntity } from '../import/types'
 import { CATEGORY_COLOR } from '../import/types'
 import { triggerDownload } from './png'
-import { ZONE, planStyle, strokePx, hexToRgb01, hexToRgba } from '../editor/planStyle'
+import { ZONE, PRINT, planStyle, strokePx, hexToRgb01, hexToRgba } from '../editor/planStyle'
 
 export interface PdfMeta {
   title?: string
@@ -264,11 +264,11 @@ export function buildPdfBytes(ops: ContentOp[], image: PdfJpeg | null): Uint8Arr
 // chrome (rulers, grips, selection, CAD overlays) that must not print, and its
 // renderThumb is an unexported 200px flat-fill gallery schematic.
 
-const PRINT_STROKE = '#2e343b'
-const PRINT_DETAIL = '#7c848e'
-const PRINT_WALL = '#14181d'
-const PRINT_LABEL = '#4a515a'
-const PRINT_ZONE_LABEL = '#8b939e'
+const PRINT_STROKE = PRINT.stroke
+const PRINT_DETAIL = PRINT.detail
+const PRINT_WALL = PRINT.wall
+const PRINT_LABEL = PRINT.label
+const PRINT_ZONE_LABEL = PRINT.zoneLabel
 /**
  * Zone fills for print — THE SAME OBJECT the canvas fills with.
  *
@@ -326,8 +326,8 @@ function stateBbox(
  */
 const PRINT_WEIGHT_SCALE = 3
 
-const PRINT_NEW_WALL = '#3b6fd4' // generated:true partitions (construction plan)
-const PRINT_DEMOLISH = '#d6336c' // removed/existing-to-demolish cross-hatch
+const PRINT_NEW_WALL = PRINT.newWall // generated:true partitions (construction plan)
+const PRINT_DEMOLISH = PRINT.demolish // removed/existing-to-demolish cross-hatch
 
 /** A wall segment in editor (m) coords — used to pass a caller-derived
  *  "demolished" set (imported originals no longer in the doc) to the renderer. */
@@ -453,7 +453,7 @@ export function renderPrintCanvas(
   const ctx = canvas.getContext('2d')
   if (!ctx) return { canvas, metersPerPx: 0, k: 0, ox: 0, oy: 0 }
 
-  ctx.fillStyle = '#ffffff'
+  ctx.fillStyle = PRINT.paper
   ctx.fillRect(0, 0, wPx, hPx) // JPEG has no alpha — must paint the background.
 
   const bb = stateBbox(state)
@@ -535,7 +535,7 @@ export function renderPrintCanvas(
     ctx.textBaseline = 'middle'
     for (const c of state.components) {
       if (!c.label || Math.min(c.w, c.h) * k < 70) continue
-      ctx.strokeStyle = '#ffffff'
+      ctx.strokeStyle = PRINT.paper
       ctx.lineWidth = 4
       ctx.strokeText(c.label, X(c.x), Y(c.y))
       ctx.fillStyle = PRINT_LABEL
@@ -944,7 +944,7 @@ function renderDrawingPrintCanvas(
   const ctx = canvas.getContext('2d')
   if (!ctx) return { canvas, metersPerPx: 0 }
 
-  ctx.fillStyle = '#ffffff'
+  ctx.fillStyle = PRINT.paper
   ctx.fillRect(0, 0, wPx, hPx) // JPEG has no alpha — must paint the background.
 
   const [minX, minY, maxX, maxY] = drawing.bounds
@@ -987,7 +987,7 @@ function renderDrawingPrintCanvas(
 
   // Furniture as light outlines — occupancy reads on paper without the
   // (heavy) flattened block linework.
-  ctx.strokeStyle = '#b9c0c9'
+  ctx.strokeStyle = PRINT.rule
   ctx.lineWidth = 1
   for (const f of drawing.furniture) {
     const [x0, y0, x1, y1] = f.bbox

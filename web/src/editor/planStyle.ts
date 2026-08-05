@@ -150,6 +150,33 @@ export function abbreviate(name: string): string {
   return first.length <= 4 ? `${first}.` : `${first.slice(0, 4)}.`
 }
 
+/**
+ * PRINT inks — the sheet's own palette.
+ *
+ * These live here rather than in the exporter for the reason the fourth zone
+ * palette existed: a colour defined next to the code that draws it is a colour
+ * the other renderer cannot see. The sheet is a VIEW of this table, like the
+ * canvas, so its inks belong with everything else's.
+ *
+ * They are distinct from the editor's `C` on purpose — print wants denser ink
+ * than a screen — which is a declared difference, not a drifted copy.
+ */
+export const PRINT = {
+  stroke: '#2e343b',
+  detail: '#7c848e',
+  wall: '#14181d',
+  label: '#4a515a',
+  zoneLabel: '#8b939e',
+  /** Construction plan: generated partitions over-stroked. */
+  newWall: '#3b6fd4',
+  /** Demolition plan: existing-to-remove cross-hatch. */
+  demolish: '#d6336c',
+  /** Sheet ground. JPEG has no alpha, so the page must be painted. */
+  paper: '#ffffff',
+  /** Hairline rules on the sheet's own furniture (tables, keyplan frames). */
+  rule: '#b9c0c9',
+} as const
+
 export const CHROME = {
   /** Hairline borders on affordances (tag pills, thumbnails, ruler ticks). */
   hairline: 1,

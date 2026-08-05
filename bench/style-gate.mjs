@@ -31,6 +31,9 @@ const GUARDED = [
   ['web/src/ui/LibraryPanel.tsx', RULES_ALL],
   ['web/src/three/Minimap.tsx', ['hex', 'rgba']],
   ['web/src/editor/furniture.ts', RULES_ALL],
+  // Joined the guarded list as part of fixing it (standing policy): a file found
+  // carrying a zone->colour mapping gets guarded, not just corrected.
+  ['web/src/export/pdf.ts', ['hex', 'rgba']],
 ]
 
 // Values that MUST exist in both the TS table and the stylesheet, because
