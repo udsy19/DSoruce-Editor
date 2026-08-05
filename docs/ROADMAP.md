@@ -358,6 +358,11 @@ so the workbook, plan, renders, video and viewer cannot disagree.
     producer-metadata class was different — the gate was measuring nothing — and is now closed by
     `.claude/rules/gate-independence.md`.
   - Headless-vs-in-app divergence: `render-rooms.mjs` passes `--lamp 2`, `deliverablePack.ts` none.
+  - **Drawing-set defects found by rendering all 22 sheets and looking (all PRE-EXISTING, none caused
+    by the E7 work)**: A.02's door/window schedule **overflows the panel and prints on top of the
+    title block** (seeded W16→W24, dwg W24→W33, one tag landing inside the NOTES panel); dwg opening
+    tags escape the plate; A.03/A.04 clip room labels ("PHON PHON PHONE BOOTH 3"); and the dwg pack
+    emits **three rooms all named "Open Workspace"**, indistinguishable on every name-labelled sheet.
   - Tier-2 3D room thumbnails; round-1 minors D6, D10, D12–D17.
 - [x] **Report cover branding + A/B/C differentiation** — client logo focal on the cover, project/address/
   floor laid out qbiq-style; per-alt accent chips + winner ribbons (shared `computeWinners` w/ the S7

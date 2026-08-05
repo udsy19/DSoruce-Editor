@@ -162,5 +162,8 @@ export async function buildDwgDoc({ program = DEMO_PROGRAM, seed = 5, esbuild } 
   for (const k of keepouts) ed.add_keepout(k.x, k.y, k.w, k.h, k.label)
   const score = ed.generate(program, BigInt(seed), false)
   fs.rmSync(tmp, { recursive: true, force: true })
-  return { ...readDoc(ed), plate: b, score, ed, seed, method: plate.method, areaM2: plate.areaM2 }
+  // `drawing` rides along because the drawing set's demolition sheet needs the
+  // imported original to work out what is being demolished (sheetSet.ts
+  // demolishedWalls); every other consumer just ignores the extra field.
+  return { ...readDoc(ed), plate: b, score, ed, seed, drawing, method: plate.method, areaM2: plate.areaM2 }
 }

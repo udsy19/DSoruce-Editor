@@ -24,7 +24,7 @@ import type { CirculationScore, DocComponent, DocState, DocZone } from '../edito
 import { drawFurnitureSymbol } from '../editor/furniture'
 import { zoneArea, zoneCenter } from '../util/zoneGeom'
 import { renderPrintCanvas } from './pdf'
-import { placeNear, type OccBox } from './sheetSet'
+import { labelLeader, placeNear, zoneBoxOnSheet, type OccBox } from './sheetSet'
 import { CIRCULATION_RGBA, PLAN_PALETTE, WALL_TYPE_HEX } from './qbiqPalette'
 import { classifyWalls, type WallSpan } from './wallTypes'
 
@@ -295,11 +295,28 @@ export function renderPlanCanvas(
     if (c.category === 'Door') continue
     occ.push(componentBox(c, X, Y, k))
   }
+  //    A label that ends up OFF its room gets a leader back to it (shared with
+  //    the drawing set: `labelLeader`). Three identical phone booths whose
+  //    numbers all sit outside them are unreadable without one — the reader
+  //    cannot tell which booth is 163. Drawn before the label's own halo, in the
+  //    plan's linework colour at hairline weight, and stopping at the room's
+  //    edge so it never crosses the furniture inside.
+  const zoneBoxes = new Map<number, OccBox>()
+  for (const z of zones) zoneBoxes.set(z.id, zoneBoxOnSheet(z.shape, (mx, my) => ({ x: X(mx), y: Y(my) })))
   const labels: string[] = []
   for (const r of rooms) {
     const w = ctx.measureText(r.id).width + 8 * scale
     const h = fs + 6 * scale
     const p = placeNear(occ, X(r.x), Y(r.y), w, h)
+    const lead = labelLeader(X(r.x), Y(r.y), p, w, h, r.zoneId == null ? null : zoneBoxes.get(r.zoneId))
+    if (lead) {
+      ctx.strokeStyle = PLAN_PALETTE.linework
+      ctx.lineWidth = Math.max(1, scale)
+      ctx.beginPath()
+      ctx.moveTo(lead.x1, lead.y1)
+      ctx.lineTo(lead.x2, lead.y2)
+      ctx.stroke()
+    }
     ctx.lineWidth = 4 * scale
     ctx.strokeStyle = PLAN_PALETTE.background
     ctx.lineJoin = 'round'

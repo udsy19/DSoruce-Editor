@@ -1,0 +1,197 @@
+{
+  "meta": {
+    "project": "DSource Demo Fit-Out",
+    "client": "Studio Nova",
+    "address": "46 Residency Road, Bengaluru",
+    "studio": "DSOURCE",
+    "revision": "A",
+    "drawnBy": "DS",
+    "approvedBy": "UT"
+  },
+  "cases": {
+    "seeded": {
+      "sheets": [
+        {
+          "sheet": 1,
+          "text": 9,
+          "line": 0,
+          "rect": 3,
+          "image": 1,
+          "md5": "f7aa642bf4d9fc54c5dc230156dae6a9"
+        },
+        {
+          "sheet": 2,
+          "text": 25,
+          "line": 11,
+          "rect": 0,
+          "image": 0,
+          "md5": "afd477a1bb49d7b19f0771829d733508"
+        },
+        {
+          "sheet": 3,
+          "text": 74,
+          "line": 21,
+          "rect": 7,
+          "image": 2,
+          "md5": "076c3fdf72b9780f4a3898bf04243904"
+        },
+        {
+          "sheet": 4,
+          "text": 351,
+          "line": 1068,
+          "rect": 91,
+          "image": 2,
+          "md5": "069a8303f68d8750840a9485d22a23e8"
+        },
+        {
+          "sheet": 5,
+          "text": 101,
+          "line": 1086,
+          "rect": 468,
+          "image": 2,
+          "md5": "9aa1643955c3715b49feb9083ecc3c0a"
+        },
+        {
+          "sheet": 6,
+          "text": 62,
+          "line": 1894,
+          "rect": 216,
+          "image": 2,
+          "md5": "0d4ed3b79024371e503f019b80d7a720"
+        },
+        {
+          "sheet": 7,
+          "text": 44,
+          "line": 21,
+          "rect": 7,
+          "image": 2,
+          "md5": "43a0fc880aa7529a6beafe8ac24aad0e"
+        },
+        {
+          "sheet": 8,
+          "text": 44,
+          "line": 21,
+          "rect": 7,
+          "image": 2,
+          "md5": "01a3426ffc575649df785dc18c3de7bf"
+        },
+        {
+          "sheet": 9,
+          "text": 95,
+          "line": 25,
+          "rect": 37,
+          "image": 1,
+          "md5": "85eb8f45ad1f085bd4f32f82bea91846"
+        },
+        {
+          "sheet": 10,
+          "text": 25,
+          "line": 17,
+          "rect": 6,
+          "image": 1,
+          "md5": "b18c631846e22c253ab30565b9a18173"
+        },
+        {
+          "sheet": 11,
+          "text": 258,
+          "line": 40,
+          "rect": 18,
+          "image": 1,
+          "md5": "f735823037d5b5d073183d619ee734f4"
+        }
+      ]
+    },
+    "dwg": {
+      "sheets": [
+        {
+          "sheet": 1,
+          "text": 9,
+          "line": 0,
+          "rect": 3,
+          "image": 1,
+          "md5": "f7aa642bf4d9fc54c5dc230156dae6a9"
+        },
+        {
+          "sheet": 2,
+          "text": 25,
+          "line": 11,
+          "rect": 0,
+          "image": 0,
+          "md5": "afd477a1bb49d7b19f0771829d733508"
+        },
+        {
+          "sheet": 3,
+          "text": 76,
+          "line": 26,
+          "rect": 7,
+          "image": 2,
+          "md5": "03b00533f24c3822895d955aa4e05cae"
+        },
+        {
+          "sheet": 4,
+          "text": 360,
+          "line": 944,
+          "rect": 97,
+          "image": 2,
+          "md5": "6ae21f4809fe9639c8f36570577cbbb0"
+        },
+        {
+          "sheet": 5,
+          "text": 112,
+          "line": 1790,
+          "rect": 653,
+          "image": 2,
+          "md5": "fdb016c9cb57da119c464300f6494deb"
+        },
+        {
+          "sheet": 6,
+          "text": 63,
+          "line": 2215,
+          "rect": 258,
+          "image": 2,
+          "md5": "7761b4cb68ec8fdd84551fdee30ec541"
+        },
+        {
+          "sheet": 7,
+          "text": 44,
+          "line": 21,
+          "rect": 7,
+          "image": 2,
+          "md5": "370ff7d9e7e8f20e3049df4a14724adf"
+        },
+        {
+          "sheet": 8,
+          "text": 44,
+          "line": 21,
+          "rect": 7,
+          "image": 2,
+          "md5": "52a018a58850d0e4fd4dd23f8767706c"
+        },
+        {
+          "sheet": 9,
+          "text": 86,
+          "line": 24,
+          "rect": 33,
+          "image": 1,
+          "md5": "a151f811d985b688c89c7c22660348e1"
+        },
+        {
+          "sheet": 10,
+          "text": 25,
+          "line": 17,
+          "rect": 6,
+          "image": 1,
+          "md5": "b18c631846e22c253ab30565b9a18173"
+        },
+        {
+          "sheet": 11,
+          "text": 267,
+          "line": 41,
+          "rect": 18,
+          "image": 1,
+          "md5": "03659262e974dd137c023aea6c043d58"
+        }
+      ]
+    }
+  }
+}

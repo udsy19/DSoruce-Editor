@@ -38,8 +38,8 @@ import type { ProductCardInfo } from './sheet'
 import type { ReportMeta } from './report'
 import { buildTakeoffModel } from './takeoff'
 import type { TakeoffFurnitureRow, TakeoffSummaryRow } from './takeoff'
-import type { DocState, DocComponent } from '../editor/EditorCanvas'
-import { zoneArea as zoneShapeArea, zoneCenter as zoneShapeCenter } from '../util/zoneGeom'
+import type { DocState, DocComponent, DocZone } from '../editor/EditorCanvas'
+import { zoneArea as zoneShapeArea, zoneBBox, zoneCenter as zoneShapeCenter } from '../util/zoneGeom'
 import type { Drawing } from '../import/types'
 import type { BindingInfo } from '../persist/file'
 import { extractPlate, extractInteriorWalls } from '../import/testfit'
@@ -397,7 +397,110 @@ export function placeNear(occ: OccBox[], cx: number, cy: number, w: number, h: n
   return { x: cx + best[0], y: cy + best[1] }
 }
 
-/** Draw a room label + area at each non-circulation zone center, de-collided. */
+/** A leader stroke: label edge → the space it names. Top-down coords, like the
+ *  boxes `placeNear` works in (sheet pt on a PDF page, px on the plan canvas). */
+export interface Leader {
+  x1: number
+  y1: number
+  x2: number
+  y2: number
+}
+
+/** Shorter than this and a leader is a tick, not a pointer — drawn as nothing. */
+const MIN_LEADER = 6
+
+function boxContains(b: OccBox, x: number, y: number): boolean {
+  return x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h
+}
+
+/** Where the ray from (ix,iy) — inside `b` — towards (ox,oy) crosses b's edge. */
+function exitPoint(b: OccBox, ix: number, iy: number, ox: number, oy: number): { x: number; y: number } {
+  const dx = ox - ix
+  const dy = oy - iy
+  let t = 1
+  if (dx > 0) t = Math.min(t, (b.x + b.w - ix) / dx)
+  else if (dx < 0) t = Math.min(t, (b.x - ix) / dx)
+  if (dy > 0) t = Math.min(t, (b.y + b.h - iy) / dy)
+  else if (dy < 0) t = Math.min(t, (b.y - iy) / dy)
+  t = Math.max(0, Math.min(1, t))
+  return { x: ix + dx * t, y: iy + dy * t }
+}
+
+/**
+ * The leader line a DISPLACED label needs, or `null` when it needs none.
+ *
+ * `placeNear` moves a label out of the way of furniture, dimension strings and
+ * other labels; it returns only the new centre, which leaves the reader to
+ * guess. Guessing is safe while the label still sits on the space it names, and
+ * stops being safe the moment it does not: three identical 1.4 m² phone booths
+ * in a row, each label pushed outside its booth, cannot be told apart (rooms
+ * 155/163/171 on the delivered plan). A leader is exactly the drafting answer.
+ *
+ * THRESHOLD — a leader is drawn when the label's CENTRE leaves the room's own
+ * footprint (`room`, in the same top-down coordinates), and not before:
+ *
+ *  * it is the ambiguity condition itself, not a proxy for it. Inside the room
+ *    the label is self-attributing; outside it is not, whatever the distance;
+ *  * it scales with the drawing. A 668 m² open workspace absorbs a big nudge
+ *    and stays unambiguous; a 1.4 m² booth is smaller than its own label, so
+ *    any displacement at all escapes it. One rule, both cases, no magic px;
+ *  * it cannot fire for a label nobody moved — `placeNear`'s first candidate is
+ *    the true spot, which is inside the room by construction.
+ *
+ * `room` is optional: with no footprint to test against (the plan's aggregated
+ * circulation label has no single zone) the label's own box at the anchor
+ * stands in, i.e. "displaced by more than its own width/height". Leaders below
+ * `MIN_LEADER` are dropped, so a centre that lands a hair outside the wall
+ * gets no stub.
+ *
+ * The line runs from the label's box edge to the room's edge — it stops where
+ * the space starts rather than crossing it, so it never adds ink over the
+ * furniture inside (gate G11 measures exactly that ink). Pure arithmetic on the
+ * inputs: deterministic, as G4's byte-for-byte re-render requires.
+ */
+export function labelLeader(
+  anchorX: number,
+  anchorY: number,
+  pos: { x: number; y: number },
+  w: number,
+  h: number,
+  room?: OccBox | null,
+): Leader | null {
+  const ref: OccBox = room ?? { x: anchorX - w / 2, y: anchorY - h / 2, w, h }
+  if (ref.w <= 0 || ref.h <= 0) return null
+  if (boxContains(ref, pos.x, pos.y)) return null
+  // Aim from the anchor when the anchor is inside the room (it normally is —
+  // it IS the room centre); from the room centre when a concave/offset anchor
+  // put it outside, so the ray always starts inside the box it exits.
+  const inside = boxContains(ref, anchorX, anchorY)
+  const ax = inside ? anchorX : ref.x + ref.w / 2
+  const ay = inside ? anchorY : ref.y + ref.h / 2
+  const to = exitPoint(ref, ax, ay, pos.x, pos.y)
+  const from = exitPoint({ x: pos.x - w / 2, y: pos.y - h / 2, w, h }, pos.x, pos.y, to.x, to.y)
+  if (Math.hypot(to.x - from.x, to.y - from.y) < MIN_LEADER) return null
+  return { x1: from.x, y1: from.y, x2: to.x, y2: to.y }
+}
+
+/** A zone's footprint in the same top-down coords a label is placed in. */
+export function zoneBoxOnSheet(
+  shape: DocZone['shape'],
+  map: (x: number, y: number) => { x: number; y: number },
+): OccBox {
+  const bb = zoneBBox(shape)
+  const a = map(bb.minX, bb.minY)
+  const b = map(bb.maxX, bb.maxY)
+  return {
+    x: Math.min(a.x, b.x),
+    y: Math.min(a.y, b.y),
+    w: Math.abs(b.x - a.x),
+    h: Math.abs(b.y - a.y),
+  }
+}
+
+/** Draw a room label + area at each non-circulation zone center, de-collided —
+ *  with a leader back to the room whenever de-collision pushed the label off it
+ *  (see `labelLeader`). The leader is drawn first, so the label always reads on
+ *  top of it. */
 function roomLabels(
   p: Page,
   state: DocState,
@@ -414,6 +517,8 @@ function roomLabels(
     const area = `${zoneArea(z.shape).toFixed(1)} m²`
     const w = Math.max(textWidth(name, 8, true), textWidth(area, 7.5)) + 4
     const pos = placeNear(occ, pt.x, pt.y + 4, w, 26)
+    const lead = labelLeader(pt.x, pt.y + 4, pos, w, 26, zoneBoxOnSheet(z.shape, map))
+    if (lead) p.line(lead.x1, lead.y1, lead.x2, lead.y2, { gray: 0.5, width: 0.4 })
     p.text(pos.x, pos.y - 4, 8, name, { align: 'center', bold: true, gray: 0.2 })
     p.text(pos.x, pos.y + 7, 7.5, area, { align: 'center', gray: 0.4 })
   }
