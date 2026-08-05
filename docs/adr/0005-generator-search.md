@@ -389,7 +389,7 @@ each budget would optimise the metric we measured at the expense of the one we
 just discovered we do not. The measurement is cheap and the machinery exists;
 that is the next step, not a blind reduction.
 
-## The rules family — one failure mode, ten faces
+## The rules family — one failure mode, twelve faces
 
 > **Four faces of one error: something read as evidence outside the conditions
 > that made it evidence.**
@@ -580,8 +580,46 @@ Each was learned from a live mistake in this campaign.
 > Fixing that was not a palette swap, it was a figure/ground decision — which
 > marks are content and which are the surface content sits on.
 
+11. **Calibrate the instrument against a known sample before pointing it at the
+    unknown** (plan-grammar campaign) — and note that the calibration sample is
+    often already in hand, unrecognised.
+    *From:* 2c's acceptance metric. The snapped and continuous builds differed
+    in ONE function, which makes the snapped build a **negative control**:
+    known-worse by construction. The first metric (max/mean of first
+    differences) scored it *smoother*. It failed against a sample of known
+    direction, so it died before it could be used on anything that mattered.
+
+    Both earlier instrument failures skipped exactly this step: the position
+    hash and the IFC reader were each pointed straight at the unknown and
+    believed. The rule is not "check your metric" in the abstract — it is
+    **run it on the case whose answer you already know, first.**
+
+    The measurement lesson underneath it: **in a series that is already moving,
+    magnitude is trend.** A pop is not a large step, it is ink jumping AGAINST
+    its direction of travel — a sign change, not a size. And reversals present
+    in BOTH builds are excluded by construction, which is branch 1b's fixture
+    logic reappearing: *something shared by both arms cannot be evidence about
+    the treatment.*
+
+12. **A gate teaches the behaviour that passes it** (plan-grammar campaign) —
+    so design a sensor for what it TRAINS, not only for what it matches.
+    *From:* the width rule, which flagged `lineWidth = lw` where `lw` already
+    came from `strokePx`. The cheapest way past it was to inline the variable —
+    the gate would have taught people to *remove* the named value it existed to
+    encourage. Retargeted to match a numeric literal on the right-hand side:
+    flagging magic numbers teaches naming, flagging named widths teaches
+    inlining.
+
+    This is Goodhart aimed at our own enforcement rather than at a metric, and
+    after 4a's weight-mutation false positive it is the failure we should have
+    expected to need. **Ask what the cheapest way to satisfy a rule is, and
+    whether you would be happy if everyone took it.**
+
 **And a standing requirement that falls out of the same discipline: every
-trigger needs a SENSOR.** A trigger without something watching for it is a wish.
+trigger needs a SENSOR — and a check that cannot run is not a sensor.** A
+Playwright-driven acceptance script in a repo without Playwright is a wish with
+extra steps; `bench/lod-sweep.mjs` analyses recorded fixtures for exactly that
+reason. A trigger without something watching for it is a wish.
 Audited across the campaign:
 
 | trigger | sensor | status |

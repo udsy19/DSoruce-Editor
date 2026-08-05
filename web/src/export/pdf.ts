@@ -19,6 +19,7 @@ import { drawFurnitureSymbol } from '../editor/furniture'
 import type { Drawing, DrawEntity } from '../import/types'
 import { CATEGORY_COLOR } from '../import/types'
 import { triggerDownload } from './png'
+import { ZONE, planStyle, strokePx, hexToRgb01, hexToRgba } from '../editor/planStyle'
 
 export interface PdfMeta {
   title?: string
@@ -268,17 +269,18 @@ const PRINT_DETAIL = '#7c848e'
 const PRINT_WALL = '#14181d'
 const PRINT_LABEL = '#4a515a'
 const PRINT_ZONE_LABEL = '#8b939e'
-// Same Laiout pastels as EditorCanvas's (unexported) ZONE fills, drawn at
-// reduced alpha so tints stay light on paper.
-export const PRINT_ZONE_FILL: Record<string, string> = {
-  Circulation: '#dcebfb',
-  Workspace: '#fbf3d6',
-  Meeting: '#e9e3f7',
-  Collaboration: '#def1e2',
-  Core: '#eceef1',
-  ClosedOffice: '#fce6d6',
-  Amenity: '#d9f0ef',
-}
+/**
+ * Zone fills for print — THE SAME OBJECT the canvas fills with.
+ *
+ * This was a hardcoded copy, and its own comment said why: "same Laiout pastels
+ * as EditorCanvas's (unexported) ZONE fills". The table is exported now, so the
+ * reason is gone. The copy was not harmless while it lasted -- it still held the
+ * pre-2e palette, so every PDF was rendering the OLD colours while the canvas
+ * rendered the new ones. Export parity starts by not having a second palette.
+ */
+export const PRINT_ZONE_FILL: Record<string, string> = Object.fromEntries(
+  Object.entries(ZONE).map(([k, v]) => [k, v.fill]),
+)
 
 // Rotation-aware world bbox of everything printable in the state.
 function stateBbox(
@@ -315,6 +317,15 @@ function stateBbox(
 
 /** New (generated) partition highlight + demolition hatch colors, keyed to the
  *  drawing-set plan family (docs/design/drawing-set-generator.md §1.3). */
+/**
+ * The sheet is rendered at a much larger pixel size than the screen canvas and
+ * then scaled into the page, so a screen-px ladder value would come out
+ * hairline. One scalar, applied to every tier, keeps the measured RATIOS intact
+ * while making the absolute weights readable on paper — the ladder is the
+ * ratios, so a uniform scale is the one transform that does not corrupt it.
+ */
+const PRINT_WEIGHT_SCALE = 3
+
 const PRINT_NEW_WALL = '#3b6fd4' // generated:true partitions (construction plan)
 const PRINT_DEMOLISH = '#d6336c' // removed/existing-to-demolish cross-hatch
 
@@ -448,6 +459,7 @@ export function renderPrintCanvas(
   const bb = stateBbox(state)
   if (!bb) return { canvas, metersPerPx: 0, k: 0, ox: 0, oy: 0 }
 
+  const paperProfile = planStyle('paper')
   const pad = 48
   const spanX = Math.max(bb.maxX - bb.minX, 0.001)
   const spanY = Math.max(bb.maxY - bb.minY, 0.001)
@@ -460,7 +472,12 @@ export function renderPrintCanvas(
   // Zone tints (+ labels on rect zones large enough to carry one).
   if (zoneFill) {
     ctx.globalAlpha = 0.55
+    const paper = planStyle('paper')
     for (const z of state.zones ?? []) {
+      // Ground zones are the sheet's paper, exactly as on the paper-profile
+      // canvas. Filling circulation here and not there would be the parity bug
+      // this phase exists to close.
+      if (paper.groundZones.includes(z.zone_type)) continue
       ctx.fillStyle = PRINT_ZONE_FILL[z.zone_type] ?? PRINT_ZONE_FILL.Core
       const s = z.shape
       if (s.kind === 'Poly') {
@@ -529,17 +546,75 @@ export function renderPrintCanvas(
   // Walls on top, at true scaled thickness. `existingWalls`/`generatedWalls`
   // gate which of the two poché classes draw (demolition hides the new
   // partitions; construction shows both + highlights the new).
-  ctx.strokeStyle = PRINT_WALL
+  // TWO-FACE WALLS, matching the canvas grammar (2a): a wall is a thickness
+  // polygon with both faces stroked, not one fat centreline. The sheet drew a
+  // single stroke at scaled thickness, which produced a heavy black outline
+  // where the canvas shows a crisp double line — the same document reading as a
+  // different drawing depending on which renderer you asked. Faces are stroked
+  // at the ladder's wall tier, and the interior takes the profile's fill, so the
+  // Rayon hatch reaches the sheet too.
   ctx.lineCap = 'round'
+  const wallFill = paperProfile.wallCut.fill
   for (const w of state.walls) {
     const gen = w.generated === true
     if (gen && !generatedWalls) continue
     if (!gen && !existingWalls) continue
+
+    const dx = w.b.x - w.a.x
+    const dy = w.b.y - w.a.y
+    const len = Math.hypot(dx, dy)
+    if (len < 1e-9) continue
+    const hw = (w.thickness > 0 ? w.thickness : 0.1) / 2
+    const nx = (-dy / len) * hw
+    const ny = (dx / len) * hw
+    const q = [
+      { x: X(w.a.x + nx), y: Y(w.a.y + ny) },
+      { x: X(w.b.x + nx), y: Y(w.b.y + ny) },
+      { x: X(w.b.x - nx), y: Y(w.b.y - ny) },
+      { x: X(w.a.x - nx), y: Y(w.a.y - ny) },
+    ]
+
+    if (wallFill && wallFill.kind === 'hatch') {
+      ctx.save()
+      ctx.beginPath()
+      ctx.moveTo(q[0].x, q[0].y)
+      for (let i = 1; i < q.length; i++) ctx.lineTo(q[i].x, q[i].y)
+      ctx.closePath()
+      ctx.clip()
+      ctx.strokeStyle = hexToRgba(wallFill.color, wallFill.alpha)
+      ctx.lineWidth = strokePx(wallFill.tier, k) * PRINT_WEIGHT_SCALE
+      const spacing = Math.max(
+        2,
+        'px' in wallFill.spacing
+          ? wallFill.spacing.px
+          : w.thickness * k * wallFill.spacing.ofThickness,
+      )
+      const diag = Math.hypot(
+        Math.max(...q.map((p) => p.x)) - Math.min(...q.map((p) => p.x)),
+        Math.max(...q.map((p) => p.y)) - Math.min(...q.map((p) => p.y)),
+      )
+      const cx0 = (Math.min(...q.map((p) => p.x)) + Math.max(...q.map((p) => p.x))) / 2
+      const cy0 = (Math.min(...q.map((p) => p.y)) + Math.max(...q.map((p) => p.y))) / 2
+      const rad = (wallFill.angleDeg * Math.PI) / 180
+      const ux = Math.cos(rad)
+      const uy = Math.sin(rad)
+      ctx.beginPath()
+      for (let o = -diag / 2; o <= diag / 2; o += spacing) {
+        const bx = cx0 - uy * o
+        const by = cy0 + ux * o
+        ctx.moveTo(bx - (ux * diag) / 2, by - (uy * diag) / 2)
+        ctx.lineTo(bx + (ux * diag) / 2, by + (uy * diag) / 2)
+      }
+      ctx.stroke()
+      ctx.restore()
+    }
+
     ctx.strokeStyle = PRINT_WALL
-    ctx.lineWidth = Math.max(1.5, w.thickness * k)
+    ctx.lineWidth = strokePx('wall', k) * PRINT_WEIGHT_SCALE
     ctx.beginPath()
-    ctx.moveTo(X(w.a.x), Y(w.a.y))
-    ctx.lineTo(X(w.b.x), Y(w.b.y))
+    ctx.moveTo(q[0].x, q[0].y)
+    for (let i = 1; i < q.length; i++) ctx.lineTo(q[i].x, q[i].y)
+    ctx.closePath()
     ctx.stroke()
   }
 
@@ -548,7 +623,7 @@ export function renderPrintCanvas(
     ctx.strokeStyle = PRINT_NEW_WALL
     for (const w of state.walls) {
       if (w.generated !== true) continue
-      ctx.lineWidth = Math.max(2, w.thickness * k)
+      ctx.lineWidth = Math.max(strokePx('wall', k) * PRINT_WEIGHT_SCALE, w.thickness * k)
       ctx.beginPath()
       ctx.moveTo(X(w.a.x), Y(w.a.y))
       ctx.lineTo(X(w.b.x), Y(w.b.y))
@@ -770,6 +845,37 @@ export async function exportPlanPDF(
   metricRow('FIT-OUT COST (INDICATIVE)', fmt(metrics.indicative_cost, (n) => `Rs. ${inr.format(n)}`))
   y += 12
   hr(y)
+
+  // --- zone key -----------------------------------------------------------
+  // ON PAPER THE LEGEND IS THE ONLY IDENTIFICATION THERE IS. The paper profile
+  // prints service-room abbreviations and nothing else (that is what the
+  // reference does), so without this the sheet is not reference-minimal, it is
+  // unreadable. The on-canvas legend lives in the right-hand UI panel, which is
+  // not part of the exported sheet -- so it has to be drawn here too.
+  //
+  // DERIVED from the state's own zones, exactly like the canvas legend: a plan
+  // with no breakout prints no breakout swatch. Colours come from ZONE via
+  // PRINT_ZONE_FILL, so the sheet and the canvas cannot disagree about what a
+  // colour means.
+  const paperStyle = planStyle('paper')
+  const zoneKinds: string[] = []
+  for (const z of state.zones ?? []) {
+    if (paperStyle.groundZones.includes(z.zone_type)) continue // ground has no swatch
+    if (!zoneKinds.includes(z.zone_type)) zoneKinds.push(z.zone_type)
+  }
+  if (zoneKinds.length > 0) {
+    y += 20
+    text(px0, y, 9, 'ZONE KEY', { bold: true, gray: 0.3 })
+    for (const kind of zoneKinds) {
+      y += 15
+      const rgb = hexToRgb01(PRINT_ZONE_FILL[kind] ?? PRINT_ZONE_FILL.Core)
+      ops.push({ op: 'rect', x: px0, y: Y(y + 1.5), w: 9, h: 9, fill: true, rgb })
+      ops.push({ op: 'rect', x: px0, y: Y(y + 1.5), w: 9, h: 9, fill: false, gray: 0.6, width: 0.5 })
+      text(px0 + 15, y, 8.5, kind.replace(/([a-z])([A-Z])/g, '$1 $2').toUpperCase(), { gray: 0.3 })
+    }
+    y += 12
+    hr(y)
+  }
 
   // --- furniture schedule --------------------------------------------------
   const counts = new Map<string, number>()

@@ -15,20 +15,16 @@ import {
   canvasToJpeg,
 } from './pdf'
 import type { DocState } from '../types/doc'
-import { ACCENT_AMBER, hexToRgba } from '../editor/planStyle'
+import { ACCENT_AMBER, hexToRgba, hexToRgb01 } from '../editor/planStyle'
 /** Outer page margin (pt), shared by report + drawing-set pages. */
 export const MARGIN = 40
 /** RES px per pt for embedded rasters — ~187 dpi, crisp line-work. */
 export const RES = 2.6
 
-export function hex2rgb(hex: string): Rgb {
-  const h = hex.replace('#', '')
-  return [
-    parseInt(h.slice(0, 2), 16) / 255,
-    parseInt(h.slice(2, 4), 16) / 255,
-    parseInt(h.slice(4, 6), 16) / 255,
-  ]
-}
+/** Kept as the name the sheet builders already import; the implementation lives
+ *  with the colours in planStyle, so pdf.ts can use it without importing this
+ *  module (which imports pdf.ts -- that way lies a cycle). */
+export const hex2rgb = (hex: string): Rgb => hexToRgb01(hex)
 
 /** Warm-amber brand accent (CLAUDE.md) — KPI bars, headings. */
 export const ACCENT: Rgb = hex2rgb(ACCENT_AMBER)

@@ -291,6 +291,16 @@ export const ACCENT_AMBER = '#E8A13C'
  * as `rgba(232, 161, 60, 0.45)`, which is this accent in decimal and therefore
  * invisible to any search for `#E8A13C`.
  */
+/** Hex -> 0..1 RGB triplet, the form PDF content streams want. */
+export function hexToRgb01(hex: string): [number, number, number] {
+  const h = hex.replace('#', '')
+  return [
+    parseInt(h.slice(0, 2), 16) / 255,
+    parseInt(h.slice(2, 4), 16) / 255,
+    parseInt(h.slice(4, 6), 16) / 255,
+  ]
+}
+
 export function hexToRgba(hex: string, a: number): string {
   const n = parseInt(hex.slice(1), 16)
   return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`
