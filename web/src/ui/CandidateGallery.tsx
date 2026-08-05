@@ -91,7 +91,7 @@ export function CandidateGallery({
   )
 }
 
-const ACCENT = 'var(--accent)'
+const ACCENT = 'var(--accent-amber)'
 const LETTER = (i: number) => String.fromCharCode(65 + (i % 26))
 
 const S: Record<string, CSSProperties> = {

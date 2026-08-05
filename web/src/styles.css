@@ -34,6 +34,9 @@
      hand-expanding the hex to decimal -- which is how five rules below ended
      up holding copies that no search for "#E8A13C" could find. */
   --accent-amber-rgb: 232, 161, 60;
+  /* Tinted wash for amber-accented surfaces (selected rows, active chips). */
+  --accent-amber-soft: #fdf3e3;
+  --accent-amber-hover: #d68f2c;
 
   /* ---- semantic ---- */
   --ok: #2fa36b;
@@ -281,10 +284,13 @@ button {
   flex: 1;
 }
 .rail-fab {
+  /* AI-action accent. Amber marks the autonomous/agentic action and is
+     deliberately distinct from --accent, which marks ordinary navigation.
+     See CLAUDE.md: a single warm-amber accent on cool content colours. */
   width: 44px;
   height: 44px;
   border-radius: var(--r-pill);
-  background: var(--accent);
+  background: var(--accent-amber);
   color: #fff;
   border: 0;
   font-size: 22px;
@@ -295,11 +301,11 @@ button {
   transition: background 0.12s, transform 0.12s;
 }
 .rail-fab:hover {
-  background: var(--accent-hover);
+  background: var(--accent-amber-hover);
   transform: translateY(-1px);
 }
 .rail-fab.on {
-  background: var(--accent-hover);
+  background: var(--accent-amber-hover);
 }
 /* Grouped tool dock (Rayon-style) — compact icon tiles per group, each with a
    hover/click flyout listing its members. Replaces the tall flat rail. */
@@ -3780,6 +3786,13 @@ kbd {
   align-items: center;
   gap: 7px;
   white-space: nowrap;
+  /* AI-action accent, scoped to THIS button rather than to .cta-ghost --
+     the ghost class is shared by ordinary buttons that must stay blue. */
+  color: var(--accent-amber);
+  border-color: var(--accent-amber);
+}
+.generate-regenerate:hover {
+  background: var(--accent-amber-soft);
 }
 .generate-gallery {
   display: grid;
