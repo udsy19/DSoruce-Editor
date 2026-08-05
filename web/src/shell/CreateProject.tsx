@@ -1,20 +1,32 @@
-// Full-screen create-project form — design: docs/design/workflow.md §1/§2
-// (step "Property"). Captures the fields that flow straight into the exporters
-// (ReportMeta / TakeoffOptions): project name, property name, address, initial
-// floor, and a client logo (stored as a data: URL → report cover). On submit
-// it mints a ProjectRecord (whose id doubles as the SavedPlan.projectId for
-// this project's floors) and hands it back to the shell to open the editor.
+// The "Property" STEP BODY — design: docs/design/ui-system.md §2.3.
+// Captures the fields that flow straight into the exporters (ReportMeta /
+// TakeoffOptions): project name, property name, address, initial floor, and a
+// client logo (stored as a data: URL → report cover). On submit it mints a
+// ProjectRecord (whose id doubles as the SavedPlan.projectId for this project's
+// floors) and hands it back to the shell to open the editor.
+//
+// This renders the FORM ONLY. It used to draw its own full-screen chrome, which
+// is why "Property" appeared in the stepper as a step the user was never shown
+// as one — permanently pre-ticked, for a screen with no stepper on it. The shell
+// now wraps this in WizardChrome like every other step, and the chrome's Next
+// submits the form through the HTML `form=` attribute, so no state is lifted.
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { createProject, type ProjectRecord } from '../persist/projects'
 import { Icon } from '../ui/icons'
 
+/** The chrome's Next targets this form by id (HTML form-owner attribute). */
+export const CREATE_FORM_ID = 'create-project-form'
+
 export function CreateProject({
-  onCancel,
   onCreated,
+  onReadyChange,
 }: {
-  onCancel: () => void
   onCreated: (p: ProjectRecord) => void
+  /** Reports whether the required fields are filled, so the chrome can disable
+   *  Next WITH A REASON instead of letting a native validation bubble be the
+   *  first the user hears of it. */
+  onReadyChange?: (ready: boolean) => void
 }) {
   const [name, setName] = useState('')
   const [propertyName, setPropertyName] = useState('')
@@ -22,6 +34,9 @@ export function CreateProject({
   const [floor, setFloor] = useState('')
   const [logo, setLogo] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+
+  const ready = propertyName.trim().length > 0
+  useEffect(() => onReadyChange?.(ready), [ready, onReadyChange])
 
   const onLogo = (file: File | undefined) => {
     if (!file) return
@@ -49,26 +64,14 @@ export function CreateProject({
   }
 
   return (
-    <div className="studio">
-      <header className="studio-top">
-        <div className="studio-brand">
-          <button className="studio-back" onClick={onCancel} aria-label="Back to projects">
-            <Icon name="caret" size={14} />
-          </button>
-          <span className="studio-wordmark">DSOURCE STUDIO</span>
-        </div>
-      </header>
-
+    <div className="create-step">
       <div className="create-wrap">
-        <div className="create-head">
-          <span className="panel-eyebrow">New project</span>
-          <h1 className="create-title">Set up the property</h1>
-          <p className="studio-sub">
-            These details carry through to the priced report and quantity takeoff.
-          </p>
-        </div>
-
-        <form className="create-form" data-testid="create-project-form" onSubmit={submit}>
+        <form
+          id={CREATE_FORM_ID}
+          className="create-form"
+          data-testid="create-project-form"
+          onSubmit={submit}
+        >
           <label className="create-field">
             <span className="field-label">Project name</span>
             <input
@@ -82,7 +85,11 @@ export function CreateProject({
           </label>
 
           <label className="create-field">
-            <span className="field-label">Property name</span>
+            {/* The one required field — said out loud, not discovered via a
+                native validation bubble on submit. */}
+            <span className="field-label">
+              Property name <span className="field-required">required</span>
+            </span>
             <input
               className="field-input"
               data-testid="create-property"
@@ -134,14 +141,6 @@ export function CreateProject({
             </label>
           </div>
 
-          <div className="create-actions">
-            <button type="button" className="empty-btn" onClick={onCancel}>
-              Cancel
-            </button>
-            <button type="submit" className="empty-btn primary" data-testid="create-submit" disabled={busy}>
-              {busy ? 'Creating…' : 'Create project'}
-            </button>
-          </div>
         </form>
       </div>
     </div>

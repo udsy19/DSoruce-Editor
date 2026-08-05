@@ -319,6 +319,7 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
                 program.meeting_w,
                 program.meeting_h,
                 Placement::Flexible,
+                0, // derived meeting: no explicit brief
             ));
         }
         take(&mut jobs, SpaceKind::Focus);

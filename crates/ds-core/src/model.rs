@@ -99,12 +99,131 @@ pub struct Component {
     /// supplier publishes no price). `default` keeps old snapshots readable.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub price_inr: Option<f64>,
+    /// **How many people sit AT this object** — a facet of the object, resolved
+    /// once HERE where it is created and then only ever read (see
+    /// `docs/design/ui-system.md` §3.6).
+    ///
+    /// This exists because the renderer used to derive a table's chair count
+    /// from its size **in screen pixels**, so the same table drew 0 chairs at
+    /// 20 px/m, 6 at 45 and 10 at 110 — the drawing contradicted its own room
+    /// tag at every zoom but one. Seat count is not a property of the zoom
+    /// level; it is a property of the table.
+    ///
+    /// NOT the same quantity as a room's `Zone::capacity()`, which is an
+    /// area rule-of-thumb for the ROOM. A tag never counts chairs and a glyph
+    /// never renders room pax; they are different facts about different things.
+    ///
+    /// 0 = seats nobody (a door, a column, casework). `serde(default)` keeps
+    /// every pre-seats snapshot and `.dsource` blob readable.
+    #[serde(default)]
+    pub seats: u32,
     pub decision: DecisionState,
+}
+
+/// Centre-to-centre spacing of people seated side by side, in meters. A chair
+/// plus elbow room; the standard planning figure for table seating.
+pub const SEAT_PITCH_M: f64 = 0.65;
+/// A table end narrower than this can't seat anyone across it, so no head seats.
+const HEAD_SEAT_MIN_M: f64 = 0.8;
+
+/// How many people a component of this category and WORLD footprint seats.
+///
+/// The single resolver for {@link Component::seats}, called wherever a component
+/// is created — the generator, the wasm `add_component` boundary, and (mirrored)
+/// the TS importer's `normalizeFurniture`. Because it takes meters and never
+/// pixels, the answer is the same at every zoom level, which is the whole point.
+pub fn seats_for(category: &str, w: f64, h: f64) -> u32 {
+    match category {
+        // One person per desk / per chair, regardless of size.
+        "Desk" | "Chair" => 1,
+        // Perimeter seating: a run of people down each long side, plus one at
+        // each end if the table is deep enough to seat across.
+        "Table" | "MeetingRoom" => {
+            let long = w.max(h);
+            let short = w.min(h);
+            if !(long > 0.0) || !(short > 0.0) {
+                return 0;
+            }
+            let per_side = (long / SEAT_PITCH_M).floor().max(0.0) as u32;
+            let heads = if short >= HEAD_SEAT_MIN_M { 2 } else { 0 };
+            per_side * 2 + heads
+        }
+        _ => 0,
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Seat count must depend ONLY on world size — never on a view. These are the
+    /// real footprints the generator emits, and the numbers must hold forever.
+    #[test]
+    fn seats_are_a_property_of_the_object() {
+        assert_eq!(seats_for("Desk", 1.4, 0.7), 1);
+        assert_eq!(seats_for("Chair", 0.5, 0.5), 1);
+        // The 1.2 x 0.6 m table from the real generated plan: a 2-person table.
+        // The renderer used to draw 0, 6, 8 or 10 chairs for this exact object
+        // depending on the zoom level.
+        assert_eq!(seats_for("Table", 1.2, 0.6), 2);
+        // Deep enough to seat across the ends.
+        assert_eq!(seats_for("Table", 1.2, 0.9), 4);
+        // A boardroom table.
+        assert_eq!(seats_for("Table", 4.5, 2.5), 14);
+        // Orientation must not matter.
+        assert_eq!(seats_for("Table", 2.5, 4.5), seats_for("Table", 4.5, 2.5));
+        // Things nobody sits at.
+        assert_eq!(seats_for("Door", 0.9, 0.15), 0);
+        assert_eq!(seats_for("Column", 0.4, 0.4), 0);
+        assert_eq!(seats_for("Furniture", 1.8, 0.5), 0);
+        // Degenerate footprints never panic or produce nonsense.
+        assert_eq!(seats_for("Table", 0.0, 0.0), 0);
+    }
+
+    /// `seats` is additive: every pre-seats snapshot must still deserialize.
+    #[test]
+    fn seats_defaults_to_zero_on_old_snapshots() {
+        let old = r#"{"id":3,"category":"Table","x":1.0,"y":2.0,"w":1.2,"h":0.6,
+            "rotation":0.0,"label":"Table 3","product_id":null,"decision":"Open"}"#;
+        let c: Component = serde_json::from_str(old).expect("pre-seats component must parse");
+        assert_eq!(c.seats, 0, "missing `seats` defaults to 0");
+    }
+
+    /// …and a load BACKFILLS it, so a plan saved before the facet reports the
+    /// same pax as an identical plan generated today. Without this, an existing
+    /// library would reopen on the old area rule-of-thumb while new plans used
+    /// furniture seats — the same building reading two ways.
+    #[test]
+    fn backfill_resolves_seats_on_an_old_document() {
+        let old = r#"{
+            "walls":[],
+            "components":[
+                {"id":1,"category":"Table","x":0,"y":0,"w":2.4,"h":3.3,"rotation":0,
+                 "label":"Table 1","product_id":null,"decision":"Open"},
+                {"id":2,"category":"Desk","x":5,"y":0,"w":1.4,"h":0.7,"rotation":0,
+                 "label":"Desk 2","product_id":null,"decision":"Open"},
+                {"id":3,"category":"Door","x":9,"y":0,"w":0.9,"h":0.15,"rotation":0,
+                 "label":"Door 3","product_id":null,"decision":"Open"}
+            ],
+            "zones":[],"keepouts":[],"entries":[],"selection":null,"next_id":4
+        }"#;
+        let mut doc: crate::document::Document =
+            serde_json::from_str(old).expect("pre-seats document must parse");
+        assert!(doc.components.iter().all(|c| c.seats == 0), "loads at 0");
+
+        doc.backfill_seats();
+        // 2.4 x 3.3 m: floor(3.3 / 0.65) = 5 a side, + 2 heads = 12. This is the
+        // real boardroom table the generator emits on the sample plate.
+        assert_eq!(doc.components[0].seats, 12, "boardroom table resolved");
+        assert_eq!(doc.components[1].seats, 1, "desk resolved");
+        assert_eq!(doc.components[2].seats, 0, "nobody sits at a door");
+
+        // Idempotent: re-running must never inflate an already-resolved doc.
+        let before: Vec<u32> = doc.components.iter().map(|c| c.seats).collect();
+        doc.backfill_seats();
+        let after: Vec<u32> = doc.components.iter().map(|c| c.seats).collect();
+        assert_eq!(before, after, "backfill is idempotent");
+    }
 
     /// Pre-M1 snapshots carry walls WITHOUT the `generated`/`glazing` flags —
     /// they must deserialize (flags default false), and a full round-trip must
@@ -160,6 +279,7 @@ mod tests {
             label: "Door 9".to_string(),
             product_id: None,
             price_inr: None,
+            seats: 0, // test fixture: seat count is irrelevant to what these assert
             decision: DecisionState::Open,
         };
         let json = serde_json::to_string(&door).unwrap();

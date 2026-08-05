@@ -18,8 +18,13 @@ import type { SpaceKind, Placement } from '../types/doc'
 import type { Program, RoomReq } from '../types/program'
 import type { Strategy } from '../editor/EditorCanvas'
 import { openaiToolsToAnthropic, parseClaudeContent, type ClaudeContentBlock } from './claudeDriver'
+import { CORRIDOR_M, CORRIDOR_RANGE_TEXT } from './llmSchema'
 
-/** Every room kind the Rust generator understands (mirrors `layout::SpaceKind`). */
+/** Every room kind the Rust generator understands — mirrors `layout::SpaceKind`,
+ *  and `src/coreParity.test.mjs` proves it still does by parsing the enum out of
+ *  `layout.rs`. Unavoidable here: the kinds have to be literals inside the JSON
+ *  schema the model reads. A kind missing from this list is silent — the
+ *  validator drops it and the room the designer asked for never appears. */
 const SPACE_KINDS: readonly SpaceKind[] = [
   'Meeting', 'Cabin', 'Meeting4P', 'Meeting6P', 'Boardroom', 'PhoneBooth', 'Focus',
   'Collab', 'Reception', 'Pantry', 'Print', 'ItServer', 'Storage', 'Wellness',
@@ -89,7 +94,7 @@ export function clampDesignSpec(raw: Record<string, unknown> | null | undefined)
   const hc = asInt(raw.headcount)
   if (Number.isFinite(hc)) spec.headcount = clamp(hc, 1, 2000)
   const corridor = asNum(raw.target_corridor_m)
-  if (Number.isFinite(corridor)) spec.target_corridor_m = clamp(corridor, 0.9, 3.0)
+  if (Number.isFinite(corridor)) spec.target_corridor_m = clamp(corridor, CORRIDOR_M.min, CORRIDOR_M.max)
   if (typeof raw.bench_pairs === 'boolean') spec.bench_pairs = raw.bench_pairs
   const adj = asNum(raw.adjacency_emphasis)
   if (Number.isFinite(adj)) spec.adjacency_emphasis = clamp(adj, 0, 1)
@@ -151,7 +156,7 @@ export const DESIGN_TOOL = {
           description:
             'spatial strategy: Open (max open-plan/daylight), Balanced (professional mix), Cellular (more enclosed rooms/privacy)',
         },
-        target_corridor_m: { type: 'number', description: 'primary circulation width, m (0.9–3.0; ≥1.5 for NBC egress)' },
+        target_corridor_m: { type: 'number', description: `primary circulation width, m (${CORRIDOR_RANGE_TEXT}; ≥1.5 for NBC egress)` },
         bench_pairs: { type: 'boolean', description: 'true = back-to-back bench desking (denser); false = separate workstations' },
         rooms: {
           type: 'array',

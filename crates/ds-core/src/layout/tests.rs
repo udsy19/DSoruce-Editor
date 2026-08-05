@@ -1131,8 +1131,8 @@ fn derive_mix_shifts_with_strategy() {
 #[test]
 fn explicit_program_overrides_strategy_counts() {
     let rooms = vec![
-        RoomReq { kind: SpaceKind::Cabin, count: 3, w: None, d: None, placement: Placement::Flexible },
-        RoomReq { kind: SpaceKind::Meeting, count: 2, w: None, d: None, placement: Placement::Flexible },
+        RoomReq { kind: SpaceKind::Cabin, count: 3, w: None, d: None, placement: Placement::Flexible , seats: 0 },
+        RoomReq { kind: SpaceKind::Meeting, count: 2, w: None, d: None, placement: Placement::Flexible , seats: 0 },
     ];
     let count_offices = |strat: Strategy| {
         let mut program = Program::default();
@@ -2238,8 +2238,8 @@ fn explicit_rooms_replace_derived_program_and_honor_counts() {
     let mut program = Program::default();
     program.headcount = Some(40); // desks still derive from this
     program.rooms = vec![
-        RoomReq { kind: SpaceKind::Cabin, count: 4, w: None, d: None, placement: Placement::Flexible },
-        RoomReq { kind: SpaceKind::Meeting, count: 1, w: None, d: None, placement: Placement::Flexible },
+        RoomReq { kind: SpaceKind::Cabin, count: 4, w: None, d: None, placement: Placement::Flexible , seats: 0 },
+        RoomReq { kind: SpaceKind::Meeting, count: 1, w: None, d: None, placement: Placement::Flexible , seats: 0 },
     ];
     let mut doc = room(30.0, 22.0);
     generate(&mut doc, &program, 1, false);
@@ -2273,7 +2273,7 @@ fn empty_rooms_falls_back_to_derive() {
 /// it (feeding the rooms in the opposite order yields the SAME layout).
 #[test]
 fn explicit_placement_biases_window_toward_facade() {
-    let cabin = |p: Placement| RoomReq { kind: SpaceKind::Cabin, count: 2, w: None, d: None, placement: p };
+    let cabin = |p: Placement| RoomReq { kind: SpaceKind::Cabin, count: 2, w: None, d: None, placement: p , seats: 0 };
     let mut win_first = Program::default();
     win_first.support_spaces = false;
     win_first.headcount = Some(20);
@@ -2313,8 +2313,8 @@ fn explicit_placement_biases_window_toward_facade() {
 fn program_rooms_serde_round_trip() {
     let mut p = Program::default();
     p.rooms = vec![
-        RoomReq { kind: SpaceKind::Cabin, count: 3, w: Some(4.5), d: Some(4.0), placement: Placement::Window },
-        RoomReq { kind: SpaceKind::Pantry, count: 1, w: None, d: None, placement: Placement::Core },
+        RoomReq { kind: SpaceKind::Cabin, count: 3, w: Some(4.5), d: Some(4.0), placement: Placement::Window , seats: 0 },
+        RoomReq { kind: SpaceKind::Pantry, count: 1, w: None, d: None, placement: Placement::Core , seats: 0 },
     ];
     let s = serde_json::to_string(&p).expect("serialize");
     let p2: Program = serde_json::from_str(&s).expect("round-trip");
@@ -2840,7 +2840,7 @@ fn anchor_consumes_one_of_a_requested_kind() {
     let mut program = Program::default();
     program.support_spaces = false;
     program.meeting_rooms = 0;
-    program.rooms = vec![RoomReq { kind: SpaceKind::Cabin, count: 2, w: None, d: None, placement: Placement::Flexible }];
+    program.rooms = vec![RoomReq { kind: SpaceKind::Cabin, count: 2, w: None, d: None, placement: Placement::Flexible , seats: 0 }];
     let mut doc = room(26.0, 18.0);
     doc.anchors.push(crate::document::Anchor { kind: SpaceKind::Cabin, x: 6.0, y: 5.0 });
     generate(&mut doc, &program, 4, false);
@@ -3398,6 +3398,7 @@ fn conformed_rooms_reenclose_to_the_wall_seat_neutral() {
                     glass_front: true,
                     door_w: 0.9,
                     furniture: RoomFurniture::ConferenceTable,
+                seats: 0,
                 },
             );
         }
@@ -3791,6 +3792,7 @@ fn golden_generate_output_is_frozen() {
                 w: None,
                 d: None,
                 placement: Placement::Window,
+            seats: 0,
             },
             RoomReq {
                 kind: SpaceKind::Meeting6P,
@@ -3798,6 +3800,7 @@ fn golden_generate_output_is_frozen() {
                 w: Some(4.5),
                 d: Some(3.5),
                 placement: Placement::Flexible,
+            seats: 0,
             },
             RoomReq {
                 kind: SpaceKind::PhoneBooth,
@@ -3805,6 +3808,7 @@ fn golden_generate_output_is_frozen() {
                 w: None,
                 d: None,
                 placement: Placement::Core,
+            seats: 0,
             },
         ],
         ..Program::default()
@@ -3880,4 +3884,47 @@ fn golden_generate_output_is_frozen() {
         mismatches.join("\n"),
         actual.iter().map(|a| format!("            \"{a}\",")).collect::<Vec<_>>().join("\n")
     );
+
 }
+
+    /// A room briefed for N people is furnished with a table seating exactly N.
+    /// From ui-fixes slice 6b: the Program builder offers "2/4/6/8 person" team
+    /// rooms, but `furnish_room` sized the table to the ROOM, so a 6-person room
+    /// got an 8-seat table and reported 8 pax on the plan and in the report.
+    /// Over-delivering is still a plan that does not match its own brief.
+    #[test]
+    fn briefed_room_seats_match_the_brief() {
+        for (w, d, briefed) in [(2.4, 2.7, 2u32), (2.7, 3.3, 4), (3.6, 4.2, 6), (3.6, 4.8, 8)] {
+            let mut doc = Document::new();
+            // A plate big enough that placement never becomes the variable.
+            for (ax, ay, bx, by) in [(0.0, 0.0, 30.0, 0.0), (30.0, 0.0, 30.0, 20.0),
+                                     (30.0, 20.0, 0.0, 20.0), (0.0, 20.0, 0.0, 0.0)] {
+                let id = doc.alloc_id();
+                doc.walls.push(crate::model::Wall {
+                    id, a: Point { x: ax, y: ay }, b: Point { x: bx, y: by },
+                    thickness: 0.2, generated: false, glazing: false,
+                });
+            }
+            let mut program = Program::default();
+            program.headcount = Some(10);
+            program.support_spaces = false;
+            program.rooms = vec![RoomReq {
+                kind: SpaceKind::Meeting4P, count: 1,
+                w: Some(w), d: Some(d), placement: Placement::Flexible, seats: briefed,
+            }];
+            generate(&mut doc, &program, 1, false);
+
+            // The table inside the briefed room seats exactly the brief.
+            let tables: Vec<u32> = doc.components.iter()
+                .filter(|c| c.category == "Table" && c.seats > 0)
+                .map(|c| c.seats).collect();
+            assert!(
+                tables.contains(&briefed),
+                "{w}x{d} briefed for {briefed}: table seat counts were {tables:?}",
+            );
+            assert!(
+                tables.iter().all(|&s| s <= briefed),
+                "{w}x{d} briefed for {briefed}: a table over-delivers — {tables:?}",
+            );
+        }
+    }

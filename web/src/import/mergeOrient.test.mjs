@@ -20,7 +20,7 @@
 //     door onto a right-hand one), so mergeFit carries it as a real reflection:
 //     `rotation = norm.rotation` (NO +π) with the hinge hand INVERTED
 //     (`mirror = !norm.mirror`). The renderer reflects the leaf+arc on `mirror`
-//     (furniture.ts drawDoor, `ctx.scale(1,-1)`).
+//     (symbols.ts `door`, via `ctx.scale(1,-1)` in `drawSymbol`).
 //
 // This harness renders every canonical imported-furniture symbol through a
 // transform-recording fake ctx in BOTH paths — WITH the `mirror` facet threaded
@@ -36,7 +36,7 @@
 
 // @covers: web/src/import/mergeFit.ts
 // @covers: web/src/import/normalize.ts
-// @covers: web/src/editor/furniture.ts
+// @covers: web/src/editor/symbols.ts
 
 import fs from 'node:fs'
 import path from 'node:path'
@@ -59,7 +59,7 @@ const bundle = async (entry) => {
 
 const { normalizeFurniture } = await bundle('normalize.ts')
 const { baseStampAround } = await bundle('mergeFit.ts')
-const { drawFurnitureSymbol } = await bundle('../editor/furniture.ts')
+const { drawSymbol } = await bundle('../editor/symbols.ts')
 
 // --- transform-recording fake CanvasRenderingContext2D -----------------------
 // Tracks the CTM (2D affine) across save/restore/translate/rotate/scale and maps
@@ -133,11 +133,19 @@ class RecordingCtx {
   result() { this._flush(); return { subpaths: this.subpaths, markers: this.markers } }
 }
 
-const SCALE = 100 // px/m — keep min symbol dimension > MIN_DETAIL so real glyphs draw
+// px/m — high enough that every LOD band is fully on, so the real glyphs (not a
+// faded-out reduction) are what gets compared.
+const SCALE = 100
 
+// `drawSymbol` takes WORLD metres plus a view; `opts.w/h` here are metres.
 function record(opts) {
   const ctx = new RecordingCtx()
-  drawFurnitureSymbol(ctx, { stroke: '#000', detail: '#000', accent: '#000', selected: false, ...opts })
+  drawSymbol(
+    ctx,
+    { cx: 0, cy: 0, selected: false, ...opts },
+    { stroke: '#000', detail: '#000', accent: '#000' },
+    { pxPerM: SCALE, dpr: 1 },
+  )
   return ctx.result()
 }
 
@@ -231,7 +239,7 @@ function importGlyph(item) {
   const odd = Math.round(n.rotation / (Math.PI / 2)) % 2 !== 0
   const nw = odd ? n.h : n.w
   const nh = odd ? n.w : n.h
-  return record({ category: n.category, cx: 0, cy: 0, w: nw * SCALE, h: nh * SCALE, rotation: -n.rotation, mirror: n.mirror })
+  return record({ category: n.category, w: nw, h: nh, rotation: -n.rotation, mirror: n.mirror })
 }
 
 // Render the MERGED glyph exactly as EditorCanvas.drawComponent does, from the
@@ -241,7 +249,7 @@ function mergedGlyph(item) {
   const { comps } = baseStampAround(emptyDrawing(item), FAR, { x: 0, y: 0 })
   if (comps.length !== 1) throw new Error(`expected 1 comp, got ${comps.length}`)
   const c = comps[0]
-  return { comp: c, glyph: record({ category: c.category, cx: 0, cy: 0, w: c.w * SCALE, h: c.h * SCALE, rotation: c.rotation, mirror: c.mirror }) }
+  return { comp: c, glyph: record({ category: c.category, w: c.w, h: c.h, rotation: c.rotation, mirror: c.mirror }) }
 }
 
 // Axis-aligned bbox [w,h] of a glyph's device geometry — the on-screen extent.

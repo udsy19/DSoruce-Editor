@@ -98,6 +98,7 @@ const strayValues = []
 const deadFallbacks = []
 const stringIdentifiers = []
 const otherFallbacks = []
+const badgeFaults = []
 
 for (const file of walk(path.join(ROOT, 'web/src'))) {
   const rel = path.relative(ROOT, file)
@@ -157,6 +158,39 @@ for (const file of walk(path.join(ROOT, 'web/src'))) {
   })
 }
 
+/**
+ * ELEMENT-LEVEL TRAP — the AI verdict badge.
+ *
+ * Mis-migrated THREE times from three directions: main restored it with a
+ * mismatched ground, ui-fixes sent it blue, and the three-branch merge
+ * inherited blue-on-blue. Three incidents is a pattern, so this is armed rather
+ * than remembered.
+ *
+ * The badge is AI-ACTION amber (R5) — it carries the evaluator's verdict — and
+ * BOTH halves must come from that one family. The original defect was blue text
+ * on an amber ground; blue-on-blue merely inverts which half is wrong, so
+ * checking the colour alone would have passed two of the three incidents.
+ */
+{
+  const css = fs.readFileSync(path.join(ROOT, 'web/src/styles.css'), 'utf8')
+  const rule = css.match(/\.cand-ai-badge\s*\{([\s\S]*?)\}/)
+  if (!rule) {
+    badgeFaults.push({ rel: 'web/src/styles.css', line: 0, text: '.cand-ai-badge rule not found' })
+  } else {
+    const body = rule[1]
+    const colour = body.match(/(?:^|\n)\s*color:\s*([^;]+);/)?.[1]?.trim()
+    const ground = body.match(/(?:^|\n)\s*background:\s*([^;]+);/)?.[1]?.trim()
+    const family = (v) => (v ?? '').includes('--accent-amber')
+    if (!family(colour) || !family(ground)) {
+      badgeFaults.push({
+        rel: 'web/src/styles.css',
+        line: css.slice(0, rule.index).split('\n').length,
+        text: `.cand-ai-badge color=${colour ?? '(none)'} background=${ground ?? '(none)'} — both must be --accent-amber family`,
+      })
+    }
+  }
+}
+
 const report = (title, rows, hint) => {
   if (!rows.length) return
   console.log(`\n${title} (${rows.length}):`)
@@ -174,6 +208,11 @@ report(
   'DEAD var() FALLBACK',
   deadFallbacks,
   ':root defines the property, so the fallback can never fire. Delete it.',
+)
+report(
+  'AI BADGE OFF ITS FAMILY (R5)',
+  badgeFaults,
+  'the AI verdict badge is action-amber; text AND ground come from --accent-amber.',
 )
 report(
   'IDENTIFIER INSIDE A CSS STRING',

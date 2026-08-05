@@ -34,8 +34,9 @@ import { Icon } from '../../ui/icons'
 import type { DrawingCanvas } from '../../import/DrawingCanvas'
 import type { Drawing } from '../../import/types'
 import { isRasterFile, loadRasterBackdrop, type Backdrop } from '../../import/rasterImport'
+import { SF_PER_M2 } from '../../util/units'
+import { resumeDrawing } from '../resume'
 
-const SF_PER_M2 = 10.7639
 /** Heal gap (m) persisted with the toggle — the healWalls default (a hairline
  *  partition break, below a door leaf). The Space step exposes on/off only. */
 const HEAL_GAP_M = 0.25
@@ -198,7 +199,9 @@ export function SpaceStep({
       const d = rec?.draft?.drawing ?? null
       if (d) {
         setDrawing(d)
-        controller.current?.loadDrawing(d)
+        // Shared with GenerateStep — see `shell/resume.ts` for why every step
+        // that touches the plate has to go through one function.
+        resumeDrawing(controller.current, rec)
         readyRef.current?.(true)
       }
       if (rec?.draft?.areaPolygon) setAreaPolygon(rec.draft.areaPolygon)
@@ -277,8 +280,9 @@ export function SpaceStep({
   // Grab the preview canvas + wire the tool callbacks (once, at mount).
   const handleCanvas = (c: DrawingCanvas | null) => {
     dcRef.current = c
-    // Dev/E2E seam for the Space-step preview canvas (mirrors App's __dc/__ec).
-    if (import.meta.env.DEV) (window as unknown as { __spacedc: DrawingCanvas | null }).__spacedc = c
+    // No per-step dev seam: `window.__dc` (DrawingView) now resolves to whichever
+    // DrawingCanvas is actually visible, so this step's preview IS `__dc` while
+    // the user is on it.
     if (!c) return
     c.onAreaChange = (poly) => {
       setAreaPolygon(poly)
@@ -530,7 +534,10 @@ export function SpaceStep({
 
       {drawing && readouts && (
         <div className="space-readouts" data-testid="space-readouts">
-          <div className="space-preview">
+          {/* Toolbar band over a canvas pane. The plan fills its grid track, so
+              it is fully visible at every window size, and the toolbar sits
+              above the drawing instead of floating over it. */}
+          <div className="space-plan">
             <div className="space-tools" role="toolbar" aria-label="Plan tools">
               {backdrop && (
                 <>
@@ -579,7 +586,7 @@ export function SpaceStep({
               {activeTool === 'marker' && (
                 <>
                   <select
-                    className="space-marker-select num"
+                    className="space-marker-select"
                     data-testid="space-marker-type"
                     value={markerType}
                     onChange={(e) => setMarkerType(e.target.value as RoomType)}
@@ -666,81 +673,86 @@ export function SpaceStep({
                   Keep existing walls
                 </button>
               </div>
+              {/* Hints live INSIDE the toolbar band (each wraps onto its own row)
+                  so they never paint over the plan and never push a control out of
+                  reach. */}
+              <p className="space-tool-hint" data-testid="space-keep-hint">
+                {keepExisting
+                  ? 'Keep existing walls fits new furniture around your current partitions.'
+                  : 'Fresh fit clears the old fit-out and lays out the base shell; Keep existing walls fits new furniture around your current partitions.'}
+              </p>
+              {activeTool === 'scale' && (
+                <p className="space-tool-hint" data-testid="space-scale-hint">
+                  Click the two ends of a known dimension (a wall, a door) — then type its real
+                  length to scale the whole image.
+                </p>
+              )}
+              {scalePrompt && (
+                <div
+                  className="space-tool-hint"
+                  data-testid="space-scale-prompt"
+                  role="group"
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}
+                >
+                  <span>This line is</span>
+                  <input
+                    className="space-marker-ref num"
+                    data-testid="space-scale-input"
+                    value={scaleLenM}
+                    onChange={(e) => setScaleLenM(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') applyScale()
+                    }}
+                    inputMode="decimal"
+                    placeholder="5"
+                    aria-label="Real length in meters"
+                    size={5}
+                    autoFocus
+                  />
+                  <span>m</span>
+                  <button
+                    type="button"
+                    className="space-tool on"
+                    data-testid="space-scale-apply"
+                    onClick={applyScale}
+                    disabled={!(parseFloat(scaleLenM) > 0)}
+                  >
+                    <Icon name="check" size={12} /> Set scale
+                  </button>
+                  <button
+                    type="button"
+                    className="space-tool ghost"
+                    data-testid="space-scale-cancel"
+                    onClick={() => {
+                      setScalePrompt(null)
+                      dcRef.current?.cancelTool()
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
+              {backdrop && !scalePrompt && activeTool !== 'scale' && (
+                <p className="space-tool-hint" data-testid="space-backdrop-hint">
+                  Image backdrop loaded. Use <strong>Set scale</strong> to calibrate real
+                  dimensions, then <strong>Select area</strong> to trace the usable plate.
+                </p>
+              )}
+              {activeTool === 'area' && (
+                <p className="space-tool-hint" data-testid="space-area-hint">
+                  Click to lay the boundary — snaps to nearby walls. Click the first point (or
+                  double-click / Enter) to close, Esc to cancel.
+                </p>
+              )}
+              {activeTool === 'marker' && (
+                <p className="space-tool-hint">
+                  Pick a room type + number, then click the plan to drop a labelled pin.
+                </p>
+              )}
             </div>
-            <p className="space-tool-hint" data-testid="space-keep-hint">
-              {keepExisting
-                ? 'Keep existing walls fits new furniture around your current partitions.'
-                : 'Fresh fit clears the old fit-out and lays out the base shell; Keep existing walls fits new furniture around your current partitions.'}
-            </p>
-            {activeTool === 'scale' && (
-              <p className="space-tool-hint" data-testid="space-scale-hint">
-                Click the two ends of a known dimension (a wall, a door) — then type its real
-                length to scale the whole image.
-              </p>
-            )}
-            {scalePrompt && (
-              <div
-                className="space-tool-hint"
-                data-testid="space-scale-prompt"
-                role="group"
-                style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}
-              >
-                <span>This line is</span>
-                <input
-                  className="space-marker-ref num"
-                  data-testid="space-scale-input"
-                  value={scaleLenM}
-                  onChange={(e) => setScaleLenM(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') applyScale()
-                  }}
-                  inputMode="decimal"
-                  placeholder="5"
-                  aria-label="Real length in meters"
-                  size={5}
-                  autoFocus
-                />
-                <span>m</span>
-                <button
-                  type="button"
-                  className="space-tool on"
-                  data-testid="space-scale-apply"
-                  onClick={applyScale}
-                  disabled={!(parseFloat(scaleLenM) > 0)}
-                >
-                  <Icon name="check" size={12} /> Set scale
-                </button>
-                <button
-                  type="button"
-                  className="space-tool ghost"
-                  data-testid="space-scale-cancel"
-                  onClick={() => {
-                    setScalePrompt(null)
-                    dcRef.current?.cancelTool()
-                  }}
-                >
-                  Cancel
-                </button>
-              </div>
-            )}
-            {backdrop && !scalePrompt && activeTool !== 'scale' && (
-              <p className="space-tool-hint" data-testid="space-backdrop-hint">
-                Image backdrop loaded. Use <strong>Set scale</strong> to calibrate real
-                dimensions, then <strong>Select area</strong> to trace the usable plate.
-              </p>
-            )}
-            {activeTool === 'area' && (
-              <p className="space-tool-hint" data-testid="space-area-hint">
-                Click to lay the boundary — snaps to nearby walls. Click the first point (or
-                double-click / Enter) to close, Esc to cancel.
-              </p>
-            )}
-            {activeTool === 'marker' && (
-              <p className="space-tool-hint">
-                Pick a room type + number, then click the plan to drop a labelled pin.
-              </p>
-            )}
-            <DrawingView drawing={drawing} onCanvas={handleCanvas} />
+            <div className="pane-canvas">
+              <DrawingView drawing={drawing} onCanvas={handleCanvas} />
+            </div>
           </div>
 
           <div className="space-detail">
@@ -900,7 +912,7 @@ export function SpaceStep({
             </section>
 
             <section className="space-section" data-testid="space-bom">
-              <CategoryPlan groups={readouts.bom} />
+              <CategoryPlan groups={readouts.bom} testId="space-category-plan" />
             </section>
           </div>
         </div>

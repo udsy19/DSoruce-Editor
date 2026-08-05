@@ -27,7 +27,7 @@
 // testfit.ts (the single point-in-polygon + shell-linework collectors) — no fork.
 
 import type { Drawing } from './types'
-import { collectWallSegments, pointInRing, type Pt } from './testfit'
+import { collectWallSegments, pointInRing, type Pt , PLATE_WALL_THICKNESS_M } from './testfit'
 import { normalizeFurniture } from './normalize'
 
 /** One imported wall/glazing segment, translated into editor coords — ready for
@@ -69,7 +69,6 @@ export interface BaseStamp {
   keptFurniture: number
 }
 
-const IMPORTED_WALL_THICKNESS = 0.15 // m — matches pushPlateToEditor's default
 
 /**
  * Partition an imported drawing by a selection polygon and translate the OUTSIDE
@@ -141,7 +140,7 @@ export function baseStampAround(
       ay: a[1] - offset.y,
       bx: b[0] - offset.x,
       by: b[1] - offset.y,
-      thickness: IMPORTED_WALL_THICKNESS,
+      thickness: PLATE_WALL_THICKNESS_M,
     })
   }
 

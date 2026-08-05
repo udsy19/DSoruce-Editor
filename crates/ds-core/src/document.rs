@@ -61,6 +61,28 @@ impl Document {
         Document::default()
     }
 
+    /// Resolve `Component::seats` for anything deserialized without it.
+    ///
+    /// `seats` is `#[serde(default)]`, so every plan saved before the facet
+    /// existed loads with 0. Left alone that is not a crash — `zone_stats`
+    /// falls back to the area rule-of-thumb — but it is worse: an OLD plan would
+    /// report area-estimated pax while a NEWLY generated one reports the seats
+    /// its furniture actually provides, so the same building would read
+    /// differently depending on when it was saved, and a room tag could once
+    /// again disagree with the chairs drawn under it.
+    ///
+    /// So every load backfills. `seats_for` is the same resolver used at
+    /// creation and returns 0 for things nobody sits at, which makes this
+    /// idempotent and safe to run unconditionally: re-running it on an
+    /// already-resolved document changes nothing.
+    pub fn backfill_seats(&mut self) {
+        for c in &mut self.components {
+            if c.seats == 0 {
+                c.seats = crate::model::seats_for(&c.category, c.w, c.h);
+            }
+        }
+    }
+
     /// Monotonic id allocator. Ids start at 1 so 0 can never collide with a real entity.
     pub fn alloc_id(&mut self) -> u32 {
         self.next_id += 1;
@@ -411,6 +433,7 @@ mod tests {
             label: format!("Desk {id}"),
             product_id: None,
             price_inr: None,
+            seats: 0, // test fixture: seat count is irrelevant to what these assert
             decision: DecisionState::Open,
         }
     }

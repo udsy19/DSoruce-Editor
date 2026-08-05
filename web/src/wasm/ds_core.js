@@ -186,6 +186,25 @@ export class Editor {
         }
     }
     /**
+     * The scoring engine's density verdict for this document, 0..100 — 100
+     * across the professional 8–12 m²/person band, tapering to 0 at ≤4.5
+     * (crammed) and ≥20 (sparse).
+     *
+     * **Exported because the frontend was deciding "too dense" on its own.**
+     * `ai/engine.ts` compared `area_per_workstation` against a hand-typed
+     * 6.0 m² whose comment said "planning norm (see layout.rs)" — a citation to
+     * a constant that has never existed there. It was also the wrong quantity:
+     * the scorer judges m² per SEAT (desks + meeting capacity), not per desk.
+     * So the AI preview warned the user off layouts the engine was perfectly
+     * happy with, in the engine's name. Whether a plan is professionally dense
+     * is one question with one answer; this is it.
+     * @returns {number}
+     */
+    density_score() {
+        const ret = wasm.editor_density_score(this.__wbg_ptr);
+        return ret;
+    }
+    /**
      * Construct a fresh `Editor` from a `snapshot` (scratch-clone for previews).
      * @param {any} snap
      * @returns {Editor}
@@ -558,6 +577,48 @@ export class Editor {
     }
 }
 if (Symbol.dispose) Editor.prototype[Symbol.dispose] = Editor.prototype.free;
+
+/**
+ * Depth of a door/window leaf across its wall (m) — the committed footprint;
+ * the swing arc is drawn by the 2D symbol, not stored.
+ *
+ * **Exported for the same reason as [`open_share`]:** `cad/archTools.ts` had its
+ * own `LEAF_DEPTH = 0.15`, so a hand-drawn door and a generated door were one
+ * object with two authored depths. Cheap to unify now, weird later.
+ * @returns {number}
+ */
+export function door_depth() {
+    const ret = wasm.door_depth();
+    return ret;
+}
+
+/**
+ * Standard office single-leaf door width (m) — 900×2100. Exported alongside
+ * [`door_depth`]: `cad/archTools.ts` had `DOOR_DEFAULT = 0.9` for exactly the
+ * same object.
+ * @returns {number}
+ */
+export function door_width() {
+    const ret = wasm.door_width();
+    return ret;
+}
+
+/**
+ * The open-plan share of headcount seated at open workstations.
+ *
+ * **Exported because the frontend was keeping its own copies and one had already
+ * drifted.** `program/spec.ts` used 0.85 while `ai/suggestProgram.ts` used 0.90
+ * with a comment claiming it mirrored Rust — so the same headcount produced a
+ * different building depending on which path the user came in through (88
+ * people → 75 desks via the Program step, 79 via suggestProgram). A value that
+ * decides how many desks a floor gets has exactly one owner: the generator that
+ * places them. Read this; do not re-declare it.
+ * @returns {number}
+ */
+export function open_share() {
+    const ret = wasm.open_share();
+    return ret;
+}
 function __wbg_get_imports() {
     const import0 = {
         __proto__: null,

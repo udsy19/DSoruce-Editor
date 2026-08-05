@@ -55,6 +55,7 @@ pub(crate) fn emit_job(doc: &mut Document, job: &RoomJob, cx: f64, cy: f64, w: f
                 glass_front: job.glass_front,
                 door_w: job.door_w,
                 furniture: job.furniture,
+                seats: job.seats,
             },
         );
     } else {

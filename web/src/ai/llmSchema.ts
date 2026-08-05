@@ -4,6 +4,19 @@
 // driver and the /api/agent proxy so the two never drift.
 import type { DriverContext } from './contract'
 
+/**
+ * The corridor width we let a model ask for, in metres. **One owner, and the
+ * prose is generated from it.** The clamp lived in `refine.ts` and `designer.ts`
+ * and the range was retyped into three tool descriptions — a model told
+ * "0.9–3.0" while a clamp said otherwise gets its answer silently rewritten,
+ * which is a lie with no error message. Not a geometry rule the Rust core owns:
+ * it is a policy about what an AI is allowed to propose, so it lives here, in
+ * the module both drivers already share.
+ */
+export const CORRIDOR_M = { min: 0.9, max: 3.0 } as const
+/** "0.9–3.0" — the ONE way this range is ever written for a model to read. */
+export const CORRIDOR_RANGE_TEXT = `${CORRIDOR_M.min}–${CORRIDOR_M.max}`
+
 export const OPENAI_TOOLS = [
   {
     type: 'function',
@@ -18,7 +31,7 @@ export const OPENAI_TOOLS = [
           meeting_rooms: { type: 'integer', description: 'target number of meeting rooms' },
           target_corridor_m: {
             type: 'number',
-            description: 'perimeter corridor width in meters (0.9–3.0)',
+            description: `perimeter corridor width in meters (${CORRIDOR_RANGE_TEXT})`,
           },
         },
       },
@@ -113,7 +126,7 @@ export const ADJUST_PROGRAM_TOOL = {
         meeting_rooms: { type: 'integer', description: 'new enclosed meeting-room count (0–40)' },
         target_corridor_m: {
           type: 'number',
-          description: 'perimeter corridor / walking-place width in meters (0.9–3.0)',
+          description: `perimeter corridor / walking-place width in meters (${CORRIDOR_RANGE_TEXT})`,
         },
         cluster_cols: {
           type: 'integer',

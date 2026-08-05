@@ -16,6 +16,9 @@ pub(crate) fn push_component(doc: &mut Document, category: &str, x: f64, y: f64,
         rotation,
         mirror: false,
         reference: false, // generated fit-out counts toward every metric
+        // Resolved HERE, from world size, so the renderer reads it instead of
+        // guessing a chair count from the zoom level (ui-system.md §3.6).
+        seats: crate::model::seats_for(category, w, h),
         label: format!("{} {}", category, id),
         product_id: None,
             price_inr: None,
@@ -46,9 +49,9 @@ pub(crate) const PARTITION_T: f64 = 0.1;
 /// drywall (spec §2 "Glass fronts").
 pub(crate) const GLAZING_T: f64 = 0.05;
 /// Door leaf width (m): standard office single leaf 900×2100.
-pub(crate) const DOOR_W: f64 = 0.9;
+pub const DOOR_W: f64 = 0.9;
 /// Door slab depth (m): the component footprint across the wall.
-pub(crate) const DOOR_D: f64 = 0.15;
+pub const DOOR_D: f64 = 0.15;
 /// Hinge-side jamb offset (m) from the perpendicular wall, so the leaf opens
 /// flat against it (spec §2 door convention).
 pub(crate) const DOOR_JAMB: f64 = 0.15;
@@ -101,6 +104,8 @@ pub(crate) struct RoomSpec {
     /// Door leaf width (m); 1.0 for NBC-exit rooms (pantry).
     pub(crate) door_w: f64,
     pub(crate) furniture: RoomFurniture,
+    /// Briefed occupancy from `RoomReq::seats` (0 = derive from the table).
+    pub(crate) seats: u32,
 }
 
 /// Append one generated wall segment (partition or glass front).
@@ -244,13 +249,13 @@ pub(crate) fn emit_room(doc: &mut Document, cx: f64, cy: f64, w: f64, h: f64, si
         &spec.label,
     );
 
-    furnish_room(doc, cx, cy, w, h, side, spec.furniture);
+    furnish_room(doc, cx, cy, w, h, side, spec.furniture, spec.seats);
 }
 
 /// Place a room's interior furniture (existing Table/Chair categories only).
 /// `side` is the door/front side; furniture faces it, rear pieces back onto
 /// the opposite wall. Everything snaps to the module.
-pub(crate) fn furnish_room(doc: &mut Document, cx: f64, cy: f64, w: f64, h: f64, side: CorridorSide, furniture: RoomFurniture) {
+pub(crate) fn furnish_room(doc: &mut Document, cx: f64, cy: f64, w: f64, h: f64, side: CorridorSide, furniture: RoomFurniture, briefed_seats: u32) {
     // Outward front normal, and the rotation mapping local +y (the side a
     // seated user faces) onto it: R(θ)·(0,1) = (−sinθ, cosθ) = f.
     let (fx, fy) = match side {
@@ -275,6 +280,18 @@ pub(crate) fn furnish_room(doc: &mut Document, cx: f64, cy: f64, w: f64, h: f64,
             let th = (h - 2.0 * PARTITION_T - 2.0 * TABLE_CLEAR).max(0.8).min(h - 2.0 * PARTITION_T - 0.2);
             if tw > 0.3 && th > 0.3 {
                 push_component(doc, "Table", cx, cy, tw, th, 0.0);
+                // THE BRIEF WINS. The table is sized to the ROOM, so its
+                // perimeter can seat more than the room was asked for — a
+                // "6 person" team room fitted a table seating 8, and that 8 then
+                // flowed to the plan tag, the report's meeting seats and the
+                // density. Clamp the object's occupancy to what was briefed
+                // (never above what physically fits) so the drawing, the tag and
+                // the brief are the same number.
+                if briefed_seats > 0 {
+                    if let Some(t) = doc.components.last_mut() {
+                        t.seats = t.seats.min(briefed_seats);
+                    }
+                }
             }
         }
         RoomFurniture::WorkPoint => {

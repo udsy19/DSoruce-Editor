@@ -4,6 +4,8 @@ import { Minimap, type MinimapHandle, type MinimapProps } from './Minimap'
 import { ViewerToolbar, DEFAULT_SUN, type Quality, type ViewerWithExtras } from './ViewerToolbar'
 import { DEFAULT_THEME, type ThemeId } from './theme'
 import type { DocState } from '../types/doc'
+import { MONO, UI } from '../ui/type'
+
 /**
  * Minimal selection card for a 3D pick, anchored at the click position and
  * clamped inside the viewer container. Used by {@link Scene3D}.
@@ -59,7 +61,7 @@ export function PickCard3D({
       >
         <div
           style={{
-            font: '600 14px/1.3 "Space Grotesk", system-ui, sans-serif',
+            font: `600 14px/1.3 ${UI}`,
             color: '#1c1f24',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
@@ -70,7 +72,7 @@ export function PickCard3D({
         </div>
         <div
           style={{
-            font: '600 10px/1 "Space Grotesk", system-ui, sans-serif',
+            font: `600 10px/1 ${UI}`,
             letterSpacing: '0.04em',
             textTransform: 'uppercase',
             color: chip.fg,
@@ -86,7 +88,7 @@ export function PickCard3D({
       </div>
       <div
         style={{
-          font: '400 11px/1.4 "IBM Plex Mono", ui-monospace, monospace',
+          font: `400 11px/1.4 ${MONO}`,
           color: '#6b7280',
           overflow: 'hidden',
           textOverflow: 'ellipsis',
@@ -275,7 +277,7 @@ export function Scene3D({ state }: { state: DocState }) {
             bottom: 16,
             left: '50%',
             transform: 'translateX(-50%)',
-            font: '400 13px/1 "IBM Plex Mono", ui-monospace, monospace',
+            font: `400 13px/1 ${MONO}`,
             color: '#f3f1ec',
             background: 'rgba(24,26,30,0.82)',
             padding: '8px 16px',

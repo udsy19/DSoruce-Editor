@@ -35,6 +35,11 @@ export const FURNITURE_LINE = '#5c6670'
 export const FURNITURE_DETAIL = '#9aa2ad'
 // Selection = warm amber accent; hover = a lighter amber wash. Kept distinct
 // from the blue used for product-bound items so the two never read the same.
+/** Body + seat fills, identical to the editor's C.furnitureFill / C.furnitureSeat
+ *  so one desk renders the same on both canvases. */
+export const FURNITURE_FILL = 'rgba(255,255,255,0.86)'
+export const FURNITURE_SEAT = '#e7eaee'
+
 export const ACCENT = SELECTION_ACCENT
 export const ACCENT_HALO = hexToRgba(SELECTION_ACCENT, 0.28)
 export const HOVER = hexToRgba(SELECTION_ACCENT, 0.55)

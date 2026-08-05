@@ -15,11 +15,6 @@ import { bankCategoryForItem } from '../materialBank/office'
 const DESK_CATEGORIES = new Set(['desk', 'workstation-bench'])
 /** BCO 2023 / NBC 2016 design occupancy for general workspace (m²/person). */
 const M2_PER_PERSON = 10
-/** Open-plan share of headcount seated at open workstations. 0.90 mirrors the
- *  Rust `OPEN_SHARE` (raised from 0.85 in the lean qbiq-dominant recalibration:
- *  the reference floor runs ~0.95 open) so the desks the panel suggests match
- *  the desk target the generator fills to. */
-const OPEN_SHARE = 0.9
 /** People per meeting room — the realistic office ratio (~1 per 15–20), NOT the
  * old ~1 per detected furniture cluster which doubled the room count. */
 const PEOPLE_PER_MEETING = 17
@@ -42,18 +37,28 @@ export function headcountForArea(plateAreaM2: number): number {
  * - headcount: the plate filled to the professional design density (10 m²/person)
  *   — set explicitly so the Rust generator derives the SAME support program (spec
  *   §1.1) from this N instead of guessing it.
- * - desks: the open-plan share of the headcount (0.85·N), scaled to fill the
+ * - desks: the open-plan share of the headcount, scaled to fill the
  *   plate. The drawing's own workstations act only as a FLOOR — a genuinely
  *   denser imported plan is honoured, but a sparse old fit-out never under-seats
  *   the new one.
  * - meeting_rooms: ~1 per {@link PEOPLE_PER_MEETING} people, clamped modest — NOT
  *   one per conference cluster detected in the OLD layout.
  */
-export function suggestProgram(drawing: Drawing, plateAreaM2: number, current: Program): Program {
+export function suggestProgram(
+  drawing: Drawing,
+  plateAreaM2: number,
+  current: Program,
+  /** The open-plan share, from the core — `open_share()` across the wasm
+   *  boundary (`editor/EditorCanvas` re-exports it as `openShare`). Passed in
+   *  rather than re-declared: this module used to keep its own 0.90 next to a
+   *  comment promising it mirrored Rust, while `program/spec.ts` kept a 0.85 —
+   *  documentation vouching for a value that had already drifted. */
+  openShare: number,
+): Program {
   const headcount = headcountForArea(plateAreaM2)
 
   const drawnDesks = drawing.furniture.filter((f) => DESK_CATEGORIES.has(bankCategoryForItem(f))).length
-  const desks = clamp(Math.round(Math.max(headcount * OPEN_SHARE, drawnDesks)), 10, 400)
+  const desks = clamp(Math.round(Math.max(headcount * openShare, drawnDesks)), 10, 400)
 
   const meeting_rooms = clamp(Math.round(headcount / PEOPLE_PER_MEETING), MIN_MEETINGS, MAX_MEETINGS)
 

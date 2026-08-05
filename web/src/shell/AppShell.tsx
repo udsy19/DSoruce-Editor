@@ -19,12 +19,13 @@ import { useEffect, useRef, useState } from 'react'
 import { EditorView, type EditorController } from '../App'
 import { navigate, useRoute } from './route'
 import { ProjectLibrary } from './ProjectLibrary'
-import { CreateProject } from './CreateProject'
+import { CreateProject, CREATE_FORM_ID } from './CreateProject'
 import { WizardChrome, type WizardStepId } from './WizardChrome'
 import { SpaceStep } from './steps/SpaceStep'
 import { ProgramStep } from './steps/ProgramStep'
 import { GenerateStep } from './steps/GenerateStep'
 import { getProject, type ProjectRecord } from '../persist/projects'
+import { resolveOpenFloor } from '../persist/plans'
 
 export function AppShell() {
   const route = useRoute()
@@ -52,6 +53,7 @@ export function AppShell() {
   // (WizardChrome owns Back/Next; the step reports readiness up).
   const [spaceReady, setSpaceReady] = useState(false)
   const [programReady, setProgramReady] = useState(false)
+  const [createReady, setCreateReady] = useState(false)
 
   // The active project (wizard or editor route) — its real identity brands the
   // exports (workflow.md §2). Loaded here and threaded into EditorView so the
@@ -86,21 +88,53 @@ export function AppShell() {
       {route.name === 'projects' && (
         <ProjectLibrary
           onNew={() => navigate({ name: 'create' })}
-          onOpen={(p) => navigate({ name: 'wizard', projectId: p.id, step: 'space' })}
+          // Re-opening a project resumes where the user left it. Once a test-fit
+          // has been picked, the project record remembers WHICH floor
+          // (`chosenPlanId`, written by GenerateStep) — so go straight to it in
+          // the editor. Only a project with no chosen floor yet starts at Space.
+          // Without this the finished plan was unreachable from the landing page
+          // and the user was silently restarted at "Drop the floor plate".
+          onOpen={(p) => {
+            // The pointer is CHECKED, not trusted — `resolveOpenFloor` falls
+            // back to the newest floor with geometry when `chosenPlanId` names
+            // an empty one (records written before the empty-plate fix).
+            void resolveOpenFloor(p.id, p.chosenPlanId).then((planId) =>
+              navigate(
+                planId
+                  ? { name: 'editor', projectId: p.id, planId }
+                  : { name: 'wizard', projectId: p.id, step: 'space' },
+              ),
+            )
+          }}
         />
       )}
       {route.name === 'create' && (
-        <CreateProject
-          onCancel={() => navigate({ name: 'projects' })}
-          onCreated={(p) => navigate({ name: 'wizard', projectId: p.id, step: 'space' })}
-        />
+        // Property is a real step under the same chrome as the rest — it used to
+        // render its own full-screen form, so the stepper showed "Property"
+        // permanently ticked for a screen the user was never shown as a step.
+        <WizardChrome
+          current="property"
+          title="Set up the property"
+          guide="Name the property and the floor. These carry through to the priced report and takeoff."
+          onBack={() => navigate({ name: 'projects' })}
+          backLabel="All projects"
+          nextLabel="Create project"
+          nextTestId="create-submit"
+          nextFormId={CREATE_FORM_ID}
+          nextDisabled={!createReady}
+          disabledReason="Enter a property name to continue"
+        >
+          <CreateProject
+            onCreated={(p) => navigate({ name: 'wizard', projectId: p.id, step: 'space' })}
+            onReadyChange={setCreateReady}
+          />
+        </WizardChrome>
       )}
       {onSpace && (
         <WizardChrome
           current="space"
           title="Drop the floor plate"
-          subtitle="Upload a CAD floor plan and we read it for you — tracing the usable plate, tallying the furniture, and detecting rooms before you set the brief."
-          guide="Drop a DXF or DWG floor plan below. Everything else is automatic — then press Next."
+          guide="Drop a DXF, DWG, or an image of a floor plan. Everything else is read for you."
           onStep={goToStep(route.projectId)}
           onBack={() => navigate({ name: 'projects' })}
           onNext={async () => {
@@ -134,7 +168,6 @@ export function AppShell() {
         <WizardChrome
           current="program"
           title="State the program"
-          subtitle="Tell the engine what to build — the room mix, desk type and size, and where offices should sit. Sensible defaults are already filled in, so you can tune as much or as little as you like."
           guide="Pick a template or type a headcount. The counts are pre-filled — adjust anything, then press Next."
           onStep={goToStep(route.projectId)}
           onBack={() => navigate({ name: 'wizard', projectId: route.projectId, step: 'space' })}
@@ -147,6 +180,9 @@ export function AppShell() {
           nextLabel="Next: Generate"
           nextTestId="program-next"
           nextDisabled={!programReady}
+          // Space passes a reason; Program did not — same component, half-wired,
+          // so this step's Next greyed out saying nothing.
+          disabledReason="Loading your program…"
         >
           <ProgramStep
             key={route.projectId}
@@ -159,8 +195,7 @@ export function AppShell() {
         <WizardChrome
           current="generate"
           title="Pick a test-fit"
-          subtitle="The engine generated a few alternatives against your program. Compare their metrics and category winners, then open one to keep designing — or head back to adjust the brief."
-          guide="Compare the options, then press “Open in editor” on the one you like to keep designing (Review → Design → Visualise → Share)."
+          guide="Compare the options, then press “Open in editor” on the one you want to keep designing."
           onStep={goToStep(route.projectId)}
           onBack={() => navigate({ name: 'wizard', projectId: route.projectId, step: 'program' })}
           hideNext
@@ -176,6 +211,12 @@ export function AppShell() {
             ref={editorRef}
             project={activeProject}
             openPlanId={route.name === 'editor' ? route.planId : undefined}
+            // The editor is alive behind every wizard step. `active` is what
+            // stops its window-level listeners existing while it is hidden —
+            // Delete was reaching the invisible document and removing components
+            // from it. Same fact as `editorVisible`, passed down rather than
+            // re-derived, so there is one answer to "is this the live surface".
+            active={editorVisible}
           />
         </div>
       )}

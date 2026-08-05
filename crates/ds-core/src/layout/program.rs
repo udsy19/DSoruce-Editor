@@ -384,6 +384,17 @@ pub struct RoomReq {
     pub d: Option<f64>,
     #[serde(default)]
     pub placement: Placement,
+    /// **How many people this room is briefed to seat** — the user's intent,
+    /// travelling with the request so the furniture honours it.
+    ///
+    /// The Program builder offers "2 / 4 / 6 / 8 person" team rooms, but the
+    /// table `furnish_room` fitted was sized to the ROOM, so a "6 person" room
+    /// was furnished with a table seating 8 and reported 8 pax on the plan and in
+    /// the report. Over-delivering is still a plan that does not match its own
+    /// brief: the headcount maths, the meeting-seat total and the density all
+    /// ran on 6. `0` = no explicit brief, derive as before.
+    #[serde(default)]
+    pub seats: u32,
 }
 
 /// The full professional program for a headcount, per the spec §1.1 table.
@@ -567,7 +578,7 @@ pub(crate) const TARGET_M2_PER_PERSON: f64 = 10.0;
 /// still leaving a real 10% of headcount for meeting/collab seats. Drives both
 /// `SpaceProgram::derive`'s `desks` and `desk_target` so rooms and desks scale
 /// from the SAME headcount (M5 invariant).
-pub(crate) const OPEN_SHARE: f64 = 0.90;
+pub const OPEN_SHARE: f64 = 0.90;
 /// Ceiling on the DERIVED support program's net area as a fraction of the plate
 /// (spec §1 / qbiq open-plan dominance). `SpaceProgram::derive` trims its most
 /// discretionary rooms until the enclosed+open support program fits under this,

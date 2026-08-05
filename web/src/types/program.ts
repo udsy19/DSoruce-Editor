@@ -23,6 +23,9 @@ export interface RoomReq {
   /** Depth (m); omitted → the kind's default. */
   d?: number
   placement?: Placement
+  /** Briefed occupancy — the user's intent, travelling with the request so the
+   *  furniture honours it. 0 / absent = derive from the table. */
+  seats?: number
 }
 
 /** Test-fit program + objective weights (mirrors Rust `layout::Program`). */
@@ -105,6 +108,7 @@ export interface GenResult {
 }
 
 /** Default program — the single source used by the generate card and the AI. */
+
 export const DEFAULT_PROGRAM: Program = {
   desks: 20,
   meeting_rooms: 2,

@@ -15,6 +15,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   DESK_SIZES,
+  deskSizeLabel,
   GROUP_LABELS,
   ROOM_DEFS,
   TEMPLATES,
@@ -29,6 +30,7 @@ import {
   type ProgramSpec,
   type RoomGroup,
 } from '../../program/spec'
+import { openShare } from '../../editor/EditorCanvas'
 import type { Placement, SpaceKind } from '../../types/doc'
 import { getProject, updateDraft } from '../../persist/projects'
 import { DrawingView } from '../../import/DrawingView'
@@ -37,8 +39,8 @@ import type { Drawing } from '../../import/types'
 import type { Pt } from '../../import/testfit'
 import { ANCHOR_KINDS, anchorKindLabel, type AnchorPin } from '../../program/anchors'
 import { Icon } from '../../ui/icons'
+import { SF_PER_M2 } from '../../util/units'
 
-const SF_PER_M2 = 10.7639
 const PLACEMENTS: Placement[] = ['Window', 'Core', 'Flexible']
 const GROUP_ORDER: RoomGroup[] = ['offices', 'team', 'conference', 'collaboration', 'amenities']
 const hasPlacement = (g: RoomGroup): g is PlacementGroup =>
@@ -117,11 +119,21 @@ export function ProgramStep({
   const occupiedM2 = useMemo(() => {
     if (!spec || !totals) return 0
     const desk = deskFootprint(spec.deskSize)
-    const desks = Math.max(1, Math.round(spec.headcount * 0.85))
+    // The core decides how many desks a headcount gets (`desk_target`), so ask
+    // it rather than keep a copy of the share — this line held a bare 0.85
+    // literal, which is why a grep for OPEN_SHARE never found it.
+    const share = openShare()
+    if (share == null) return totals.roomArea
+    const desks = Math.max(1, Math.ceil(spec.headcount * share))
     return totals.roomArea + desks * desk.w * desk.d
   }, [spec, totals])
 
   if (!spec) return <div className="program-step" data-testid="program-step" />
+
+  // What the core will actually place for this headcount. `null` until wasm is
+  // ready — shown as "—" rather than guessed.
+  const share = openShare()
+  const deskCount = share == null ? null : Math.max(1, Math.ceil(spec.headcount * share))
 
   const patch = (p: Partial<ProgramSpec>) => setSpec((s) => (s ? { ...s, ...p } : s))
   const applyTemplate = (headcount: number, enclosedPct: number) =>
@@ -144,7 +156,8 @@ export function ProgramStep({
   // its kind's requested rooms (or adding one if none was requested).
   const handleAnchorCanvas = (c: DrawingCanvas | null) => {
     dcRef.current = c
-    if (import.meta.env.DEV) (window as unknown as { __programdc: DrawingCanvas | null }).__programdc = c
+    // No per-step dev seam — see SpaceStep: `window.__dc` resolves to the visible
+    // canvas, which is this one while the user is on the Program step.
     if (!c) return
     c.onAnchorDrop = (x, y) => {
       setAnchors((prev) => [...prev, { id: crypto.randomUUID(), kind: anchorKindLive.current, x, y }])
@@ -196,16 +209,136 @@ export function ProgramStep({
         </button>
       </div>
 
+      {/* PROGRAM BUILDER FIRST — it is this step's primary control and what the
+          guide strip tells the user to do. Anchor pins (a tertiary refinement)
+          follow it. They used to sit ABOVE it, pushing the templates and the
+          headcount ~475px below the fold, so the step opened on a control nobody
+          had been told to use. */}
+      <div className="program-body">
+        <div className="program-main">
+          {spec.mode === 'concept' ? (
+            <ConceptPanel
+              spec={spec}
+              onTemplate={applyTemplate}
+              onHeadcount={setHeadcount}
+              onEnclosed={setEnclosed}
+            />
+          ) : (
+            <DetailedPanel spec={spec} onBump={bump} onPlacement={setPlacement} />
+          )}
+
+          {/* Desk type + size — shared by both modes. */}
+          <section className="program-section">
+            <div className="panel-eyebrow">Workstation</div>
+            <div className="program-desk-row">
+              <div className="program-field">
+                <span className="program-field-label">Desk type</span>
+                <div className="program-chips" data-testid="program-desk-type">
+                  {(['workstation', 'bench'] as DeskType[]).map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      className={`program-chip${spec.deskType === t ? ' on' : ''}`}
+                      data-testid={`program-desk-type-${t}`}
+                      aria-pressed={spec.deskType === t}
+                      onClick={() => patch({ deskType: t })}
+                    >
+                      {t === 'workstation' ? 'Workstations' : 'Benching'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="program-field">
+                {/* The unit is stated once, on the label, rather than repeated on
+                    four chips — and the chip text is derived from the metres the
+                    generator actually uses, so it cannot drift from them. */}
+                <span className="program-field-label">
+                  Desk size <span className="field-unit">cm</span>
+                </span>
+                <div className="program-chips num" data-testid="program-desk-size">
+                  {DESK_SIZES.map((s) => (
+                    <button
+                      key={s.key}
+                      type="button"
+                      className={`program-chip${spec.deskSize === s.key ? ' on' : ''}`}
+                      data-testid={`program-desk-size-${s.key}`}
+                      aria-pressed={spec.deskSize === s.key}
+                      title={`${s.w.toFixed(2)} × ${s.d.toFixed(2)} m`}
+                      onClick={() => patch({ deskSize: s.key as DeskSizeKey })}
+                    >
+                      {deskSizeLabel(s)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        {/* Live summary. */}
+        <aside className="program-summary" data-testid="program-summary">
+          <div className="panel-eyebrow">Program summary</div>
+          <div className="program-summary-metrics">
+            <div className="program-summary-metric">
+              <span className="program-summary-value num" data-testid="program-summary-enclosed">
+                {(totals?.enclosedRooms ?? 0) + pinnedEnclosed}
+              </span>
+              <span className="program-summary-label">
+                enclosed rooms{pinnedEnclosed > 0 ? ` · ${pinnedEnclosed} pinned` : ''}
+              </span>
+            </div>
+            <div className="program-summary-metric">
+              <span className="program-summary-value num">
+                {deskCount ?? '—'}
+              </span>
+              <span className="program-summary-label">desks</span>
+            </div>
+            <div className="program-summary-metric">
+              <span className="program-summary-value num">{totals?.seats ?? 0}</span>
+              <span className="program-summary-label">room seats</span>
+            </div>
+          </div>
+
+          <div className="program-usage">
+            <div className="program-usage-bar">
+              <span className="program-usage-fill" style={{ width: `${pctUsed}%` }} />
+            </div>
+            {/* m² leads, sf follows. The Space step reports the same plate in m²
+                (with sf underneath) and the editor's statistics are m² — this
+                panel alone led in sf, so the SAME area appeared as two unrelated
+                numbers one step apart. Both units stay (India-first, but the
+                qbiq-style deliverables quote sf); the primary one is now
+                consistent across the flow. */}
+            <div className="program-usage-label num">
+              {usableM2 != null ? (
+                <>
+                  {fmt(occupiedM2)} of {fmt(usableM2)} m² used
+                  <span className="program-usage-alt"> · {fmt(occupiedSf)} of {fmt(usableSf ?? 0)} sf</span>
+                </>
+              ) : (
+                <>{fmt(occupiedM2)} m² programmed</>
+              )}
+            </div>
+          </div>
+          <p className="program-summary-note">
+            Offices, meetings and desks are placed by the generator; circulation is added around
+            them, so occupied area stays well below usable.
+          </p>
+        </aside>
+      </div>
+
       {/* Anchor pins (workflow.md §3.5): pick a room type, click the plan to
-          force that room onto the spot — it bumps the count. */}
+          force that room onto the spot — it bumps the count. A refinement on top
+          of the program above, so it sits below it. */}
       {drawing && (
         <section className="program-anchors" data-testid="program-anchors">
           <div className="program-anchors-head">
             <div>
               <div className="panel-eyebrow">Anchor pins · place rooms on the plan</div>
               <p className="program-summary-note">
-                Pin a room type, then click the plan to force it onto that spot — the pin bumps its
-                count and the generator places it first. Pins clear if you re-upload the plate.
+                Optional. Pin a room type, then click the plan to force it onto that spot — the pin
+                bumps its count and the generator places it first. Pins clear if you re-upload the
+                plate.
               </p>
             </div>
             <div className="program-anchor-controls">
@@ -265,106 +398,6 @@ export function ProgramStep({
           )}
         </section>
       )}
-
-      <div className="program-body">
-        <div className="program-main">
-          {spec.mode === 'concept' ? (
-            <ConceptPanel
-              spec={spec}
-              onTemplate={applyTemplate}
-              onHeadcount={setHeadcount}
-              onEnclosed={setEnclosed}
-            />
-          ) : (
-            <DetailedPanel spec={spec} onBump={bump} onPlacement={setPlacement} />
-          )}
-
-          {/* Desk type + size — shared by both modes. */}
-          <section className="program-section">
-            <div className="panel-eyebrow">Workstation</div>
-            <div className="program-desk-row">
-              <div className="program-field">
-                <span className="program-field-label">Desk type</span>
-                <div className="program-chips" data-testid="program-desk-type">
-                  {(['workstation', 'bench'] as DeskType[]).map((t) => (
-                    <button
-                      key={t}
-                      type="button"
-                      className={`program-chip${spec.deskType === t ? ' on' : ''}`}
-                      data-testid={`program-desk-type-${t}`}
-                      aria-pressed={spec.deskType === t}
-                      onClick={() => patch({ deskType: t })}
-                    >
-                      {t === 'workstation' ? 'Workstations' : 'Benching'}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="program-field">
-                <span className="program-field-label">Desk size</span>
-                <div className="program-chips num" data-testid="program-desk-size">
-                  {DESK_SIZES.map((s) => (
-                    <button
-                      key={s.key}
-                      type="button"
-                      className={`program-chip${spec.deskSize === s.key ? ' on' : ''}`}
-                      data-testid={`program-desk-size-${s.key}`}
-                      aria-pressed={spec.deskSize === s.key}
-                      onClick={() => patch({ deskSize: s.key as DeskSizeKey })}
-                    >
-                      {s.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </section>
-        </div>
-
-        {/* Live summary. */}
-        <aside className="program-summary" data-testid="program-summary">
-          <div className="panel-eyebrow">Program summary</div>
-          <div className="program-summary-metrics">
-            <div className="program-summary-metric">
-              <span className="program-summary-value num" data-testid="program-summary-enclosed">
-                {(totals?.enclosedRooms ?? 0) + pinnedEnclosed}
-              </span>
-              <span className="program-summary-label">
-                enclosed rooms{pinnedEnclosed > 0 ? ` · ${pinnedEnclosed} pinned` : ''}
-              </span>
-            </div>
-            <div className="program-summary-metric">
-              <span className="program-summary-value num">
-                {Math.max(1, Math.round(spec.headcount * 0.85))}
-              </span>
-              <span className="program-summary-label">desks</span>
-            </div>
-            <div className="program-summary-metric">
-              <span className="program-summary-value num">{totals?.seats ?? 0}</span>
-              <span className="program-summary-label">room seats</span>
-            </div>
-          </div>
-
-          <div className="program-usage">
-            <div className="program-usage-bar">
-              <span className="program-usage-fill" style={{ width: `${pctUsed}%` }} />
-            </div>
-            <div className="program-usage-label num">
-              {usableSf != null ? (
-                <>
-                  {fmt(occupiedSf)} of {fmt(usableSf)} sf used
-                </>
-              ) : (
-                <>{fmt(occupiedM2)} m² programmed</>
-              )}
-            </div>
-          </div>
-          <p className="program-summary-note">
-            Offices, meetings and desks are placed by the generator; circulation is added around
-            them, so occupied area stays well below usable.
-          </p>
-        </aside>
-      </div>
     </div>
   )
 }

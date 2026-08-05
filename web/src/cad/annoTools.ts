@@ -4,6 +4,7 @@
 
 import type { CadTool, ToolCtx, Vec2, SnapResult } from './model'
 import { CAD_COLOR } from './model'
+import { MONO, UI } from '../ui/type'
 
 // ---- local geometry helpers (world = meters, no Y-flip) ----
 const sub = (p: Vec2, q: Vec2): Vec2 => ({ x: p.x - q.x, y: p.y - q.y })
@@ -118,7 +119,7 @@ function dimensionTool(): CadTool {
       g.stroke()
       // measured distance at midpoint
       const mid = { x: (soa.x + sob.x) / 2, y: (soa.y + sob.y) / 2 }
-      g.font = '11px "IBM Plex Mono", monospace'
+      g.font = `11px ${MONO}`
       g.textAlign = 'center'
       g.textBaseline = 'bottom'
       g.fillText(fmtM(dist(a, b)), mid.x, mid.y - 3)
@@ -178,7 +179,7 @@ function textTool(): CadTool {
       const s = ctx.toScreen(at)
       const px = Math.max(9, 0.3 * ctx.pxPerM)
       g.save()
-      g.font = `${px}px "Space Grotesk", sans-serif`
+      g.font = `${px}px ${UI}`
       g.textAlign = 'left'
       g.textBaseline = 'alphabetic'
       g.fillStyle = CAD_COLOR.text

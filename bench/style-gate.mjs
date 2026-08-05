@@ -30,7 +30,10 @@ const GUARDED = [
   ['web/src/import/PlacePalette.tsx', RULES_ALL],
   ['web/src/ui/LibraryPanel.tsx', RULES_ALL],
   ['web/src/three/Minimap.tsx', ['hex', 'rgba']],
-  ['web/src/editor/furniture.ts', RULES_ALL],
+  // furniture.ts was deleted by the ui-fixes merge (R2: symbols.ts owns symbol
+  // geometry). The guard moves to its successor — a rule pointed at a deleted
+  // path is a rule watching nothing.
+  ['web/src/editor/symbols.ts', RULES_ALL],
   // Joined the guarded list as part of fixing it (standing policy): a file found
   // carrying a zone->colour mapping gets guarded, not just corrected.
   ['web/src/export/pdf.ts', ['hex', 'rgba']],

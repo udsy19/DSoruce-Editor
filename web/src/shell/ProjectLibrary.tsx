@@ -99,7 +99,20 @@ export function ProjectLibrary({
                     aria-label={`Delete ${p.name}`}
                     onClick={(e) => {
                       e.stopPropagation()
-                      if (window.confirm(`Delete project "${p.name}"? Its saved floors are kept.`))
+                      // Say what actually happens. `deleteProject` removes ONLY
+                      // the project record; the floors stay in the `plans` store
+                      // — but the landing page lists the `projects` store, so
+                      // they disappear from HERE and are reachable only through
+                      // the editor's Library tab. "Its saved floors are kept"
+                      // was true and misleading: it read as "nothing is lost",
+                      // when what the user can see is exactly what is lost.
+                      const n = floors[p.id] ?? 0
+                      const fate = n
+                        ? `\n\nIts ${n} saved floor${n === 1 ? '' : 's'} are not deleted, but they ` +
+                          `will no longer appear here — you would have to reopen them from the ` +
+                          `editor's Library tab.`
+                        : '\n\nIt has no saved floors.'
+                      if (window.confirm(`Delete the project "${p.name}"?${fate}`))
                         void deleteProject(p.id).then(refresh)
                     }}
                   >

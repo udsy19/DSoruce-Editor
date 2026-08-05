@@ -3,7 +3,7 @@ import type { DocComponent, DocZone, RoomSelection } from './types/doc'
 import type { Metrics } from './types/metrics'
 import type { Program, GenResult, Candidate } from './types/program'
 import { DEFAULT_PROGRAM } from './types/program'
-import { EditorCanvas, STRATEGY_LABEL } from './editor/EditorCanvas'
+import { EditorCanvas, STRATEGY_LABEL, openShare } from './editor/EditorCanvas'
 import type { RefineOutcome } from './editor/search'
 import { CATALOG, catByCategory } from './editor/catalog'
 import { searchBank } from './materialBank/mock'
@@ -55,7 +55,14 @@ import {
 } from './import/testfit'
 import { derivePlate } from './import/plate'
 import { baseStampAround, type BaseStamp } from './import/mergeFit'
-import { saveProject, openProject, applyProject, type BindingInfo, type DSourceFile } from './persist/file'
+import {
+  saveProject,
+  openProject,
+  applyProject,
+  buildProjectFile,
+  type BindingInfo,
+  type DSourceFile,
+} from './persist/file'
 import {
   buildSavedPlan,
   listPlans,
@@ -67,6 +74,7 @@ import {
   type SavedPlan,
 } from './persist/plans'
 import type { ProjectRecord } from './persist/projects'
+import { navigate } from './shell/route'
 import { syncPlans, type SyncResult } from './persist/sync'
 import { cloudEnabled } from './cloud'
 import { CloudSyncPanel } from './cloud/CloudSyncPanel'
@@ -211,6 +219,11 @@ export interface EditorController {
   importFile(f: File): Promise<Drawing | null>
   /** Push a previously-parsed Drawing into the editor (wizard reload / resume). */
   loadDrawing(d: Drawing | null): void
+  /** Does the editor already hold a parsed Drawing? The wizard's resume path
+   *  (`shell/resume.ts`) asks before re-pushing the persisted plate — a cold
+   *  start into a late step has none, and generating without one silently
+   *  produced empty candidates. */
+  hasDrawing(): boolean
   testFit(opts?: TestFitOpts): void
   /** Set the editor's live test-fit program (the Program step's output). Also
    *  re-syncs the mounted GenerateCard so its form + a Generate click use it. */
@@ -241,10 +254,27 @@ export interface EditorViewProps {
    *  reload lands straight on the saved floor. Guarded against double-loading the
    *  in-session pick. */
   openPlanId?: string
+  /**
+   * Is the editor the screen the user is actually looking at?
+   *
+   * EditorView is deliberately never unmounted (the wasm doc, canvas transform
+   * and the `__ec` seam must survive navigation), so during every wizard step it
+   * is alive behind the step with `display:none`. That made its window-level
+   * listeners fire on a document nobody could see: `Delete` removed a component
+   * (133 → 132, no click, no feedback), `⌘S` wrote a .dsource file from the
+   * upload screen, `p` toggled Presentation, `Escape` cleared the selection, and
+   * `⌘K` opened the editor's command palette over the wizard.
+   *
+   * The rule is NOT "guard each handler" — that leaves the next handler someone
+   * adds broken by default. It is: **a hidden EditorView does not listen.** This
+   * flag gates the BINDING, so when the editor is not the active surface those
+   * listeners do not exist at all.
+   */
+  active?: boolean
 }
 
 export const EditorView = forwardRef<EditorController, EditorViewProps>(function EditorView(
-  { project = null, openPlanId },
+  { project = null, openPlanId, active = true },
   ref,
 ) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -286,6 +316,9 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
   /** Which SavedPlan the live session came from — drives the floor switcher.
    *  Cleared when the doc stops being that record (file open / fresh doc). */
   const [currentPlanId, setCurrentPlanId] = useState<string | null>(null)
+  // Read by the autosave path, which runs from a stable EditorCanvas callback.
+  const currentPlanIdRef = useRef<string | null>(null)
+  currentPlanIdRef.current = currentPlanId
   const [history, setHistory] = useState<HistoryEntry[]>([])
   /** Cloud plan sync (persist/sync.ts): last run's result + in-flight flag. */
   const [syncState, setSyncState] = useState<SyncResult | null>(null)
@@ -385,6 +418,13 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
    *  (a project reopened from its persisted draft). Mirrors the tail of
    *  onImportFile without re-running the DWG→DXF→parse pipeline. */
   const loadDrawing = (d: Drawing | null) => {
+    // Update the ref SYNCHRONOUSLY, not just via the render-time mirror below.
+    // `setDrawing` schedules; `drawingRef.current = drawing` only runs on the
+    // next render — but the wizard's resume path calls `loadDrawing` and then
+    // `testFit` in the same tick, so the ref was still null and the test-fit
+    // built its plate from no drawing at all. That is what made a reloaded
+    // Generate step search an empty plate.
+    drawingRef.current = d
     setDrawing(d)
     setSelItem(null)
     setMode(d ? 'import' : '2d')
@@ -402,7 +442,10 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
       ecRef.current = ec
       ec.onChange = () => {
         setTick((t) => t + 1)
-        noteChange(ec, 'edit') // autosave ring (debounced/deduped in history.ts)
+        noteChange(ec, 'edit') // undo/version ring (debounced/deduped in history.ts)
+        // …and write the edit back to the open floor, so a plan opened from a
+        // project behaves like a document rather than a scratch buffer.
+        queueFloorSave()
       }
       ec.onRoom = (sel) => setRoomSel(sel)
       ec.coordEl = coordRef.current
@@ -502,6 +545,49 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
     await refreshLibrary()
   }
 
+  /**
+   * Persist edits back to the OPEN FLOOR.
+   *
+   * Until now nothing did. `noteChange` wrote only to the `history` ring (a
+   * capped undo buffer), and the topbar "Save" downloaded a .dsource file — so a
+   * user could open a floor from their project, edit it, press the button
+   * labelled Save, and lose the work on reload. Measured: 133 components →
+   * delete one → 132 → reload → 133, with a file downloaded in between and no
+   * warning anywhere.
+   *
+   * A floor opened from a project is now saved like a document, not like a file:
+   * every change writes the snapshot back to its own record, keyed on the id
+   * already open. Debounced so a drag doesn't hammer IndexedDB; the history ring
+   * still captures every step, so undo and version-restore are unaffected.
+   */
+  const persistOpenFloor = async () => {
+    const ec = ecRef.current
+    const planId = currentPlanIdRef.current
+    if (!ec || !planId) return // no floor open (scratch doc) → nothing to update
+    const existing = await getPlan(planId)
+    if (!existing) return // record deleted underneath us — don't resurrect it
+    await putPlan({
+      ...existing,
+      file: buildProjectFile({ ec, drawing: drawingRef.current, bindings: bindingsRef.current, ui: { mode: modeRef.current } }),
+      thumb: renderThumb(ec.getState(), 200, 140),
+      updatedAt: new Date().toISOString(),
+    })
+  }
+  const persistOpenFloorRef = useRef(persistOpenFloor)
+  persistOpenFloorRef.current = persistOpenFloor
+
+  /** Debounce the floor write so a drag doesn't hammer IndexedDB. Longer than
+   *  the history ring's cadence — history wants every step for undo; the floor
+   *  only needs to end up correct. */
+  const floorSaveTimer = useRef<number | null>(null)
+  const queueFloorSave = () => {
+    if (floorSaveTimer.current !== null) clearTimeout(floorSaveTimer.current)
+    floorSaveTimer.current = window.setTimeout(() => {
+      floorSaveTimer.current = null
+      void persistOpenFloorRef.current()
+    }, 900)
+  }
+
   /** LibraryPanel.onAssign — resolve the typed project name (case-insensitive
    *  reuse or mint, in persist/plans) and attach the plan as a floor. */
   const assignPlanToProject = async (planId: string, projectName: string, floorLabel: string) => {
@@ -567,22 +653,7 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
     frameEditor() // frame the loaded saved plan (cold-reload of #/p/:pid/f/:planId)
   }
 
-  // Cold-reload floor-open (Known bug): a hard reload of #/p/:pid/f/:planId lands
-  // here with `openPlanId` set but an empty wasm doc (the in-session pick→edit
-  // path went through openCandidate, which set `currentPlanId`). Once the editor
-  // is ready, load the saved plan via the SAME library open path (getPlan →
-  // openSavedPlan = applyProject). The ref latch + the currentPlanId guard stop a
-  // double-load of the in-session pick.
   const openedPlanRef = useRef<string | null>(null)
-  useEffect(() => {
-    if (!ready || !openPlanId) return
-    if (openPlanId === currentPlanId || openPlanId === openedPlanRef.current) return
-    openedPlanRef.current = openPlanId
-    void getPlan(openPlanId).then((p) => {
-      if (p) openSavedPlan(p)
-    })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, openPlanId, currentPlanId])
 
   const restoreHistory = async (e: HistoryEntry) => {
     const ec = ecRef.current
@@ -593,7 +664,11 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
 
   // Global "?" opens the shortcut help; Escape closes it; ⌘S saves. Ignored
   // while typing so it never steals focus from search or program fields.
+  //
+  // NOT BOUND while the editor is hidden behind a wizard step (see `active`):
+  // ⌘S here was writing a .dsource file from the Space upload screen.
   useEffect(() => {
+    if (!active) return
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null
       const typing =
@@ -610,7 +685,23 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [])
+  }, [active])
+
+  // Hand the same active/hidden fact to the canvas, which owns Delete, Escape
+  // and 'p' on its own window listeners. `setActive(false)` UNBINDS them.
+  //
+  // Transient overlays close too. They are React state on a component that never
+  // unmounts, so an open command palette or help sheet SURVIVED navigation into
+  // the wizard: invisible there (the whole subtree is display:none), then still
+  // open when the user came back, over a screen they had since left. A hidden
+  // editor holds no open overlays.
+  useEffect(() => {
+    ecRef.current?.setActive(active)
+    if (!active) {
+      setCmdkOpen(false)
+      setHelpOpen(false)
+    }
+  }, [active, ready])
 
   // Success notices fade on their own; warnings stay until dismissed.
   useEffect(() => {
@@ -629,6 +720,32 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
     metrics.wall_count === 0 &&
     metrics.component_count === 0 &&
     (ec?.cad.store.entities.length ?? 0) === 0
+
+  // Open the floor named by the route (#/p/:pid/f/:planId) once the editor is
+  // ready, via the SAME library open path (getPlan → openSavedPlan =
+  // applyProject). This is now the PRIMARY way a user returns to their work —
+  // the project library routes straight here via `chosenPlanId` — so it has to be
+  // reliable, not best-effort.
+  //
+  // The guards skip a redundant re-load of a plan that is already open, but they
+  // are deliberately subordinate to the one condition that actually matters: IS
+  // THE DOCUMENT EMPTY? EditorView is never unmounted, so `openedPlanRef` and
+  // `currentPlanId` outlive any number of navigations, while the wasm doc can be
+  // emptied underneath them — a Generate run clears it. Re-entering the same
+  // floor afterwards hit the latch, returned early, and left the user staring at
+  // an empty canvas under the "trace your imported plan" empty state. Keying on
+  // the doc makes this self-correcting and idempotent: it loads exactly when
+  // there is nothing to show, and never otherwise.
+  useEffect(() => {
+    if (!ready || !openPlanId) return
+    const alreadyOpen = openPlanId === currentPlanId || openPlanId === openedPlanRef.current
+    if (alreadyOpen && !docEmpty) return
+    openedPlanRef.current = openPlanId
+    void getPlan(openPlanId).then((p) => {
+      if (p) openSavedPlan(p)
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, openPlanId, currentPlanId, docEmpty])
 
   const pickTool = (t: string) => {
     setTool(t)
@@ -697,11 +814,17 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
   const letterMapRef = useRef(letterMap)
   letterMapRef.current = letterMap
 
-  // ⌘K / Ctrl+K toggles the palette (works anywhere). Single-letter tool
-  // shortcuts fire only in 2D, with no modifier, when not typing and the palette
-  // is closed. Presentation 'P' is intentionally NOT here — EditorCanvas.onKey
-  // owns it (re-wiring would toggle twice); `letterShortcuts` already excludes it.
+  // ⌘K / Ctrl+K toggles the palette (works anywhere IN THE EDITOR). Single-letter
+  // tool shortcuts fire only in 2D, with no modifier, when not typing and the
+  // palette is closed. Presentation 'P' is intentionally NOT here —
+  // EditorCanvas.onKey owns it (re-wiring would toggle twice); `letterShortcuts`
+  // already excludes it.
+  //
+  // NOT BOUND while the editor is hidden (see `active`): "anywhere" used to
+  // include the wizard, so ⌘K opened the editor's tool palette over the Space
+  // step.
   useEffect(() => {
+    if (!active) return
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault()
@@ -722,7 +845,7 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [])
+  }, [active])
 
   // The grouped tool dock's data — assembled from the SAME sources the flat rail
   // used (select/wall + CATALOG + CAD_RAIL), so there is still one tool list.
@@ -847,7 +970,10 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
     // customized desks.
     let suggested: string | null = null
     if (areaM2 && areaM2 > 100 && ec.program.desks === DEFAULT_PROGRAM.desks) {
-      ec.program = suggestProgram(working, areaM2, ec.program)
+      // wasm is initialised by this point (ec exists), so the core can answer;
+      // the ?? guard is for the type, not a fallback policy.
+      const share = openShare()
+      if (share != null) ec.program = suggestProgram(working, areaM2, ec.program, share)
       suggested = suggestProgramSummary(ec.program)
     }
     if (coverage !== undefined || areaM2 !== undefined) {
@@ -901,6 +1027,7 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
     (): EditorController => ({
       importFile: onImportFile,
       loadDrawing,
+      hasDrawing: () => !!drawingRef.current,
       testFit: testFitPlan,
       setProgram: (p) => {
         if (ecRef.current) ecRef.current.program = { ...p }
@@ -938,11 +1065,42 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
   return (
     <div className="app">
       <header className="topbar">
-        <div className="brand">
-          <span className="brand-mark" aria-hidden />
-          <span className="brand-name">DSOURCE</span>
-          <span className="brand-doc">/ {project?.name ?? 'Untitled Plan'}</span>
-        </div>
+        {/* Persistent context + the way out (ui-system.md §2.1). Every segment is
+            a real link. Until now the editor had NO route back to the project or
+            the library — the brand and project name were plain <span>s, so once a
+            user opened a fit the browser Back button was the only exit. */}
+        <nav className="brand" aria-label="Breadcrumb">
+          <button
+            className="brand-home"
+            onClick={() => navigate({ name: 'projects' })}
+            data-testid="crumb-home"
+            title="All projects"
+          >
+            <span className="brand-mark" aria-hidden />
+            <span className="brand-name">DSOURCE</span>
+          </button>
+          {project && (
+            <>
+              <span className="crumb-sep" aria-hidden>
+                /
+              </span>
+              <button
+                className="crumb-link"
+                onClick={() => navigate({ name: 'wizard', projectId: project.id, step: 'space' })}
+                data-testid="crumb-project"
+                title="Back to this project's setup"
+              >
+                {project.name || project.propertyName}
+              </button>
+            </>
+          )}
+          <span className="crumb-sep" aria-hidden>
+            /
+          </span>
+          <span className="crumb-current" data-testid="crumb-floor">
+            {project?.floor || 'Untitled Plan'}
+          </span>
+        </nav>
         <div className="topbar-right">
           <div className="mode-toggle" role="group" aria-label="View mode">
             <button className={mode === '2d' ? 'seg on' : 'seg'} onClick={() => setMode('2d')} data-testid="mode-2d">
@@ -971,16 +1129,26 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
               Test-fit this plan
             </button>
           )}
-          <button className="export-btn" onClick={onSave} data-testid="save-project" title="Save project (⌘S)">
-            Save
+          {/* These two move a FILE to and from disk. They were labelled "Save" /
+              "Open", which read as "save my work" — while the floor open in the
+              editor was never written back at all, so pressing Save downloaded a
+              file and lost the edit on reload. The floor now saves itself
+              (persistOpenFloor); these say what they actually do. */}
+          <button
+            className="export-btn"
+            onClick={onSave}
+            data-testid="save-project"
+            title="Download this plan as a .dsource file (⌘S). Your floor is saved automatically."
+          >
+            <Icon name="download" size={14} /> Download
           </button>
           <button
             className="export-btn"
             onClick={() => projectFileRef.current?.click()}
             data-testid="open-project"
-            title="Open a .dsource project"
+            title="Open a .dsource file from disk"
           >
-            Open
+            Open file…
           </button>
           <input
             ref={projectFileRef}
@@ -1006,10 +1174,28 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
           />
           <button
             className="export-btn"
-            onClick={() => fileRef.current?.click()}
+            // Importing swaps the reference drawing under the open floor. That
+            // was survivable when nothing wrote back to the floor record; now
+            // that a floor autosaves (persistOpenFloor), the next edit would
+            // quietly commit a DIFFERENT building into the floor the user
+            // opened. Ask first — but only when there is something to lose.
+            onClick={() => {
+              const hasWork = !docEmpty || !!drawing
+              if (currentPlanId && hasWork) {
+                const floor = project?.floor ? `“${project.floor}”` : 'this floor'
+                const ok = window.confirm(
+                  `Import a different plan into ${floor}?\n\n` +
+                    `It replaces the CAD drawing behind the current fit-out, and ${floor} ` +
+                    `is saved automatically — so this becomes part of it.\n\n` +
+                    `To keep the current one, cancel and use Download first.`,
+                )
+                if (!ok) return
+              }
+              fileRef.current?.click()
+            }}
             disabled={importing}
             aria-label="Import a DWG or DXF plan"
-            title="Import a DWG or DXF plan"
+            title="Import a DWG or DXF plan — replaces the drawing behind this floor"
             data-testid="import-btn"
           >
             {importing ? (
@@ -1039,7 +1225,15 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
         <nav className="rail" aria-label="Tools">
           <span className="rail-avatar" aria-hidden />
           <div className="rail-sep" />
-          <ToolDock tools={dockTools} active={tool} onPick={pickTool} />
+          {/* Every tool here draws on the 2D plan. In 3D they were still lit and
+              clickable but did nothing, with no explanation — now they say why. */}
+          <ToolDock
+            tools={dockTools}
+            active={tool}
+            onPick={pickTool}
+            disabled={mode !== '2d'}
+            disabledReason={mode === '3d' ? 'Switch to 2D to draw' : 'Switch to 2D to draw'}
+          />
           <span className="rail-spring" />
           <button
             className={aiOpen ? 'rail-fab on' : 'rail-fab'}
@@ -1072,7 +1266,8 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
                 onChange={() => setDrawVer((v) => v + 1)}
                 onCanvas={(c) => {
                   drawCanvasRef.current = c
-                  if (import.meta.env.DEV) (window as unknown as { __dc: DrawingCanvas | null }).__dc = c
+                  // `window.__dc` is owned by DrawingView now (it resolves to the
+                  // VISIBLE canvas of however many are mounted), so nothing to set.
                 }}
                 price={selItem?.productId ? bindings.get(selItem.productId)?.price : undefined}
                 image={selItem?.productId ? bindings.get(selItem.productId)?.image : undefined}
@@ -1233,6 +1428,22 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
                 />
                 {cloudEnabled() && <CloudSyncPanel onChanged={refreshLibrary} />}
                 </>
+              ) : mode === '3d' ? (
+                // The inspector follows the MODE. It used to show the 2D canvas
+                // card in 3D — Units / Grid / Axis / Background / Presentation,
+                // all meaningless here — while the real 3D controls live in the
+                // toolbar over the viewport. Stats are mode-independent, so they
+                // stay; everything 2D-only goes.
+                <>
+                  <div className="panel-body" data-testid="view-props-3d">
+                    <div className="panel-eyebrow">View</div>
+                    <p className="inline-note">
+                      Camera, lighting, quality and theme are on the toolbar over the model. Switch
+                      to <strong>2D</strong> to draw, edit rooms, or bind products.
+                    </p>
+                  </div>
+                  <StatsPanel ec={ec} />
+                </>
               ) : (
                 <>
                   <ObjectInspector ec={ec} />
@@ -1273,14 +1484,17 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
       </div>
 
       <footer className="statusbar">
-        <span className="sb-coord">
+        {/* Cursor position and drawing scale are 2D-plan facts. In 3D they were
+            still being reported — stale numbers describing a view the user isn't
+            looking at. The document totals on the right are mode-independent. */}
+        <span className="sb-coord" style={{ visibility: mode === '2d' ? 'visible' : 'hidden' }}>
           <span className="sb-glyph">⌖</span>
           <span ref={coordRef} className="num">
             x —  y —
           </span>
         </span>
-        <span className="sb-dot" />
-        <span className="num muted" ref={scaleRef}>
+        {mode === '2d' && <span className="sb-dot" />}
+        <span className="num muted" ref={scaleRef} style={{ visibility: mode === '2d' ? 'visible' : 'hidden' }}>
           46 px/m
         </span>
         <span className="sb-spring" />

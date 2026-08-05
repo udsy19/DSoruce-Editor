@@ -19,6 +19,8 @@ pub(crate) struct RoomJob {
     pub(crate) glass_front: bool,
     pub(crate) door_w: f64,
     pub(crate) furniture: RoomFurniture,
+    /// Briefed occupancy from `RoomReq::seats` (0 = derive from the table).
+    pub(crate) seats: u32,
     /// false → open setting (collab / print alcove): zone + furniture, no
     /// partitions and no door — spec §1.1 marks them open.
     pub(crate) walls: bool,
@@ -85,7 +87,7 @@ pub(crate) fn support_jobs(program: &Program, plate_area: f64) -> Vec<RoomJob> {
             // Derived rooms carry their derive() footprint. Focus rooms are pinned
             // to the facade (`Window`) — item 4a's HARD daylight rule; the rest stay
             // placement-neutral (`Flexible`), so the derive path is otherwise unchanged.
-            jobs.push(t.to_job(req.kind, label, snap_module(req.w), snap_module(req.d), derived_placement(req.kind)));
+            jobs.push(t.to_job(req.kind, label, snap_module(req.w), snap_module(req.d), derived_placement(req.kind), 0));
         }
     }
     jobs
@@ -110,7 +112,7 @@ pub(crate) struct JobTemplate {
 }
 
 impl JobTemplate {
-    pub(crate) fn to_job(&self, kind: SpaceKind, label: String, w: f64, d: f64, placement: Placement) -> RoomJob {
+    pub(crate) fn to_job(&self, kind: SpaceKind, label: String, w: f64, d: f64, placement: Placement, seats: u32) -> RoomJob {
         RoomJob {
             kind,
             label,
@@ -120,6 +122,7 @@ impl JobTemplate {
             glass_front: self.glass_front,
             door_w: self.door_w,
             furniture: self.furniture,
+            seats,
             walls: self.walls,
             far: self.far,
             placement,
@@ -170,7 +173,7 @@ pub(crate) fn explicit_jobs(program: &Program) -> Vec<RoomJob> {
             } else {
                 format!("{} {}", t.name, i + 1)
             };
-            jobs.push(t.to_job(req.kind, label, w, d, req.placement));
+            jobs.push(t.to_job(req.kind, label, w, d, req.placement, req.seats));
         }
     }
     // Reception first (entry-adjacent), then largest footprint first.
@@ -197,6 +200,7 @@ pub(crate) fn anchor_jobs(program: &Program, anchors: &[crate::document::Anchor]
                 snap_module(t.w.max(0.5)),
                 snap_module(t.d.max(0.5)),
                 Placement::Flexible,
+                0, // anchor pin: kind only, no seat brief
             );
             (job, a.x, a.y)
         })

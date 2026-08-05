@@ -15,7 +15,7 @@
 
 import type { DocState, DocComponent } from '../types/doc'
 import type { Metrics } from '../types/metrics'
-import { drawFurnitureSymbol } from '../editor/furniture'
+import { drawSymbol, seatsForSize } from '../editor/symbols'
 import type { Drawing, DrawEntity } from '../import/types'
 import { CATEGORY_COLOR } from '../import/types'
 import { triggerDownload } from './png'
@@ -514,18 +514,23 @@ export function renderPrintCanvas(
   // Components as CAD line symbols (same renderer the live canvas uses).
   if (furniture) {
     for (const c of state.components) {
-      drawFurnitureSymbol(ctx, {
-        category: c.category,
-        cx: X(c.x),
-        cy: Y(c.y),
-        w: c.w * k,
-        h: c.h * k,
-        rotation: c.rotation,
-        stroke: PRINT_STROKE,
-        detail: PRINT_DETAIL,
-        accent: PRINT_STROKE,
-        selected: false,
-      })
+      drawSymbol(
+        ctx,
+        {
+          category: c.category,
+          cx: X(c.x),
+          cy: Y(c.y),
+          w: c.w, // METRES — `k` is the print scale, passed as the view below
+          h: c.h,
+          rotation: c.rotation,
+          mirror: c.mirror,
+          seats: c.seats || seatsForSize(c.category, c.w, c.h),
+          selected: false,
+        },
+        { stroke: PRINT_STROKE, detail: PRINT_DETAIL, accent: PRINT_STROKE },
+        // Print is a 1:1 pixel surface, so DPR 1 — pens land on output pixels.
+        { pxPerM: k, dpr: 1 },
+      )
     }
 
     // Labels on components large enough to read one (rooms, not chairs); kept

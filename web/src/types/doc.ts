@@ -21,6 +21,9 @@ export interface DocWall {
   glazing?: boolean
 }
 export interface DocComponent {
+  /** How many people this object seats. FROM THE MODEL (`model::seats_for`),
+   *  resolved once in the core — never inferred from size on screen (R2). */
+  seats?: number
   id: number
   category: string
   x: number
