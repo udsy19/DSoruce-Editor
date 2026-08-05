@@ -286,6 +286,54 @@ function planBox(): PlanBox {
   return { planX, planY, planW, planH, panelX, panelW: PANEL_W }
 }
 
+/** A rectangle in top-down sheet points (the `Page` coordinate space). */
+export interface SheetRect {
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
+/**
+ * The plan-sheet TEMPLATE geometry, in top-down sheet points — the page, the
+ * bottom title-block band, the right-hand panel column and the plate viewport,
+ * all derived from the same constants the sheets are drawn with (`PAGE_W`,
+ * `PAGE_H`, `MARGIN`, `TITLE_BLOCK_H`, `PANEL_W`, `planBox`).
+ *
+ * Exported for harnesses and gates: the template constants ARE the spec, so a
+ * checker reads its expected rects from here rather than measuring the drawn
+ * output (which is the thing under test — `.claude/rules/gate-independence.md`).
+ * Read-only: nothing here changes what any sheet draws.
+ *
+ * `panel` runs from the top of the plan band down to the title-block band top —
+ * the column's legal extent, which is what an overflowing schedule breaks out of.
+ */
+export function sheetGeometry(): {
+  pageW: number
+  pageH: number
+  margin: number
+  titleBlockH: number
+  panelW: number
+  frame: SheetRect
+  titleBlock: SheetRect
+  panel: SheetRect
+  plate: SheetRect
+} {
+  const b = planBox()
+  const bandTop = PAGE_H - MARGIN - TITLE_BLOCK_H
+  return {
+    pageW: PAGE_W,
+    pageH: PAGE_H,
+    margin: MARGIN,
+    titleBlockH: TITLE_BLOCK_H,
+    panelW: PANEL_W,
+    frame: { x: MARGIN, y: MARGIN, w: PAGE_W - MARGIN * 2, h: PAGE_H - MARGIN * 2 },
+    titleBlock: { x: MARGIN, y: bandTop, w: PAGE_W - MARGIN * 2, h: TITLE_BLOCK_H },
+    panel: { x: b.panelX, y: b.planY, w: b.panelW, h: bandTop - b.planY },
+    plate: { x: b.planX, y: b.planY, w: b.planW, h: b.planH },
+  }
+}
+
 /** world (m) → PDF top-down pt, given the plan raster's transform + placement. */
 function worldMapper(
   b: PlanBox,

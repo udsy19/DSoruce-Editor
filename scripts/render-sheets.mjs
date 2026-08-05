@@ -67,16 +67,27 @@ export async function buildCaseDoc(name) {
 
 /**
  * Build the drawing-set PDF for one case, in headless Chromium.
- * @returns `{ pdf: Buffer, pages: number, doc }`
+ *
+ * @param {string} name  one of CASES
+ * @param {{ freezeDateAt?: string }} [opts]
+ *   `freezeDateAt` (ISO instant, e.g. `'2026-01-01T12:00:00Z'`) pins the page's
+ *   clock to UTC and to that instant before the set is built, so `todayLabel()`
+ *   stamps the same date on every run. The PDF path itself is untouched — this
+ *   only removes the one legitimately-varying value from the output, which is
+ *   what makes a raster harness reproducible across days. Omit it and the real
+ *   clock is used (the default, and what `drawing-set.test.mjs` renders with —
+ *   it masks the date in its digest instead).
+ * @returns `{ pdf: Buffer, pages: number, doc, warnings, geometry }`
  */
-export async function renderSheetSet(name = 'seeded') {
+export async function renderSheetSet(name = 'seeded', opts = {}) {
+  const freezeAt = opts.freezeDateAt ?? null
   const doc = await buildCaseDoc(name)
   const build = await esbuild()
   const bundle = await build({
     stdin: {
       contents: `
-        import { buildDrawingSetPdf } from './src/export/sheetSet'
-        window.DS = { buildDrawingSetPdf }
+        import { buildDrawingSetPdf, sheetGeometry } from './src/export/sheetSet'
+        window.DS = { buildDrawingSetPdf, sheetGeometry }
       `,
       resolveDir: path.join(REPO, 'web'),
       loader: 'ts',
@@ -95,26 +106,41 @@ export async function renderSheetSet(name = 'seeded') {
   const browser = await chromium.launch({
     args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader', '--disable-lcd-text'],
   })
-  const page = await browser.newPage()
+  const page = await browser.newPage(freezeAt ? { timezoneId: 'UTC' } : {})
   const warnings = []
   page.on('console', (m) => {
     if (m.type() === 'warning' || m.type() === 'error') warnings.push(m.text())
   })
   await page.addScriptTag({ content: bundle.outputFiles[0].text })
-  const b64 = await page.evaluate(
-    async ({ state, drawing, meta }) => {
+  const { b64, geometry } = await page.evaluate(
+    async ({ state, drawing, meta, freezeAt }) => {
+      if (freezeAt) {
+        const Real = Date
+        const fixed = Real.parse(freezeAt)
+        class Frozen extends Real {
+          constructor(...a) {
+            super(...(a.length === 0 ? [fixed] : a))
+          }
+          static now() {
+            return fixed
+          }
+        }
+        window.Date = Frozen
+      }
+      // Template geometry (pt) — constants, read before anything is drawn.
+      const geometry = window.DS.sheetGeometry()
       const bytes = await window.DS.buildDrawingSetPdf(state, { meta, drawing })
       let s = ''
       for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i])
-      return btoa(s)
+      return { b64: btoa(s), geometry }
     },
-    { state: doc.state, drawing: doc.drawing ?? null, meta: SHEET_META },
+    { state: doc.state, drawing: doc.drawing ?? null, meta: SHEET_META, freezeAt },
   )
   await browser.close()
 
   const pdf = Buffer.from(b64, 'base64')
   const pages = Number((pdf.toString('latin1').match(/\/Type\s*\/Pages\b[^>]*?\/Count\s+(\d+)/) ?? [])[1] ?? 0)
-  return { pdf, pages, doc, warnings }
+  return { pdf, pages, doc, warnings, geometry }
 }
 
 // --- CLI ---------------------------------------------------------------------

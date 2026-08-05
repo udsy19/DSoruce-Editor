@@ -4,6 +4,7 @@
 #   bash scripts/gates/run-all.sh                 # all gates
 #   bash scripts/gates/run-all.sh G1 G2 G4        # only these
 #   VERBOSE=1 bash scripts/gates/run-all.sh       # show each gate's stderr notes
+#   SHEETS=1 bash scripts/gates/run-all.sh        # also render the drawing sheets (step 0b)
 #
 # Exits non-zero if any gate fails. A gate whose artifact does not exist yet
 # fails with "artifact missing: <path>" — that is the expected day-one state.
@@ -159,6 +160,33 @@ if selected G9; then
   fi
 fi
 
+# ---- 0b. produce the rendered sheets (opt-in) -------------------------------
+# `scripts/sheets/render-all.mjs` rasterises all 11 sheets of all three packs to
+# out/sheets/<pack>/*.png with the sheet-template geometry beside each image. It
+# is the producer for sheet gates, in the same shape as step 0 above: the runner
+# renders, then the gates grade what it left.
+#
+# OFF by default (SHEETS=1 to run it) because nothing grades sheets yet and the
+# board's gate list and check counts must not move. The first sheet gate makes
+# this unconditional — or conditions it on `selected G12` — and adds itself to
+# IDS/CMDS/TITLES above.
+#
+#   SHEETS=1 bash scripts/gates/run-all.sh          # ~15 s, three packs
+SHEETS_NOTE=""
+if [ "${SHEETS:-0}" = "1" ]; then
+  echo
+  echo "  rendering the drawing sheets: node scripts/sheets/render-all.mjs"
+  if [ "${VERBOSE:-0}" = "1" ]; then
+    node "$REPO/scripts/sheets/render-all.mjs" --out "$OUT/sheets"
+  else
+    node "$REPO/scripts/sheets/render-all.mjs" --out "$OUT/sheets" >/dev/null 2>&1
+  fi
+  if [ $? -ne 0 ]; then
+    SUITE_FAIL=1
+    SHEETS_NOTE="scripts/sheets/render-all.mjs FAILED — out/sheets is whatever was on disk"
+  fi
+fi
+
 # ---- 1. produce the pack (the one action), before anything grades it --------
 PRODUCED=0
 if selected "${IDS[$PRODUCER_IDX]}"; then
@@ -238,6 +266,7 @@ echo
 describe_pack "${PACK_FILES[@]}" "${CASE_FILES[@]}"
 [ -n "$INTEGRITY" ] && echo "               $INTEGRITY"
 [ -n "$CASES_NOTE" ] && echo "               $CASES_NOTE"
+[ -n "$SHEETS_NOTE" ] && echo "               $SHEETS_NOTE"
 echo
 
 if [ $FAILED -ne 0 ]; then
