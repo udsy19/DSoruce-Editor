@@ -306,6 +306,7 @@ export function drawZones(
   zoneStats: Map<number, ZoneStat>,
 ): ZoneTag[] {
   if (zones.length === 0) return []
+  const style = planStyle(v.presentation ? 'paper' : 'editor')
   const ctx = v.ctx
 
   // Zone shapes are rectangles even on an L-shaped plate; clip their fills to
@@ -329,7 +330,14 @@ export function drawZones(
   const tags: ZoneTag[] = []
   for (const z of zones) {
     const pal = ZONE[z.zone_type] ?? ZONE.Core
-    ctx.fillStyle = v.presentation ? lighten(pal.fill, 0.4) : pal.fill
+    // Ground zones are the surface the plan sits on, not content on it.
+    const ground = style.groundZones.includes(z.zone_type)
+    if (ground && style.groundTint === null) continue
+    ctx.fillStyle = ground
+      ? style.groundTint!
+      : v.presentation
+        ? lighten(pal.fill, 0.4)
+        : pal.fill
     if (z.shape.kind === 'Poly') {
       // Boundary-conforming polygon: trace + fill + hairline; label at the
       // area-weighted centroid.

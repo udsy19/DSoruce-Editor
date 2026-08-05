@@ -142,11 +142,9 @@ export interface ZoneStyle {
 // at S x 0.75, L 48: dark enough to read on the fill, and hue-locked so the
 // border can never drift away from the swatch the legend shows.
 export const ZONE: Record<string, { fill: string; line: string }> = {
-  // INTERIM. Circulation is unfilled in Laiout — corridors are paper ground and
-  // only PROGRAM zones carry colour. That lands as its own commit with its own
-  // before/after, because it is the single largest visual change in the move.
-  // Until then it takes the measured secondary grey rather than keeping blue,
-  // which would put the same hue on circulation AND workspace mid-migration.
+  // Ground, not figure — see `groundZones`. These values are what a circulation
+  // zone falls back to if it is ever drawn as figure (e.g. selected/hovered);
+  // the resting plan does not fill it at all.
   Circulation: { fill: '#d8d8d8', line: '#8b8b8b' },
   Workspace: { fill: '#d9e7f4', line: '#487cad' }, // Laiout "open workspace"
   Meeting: { fill: '#eae4f6', line: '#6b4ca8' }, // Laiout "meeting"
@@ -330,6 +328,23 @@ export interface PlanStyle {
   column: ElementStyle
   labelPrimary: { color: string; sizePx: number; weight: number; upper: boolean }
   labelSecondary: { color: string; sizePx: number; weight: number; upper: boolean }
+  /**
+   * Zone kinds drawn as GROUND rather than figure.
+   *
+   * Laiout fills only PROGRAM zones; corridors are paper-white ground (spec
+   * `laiout.circulation_rule`). Expressed as a list rather than an
+   * `if (kind === 'Circulation')` in the renderer, because the rule is
+   * figure/ground — which zones are content and which are the surface content
+   * sits on — and that is a question the style table should answer.
+   */
+  groundZones: ZoneType[]
+  /**
+   * What a ground zone gets INSTEAD of its palette fill. `null` is true ground:
+   * the paper shows through. The editor uses a barely-there tint (spec allows
+   * <=2%) so a corridor stays visible as a selectable object while editing --
+   * an affordance, not a fill.
+   */
+  groundTint: string | null
 }
 
 export /**
@@ -389,6 +404,8 @@ const PAPER: PlanStyle = {
   // Reference: 4.35 pt on an A4-landscape page ≈ 6 px at our typical scale.
   labelPrimary: { color: INK, sizePx: 6, weight: 500, upper: true },
   labelSecondary: { color: '#5f6771', sizePx: 5, weight: 400, upper: true },
+  groundZones: ['Circulation'],
+  groundTint: null, // paper: corridors ARE the paper
 }
 
 /**
@@ -409,6 +426,7 @@ const EDITOR: PlanStyle = {
   gridOpacity: 1,
   labelPrimary: { color: INK, sizePx: 11, weight: 500, upper: false },
   labelSecondary: { color: '#5f6771', sizePx: 9, weight: 400, upper: false },
+  groundTint: 'rgba(23,26,30,0.02)', // editor: still selectable, still ground
 }
 
 const PROFILES: Record<PlanProfile, PlanStyle> = { editor: EDITOR, paper: PAPER }
