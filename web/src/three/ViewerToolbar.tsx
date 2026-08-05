@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import type { ViewerMode, Viewer3D } from './Viewer3D'
 import { THEMES, THEME_ORDER, type ThemeId } from './theme'
-import { MONO } from '../ui/type'
+import { MONO, UI } from '../ui/type'
 
 /** Camera framing presets offered by the upgraded viewer engine. */
 export type ViewPreset = 'persp' | 'top'
@@ -152,14 +152,14 @@ const seg = (active: boolean, disabled: boolean): CSSProperties => ({
   display: 'inline-flex',
   alignItems: 'center',
   gap: 5,
-  font: '500 12px/1 "Space Grotesk", system-ui, sans-serif',
+  font: `500 12px/1 ${UI}`,
   letterSpacing: '0.02em',
   padding: '6px 10px',
   border: 'none',
   borderRadius: 6,
   cursor: disabled ? 'default' : 'pointer',
-  color: active ? '#1b1d21' : '#5c626c',
-  background: active ? '#E8A13C' : 'transparent',
+  color: active ? 'var(--accent-ink)' : 'var(--muted)',
+  background: active ? 'var(--accent)' : 'transparent',
   boxShadow: active ? '0 1px 3px rgba(0,0,0,0.14)' : 'none',
   opacity: disabled ? 0.35 : 1,
 })
@@ -170,7 +170,7 @@ const renderSeg = (active: boolean): CSSProperties => ({
   ...seg(active, false),
   ...(active
     ? {
-        background: 'linear-gradient(120deg, #E8A13C 0%, #F3C778 100%)',
+        background: 'linear-gradient(120deg, var(--accent) 0%, var(--accent-hover) 100%)',
         boxShadow: '0 1px 4px rgba(232,161,60,0.45)',
       }
     : {}),
@@ -219,7 +219,7 @@ function SunSlider({
           marginBottom: 5,
         }}
       >
-        <span style={{ font: '500 11px/1 "Space Grotesk", system-ui, sans-serif', color: '#5c626c', letterSpacing: '0.03em' }}>
+        <span style={{ font: `500 11px/1 ${UI}`, color: '#5c626c', letterSpacing: '0.03em' }}>
           {label}
         </span>
         <span style={{ font: `400 11px/1 ${MONO}`, color: '#1b1d21' }}>
@@ -234,7 +234,7 @@ function SunSlider({
         value={value}
         data-testid={testid}
         onInput={(e) => onInput(Number(e.currentTarget.value))}
-        style={{ display: 'block', width: '100%', margin: 0, accentColor: '#E8A13C' }}
+        style={{ display: 'block', width: '100%', margin: 0, accentColor: 'var(--accent)' }}
       />
     </label>
   )
@@ -257,7 +257,7 @@ function ThemeRow({ id, active, onSelect }: { id: ThemeId; active: boolean; onSe
         gap: 10,
         width: '100%',
         padding: '7px 8px',
-        border: active ? '1px solid #E8A13C' : '1px solid transparent',
+        border: active ? '1px solid var(--accent)' : '1px solid transparent',
         borderRadius: 7,
         background: active ? 'rgba(232,161,60,0.10)' : 'transparent',
         cursor: 'pointer',
@@ -268,7 +268,7 @@ function ThemeRow({ id, active, onSelect }: { id: ThemeId; active: boolean; onSe
           <span key={i} style={{ width: 13, height: 18, background: hex(c) }} />
         ))}
       </span>
-      <span style={{ font: '500 12px/1 "Space Grotesk", system-ui, sans-serif', color: active ? '#1b1d21' : '#3f444c' }}>
+      <span style={{ font: `500 12px/1 ${UI}`, color: active ? 'var(--accent-ink)' : 'var(--text-2)' }}>
         {t.label}
       </span>
     </button>

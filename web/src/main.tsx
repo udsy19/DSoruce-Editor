@@ -29,4 +29,22 @@ import { createRoot } from 'react-dom/client'
 import { AppShell } from './shell/AppShell'
 import './styles.css'
 
+// Dev-time backstop for the same invariant `ui/fonts.test.mjs` enforces
+// statically: a font that is NAMED but not LOADED renders in whatever the OS
+// substitutes, on someone else's machine, silently. The test catches it at
+// commit time by comparing named vs imported families; this catches the case a
+// static scan can't see — a family that is imported but fails to fetch.
+if (import.meta.env.DEV) {
+  void document.fonts.ready.then(() => {
+    for (const family of ['Hanken Grotesk', 'Schibsted Grotesk', 'IBM Plex Mono']) {
+      if (!document.fonts.check(`12px "${family}"`)) {
+        console.error(
+          `[fonts] "${family}" is imported but did not load — text using it is ` +
+            `rendering in an OS substitute. See src/ui/fonts.test.mjs.`,
+        )
+      }
+    }
+  })
+}
+
 createRoot(document.getElementById('root')!).render(<AppShell />)

@@ -3,7 +3,7 @@ import type { DocState, DocWall, DocComponent } from '../editor/EditorCanvas'
 import { catByCategory } from '../editor/catalog'
 import { WALL_HEIGHT, CEILING_HEIGHT } from './Viewer3D'
 import { buildFurniture3D, furnitureHeight } from './furniture3d'
-import { MONO } from '../ui/type'
+import { MONO, UI } from '../ui/type'
 
 /**
  * Orthographic architectural SECTION / ELEVATION renderer.
@@ -500,7 +500,7 @@ function drawAnnotations(
 
   // Section label, bottom band.
   ctx.fillStyle = INK
-  ctx.font = '700 13px "Space Grotesk", system-ui, sans-serif'
+  ctx.font = `700 13px ${UI}`
   ctx.textAlign = 'left'
   ctx.textBaseline = 'middle'
   const ly = L.rectB + PAD_B / 2

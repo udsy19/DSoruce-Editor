@@ -19,7 +19,31 @@
   --eyebrow: #6e7a84;
   --faint: #9aa2ad;
 
-  /* ---- accent ---- */
+  /* ---- CANVAS palette (docs/design/ui-system.md §4.1.1) ----
+     Canvas colour is semantic DATA, governed by what an object IS — not brand.
+     These are declared separately from `--accent` and must NEVER be aliased to
+     it: changing the brand accent must not recolour "bound" on a plan, and the
+     selection amber must never read as a UI accent.
+     They appear in CSS only where a UI element is a LEGEND for something drawn
+     on the canvas (a dropped marker's ref pin, the restricted-area note) — never
+     as chrome. The canvas renderers hold their own copies in `C` / DrawingCanvas
+     module constants, since `ctx.fillStyle` can't read a CSS variable per frame. */
+  --canvas-unbound: #5c6670; /* no product bound — default drawn geometry */
+
+  /* ⚠ DO NOT "CLEAN THIS UP" by writing `--canvas-bound: var(--accent)`.
+     It holds the same hex as --accent today, which looks like duplication and
+     is not. --accent is BRAND: it changes when someone rebrands. --canvas-bound
+     is DATA: it means "this component has a product bound to it" on every plan,
+     drawing set and exported PDF. Aliasing them means the day the brand colour
+     changes, every specified item on every plan silently changes meaning — a
+     rebrand would edit the drawings. They are allowed to coincide; they are not
+     allowed to be the same declaration. */
+  --canvas-bound: #2d5bd6; /* product bound / specified */
+
+  --canvas-live: #e8a13c; /* live selection / hover — transient, pointer-driven */
+  --canvas-live-ink: #8a5a1c; /* legible text on a canvas-live tint */
+
+  /* ---- accent (UI chrome only) ---- */
   --accent: #2d5bd6;
   --accent-hover: #244cbb;
   --accent-ink: #ffffff;
@@ -134,10 +158,18 @@ body {
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
+/* QUANTITATIVE DATA — areas, counts, dimensions, prices, coordinates, scores.
+   The numeric face is the instrument reading in a drawing product; it is not for
+   every integer that happens to appear in a sentence, so `num` is applied to the
+   value, never to prose containing one.
+   Until now this class set tabular figures but no face, so the numbers rendered
+   in the UI sans while ~40 other places named a mono font that was never loaded. */
 .num,
 .mono {
+  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   font-feature-settings: 'tnum' 1;
+  letter-spacing: -0.02em; /* Plex Mono is wide by design; tighten the face rather than drop it */
 }
 .muted {
   color: var(--muted);
@@ -622,14 +654,14 @@ button {
   border: 1px solid transparent;
 }
 .dyn-field.active {
-  border-color: var(--accent, #e8a13c);
+  border-color: var(--accent);
   background: rgba(232, 161, 60, 0.1);
 }
 .dyn-field .dyn-label {
-  font: 600 9px var(--font-ui, 'Space Grotesk', sans-serif);
+  font: 600 9px var(--font-ui);
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--faint, #9aa2ad);
+  color: var(--faint);
 }
 .dyn-field .dyn-val {
   font-size: 12.5px;
@@ -644,12 +676,12 @@ button {
 }
 .dyn-field .dyn-unit {
   font-size: 10px;
-  color: var(--faint, #9aa2ad);
+  color: var(--faint);
 }
 .dyn-input .dyn-prompt {
   padding-left: 4px;
-  font: 500 10px var(--font-ui, 'Space Grotesk', sans-serif);
-  color: var(--faint, #9aa2ad);
+  font: 500 10px var(--font-ui);
+  color: var(--faint);
 }
 
 /* ------------------------------ Inspector ------------------------------- */
@@ -3220,9 +3252,10 @@ kbd {
   border-color: var(--accent-ring);
 }
 .space-tool.on {
-  background: #e8a13c;
-  border-color: #e8a13c;
-  color: #1a1d21;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+  box-shadow: var(--shadow-sm);
 }
 .space-tool.ghost {
   font-weight: 500;
@@ -3278,10 +3311,10 @@ kbd {
   align-items: center;
   gap: 7px;
   padding: 8px 12px;
-  border: 1px solid #e8a13c;
+  border: 1px solid var(--canvas-live);
   border-radius: var(--r-md);
-  background: color-mix(in srgb, #e8a13c 12%, var(--surface));
-  color: #8a5a1c;
+  background: color-mix(in srgb, var(--canvas-live) 12%, var(--surface));
+  color: var(--canvas-live-ink);
   font-size: 12.5px;
   font-weight: 500;
 }
@@ -3306,8 +3339,8 @@ kbd {
   height: 26px;
   padding: 0 4px;
   border-radius: 999px;
-  background: #e8a13c;
-  color: #1a1d21;
+  background: var(--canvas-live);
+  color: var(--text);
   font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 700;

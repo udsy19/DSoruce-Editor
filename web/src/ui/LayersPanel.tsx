@@ -6,7 +6,7 @@
 // store.setActiveLayer(name).
 import { useState } from 'react'
 import type { CSSProperties, FormEvent } from 'react'
-import { MONO } from './type'
+import { MONO, UI } from './type'
 
 export interface LayerRow {
   name: string
@@ -32,7 +32,7 @@ const S: Record<string, CSSProperties> = {
     border: '1px solid var(--hairline, #e6e8ec)',
     borderRadius: 10,
     padding: '10px 0 8px',
-    fontFamily: '"Space Grotesk", sans-serif',
+    fontFamily: UI,
     color: 'var(--text, #1a1d21)',
     minWidth: 220,
   },
@@ -100,7 +100,7 @@ const S: Record<string, CSSProperties> = {
   addInput: {
     flex: 1,
     minWidth: 0,
-    fontFamily: '"Space Grotesk", sans-serif',
+    fontFamily: UI,
     fontSize: 12.5,
     padding: '5px 8px',
     border: '1px solid var(--hairline-strong, #d7dbe0)',
@@ -110,7 +110,7 @@ const S: Record<string, CSSProperties> = {
     outline: 'none',
   },
   addBtn: {
-    fontFamily: '"Space Grotesk", sans-serif',
+    fontFamily: UI,
     fontSize: 12.5,
     fontWeight: 600,
     padding: '5px 10px',

@@ -2,7 +2,7 @@ import type { CSSProperties } from 'react'
 import type { Candidate } from '../editor/EditorCanvas'
 import { STRATEGY_LABEL } from '../editor/EditorCanvas'
 import type { SoftVerdict } from '../ai/evaluator'
-import { MONO } from './type'
+import { MONO, UI } from './type'
 
 /**
  * Laiout-style options strip: every kept test-fit candidate as a small scored
@@ -115,7 +115,7 @@ const S: Record<string, CSSProperties> = {
     cursor: 'pointer',
     textAlign: 'left',
     font: 'inherit',
-    fontFamily: "var(--font-ui, 'Space Grotesk', system-ui, sans-serif)",
+    fontFamily: UI,
   },
   thumb: {
     display: 'block',

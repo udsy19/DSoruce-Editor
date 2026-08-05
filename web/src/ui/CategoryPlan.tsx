@@ -1,7 +1,7 @@
 import { useState, type CSSProperties } from 'react'
 import { formatINR } from '../materialBank/client'
 import { Icon } from './icons'
-import { MONO } from './type'
+import { MONO, UI } from './type'
 
 /**
  * Materio-style "Plan by category" sidebar section. Purely presentational —
@@ -57,7 +57,7 @@ export function CategoryPlan({
   return (
     <div
       data-testid={testId}
-      style={{ fontFamily: '"Space Grotesk", system-ui, sans-serif' }}
+      style={{ fontFamily: UI }}
     >
       <div
         style={{

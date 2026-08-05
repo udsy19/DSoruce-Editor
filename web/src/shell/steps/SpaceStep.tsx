@@ -511,7 +511,7 @@ export function SpaceStep({
               {activeTool === 'marker' && (
                 <>
                   <select
-                    className="space-marker-select num"
+                    className="space-marker-select"
                     data-testid="space-marker-type"
                     value={markerType}
                     onChange={(e) => setMarkerType(e.target.value as RoomType)}

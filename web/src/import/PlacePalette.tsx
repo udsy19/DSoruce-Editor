@@ -4,12 +4,12 @@
 // bank-category, plus a free-form custom row. Pure props: the orchestrator
 // maps `onPlace` onto `DrawingCanvas.beginPlace(spec)`; this component owns no
 // canvas or drawing state. Design language matches LayersPanel/ImportPanel
-// (Space Grotesk UI, IBM Plex Mono numerics, CSS-var surfaces).
+// (UI face for labels, the numeric face for sizes, CSS-var surfaces).
 import { useState } from 'react'
 import type { CSSProperties, FormEvent } from 'react'
 import type { PlaceSpec } from './DrawingCanvas'
 import { BANK_FOOTPRINT, searchOfficeBank, type BankCategory } from '../materialBank/office'
-import { MONO } from '../ui/type'
+import { MONO, UI } from '../ui/type'
 
 
 const S: Record<string, CSSProperties> = {
@@ -18,7 +18,7 @@ const S: Record<string, CSSProperties> = {
     border: '1px solid var(--hairline, #e6e8ec)',
     borderRadius: 10,
     padding: '10px 0 8px',
-    fontFamily: '"Space Grotesk", sans-serif',
+    fontFamily: UI,
     color: 'var(--text, #1a1d21)',
     marginTop: 10,
   },
@@ -107,7 +107,7 @@ const S: Record<string, CSSProperties> = {
     alignItems: 'center',
   },
   input: {
-    fontFamily: '"Space Grotesk", sans-serif',
+    fontFamily: UI,
     fontSize: 12.5,
     padding: '5px 8px',
     border: '1px solid var(--hairline-strong, #d7dbe0)',
@@ -124,7 +124,7 @@ const S: Record<string, CSSProperties> = {
     flex: 'none',
   },
   placeBtn: {
-    fontFamily: '"Space Grotesk", sans-serif',
+    fontFamily: UI,
     fontSize: 12.5,
     fontWeight: 600,
     padding: '5px 10px',

@@ -1,7 +1,7 @@
 import { useLayoutEffect, useEffect, useRef, useState, type ReactNode, type CSSProperties } from 'react'
 import { formatINR } from '../materialBank/client'
 import { Icon } from './icons'
-import { MONO } from './type'
+import { MONO, UI } from './type'
 
 /**
  * Materio-style floating selection card. Purely presentational: the parent
@@ -113,7 +113,7 @@ export function SelectionCard({
         boxShadow: '0 8px 28px rgba(24,30,40,0.14), 0 1px 3px rgba(24,30,40,0.10)',
         padding: '12px 14px',
         zIndex: 20,
-        fontFamily: '"Space Grotesk", system-ui, sans-serif',
+        fontFamily: UI,
         opacity: entered ? 1 : 0,
         transform: entered ? 'translateY(0)' : 'translateY(4px)',
         transition: 'opacity 140ms ease, transform 140ms ease',

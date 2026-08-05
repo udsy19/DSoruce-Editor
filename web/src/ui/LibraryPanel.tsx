@@ -10,7 +10,7 @@ import { groupPlans, type SavedPlan } from '../persist/plans'
 import type { HistoryEntry } from '../persist/history'
 import { formatINR } from '../materialBank/client'
 import { Icon } from './icons'
-import { MONO } from './type'
+import { MONO, UI } from './type'
 
 export interface LibraryPanelProps {
   plans: SavedPlan[]
@@ -570,7 +570,7 @@ function TrashIcon() {
 
 const S: Record<string, CSSProperties> = {
   root: {
-    fontFamily: "var(--font-ui, 'Space Grotesk', system-ui, sans-serif)",
+    fontFamily: UI,
     color: 'var(--text, #1a1d21)',
     display: 'flex',
     flexDirection: 'column',
@@ -584,7 +584,7 @@ const S: Record<string, CSSProperties> = {
     marginBottom: 12,
   },
   saveInput: {
-    fontFamily: "var(--font-ui, 'Space Grotesk', system-ui, sans-serif)",
+    fontFamily: UI,
     fontSize: 12.5,
     padding: '6px 9px',
     border: '1px solid var(--hairline-strong, #d7dbe0)',
@@ -595,7 +595,7 @@ const S: Record<string, CSSProperties> = {
     minWidth: 0,
   },
   saveBtn: {
-    fontFamily: "var(--font-ui, 'Space Grotesk', system-ui, sans-serif)",
+    fontFamily: UI,
     fontSize: 12.5,
     fontWeight: 600,
     padding: '7px 10px',
@@ -630,7 +630,7 @@ const S: Record<string, CSSProperties> = {
     color: '#c94f38',
   },
   syncBtn: {
-    fontFamily: "var(--font-ui, 'Space Grotesk', system-ui, sans-serif)",
+    fontFamily: UI,
     fontSize: 11.5,
     fontWeight: 600,
     flex: 'none',
@@ -655,7 +655,7 @@ const S: Record<string, CSSProperties> = {
     color: 'var(--eyebrow, #6e7a84)',
   },
   compareBtn: {
-    fontFamily: "var(--font-ui, 'Space Grotesk', system-ui, sans-serif)",
+    fontFamily: UI,
     fontSize: 11.5,
     fontWeight: 600,
     padding: '3px 9px',
@@ -734,7 +734,7 @@ const S: Record<string, CSSProperties> = {
     borderBottom: '1px solid var(--hairline, #e6e8ec)',
   },
   assignInput: {
-    fontFamily: "var(--font-ui, 'Space Grotesk', system-ui, sans-serif)",
+    fontFamily: UI,
     fontSize: 12,
     flex: 1,
     minWidth: 0,
@@ -758,7 +758,7 @@ const S: Record<string, CSSProperties> = {
     outline: 'none',
   },
   assignBtn: {
-    fontFamily: "var(--font-ui, 'Space Grotesk', system-ui, sans-serif)",
+    fontFamily: UI,
     fontSize: 11.5,
     fontWeight: 600,
     flex: 'none',
@@ -853,7 +853,7 @@ const S: Record<string, CSSProperties> = {
     cursor: 'text',
   },
   nameInput: {
-    fontFamily: "var(--font-ui, 'Space Grotesk', system-ui, sans-serif)",
+    fontFamily: UI,
     fontSize: 12.5,
     fontWeight: 600,
     padding: '2px 6px',
@@ -892,7 +892,7 @@ const S: Record<string, CSSProperties> = {
     color: 'var(--muted, #5c6670)',
   },
   confirmBtn: {
-    fontFamily: "var(--font-ui, 'Space Grotesk', system-ui, sans-serif)",
+    fontFamily: UI,
     fontSize: 11,
     fontWeight: 600,
     flex: 'none',
@@ -951,7 +951,7 @@ const S: Record<string, CSSProperties> = {
     fontSize: 11.5,
   },
   restoreBtn: {
-    fontFamily: "var(--font-ui, 'Space Grotesk', system-ui, sans-serif)",
+    fontFamily: UI,
     fontSize: 11,
     fontWeight: 600,
     flex: 'none',

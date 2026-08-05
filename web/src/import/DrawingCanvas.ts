@@ -6,7 +6,7 @@ import type { Backdrop } from './rasterImport'
 import { backdropBounds } from './rasterImport'
 import { normalizeFurniture } from './normalize'
 import { drawSymbol, seatsForSize } from '../editor/symbols'
-import { MONO } from '../ui/type'
+import { MONO, UI } from '../ui/type'
 
 /**
  * Framework-agnostic CAD renderer for an imported {@link Drawing}. Renders
@@ -1514,7 +1514,7 @@ export class DrawingCanvas {
     ctx.stroke()
     // A short label beside the pin so the plan reads which room is forced where.
     ctx.fillStyle = '#e8edf2'
-    ctx.font = '600 10px "Space Grotesk", system-ui, sans-serif'
+    ctx.font = `600 10px ${UI}`
     ctx.textAlign = 'left'
     ctx.textBaseline = 'middle'
     ctx.fillText(label, p.x + r + 3, p.y)

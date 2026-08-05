@@ -295,19 +295,19 @@ export function GenerateStep({
                     data-testid="generate-alt-ai"
                     aria-busy="true"
                   >
-                    <span className="generate-alt-ai-badge num">AI</span>
+                    <span className="generate-alt-ai-badge">AI</span>
                     <span className="generate-alt-ai-verdict">Assessing soft goals…</span>
                   </div>
                 )}
                 {aiPhase === 'ready' &&
                   (ai ? (
                     <div className="generate-alt-ai" data-testid="generate-alt-ai">
-                      <span className="generate-alt-ai-badge num">AI {Math.round(ai.score)}</span>
+                      <span className="generate-alt-ai-badge">AI {Math.round(ai.score)}</span>
                       <span className="generate-alt-ai-verdict">{ai.verdict}</span>
                     </div>
                   ) : (
                     <div className="generate-alt-ai is-na" data-testid="generate-alt-ai">
-                      <span className="generate-alt-ai-badge num">AI</span>
+                      <span className="generate-alt-ai-badge">AI</span>
                       <span className="generate-alt-ai-verdict">No assessment returned.</span>
                     </div>
                   ))}

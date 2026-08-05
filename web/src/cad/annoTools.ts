@@ -4,7 +4,7 @@
 
 import type { CadTool, ToolCtx, Vec2, SnapResult } from './model'
 import { CAD_COLOR } from './model'
-import { MONO } from '../ui/type'
+import { MONO, UI } from '../ui/type'
 
 // ---- local geometry helpers (world = meters, no Y-flip) ----
 const sub = (p: Vec2, q: Vec2): Vec2 => ({ x: p.x - q.x, y: p.y - q.y })
@@ -179,7 +179,7 @@ function textTool(): CadTool {
       const s = ctx.toScreen(at)
       const px = Math.max(9, 0.3 * ctx.pxPerM)
       g.save()
-      g.font = `${px}px "Space Grotesk", sans-serif`
+      g.font = `${px}px ${UI}`
       g.textAlign = 'left'
       g.textBaseline = 'alphabetic'
       g.fillStyle = CAD_COLOR.text

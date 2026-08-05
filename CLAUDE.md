@@ -53,8 +53,20 @@ cd web && pnpm dev               # frontend only (uses existing wasm bindings)
 - **Core is the source of truth.** Mutate through `Editor` methods, then re-read `state()` to render.
   Never put document/business logic in the TS renderer.
 - **Units are meters** in the core; the frontend owns pixels-per-meter scale.
-- **Typography carries meaning:** all numeric/dimension data uses **IBM Plex Mono**; UI uses
-  **Space Grotesk**. A single warm-amber accent (`#E8A13C`) sits on deliberately cool content colors.
+- **Typography carries meaning:** quantitative data — areas, counts, dimensions, prices,
+  coordinates — uses **IBM Plex Mono** (the `.num` class / `--font-mono` / `ui/type.ts` `MONO`), so a
+  metrics column reads as an instrument. Not every integer in a sentence: `num` marks the *value*.
+  UI text uses **Hanken Grotesk**; large display headlines use **Schibsted Grotesk**.
+  *(This section previously specified Space Grotesk for UI — a font the app never loaded. Both it and
+  Plex Mono were named in ~47 places and shipped in neither; `src/ui/fonts.test.mjs` now fails the
+  build if a named family isn't imported.)*
+- **Two palettes, never crossed** (`docs/design/ui-system.md` §4.1.1). **UI chrome** uses the brand
+  accent `--accent` (blue `#2d5bd6`). **The canvas** uses a closed, semantic set — gray
+  `--canvas-unbound`, blue `--canvas-bound` (a product is specified), amber `--canvas-live`
+  (selection/hover) — governed by what an object *is*. `--canvas-bound` holds the same hex as
+  `--accent` today and is deliberately **not** aliased to it: a rebrand must not silently recolour
+  every specified item on every plan. UI elements that are *legends* for canvas state (a marker's ref
+  pin) correctly use the canvas token.
 - **No bloat** (`.claude/rules/no-bloat.md`): search for an existing symbol before adding a new one;
   delete superseded code in the same change.
 
