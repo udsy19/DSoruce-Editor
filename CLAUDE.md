@@ -55,6 +55,11 @@ cd web && pnpm dev               # frontend only (uses existing wasm bindings)
 - **Units are meters** in the core; the frontend owns pixels-per-meter scale.
 - **Typography carries meaning:** all numeric/dimension data uses **IBM Plex Mono**; UI uses
   **Space Grotesk**. A single warm-amber accent (`#E8A13C`) sits on deliberately cool content colors.
+- **Gate independence** (`.claude/rules/gate-independence.md`): a gate may not consume any value
+  produced by the system under test — it must re-derive its ground truth from the artifact bytes or
+  the core state. Every blocker in the qbiq-parity mission was one instance of violating this, each
+  against a 10/10 board. Any gate touching producer-adjacent data ships with the byte-identical-
+  under-sabotage proof.
 - **No bloat** (`.claude/rules/no-bloat.md`): search for an existing symbol before adding a new one;
   delete superseded code in the same change.
 

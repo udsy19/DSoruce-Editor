@@ -30,7 +30,7 @@ cd "$REPO"
 
 OUT="${OUT_DIR:-$REPO/out}"
 
-declare -a IDS=(G1 G2 G3 G4 G5 G6 G7 G8 G9 G10)
+declare -a IDS=(G1 G2 G3 G4 G5 G6 G7 G8 G9 G10 G11)
 declare -a CMDS=(
   "python3 $HERE/g1-sheet-structure.py"
   "python3 $HERE/g2-formula-liveness.py"
@@ -42,6 +42,7 @@ declare -a CMDS=(
   "node $HERE/g8-web-viewer.mjs"
   "python3 $HERE/g9-roundtrip.py"
   "node $HERE/g10-one-action.mjs"
+  "python3 $HERE/g11-furniture-agreement.py"
 )
 declare -a TITLES=(
   "Sheet structure"
@@ -54,8 +55,10 @@ declare -a TITLES=(
   "Web viewer"
   "Round-trip"
   "One-action UX"
+  "Furniture agreement"
 )
 # The index of the gate that PRODUCES the pack (G10). Everything else reads.
+# G11 is appended AFTER it, so this index is unaffected by the append.
 PRODUCER_IDX=9
 
 # The artifacts the pack itself is made of — what the integrity pass watches.

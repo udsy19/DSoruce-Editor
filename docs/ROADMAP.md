@@ -329,12 +329,34 @@ so the workbook, plan, renders, video and viewer cannot disagree.
 - Follow-ups (tracked in `reports/ORCHESTRATOR_LOG.md`, defect IDs in `reports/defects-*.md`):
   - **Renders remain the weakest deliverable (D3/E6)** — ~2.0× the reference's flatness and 0.43× its
     edge density; the video has a 40.4%-blown frame at t=22.2 that G7 structurally cannot see.
-    `Conference_room` is capped by geometry (a 2.9 m table in a 5×4 m room) and **is not closed**.
+    **ROUTED, not to be fixed ad hoc:** closing this needs a richer 3D asset library, not better
+    framing, which makes it a candidate-evaluation problem — which asset source or rendering approach
+    ports cleanly, under what licence, scored against fixtures defined *before* the candidates run.
+    Bolting assets on now would short-circuit that evaluation and manufacture a post-hoc metric.
+    It belongs in the materials/rendering bake-off track (downstream of the IFC pre-work); that track
+    is not in this repo, so the fixture targets are pre-registered here to survive the handoff:
+    **flatness 2.0× → ≤1.2× the reference; edge density 0.43× → ≥0.75×; colour count 734 → ≥1500**
+    (reference: flat 22.0, edge 34.6, colours 2439; ours at close: 44.8 / 14.8 / 734).
+  - **`Conference_room` is a program-fit problem, not a rendering one.** A 2.9 m table and 8 chairs in
+    a 5×4 m room leaves no camera solution at 1.6 m eye height, and it is why only 3 of 4 renders can
+    evidence their floor. Score it against the generator's **furnishing rules** (oversized furniture
+    selected for the room), not the render pipeline.
   - **Only 3 of 4 renders evidence their floor, with zero headroom**, and the camera that fixed
     `Conference_room`'s composition is what cost the fourth (7.01% on the prior camera).
-  - **E7** — the plan bills furniture it doesn't draw (the pack's only artifact-level inconsistency).
-  - Gate coverage: G6 certifies from the bottom ~15% of frame and has no room-identity check;
-    G4 passes on a plan with every perimeter-window pixel deleted. Being hardened.
+  - [x] **E7 closed** — the plan billed furniture it didn't show. Root cause was NOT a symbol-coverage
+    gap (`drawFurnitureSymbol` already has a footprint `default:`); labels drew last and `placeNear`
+    de-collided them against other labels only, painting over 12 px chairs. New **G11** asserts both
+    emission (multiset re-derived from core state) and **visibility in the delivered pixels** — an
+    emission-only gate would have passed while the defect persisted. It found 8 occluded rooms where
+    the defect report found 4.
+  - Gate coverage hardened (G4 14→18, G6 43→53 checks): G6 gained a ground-coverage assertion and
+    pairwise dHash room distinctness; G4 now reads the model and asserts billed ⇔ drawn.
+    **Residual limits ACCEPTED — do not invest further** (`reports/P-1.md` has the numbers): a
+    ≤21%-of-frame mid-band repaint survives G6, and G4 tolerates *erasing* ~50% of window pixels.
+    The threat model is regression and drift in our own code, not a producer forging outputs;
+    perceptual gates that catch a plan collapsing to a 19×3 px smudge are doing their job. The
+    producer-metadata class was different — the gate was measuring nothing — and is now closed by
+    `.claude/rules/gate-independence.md`.
   - Headless-vs-in-app divergence: `render-rooms.mjs` passes `--lamp 2`, `deliverablePack.ts` none.
   - Tier-2 3D room thumbnails; round-1 minors D6, D10, D12–D17.
 - [x] **Report cover branding + A/B/C differentiation** — client logo focal on the cover, project/address/

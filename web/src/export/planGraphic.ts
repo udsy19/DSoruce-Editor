@@ -20,7 +20,7 @@
 // DETERMINISM IS GATED (G4 renders twice and diffs the bytes): no `Date`, no
 // `Math.random`, no iteration over unordered collections, fixed font metrics.
 
-import type { CirculationScore, DocState, DocZone } from '../editor/EditorCanvas'
+import type { CirculationScore, DocComponent, DocState, DocZone } from '../editor/EditorCanvas'
 import { drawFurnitureSymbol } from '../editor/furniture'
 import { zoneArea, zoneCenter } from '../util/zoneGeom'
 import { renderPrintCanvas } from './pdf'
@@ -79,9 +79,6 @@ const NON_ROOM_ZONES = new Set(['Circulation', 'Core'])
 /** The reference gives all circulation ONE aggregated Inventory row, Room ID 0. */
 export const CIRCULATION_ROOM_ID = '0'
 
-const FURN_INK = '#1c2126'
-const FURN_DETAIL = '#7c848e'
-
 // ---------------------------------------------------------------------------
 // Room set
 // ---------------------------------------------------------------------------
@@ -137,6 +134,16 @@ function pathZone(ctx: CanvasRenderingContext2D, z: DocZone, X: (m: number) => n
   } else {
     ctx.rect(X(s.x - s.w / 2), Y(s.y - s.h / 2), s.w * k, s.h * k)
   }
+}
+
+/** A component's axis-aligned footprint in CANVAS pixels — the ink a furniture
+ *  symbol occupies, in the box shape `placeNear` de-collides against. */
+function componentBox(c: DocComponent, X: (m: number) => number, Y: (m: number) => number, k: number): OccBox {
+  const cos = Math.abs(Math.cos(c.rotation))
+  const sin = Math.abs(Math.sin(c.rotation))
+  const w = (c.w * cos + c.h * sin) * k
+  const h = (c.w * sin + c.h * cos) * k
+  return { x: X(c.x) - w / 2, y: Y(c.y) - h / 2, w, h }
 }
 
 function wallBounds(state: DocState) {
@@ -267,12 +274,27 @@ export function renderPlanCanvas(
 
   // 6. Room ID labels — bold, centred, knocked out of the linework with a white
   //    halo, de-collided through the drawing set's own `placeNear`.
+  //
+  //    `occ` IS SEEDED WITH THE FURNITURE FOOTPRINTS, not just with the labels
+  //    already placed. The labels are drawn last and knock a 4 px white halo out
+  //    of everything under them; at the workbook's 1040x780 the plate maps to
+  //    ~23.6 px/m, so a 0.6 m table is 14 px and a 0.5 m chair 12 px — smaller
+  //    than the label that lands on top. Rooms 145/147 billed `Table W60 X L60`
+  //    and drew nothing but the number, and 155/171 did the same with their
+  //    chair (defect E7, reports/defects-2.md). Labels now step aside for
+  //    furniture exactly as they already step aside for each other: DISPLACED,
+  //    never dropped or shrunk, so G3's "every Inventory Room ID appears exactly
+  //    once in `labels`" still holds and G11 can see the furniture.
   const rooms = opts.rooms ?? planRoomList(state, opts.roomRefs)
   const fs = Math.round(15 * scale)
   ctx.font = `700 ${fs}px Helvetica, Arial, sans-serif`
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
   const occ: OccBox[] = []
+  for (const c of state.components) {
+    if (c.category === 'Door') continue
+    occ.push(componentBox(c, X, Y, k))
+  }
   const labels: string[] = []
   for (const r of rooms) {
     const w = ctx.measureText(r.id).width + 8 * scale

@@ -338,11 +338,28 @@ function boxesOverlap(a: OccBox, b: OccBox): boolean {
   return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y
 }
 
+/** Total area of `box` covered by anything already in `occ`. */
+function overlapArea(box: OccBox, occ: OccBox[]): number {
+  let a = 0
+  for (const b of occ) {
+    const w = Math.min(box.x + box.w, b.x + b.w) - Math.max(box.x, b.x)
+    const h = Math.min(box.y + box.h, b.y + b.h) - Math.max(box.y, b.y)
+    if (w > 0 && h > 0) a += w * h
+  }
+  return a
+}
+
 /**
  * Find a non-overlapping center for a `w×h` label near (cx,cy): try the true
  * spot first, then a fixed stack of vertical/horizontal offsets. The candidate
  * order is deterministic, so the same plan always lays out identically. Records
  * the chosen box in `occ` and returns the center actually used.
+ *
+ * When EVERY candidate collides — a dense desk field where `occ` is seeded with
+ * furniture (planGraphic.ts) can do that — the least-overlapping candidate wins
+ * rather than the true spot, so the label lands in the widest gap it can reach
+ * instead of squarely on a symbol. Ties keep candidate order, so the layout
+ * stays deterministic (gate G4 diffs two independent renders byte-for-byte).
  */
 export function placeNear(occ: OccBox[], cx: number, cy: number, w: number, h: number): { x: number; y: number } {
   const dv = h + 3
@@ -362,15 +379,22 @@ export function placeNear(occ: OccBox[], cx: number, cy: number, w: number, h: n
     [0, 3 * dv],
     [0, -3 * dv],
   ]
+  let best: [number, number] = [0, 0]
+  let bestArea = Infinity
   for (const [ox, oy] of cands) {
     const box: OccBox = { x: cx + ox - w / 2, y: cy + oy - h / 2, w, h }
     if (!occ.some((b) => boxesOverlap(box, b))) {
       occ.push(box)
       return { x: cx + ox, y: cy + oy }
     }
+    const a = overlapArea(box, occ)
+    if (a < bestArea) {
+      bestArea = a
+      best = [ox, oy]
+    }
   }
-  occ.push({ x: cx - w / 2, y: cy - h / 2, w, h })
-  return { x: cx, y: cy }
+  occ.push({ x: cx + best[0] - w / 2, y: cy + best[1] - h / 2, w, h })
+  return { x: cx + best[0], y: cy + best[1] }
 }
 
 /** Draw a room label + area at each non-circulation zone center, de-collided. */
