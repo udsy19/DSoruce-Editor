@@ -6,6 +6,22 @@ truth independently — from the artifact bytes, or from the core state.**
 Trust requires positive evidence from an independent path. A gate that reads the producer's own
 account of what it did is not measuring the producer; it is transcribing it.
 
+**The unified form.** Every section below is that one statement projected onto a different surface:
+
+> **A check is only as good as the independence of its inputs, and independence must be positively
+> established, never assumed.**
+
+Gates trusting their subject's metadata · baselines drawn from the population under test ·
+presence-matching two contaminated lists · a board trusting its gates' exit codes · a falsification
+harness endangering its own subject · an agent performing a trusted-human event — all the same
+violation, wearing the clothes of whatever surface it appeared on. The sections earn their place by
+naming a surface where it happened *in practice*, with the concrete pattern a future reader needs.
+
+**There will be a thirteenth instance, on a surface no section below describes.** Recognise it by the
+unified form, not by matching an existing example: ask what the check's inputs are, who produced them,
+and what positive evidence establishes that they did not come from the thing being checked. Then add
+the section — with its worked case and its falsification, like every one below.
+
 ## Why this is a rule and not a preference
 
 Every blocker found in the qbiq-parity mission — three of them, across two adversarial review rounds,
