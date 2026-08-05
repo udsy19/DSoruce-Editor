@@ -2033,6 +2033,135 @@ button {
   color: var(--faint);
 }
 
+/* ---------------------------- Place palette ------------------------------- */
+/* Was a 13-key CSSProperties dictionary + 18 hexes, all dead
+   `var(--token, #hex)` fallbacks. Shares the card shell with `.layers-card`
+   deliberately-not: the two cards differ in margin and this file keeps them
+   separate rather than inventing a shared abstraction for two call sites. */
+.place-card {
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  padding: 10px 0 8px;
+  font-family: var(--font-ui);
+  color: var(--text);
+  margin-top: 10px;
+}
+.place-eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--eyebrow);
+  padding: 0 12px 6px;
+}
+.place-hint {
+  font-size: 11.5px;
+  color: var(--muted);
+  padding: 0 12px 8px;
+  line-height: 1.45;
+}
+.place-group {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: transparent;
+  padding: 6px 12px;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-2);
+  cursor: pointer;
+  text-align: left;
+}
+.place-chev {
+  font-size: 9px;
+  color: var(--muted);
+  width: 10px;
+  flex: none;
+}
+.place-count {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted);
+}
+.place-item {
+  width: 100%;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  border: none;
+  background: transparent;
+  padding: 4px 12px 4px 28px;
+  font-family: inherit;
+  font-size: 12.5px;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+.place-item-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.place-dims {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  flex: none;
+}
+.place-plus {
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 13px;
+  flex: none;
+  line-height: 1;
+}
+.place-custom-form {
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px 2px;
+  border-top: 1px solid var(--hairline);
+  margin-top: 6px;
+  align-items: center;
+}
+.place-input {
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  padding: 5px 8px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-xs);
+  background: var(--surface-2);
+  color: var(--text);
+  outline: none;
+  min-width: 0;
+  flex: 1;
+}
+/* Width/depth in metres — a numeric field, fixed width so the two align. */
+.place-input.is-num {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  width: 48px;
+  flex: none;
+}
+.place-btn {
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 5px 10px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-xs);
+  background: var(--surface);
+  color: var(--text-2);
+  cursor: pointer;
+  flex: none;
+}
+
 /* ----------------------------- Layers panel ------------------------------- */
 /* Was a 10-key CSSProperties dictionary + 19 hexes, all of them dead
    `var(--token, #hex)` fallbacks. */
