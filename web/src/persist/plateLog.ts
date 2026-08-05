@@ -82,6 +82,12 @@ export interface PlateLogEntry {
  * still register. Distinguishing that from a human is not solvable in-page. What
  * this does guarantee is that no script-driven flow — which is how these tests
  * and every `evaluate()` harness work — can contribute evidence.
+ *
+ * Because that residual risk is not closable in-page, the rule is enforced by
+ * discipline instead: `.claude/rules/gate-independence.md`, "An agent must never
+ * perform or simulate a trusted-human event." An agent may prepare, observe, and
+ * verify afterwards from the recorded artifact — it may not supply the
+ * provenance, because here the provenance IS the value.
  */
 const TRUSTED_INPUT_WINDOW_MS = 30_000
 let lastTrustedInputAt = 0
