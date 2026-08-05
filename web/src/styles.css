@@ -2033,6 +2033,163 @@ button {
   color: var(--faint);
 }
 
+/* ------------------- Selection card (Materio floating) -------------------- */
+/* Was 14 inline style objects + 15 hard-coded hexes inside SelectionCard.tsx.
+   The card's own off-ramp inks are declared ONCE here as component-scoped
+   properties rather than pushed into :root — they are this card's ink, not the
+   app's, and hoisting a one-off into the global palette is how a token set
+   stops meaning anything. Values are byte-identical to the inline versions
+   except where a hex was within ~5/255 of an existing token, which is noted. */
+.selcard {
+  --selcard-ink: #1e2329; /* NOT snapped to --text (#1a1d21). It is 4-8/255 away
+                             and the swap is invisible in isolation — but this
+                             slice's contract is "identical unless the change was
+                             approved", and an 8956-px diff measured by
+                             scripts/pixdiff.py is a change whether or not an eye
+                             catches it. Snapping the off-ramp inks is a real
+                             improvement; it is a separate, visible-by-design
+                             decision, not a side effect of moving declarations
+                             out of a style attribute. */
+  --selcard-sub: #7a828c; /* sits BETWEEN --muted and --faint; snapping either
+                             way visibly changes the subtitle, so it stays */
+  --selcard-tint: #eef0f3; /* neutral chip/thumb tint */
+  --selcard-tint-2: #e6e9ee; /* empty-thumb tint (one step darker) */
+  --selcard-review-ink: #a06a12; /* darker than --review for text on the tint */
+  --selcard-ok-ink: #1e7d3e; /* darker than --ok, same reason */
+  position: absolute;
+  width: 260px; /* CARD_W — the measurement code reads the same constant */
+  background: var(--surface);
+  border-radius: var(--r-md);
+  box-shadow:
+    0 8px 28px rgba(24, 30, 40, 0.14),
+    0 1px 3px rgba(24, 30, 40, 0.1);
+  padding: 12px 14px;
+  z-index: 20;
+  font-family: var(--font-ui);
+  pointer-events: auto;
+  opacity: 0;
+  transform: translateY(4px);
+  transition:
+    opacity 140ms ease,
+    transform 140ms ease;
+}
+.selcard.is-entered {
+  opacity: 1;
+  transform: translateY(0);
+}
+/* Pre-measurement: rendered (so it can be measured) but not shown. */
+.selcard.is-measuring {
+  visibility: hidden;
+}
+.selcard-caret {
+  position: absolute;
+  width: 10px; /* CARET */
+  height: 10px;
+  background: var(--surface);
+  transform: rotate(45deg);
+  bottom: -5px;
+  box-shadow: 2px 2px 4px rgba(24, 30, 40, 0.05);
+}
+/* Card flipped BELOW its anchor → the caret moves to the top edge and its
+   shadow flips with it, or it would light from the wrong side. */
+.selcard-caret.is-below {
+  bottom: auto;
+  top: -5px;
+  box-shadow: -2px -2px 4px rgba(24, 30, 40, 0.05);
+}
+.selcard-head {
+  position: relative;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.selcard-thumb {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--r-sm);
+  object-fit: cover;
+  flex: none;
+  background: var(--selcard-tint);
+}
+.selcard-thumb.is-empty {
+  background: var(--selcard-tint-2);
+}
+.selcard-text {
+  min-width: 0;
+  flex: 1;
+}
+.selcard-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--selcard-ink);
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.selcard-sub {
+  font-size: 11.5px;
+  color: var(--selcard-sub);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.selcard-close {
+  flex: none;
+  border: none;
+  background: transparent;
+  color: var(--faint);
+  cursor: pointer;
+  padding: 2px;
+  margin: -2px -4px 0 0;
+  line-height: 0;
+}
+.selcard-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+/* Decision lifecycle (Materio): open → in review → approved. UI status colour,
+   deliberately NOT the canvas palette (ui-system.md §4.1.1) — this chip is
+   chrome describing a record's state, not a legend for anything drawn. */
+.selcard-chip {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 3px 8px;
+  border-radius: var(--r-pill);
+}
+.selcard-chip.is-open {
+  background: var(--selcard-tint);
+  color: var(--muted);
+}
+.selcard-chip.is-review {
+  background: #fdf3e0;
+  color: var(--selcard-review-ink);
+}
+.selcard-chip.is-approved {
+  background: #e5f4ea;
+  color: var(--selcard-ok-ink);
+}
+.selcard-price {
+  margin-left: auto;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--selcard-ink);
+}
+.selcard-actions {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--selcard-tint); /* NOT --hairline — see --selcard-ink */
+  display: flex;
+  gap: 8px;
+}
+
 /* ------------------------------ Import ---------------------------------- */
 .import-err {
   position: absolute;
