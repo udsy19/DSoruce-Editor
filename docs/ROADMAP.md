@@ -353,10 +353,17 @@ Audit + design system from a full naive-user walkthrough on the real DWG. Shippi
     above what physically fits); and the team-room label is **derived** from `seats` — `'6 person'`
     was a hand-typed restatement of the field beside it. Rust test
     `briefed_room_seats_match_the_brief` pins it (135 tests).
-    **Measured on the real 882 m² DWG**, briefing team-2/4/6/8 + boardroom: the placed 8-person team
-    room reports **8 (was 10)** → `meetingSeats` −2 → `seats` −2 → density up. **Winner badges did NOT
-    shift** — A "Most seats" + "Best density", C "Best daylight", B none, same as before. As in slice
-    2, "Best density" is workstations/NIA and "Best daylight" is geometric, so neither reads capacity.
+    **MEASURED as a matched A/B on the real DWG plate** (`real_plate_doc()`, the 843 m² multi-wing
+    trace of the user's file) with the exact program the app sends: identical geometry, identical
+    seeds, the only difference being whether the brief's `seats` reaches the generator — `seats: 0`
+    reproduces pre-fix behaviour exactly, so the pair is controlled rather than observed. 3
+    strategies × 3 seeds, all 9 cells agree: the briefed 8-person team room's table **10 → 8**;
+    every other placed table unchanged, including the boardroom (brief 14, table seats 12 — the
+    clamp lowers, never raises). `meetingSeats` **26 → 24**, `seats` A 111→109 / B 109→107 /
+    C 106→104, workstations unchanged. **"Most seats" argmax stays A in both arms — no badge
+    shifts**, and it can't: "Best density" is workstations/NIA and "Best daylight" is geometric, so
+    neither reads capacity. On the live 882 m² DWG the shipped gallery reads A 90 ws / 7.4 m²·seat
+    (NIA 848, meetingSeats 24); the same brief pre-fix computes 7.31 — density up ~1.8%.
     Occupancy render census (all paths checked, per the "find all three" requirement): canvas room
     tag and report `meetingSeats`→seats→density→"Most seats" both read `zone_stats().capacity` (one
     owner); Program summary reads `ROOM_DEFS.seats` (the brief); takeoff and 3D render no occupancy.
