@@ -13,7 +13,7 @@ import { fmtMeters } from '../cad/dimEdit'
 import type { DocComponent, DocState, DocWall, DocZone } from '../types/doc'
 import {
   planStyle, strokePx, C, DECISION_DOT, ZONE,
-  WHITE, BLACK, THUMB_FILL, THUMB_OTHER, hexToRgba, CORE_POCHE, CHROME, hatchLevel, detailLevel,
+  WHITE, BLACK, THUMB_FILL, THUMB_OTHER, hexToRgba, CORE_POCHE, CHROME, hatchLevel, detailLevel, SERVICE_ROOMS, abbreviate,
 } from './planStyle'
 import type { FillStyle } from './planStyle'
 import type { Metrics, ZoneStat } from '../types/metrics'
@@ -43,6 +43,8 @@ export interface PaintView {
 /** A room tag computed by {@link drawZones}, drawn above furniture by
  *  {@link drawZoneTags}. */
 export interface ZoneTag {
+  /** Zone id — so hover/selection can promote this label to a pill. */
+  id: number
   name: string
   metrics: string | null
   cx: number
@@ -384,30 +386,25 @@ export function drawZones(
           0,
         )
       }
-      // Area-weighted centroid (world), then screen, for the room tag.
+      // Shoelace, for AREA only. The label anchor is the pole of
+      // inaccessibility, not this centroid: on an L-shaped or notched zone the
+      // centroid can sit in the notch, outside the room it is meant to name.
       let a2 = 0
-      let cx = 0
-      let cy = 0
       for (let i = 0; i < pts.length; i++) {
         const [x0, y0] = pts[i]
         const [x1, y1] = pts[(i + 1) % pts.length]
-        const cross = x0 * y1 - x1 * y0
-        a2 += cross
-        cx += (x0 + x1) * cross
-        cy += (y0 + y1) * cross
+        a2 += x0 * y1 - x1 * y0
       }
       const stat = zoneStats.get(z.id)
       const area = stat?.area ?? Math.abs(a2) / 2
       if (area < 6 || Math.abs(a2) < 1e-6) continue
-      const wcx = cx / (3 * a2)
-      const wcy = cy / (3 * a2)
-      const c = v.toScreen(wcx, wcy)
+      const c = poleOfInaccessibility(pts.map((pt) => v.toScreen(pt[0], pt[1])))
       const name = z.label.toUpperCase()
       ctx.font = '600 10px "Hanken Grotesk", system-ui, sans-serif'
       const cap = stat?.capacity ?? 0
       const metrics: string | null =
         area >= 12 ? `${fmtArea(area)} m²${cap > 0 ? ` · ${cap} pax` : ''}` : null
-      tags.push({ name, metrics, cx: c.x, cy: c.y, namePx: 10, color: pal.line })
+      tags.push({ id: z.id, name, metrics, cx: c.x, cy: c.y, namePx: 10, color: pal.line })
     } else if (z.shape.kind === 'RectRing') {
       const s = z.shape
       const o = v.toScreen(s.x - s.w / 2, s.y - s.h / 2)
@@ -470,7 +467,7 @@ export function drawZones(
       ctx.font = '500 9.5px "Hanken Grotesk", system-ui, sans-serif'
       if (h < 34 || ctx.measureText(metrics).width > maxW) metrics = null
       const c = v.toScreen(s.x, s.y)
-      tags.push({ name, metrics, cx: c.x, cy: c.y, namePx, color: pal.line })
+      tags.push({ id: z.id, name, metrics, cx: c.x, cy: c.y, namePx, color: pal.line })
     }
   }
   if (clipped) ctx.restore()
@@ -482,45 +479,154 @@ export function drawZones(
  *  so a room name reads over desks/linework without the cheap hard white box.
  *  Numbers set in the UI sans (Hanken, tabular) to match the rest of the sheet;
  *  see the CLAUDE.md typography note in the visual overhaul. */
-export function drawZoneTags(v: PaintView, tags: ZoneTag[]) {
+/**
+ * POLE OF INACCESSIBILITY — the interior point farthest from any edge.
+ *
+ * The centroid is the wrong anchor for a room label: on an L-shaped or notched
+ * zone it can land in the notch, outside the room entirely, and on a concave
+ * plate that is the common case rather than the exception. This finds the
+ * centre of the largest inscribed circle instead, so a label sits in the
+ * roomiest part of whatever shape the room actually is.
+ *
+ * Grid-refinement rather than the full priority-queue polylabel: sample a
+ * coarse grid, keep the best cell, refine around it. Cheap, and the precision
+ * that matters here is "well inside the room", not sub-pixel.
+ */
+function poleOfInaccessibility(
+  poly: Array<{ x: number; y: number }>,
+  iterations = 4,
+): { x: number; y: number } {
+  const xs = poly.map((p) => p.x)
+  const ys = poly.map((p) => p.y)
+  let minX = Math.min(...xs)
+  let maxX = Math.max(...xs)
+  let minY = Math.min(...ys)
+  let maxY = Math.max(...ys)
+
+  const distToEdges = (px: number, py: number) => {
+    let inside = false
+    let best = Infinity
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const a = poly[i]
+      const b = poly[j]
+      if (a.y > py !== b.y > py && px < ((b.x - a.x) * (py - a.y)) / (b.y - a.y) + a.x) {
+        inside = !inside
+      }
+      const dx = b.x - a.x
+      const dy = b.y - a.y
+      const len2 = dx * dx + dy * dy
+      const t = len2 > 0 ? Math.max(0, Math.min(1, ((px - a.x) * dx + (py - a.y) * dy) / len2)) : 0
+      best = Math.min(best, Math.hypot(px - (a.x + t * dx), py - (a.y + t * dy)))
+    }
+    return inside ? best : -best
+  }
+
+  let best = { x: (minX + maxX) / 2, y: (minY + maxY) / 2, d: -Infinity }
+  for (let it = 0; it < iterations; it++) {
+    const stepX = (maxX - minX) / 8
+    const stepY = (maxY - minY) / 8
+    for (let gx = 0; gx <= 8; gx++) {
+      for (let gy = 0; gy <= 8; gy++) {
+        const x = minX + gx * stepX
+        const y = minY + gy * stepY
+        const d = distToEdges(x, y)
+        if (d > best.d) best = { x, y, d }
+      }
+    }
+    minX = best.x - stepX
+    maxX = best.x + stepX
+    minY = best.y - stepY
+    maxY = best.y + stepY
+  }
+  return { x: best.x, y: best.y }
+}
+
+/**
+ * Draw the room labels.
+ *
+ * THREE CHANGES FROM THE PILL-PER-ROOM VERSION, all from Phase 0's measurement:
+ *
+ * 1. NO PILL AT REST. The reference draws text on the drawing, not chips over
+ *    it; at overview zoom our plan was mostly pills. The pill is now an
+ *    INTERACTIVE state — `highlight` (hover/selection) only — which keeps the
+ *    rule that interactive states are never part of the resting drawing.
+ * 2. COLLISION LADDER. Labels are placed largest-room-first and each one takes
+ *    the best form that still fits without overlapping a label already placed:
+ *      full name + metrics -> name only -> smaller name -> abbreviation -> hide.
+ *    Hiding is a legitimate rung, not a failure: an unreadable pile of
+ *    overlapping text identifies nothing, and the legend still does.
+ * 3. PROFILE POLICY. `paper` names only service rooms, abbreviated, and lets
+ *    the legend identify everything else — which is what the reference does.
+ */
+export function drawZoneTags(v: PaintView, tags: ZoneTag[], highlight?: Set<number>) {
   const ctx = v.ctx
+  const style = planStyle(v.presentation ? 'paper' : 'editor')
+  const policy = style.labelPolicy
   const NAME_FONT = (px: number) => `600 ${px}px "Hanken Grotesk", system-ui, sans-serif`
   const MET_FONT = '500 9.5px "Hanken Grotesk", system-ui, sans-serif'
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
-  for (const t of tags) {
-    ctx.font = NAME_FONT(t.namePx)
-    const nameW = ctx.measureText(t.name).width
-    ctx.font = MET_FONT
-    const metW = t.metrics ? ctx.measureText(t.metrics).width : 0
-    const padX = 8
-    const pillW = Math.max(nameW, metW) + padX * 2
-    const pillH = t.metrics ? 32 : 19
-    const px = t.cx - pillW / 2
-    const py = t.cy - pillH / 2
 
-    // Soft pill: drop shadow + near-white fill + hairline border in zone color.
-    ctx.save()
-    ctx.shadowColor = C.pillShadow
-    ctx.shadowBlur = 6
-    ctx.shadowOffsetY = 1
-    ctx.fillStyle = C.pillFill
-    roundRect(ctx, px, py, pillW, pillH, pillH / 2)
-    ctx.fill()
-    ctx.restore()
-    ctx.strokeStyle = hexToRgba(t.color, 0.28)
-    ctx.lineWidth = CHROME.hairline
-    roundRect(ctx, px + 0.5, py + 0.5, pillW - 1, pillH - 1, (pillH - 1) / 2)
-    ctx.stroke()
+  // Largest first: a big room losing its name to a small one is the wrong
+  // trade, and placement order is what decides that.
+  const ordered = [...tags].sort((a, b) => (b.metrics ? 1 : 0) - (a.metrics ? 1 : 0))
+  const placed: Array<{ x: number; y: number; w: number; h: number }> = []
+  const hits = (x: number, y: number, w: number, h: number) =>
+    placed.some((r) => Math.abs(r.x - x) * 2 < r.w + w && Math.abs(r.y - y) * 2 < r.h + h)
 
-    // Name (zone-line color) over metrics (muted).
+  for (const t of ordered) {
+    const isHot = highlight?.has(t.id) ?? false
+    const service = SERVICE_ROOMS.some((r) => t.name.toUpperCase().startsWith(r))
+    if (policy.names === 'service' && !service && !isHot) continue
+
+    // The ladder. Each rung is a smaller claim on the drawing than the last.
+    const rungs: Array<{ name: string; px: number; metrics: string | null }> = [
+      { name: t.name, px: t.namePx, metrics: policy.metrics ? t.metrics : null },
+      { name: t.name, px: t.namePx, metrics: null },
+      { name: t.name, px: Math.max(8, t.namePx - 2), metrics: null },
+      { name: abbreviate(t.name), px: Math.max(8, t.namePx - 2), metrics: null },
+    ]
+
+    let chosen: { name: string; px: number; metrics: string | null; w: number; h: number } | null = null
+    for (const r of rungs) {
+      ctx.font = NAME_FONT(r.px)
+      const nameW = ctx.measureText(r.name).width
+      ctx.font = MET_FONT
+      const metW = r.metrics ? ctx.measureText(r.metrics).width : 0
+      const w = Math.max(nameW, metW) + 10
+      const h = r.metrics ? 30 : 16
+      if (!hits(t.cx, t.cy, w, h)) {
+        chosen = { ...r, w, h }
+        break
+      }
+    }
+    if (!chosen) continue // every rung collided — the legend still identifies it
+    placed.push({ x: t.cx, y: t.cy, w: chosen.w, h: chosen.h })
+
+    // Pill ONLY when hot. At rest the label is text on the drawing.
+    if (isHot || policy.pillAtRest) {
+      const pillH = chosen.h + 3
+      ctx.save()
+      ctx.shadowColor = C.pillShadow
+      ctx.shadowBlur = 6
+      ctx.shadowOffsetY = 1
+      ctx.fillStyle = C.pillFill
+      roundRect(ctx, t.cx - chosen.w / 2 - 4, t.cy - pillH / 2, chosen.w + 8, pillH, pillH / 2)
+      ctx.fill()
+      ctx.restore()
+      ctx.strokeStyle = hexToRgba(t.color, 0.28)
+      ctx.lineWidth = CHROME.hairline
+      roundRect(ctx, t.cx - chosen.w / 2 - 4, t.cy - pillH / 2, chosen.w + 8, pillH, pillH / 2)
+      ctx.stroke()
+    }
+
     ctx.fillStyle = t.color
-    ctx.font = NAME_FONT(t.namePx)
-    ctx.fillText(t.name, t.cx, t.metrics ? t.cy - 6 : t.cy)
-    if (t.metrics) {
+    ctx.font = NAME_FONT(chosen.px)
+    ctx.fillText(chosen.name, t.cx, chosen.metrics ? t.cy - 6 : t.cy)
+    if (chosen.metrics) {
       ctx.fillStyle = C.labelSub
       ctx.font = MET_FONT
-      ctx.fillText(t.metrics, t.cx, t.cy + 7.5)
+      ctx.fillText(chosen.metrics, t.cx, t.cy + 7.5)
     }
   }
 }

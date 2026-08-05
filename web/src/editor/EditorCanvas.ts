@@ -1566,7 +1566,12 @@ export class EditorCanvas {
     this.paintRoomSelection()
     // Room tags sit ABOVE furniture (architect's sheet convention) with a soft
     // paper halo so they stay legible over desks and linework.
-    drawZoneTags(this.host, tags)
+    drawZoneTags(
+      this.host,
+      tags,
+      // Hover/selection promotes a label to a pill — the only place pills appear.
+      new Set(this.selectedZoneId != null ? [this.selectedZoneId] : []),
+    )
 
     // CAD layer: entities + tool preview + snap indicator + grips.
     this.cad.render(ctx, {

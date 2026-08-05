@@ -130,6 +130,26 @@ export function hatchLevel(thicknessPx: number): number {
   return smoothstep(LOD.hatchMinPx, LOD.hatchFullPx, thicknessPx)
 }
 
+/**
+ * Rooms whose names the reference DOES print, abbreviated and uppercase.
+ * Everything else is identified by the legend. Matched against the room label,
+ * case-insensitively, as a prefix.
+ */
+export const SERVICE_ROOMS = [
+  // The reference's own eight, measured.
+  'STOR', 'COAT', 'CLEA', 'IT', 'PRINT', 'WC', 'MEP', 'SHAFT',
+  // OUR vocabulary mapped onto their RULE. The reference abbreviates small
+  // service rooms; a service core is one, it just is not a word that appears in
+  // their plate. Extending the list is applying the rule, not inventing one.
+  'CORE', 'PANTRY', 'SERVER', 'UTIL',
+]
+
+/** `OPEN WORKSPACE` -> `OPEN.` — the reference's own abbreviation shape. */
+export function abbreviate(name: string): string {
+  const first = name.split(/[\s/·]+/)[0] ?? name
+  return first.length <= 4 ? `${first}.` : `${first.slice(0, 4)}.`
+}
+
 export const CHROME = {
   /** Hairline borders on affordances (tag pills, thumbnails, ruler ticks). */
   hairline: 1,
@@ -381,6 +401,38 @@ export interface PlanStyle {
    * figure/ground — which zones are content and which are the surface content
    * sits on — and that is a question the style table should answer.
    */
+  /**
+   * IDENTIFICATION POLICY for in-room text.
+   *
+   * Measured, and it falsified the brief: the reference does NOT label rooms
+   * with name + area + pax. It carries eight tiny UPPERCASE service-room
+   * abbreviations (`STOR.`, `COAT.`, `CLEA.`) and nothing else — every other
+   * room is identified by the LEGEND beside the plan. That is why the legend is
+   * a required feature and not a nicety: on paper it is the only identification
+   * there is.
+   *
+   * The editor diverges DELIBERATELY. You cannot select and rename a room you
+   * cannot name on screen, so the working surface keeps names and metrics. That
+   * is a tool affordance, not imitation, and it is recorded as a divergence in
+   * the spec's `profiles.editor`.
+   */
+  labelPolicy: {
+    /** `service` = abbreviations for service rooms only, everything else to the
+     *  legend (the reference). `all` = name every room (the editor). */
+    names: 'all' | 'service'
+    /** Area / pax line under the name. */
+    metrics: boolean
+    /**
+     * Draw the soft pill behind a RESTING label?
+     *
+     * False in both profiles. A pill per room turns a drawing into a UI: at
+     * overview zoom the plan was mostly pills. It is now an INTERACTIVE state —
+     * hover and selection only — which is what it always should have been, and
+     * matches the rule that interactive states are never part of the resting
+     * drawing.
+     */
+    pillAtRest: boolean
+  }
   groundZones: ZoneType[]
   /**
    * What a ground zone gets INSTEAD of its palette fill. `null` is true ground:
@@ -448,6 +500,7 @@ const PAPER: PlanStyle = {
   // Reference: 4.35 pt on an A4-landscape page ≈ 6 px at our typical scale.
   labelPrimary: { color: INK, sizePx: 6, weight: 500, upper: true },
   labelSecondary: { color: '#5f6771', sizePx: 5, weight: 400, upper: true },
+  labelPolicy: { names: 'service', metrics: false, pillAtRest: false },
   groundZones: ['Circulation'],
   groundTint: null, // paper: corridors ARE the paper
 }
@@ -470,6 +523,7 @@ const EDITOR: PlanStyle = {
   gridOpacity: 1,
   labelPrimary: { color: INK, sizePx: 11, weight: 500, upper: false },
   labelSecondary: { color: '#5f6771', sizePx: 9, weight: 400, upper: false },
+  labelPolicy: { names: 'all', metrics: true, pillAtRest: false },
   groundTint: 'rgba(23,26,30,0.02)', // editor: still selectable, still ground
 }
 
