@@ -49,6 +49,7 @@ import {
 import type { SheetSetMeta } from './sheetSet'
 import type { DocState, DocZone } from '../editor/EditorCanvas'
 import { zoneArea as zoneShapeArea } from '../util/zoneGeom'
+import { roomDisplayNames } from './roomNaming'
 import { CEILING_HEIGHT } from './services'
 
 export interface FinishScheduleOpts {
@@ -299,11 +300,15 @@ interface Row {
 function scheduleRows(state: DocState): Row[] {
   const zones = (state.zones ?? []).filter((z) => z.zone_type !== 'Circulation')
   const ordered = [...zones].sort((a, b) => a.id - b.id)
+  // The schedule prints the same disambiguated name the plans and the workbook
+  // print — `roomDisplayNames` is the single source (defect D4: three rows all
+  // reading "Open Workspace" are three rows a reader cannot use).
+  const names = roomDisplayNames(state)
   let n = 0
   return ordered.map((z) => {
     n++
     const key = finishTypeFor(z)
-    const name = (z.label && z.label.trim()) || `Room ${String(n).padStart(2, '0')}`
+    const name = names.get(z.id) ?? ((z.label && z.label.trim()) || `Room ${String(n).padStart(2, '0')}`)
     return {
       id: z.id,
       name,

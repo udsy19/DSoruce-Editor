@@ -47,8 +47,21 @@ const BASELINE = {
 }
 /** The closing integrity pass's own count, printed as `PASS  (12 checks)`. */
 const BASELINE_INTEGRITY = 12
-/** `node scripts/drawing-set.test.mjs` — the sheet-content regression fixture. */
-const BASELINE_DRAWING_SET = 252
+/** `node scripts/drawing-set.test.mjs` — the sheet-content regression fixture.
+ *
+ *  252 at `1a2b8d5` → **283**. Raised deliberately, with the delta measured
+ *  rather than inferred (`reports/sheets-S5-1.md` §5), because SG5's contract is
+ *  that an *unexplained* change in coverage is a defect — not that coverage may
+ *  never grow:
+ *    +18  the checking layer. S7 made drawing-set failures RECORDED rather than
+ *         thrown, so the dwg case is graded again; at 1a2b8d5 it was never
+ *         rendered at all after the first throw. Measured by scoring the current
+ *         test against a reconstructed pre-mission product: 270.
+ *    +13  the product. The 12th sheet (A.10, the paginated schedule) plus dwg's
+ *         now-distinct room names.
+ *  A DECREASE remains a defect: a silently vanished check reports a passing
+ *  number that means less than it did. Keep the strict equality. */
+const BASELINE_DRAWING_SET = 283
 
 function run(cmd, args) {
   try {

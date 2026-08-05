@@ -25,6 +25,7 @@ import { drawFurnitureSymbol } from '../editor/furniture'
 import { zoneArea, zoneCenter } from '../util/zoneGeom'
 import { renderPrintCanvas } from './pdf'
 import { labelLeader, placeNear, zoneBoxOnSheet, type OccBox } from './sheetSet'
+import { roomDisplayNames } from './roomNaming'
 import { CIRCULATION_RGBA, PLAN_PALETTE, WALL_TYPE_HEX } from './qbiqPalette'
 import { classifyWalls, type WallSpan } from './wallTypes'
 
@@ -93,6 +94,12 @@ export const CIRCULATION_ROOM_ID = '0'
  */
 export function planRoomList(state: DocState, roomRefs?: Map<number, string>): PlanRoom[] {
   const zones = state.zones ?? []
+  // `label` is what the Inventory sheet prints as `Program Room Name`, so it is
+  // the disambiguated name (`roomDisplayNames`) — the same string the drawing
+  // set's finish schedule shows for that Room ID. Computed over the WHOLE zone
+  // list, not this filtered one, so the ordinal a room gets here is the ordinal
+  // it gets on every sheet.
+  const names = roomDisplayNames(state)
   const rooms: PlanRoom[] = []
   for (const z of zones) {
     if (NON_ROOM_ZONES.has(z.zone_type)) continue
@@ -100,7 +107,7 @@ export function planRoomList(state: DocState, roomRefs?: Map<number, string>): P
     rooms.push({
       id: String(roomRefs?.get(z.id) ?? z.id),
       zoneId: z.id,
-      label: z.label || z.zone_type,
+      label: names.get(z.id) ?? (z.label || z.zone_type),
       x: c.x,
       y: c.y,
     })

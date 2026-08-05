@@ -37,7 +37,10 @@ const GATES = [
 const argv = process.argv.slice(2)
 const verbose = process.env.VERBOSE === '1'
 const produce = !argv.includes('--no-produce')
-const want = argv.filter((a) => !a.startsWith('--'))
+/** `--as-gate G12` → also print one parent-parseable scoreboard line. */
+const asGate = (argv.find((a) => a.startsWith('--as-gate=')) ?? '').split('=')[1]
+  || (argv.includes('--as-gate') ? argv[argv.indexOf('--as-gate') + 1] : '')
+const want = argv.filter((a) => !a.startsWith('--') && a !== asGate)
 const selected = (id) => want.length === 0 || want.includes(id)
 
 console.log('==============================================================')
@@ -79,7 +82,11 @@ for (const [id, title, file] of GATES) {
   })
   const out = `${r.stdout ?? ''}${r.stderr ?? ''}`
   const line = (out.match(new RegExp(`^${id} (PASS|FAIL).*$`, 'm')) ?? [])[0]
-  if (r.status !== 0) failed++
+  // Fail on the EXIT CODE or the scoreboard line. Counting rc alone let a gate
+  // that exited 0 while printing FAIL (or printing nothing parseable) be tallied
+  // as passing — the same defect the parent runner had, where the board printed
+  // "12/12 passing" directly above a FAIL row.
+  if (r.status !== 0 || !line || /^\S+ FAIL/.test(line)) failed++
   lines.push(`  ${id.padEnd(4)} ${title.padEnd(28)} ${line ? line.slice(id.length + 1) : `FAIL: no scoreboard line (rc=${r.status})`}`)
   if (verbose || r.status !== 0) {
     for (const l of out.split('\n')) if (l.trim() && !l.startsWith(id)) console.log(`       ${l}`)
@@ -96,3 +103,13 @@ if (failed) {
   process.exit(1)
 }
 console.log('ALL SHEET GATES GREEN.')
+
+// When run as a sub-gate of scripts/gates/run-all.sh (G12), that runner greps
+// for a single `^<ID> (PASS|FAIL)` line. Emit one summing this board's checks,
+// so the parent cannot tally a silent pass for a board it could not parse.
+if (asGate) {
+  const checks = lines.reduce((n, l) => n + Number((l.match(/\((\d+) checks?\)/) ?? [0, 0])[1]), 0)
+  console.log(failed
+    ? `${asGate} FAIL: ${failed} of ${ran} sheet gate(s) red (${checks} checks)`
+    : `${asGate} PASS  (${checks} checks)`)
+}

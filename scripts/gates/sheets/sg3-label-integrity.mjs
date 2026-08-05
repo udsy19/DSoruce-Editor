@@ -4,8 +4,10 @@
 //   node scripts/gates/sheets/sg3-label-integrity.mjs [--pack seeded,dwg]
 //
 // GROUND TRUTH IS CORE STATE.  The expected display string for a room is
-// `zone.label` from the document the sheets are built from (`scheduledRooms`),
-// never a string scraped off a sheet.  The gate then LOCATES that string in the
+// `scheduledRooms().display` — `zone.label` from the document the sheets are
+// built from, plus the deterministic ` (n)` ordinal the drawing layer owes a
+// room whose label the core repeated (see the AMENDMENT note below).  Never a
+// string scraped off a sheet.  The gate then LOCATES that string in the
 // delivered artifact — poppler's own reading of the delivered glyph runs, laid
 // out with the very font it rasterises with, so the text extents are measured
 // rather than estimated (the producer's `textWidth()` estimator is not used, and
@@ -27,8 +29,8 @@
 //       side bearings, ≈0.26 em for the worst (digit) pair; 0.5 em is ~2× that.
 //       Nothing is calibrated against a sheet.
 //  3.4  Every sheet renders the IDENTICAL display string for the same room:
-//       A.02/A.03/A.04 carry `label.toUpperCase()`, A.09 carries `label`, and
-//       the two must agree case-insensitively, room for room.
+//       A.02/A.03/A.04 carry `display.toUpperCase()`, A.09 carries `display`,
+//       and the two must agree case-insensitively, room for room.
 //  3.5  No label is truncated: no room's name is rendered as a shortened form
 //       ending in an ellipsis (`clip()` in sheet.ts is the only truncator).
 //
@@ -66,6 +68,30 @@
 //   testfit/A03 and testfit/A04 PASS 3.2 with 0 overlapping pairs, and
 //   seeded/A02 and dwg/A02 pass it too — the evidence that 3.2 is measuring
 //   collisions, not just printing red.
+// ---------------------------------------------------------------------------
+// AMENDMENT (agent S3, D3/D4 fix) — the expected string is the room's DISPLAY
+// name, not its raw `zone.label`.  One line changed, `label` → `display`, in
+// 3.1 and 3.4.  Nothing was relaxed; the measurement that forced it:
+//
+//   dwg core state gives zones 246, 247 and 248 the identical label
+//   "Open Workspace" (and 154/208/211/214 already carry "(1)"…"(4)").  As
+//   written, 3.1 demanded that "OPEN WORKSPACE" be found EXACTLY ONCE on a
+//   sheet — for each of the three rooms.  That is unsatisfiable by any correct
+//   drawing: printing one string for three rooms is defect D4, and printing
+//   three distinct strings makes the raw label unfindable.  The check was
+//   asserting the defect.
+//
+//   `scheduledRooms().display` (lib/sheetlib.mjs) re-derives the printed name
+//   from CORE STATE alone — base label, then a ` (n)` ordinal in Room ID order
+//   when two rooms share a base — so the gate still predicts the string it
+//   looks for without reading anything the drawing layer produced.  The fixed
+//   sheets are held to "Open Workspace (5)" for room 246 exactly, where the
+//   shipped grammar would have accepted any ordinal at all.
+//
+//   All 17 fail-first failures above are still failures under the amendment:
+//   3.2's four overlap failures (7 pairs on each of seeded A.03/A.04, 14 on each
+//   of dwg A.03/A.04), the cut "POINT", and dwg's unreadable "Wellness Room" are
+//   untouched by it — none of them involves a duplicated name.
 // ---------------------------------------------------------------------------
 
 import path from 'node:path'
@@ -111,7 +137,8 @@ async function main() {
       if (!PACKS.includes(pack)) throw new GateError(`unknown pack '${pack}'`)
       const rooms = scheduledRooms(await coreState(pack))
       if (rooms.length === 0) throw new GateError(`${pack}: core state has no scheduled rooms`)
-      const expected = rooms.map((r) => r.label.toUpperCase())
+      // `display`, not `label` — see the AMENDMENT note in the header.
+      const expected = rooms.map((r) => r.display.toUpperCase())
 
       for (const sheet of NAMED) {
         const g = loadGeometry(pack, sheet.file)
@@ -121,10 +148,10 @@ async function main() {
         // --- 3.1 one rendering per room -----------------------------------
         const instances = new Map() // box key → { text, box }
         for (const r of rooms) {
-          const want = r.label.toUpperCase()
+          const want = r.display.toUpperCase()
           const runs = findLabelRuns(words, want, expected)
           c.ok(
-            `${pack}/${sheet.file} room ${r.id} "${r.label}" rendered exactly once`,
+            `${pack}/${sheet.file} room ${r.id} "${r.display}" rendered exactly once`,
             runs.length === 1,
             runs.length === 0
               ? 'rendered 0× — the string is not recoverable from the delivered page ' +
@@ -187,13 +214,13 @@ async function main() {
       for (const r of rooms) {
         const onSchedule = findLabelRuns(
           schedWords,
-          r.label,
-          rooms.map((x) => x.label),
+          r.display,
+          rooms.map((x) => x.display),
         )
         c.ok(
-          `${pack}/A09 room ${r.id} "${r.label}" appears in the finish schedule`,
+          `${pack}/A09 room ${r.id} "${r.display}" appears in the finish schedule`,
           onSchedule.length >= 1,
-          `found ${onSchedule.length}× on A.09 while the plan sheets carry "${r.label.toUpperCase()}"`,
+          `found ${onSchedule.length}× on A.09 while the plan sheets carry "${r.display.toUpperCase()}"`,
         )
       }
     }

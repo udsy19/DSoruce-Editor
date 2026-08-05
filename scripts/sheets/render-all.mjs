@@ -17,8 +17,17 @@
 //   out/sheets/<pack>/cover.png              sheet 1     + cover.geometry.json
 //   out/sheets/<pack>/contents.png           sheet 2     + contents.geometry.json
 //   out/sheets/<pack>/A01.png … A09.png      sheets 3-11 + A01.geometry.json …
+//   out/sheets/<pack>/A10.png …              the door/window schedule's
+//                                            continuation sheet(s), if the
+//                                            document tags more openings than
+//                                            A.02's panel column holds — SEE
+//                                            `sheetSpecFor()`: the count is
+//                                            DERIVED, not a constant
 //   out/sheets/<pack>/index.json             pack manifest: sizes + sha256
 //   out/sheets/index.json                    the packs rendered by this run
+//   out/sheets/<pack>/RENDER-FAILED.json     written INSTEAD of a swap when a
+//                                            render throws; the previous pack
+//                                            is left untouched beside it
 //
 // DETERMINISM. Two consecutive runs are byte-identical per PNG:
 //   * the three packs are seeded/fixed documents (scripts/lib/demo-doc.mjs) and
@@ -54,18 +63,16 @@ export const DEFAULT_DPI = 144
 export const FREEZE_DATE_AT = '2026-01-01T12:00:00Z'
 
 /**
- * The set as `buildDrawingSetPdf` assembles it (sheetSet.ts §Orchestration):
- * cover · contents · A.01 demolition · A.02 construction · A.03 RCP ·
- * A.04 power · A.05/A.06 sections · A.07 furniture · A.08 moodboard ·
- * A.09 room finish schedule. `kind` selects which template geometry applies.
+ * The UNCONDITIONAL sheets — the ones `buildDrawingSetPdf` assembles for every
+ * document, whatever it contains (sheetSet.ts §Orchestration): cover · contents ·
+ * A.01 demolition · A.02 construction · A.03 RCP · A.04 power · A.05/A.06
+ * sections · A.07 furniture · A.08 moodboard · A.09 room finish schedule.
+ * `kind` selects which template geometry applies.
  *
- * This is the expected shape of the set, so it is also the assertion: a pack
- * that comes back with a different number of sheets FAILS. (Without
- * `--use-gl=swiftshader` the two section sheets vanish silently and a set is 9
- * pages — render-sheets.mjs passes the flag; this is the tripwire that proves
- * it still works.)
+ * Everything past A.09 is conditional and is derived, not listed — see
+ * `sheetSpecFor()`.
  */
-export const SHEET_SPEC = [
+export const BASE_SHEET_SPEC = [
   { file: 'cover', id: 'cover', no: '—', title: 'Cover', kind: 'frontmatter' },
   { file: 'contents', id: 'contents', no: '—', title: 'Contents', kind: 'frontmatter' },
   { file: 'A01', id: 'demolition', no: 'A.01', title: 'Demolition Plan', kind: 'plan' },
@@ -78,6 +85,58 @@ export const SHEET_SPEC = [
   { file: 'A08', id: 'moodboard', no: 'A.08', title: 'Moodboard', kind: 'sheet' },
   { file: 'A09', id: 'finishes', no: 'A.09', title: 'Room Finish Schedule', kind: 'sheet' },
 ]
+
+/** How many of the base sheets carry an `A.NN` number (A.01 … A.09). */
+const BASE_NUMBERED = BASE_SHEET_SPEC.filter((s) => /^A\.\d\d$/.test(s.no)).length
+
+/**
+ * The n-th (0-based) door/window schedule CONTINUATION sheet.
+ *
+ * `scheduleContSheets` (sheetSet.ts) numbers them `A.(startNo + i + 1)` with
+ * `startNo = numbered.length` — i.e. they take the next free slots after the
+ * last numbered base sheet — and titles every one of them the same. That is
+ * spec, so the harness can state it; it is NOT assumed, because
+ * `deliveredSheetNumbers()` below reads the number off each delivered page and
+ * the two must agree.
+ */
+export function contSheetSpec(i) {
+  const n = BASE_NUMBERED + 1 + i
+  return {
+    file: `A${String(n).padStart(2, '0')}`,
+    id: i === 0 ? 'openings-cont' : `openings-cont-${i + 1}`,
+    no: `A.${String(n).padStart(2, '0')}`,
+    title: 'Door & Window Schedule (cont.)',
+    kind: 'sheet',
+  }
+}
+
+/**
+ * THE EXPECTED SHEET COUNT IS DERIVED, NOT A CONSTANT.
+ *
+ * The 11 sheets above are unconditional: every drawing set has them, whatever
+ * the document says. The door/window schedule's continuation sheets are not —
+ * A.02's legend panel measures its own capacity (31 rows on A3) and paginates
+ * only what it cannot hold, so a fit-out with 31 or fewer tagged openings
+ * legitimately produces **11** sheets and one with 41 produces 12. Asserting a
+ * flat 12 made the whole suite inoperable below that threshold, and blamed
+ * swiftshader for it (reports/sheets-defects-1.md, D-C).
+ *
+ * The rule instead:
+ *
+ *   expected = the 11 unconditional sheets, in order, carrying A.01 … A.09,
+ *              followed by ZERO OR MORE continuation sheets numbered A.10, A.11, …
+ *
+ * and it is enforced POSITIONALLY against the delivered page's own title block
+ * (`deliveredSheetNumbers`), not against the page count. That is what keeps the
+ * swiftshader tripwire live: if the two section sheets vanish and a continuation
+ * sheet backfills the count, the page that should carry A.05 carries A.07 and
+ * this fails loudly — where a bare count comparison would have shrugged.
+ */
+export function sheetSpecFor(pages) {
+  const cont = pages - BASE_SHEET_SPEC.length
+  if (cont < 0) return null
+  return [...BASE_SHEET_SPEC, ...Array.from({ length: cont }, (_, i) => contSheetSpec(i))]
+}
 
 // ---------------------------------------------------------------------------
 // Template constants owned by the modules this harness may not edit
@@ -172,22 +231,106 @@ function requirePdftoppm() {
 }
 
 // ---------------------------------------------------------------------------
-// Render one pack
+// What sheet number each delivered page actually carries
 // ---------------------------------------------------------------------------
 
 /**
+ * The `A.NN` printed inside each page's own sheet-number box, read out of the
+ * DELIVERED PDF's text layer (`pdftotext -bbox`, top-down points — the same
+ * space every rect here is in). One entry per page; `null` for a page with no
+ * number (the cover and the contents index draw no title block).
+ *
+ * The number box is sheet.ts:325 `const x5 = right - 130` and :371
+ * `p.box(x5 + 12, top + 24, right - x5 - 24, TITLE_BLOCK_H - 44)` — template
+ * geometry, so a word found inside it is the page's own identification of
+ * itself and nothing else. (`A.10` also appears in A.02's "SCHEDULE CONTINUED
+ * ON A.10" pointer and eleven times in the contents index; confining the read
+ * to the number box is what tells those apart.)
+ */
+function deliveredSheetNumbers(pdfFile, g) {
+  let xml
+  try {
+    xml = execFileSync('pdftotext', ['-bbox', pdfFile, '-'], { encoding: 'utf8', maxBuffer: 64 << 20 })
+  } catch (err) {
+    throw new Error(
+      `pdftotext (poppler) is required to read the delivered sheet numbers and failed: ${err.message}\n` +
+        '  install it with:  brew install poppler',
+    )
+  }
+  const bandTop = g.pageH - g.margin - g.titleBlockH
+  const nb = { x: g.pageW - g.margin - 130 + 12, y: bandTop + 24, w: 130 - 24, h: g.titleBlockH - 44 }
+  const out = []
+  for (const pageXml of xml.split('<page ').slice(1)) {
+    let no = null
+    for (const m of pageXml.matchAll(
+      /<word xMin="([\d.-]+)" yMin="([\d.-]+)" xMax="([\d.-]+)" yMax="([\d.-]+)">([\s\S]*?)<\/word>/g,
+    )) {
+      if (!/^A\.\d\d$/.test(m[5])) continue
+      const x = Number(m[1])
+      const y = Number(m[2])
+      const x1 = Number(m[3])
+      const y1 = Number(m[4])
+      if (x >= nb.x && x1 <= nb.x + nb.w && y >= nb.y && y1 <= nb.y + nb.h) no = m[5]
+    }
+    out.push(no)
+  }
+  return out
+}
+
+// ---------------------------------------------------------------------------
+// Render one pack
+// ---------------------------------------------------------------------------
+
+/** The file a failed render leaves behind, so a gate fails LOUDLY with the real
+ *  cause instead of "missing input" (or, worse, grades a directory the failure
+ *  emptied). `scripts/gates/sheets/lib/sheetlib.mjs` reads it. */
+export const FAILURE_MARKER = 'RENDER-FAILED.json'
+
+/**
  * Render one pack's full drawing set to per-sheet PNGs + geometry.
+ *
+ * FAILS CLOSED, NEVER OPEN (reports/sheets-defects-1.md, D-C). Everything is
+ * built in a staging directory and swapped in only once the whole pack is on
+ * disk, so a throw anywhere in here leaves the previous render EXACTLY as it
+ * was and adds a `RENDER-FAILED.json` naming the cause. The old shape — `rm -rf`
+ * the pack directory first, render second — turned any harness error into an
+ * empty directory, and every sheet gate then collapsed to "missing input:
+ * … render the sheets first" rather than failing on the real defect. A gate must
+ * never silently lose its input.
+ *
  * @returns the pack manifest (also written as `<outDir>/<pack>/index.json`).
  */
 export async function renderPackSheets(pack, { outDir, dpi = DEFAULT_DPI } = {}) {
   const dir = path.join(outDir, pack)
-  fs.rmSync(dir, { recursive: true, force: true })
-  fs.mkdirSync(dir, { recursive: true })
+  const staging = path.join(outDir, `.${pack}.staging`)
+  fs.rmSync(staging, { recursive: true, force: true })
+  fs.mkdirSync(staging, { recursive: true })
+  try {
+    const r = await renderPackInto(pack, staging, dpi)
+    // Swap: the previous render survives until the new one is complete on disk.
+    const prev = path.join(outDir, `.${pack}.prev`)
+    fs.rmSync(prev, { recursive: true, force: true })
+    if (fs.existsSync(dir)) fs.renameSync(dir, prev)
+    fs.renameSync(staging, dir)
+    fs.rmSync(prev, { recursive: true, force: true })
+    return r
+  } catch (err) {
+    fs.rmSync(staging, { recursive: true, force: true })
+    fs.mkdirSync(dir, { recursive: true })
+    fs.writeFileSync(
+      path.join(dir, FAILURE_MARKER),
+      JSON.stringify({ pack, failedAt: new Date().toISOString(), error: err.message }, null, 2) + '\n',
+    )
+    throw err
+  }
+}
 
+async function renderPackInto(pack, dir, dpi) {
   const { pdf, pages, geometry: g, warnings } = await renderSheetSet(pack, { freezeDateAt: FREEZE_DATE_AT })
-  if (pages !== SHEET_SPEC.length) {
+  const SHEET_SPEC = sheetSpecFor(pages)
+  if (!SHEET_SPEC) {
     throw new Error(
-      `${pack}: drawing set came back with ${pages} sheets, expected ${SHEET_SPEC.length}. ` +
+      `${pack}: drawing set came back with ${pages} sheets, and ${BASE_SHEET_SPEC.length} are unconditional. ` +
         'A short set means a sheet builder threw and was swallowed by its try-wrapper — ' +
         'classically the two section sheets, when Chromium has no GL context ' +
         '(render-sheets.mjs must launch with --use-gl=swiftshader).',
@@ -195,6 +338,28 @@ export async function renderPackSheets(pack, { outDir, dpi = DEFAULT_DPI } = {})
   }
   const pdfFile = path.join(dir, 'drawing-set.pdf')
   fs.writeFileSync(pdfFile, pdf)
+
+  // --- the derived spec, held to the delivered title blocks -----------------
+  const delivered = deliveredSheetNumbers(pdfFile, g)
+  if (delivered.length !== pages) {
+    throw new Error(`${pack}: the PDF reports ${pages} pages but pdftotext read ${delivered.length}`)
+  }
+  const wrong = SHEET_SPEC.map((spec, i) => ({ spec, got: delivered[i] })).filter(
+    ({ spec, got }) => (/^A\.\d\d$/.test(spec.no) ? got !== spec.no : got !== null),
+  )
+  if (wrong.length > 0) {
+    throw new Error(
+      `${pack}: the delivered sheet numbers are not the expected sequence. ` +
+        wrong
+          .slice(0, 4)
+          .map(({ spec, got }) => `page ${SHEET_SPEC.indexOf(spec) + 1} should carry ${spec.no} but carries ${got ?? 'no number'}`)
+          .join('; ') +
+        `. Expected the ${BASE_SHEET_SPEC.length} unconditional sheets (A.01…A.09) followed by ` +
+        `${pages - BASE_SHEET_SPEC.length} continuation sheet(s). A sheet builder that threw and was ` +
+        'swallowed by its try-wrapper looks exactly like this — classically the two section sheets, ' +
+        'when Chromium has no GL context (render-sheets.mjs must launch with --use-gl=swiftshader).',
+    )
+  }
 
   // --- template geometry (spec side) ---------------------------------------
   const sectionPanel = sourceConst('web/src/export/section.ts', 'PANEL_W')
@@ -348,9 +513,14 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   console.log(`sheet harness: ${packs.join(' · ')} → ${path.relative(REPO, outDir)}/ at ${dpi} dpi`)
   try {
     const done = await renderAllSheets({ packs, outDir, dpi, log: (s) => console.log(s) })
-    console.log(`sheet harness OK — ${done.length} pack(s) × ${SHEET_SPEC.length} sheets`)
+    const counts = [...new Set(done.map((m) => m.sheetCount))]
+    console.log(`sheet harness OK — ${done.length} pack(s) × ${counts.join('/')} sheets`)
   } catch (err) {
     console.error(`sheet harness FAILED: ${err.message}`)
+    console.error(
+      `  the pack directory was NOT emptied — its previous contents are intact and ${FAILURE_MARKER} names this failure,\n` +
+        '  so every sheet gate fails on this error rather than on "missing input".',
+    )
     process.exit(1)
   }
 }

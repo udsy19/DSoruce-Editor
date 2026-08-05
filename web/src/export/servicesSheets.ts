@@ -37,7 +37,19 @@ import {
   TITLE_BLOCK_H,
   type TitleBlockInfo,
 } from './sheet'
+import {
+  labelLeader,
+  paintPlanInk,
+  placeNear,
+  planInk,
+  tryPlaceNear,
+  zoneBoxOnSheet,
+  type Leader,
+  type OccBox,
+  type PlanInk,
+} from './sheetSet'
 import type { SheetSetMeta } from './sheetSet'
+import { roomDisplayNames, roomLabelForms } from './roomNaming'
 import type { DocState } from '../editor/EditorCanvas'
 import { zoneCenter } from '../util/zoneGeom'
 import {
@@ -59,6 +71,8 @@ const BLUE: Rgb = hex2rgb('#3b6fd4')
 /** Switch-leg / lighting-circuit runs on the RCP — a muted green so the thin
  *  polyline reads as switching wiring, distinct from the grey ceiling grid. */
 const CIRCUIT: Rgb = hex2rgb('#4f8a72')
+/** Lighting-circuit tag type size (pt). */
+const CIRCUIT_SIZE = 6
 
 export interface ServicesSheetsOpts {
   meta: SheetSetMeta
@@ -258,75 +272,255 @@ function legendSchedule(
 }
 
 // ---------------------------------------------------------------------------
-// Glyph / label de-collision — fixture glyphs must not sit on room-name labels.
-// We compute each room label's screen box up front, nudge any overlapping glyph
-// to the nearest clear offset (deterministic candidate stack, mirroring
-// sheetSet.placeNear), then paint the labels LAST with a white knockout halo so
-// they stay legible over the faint grid and any close glyph. (screen pt, top-down)
+// Room labels — DE-COLLIDED FIRST, painted last.
+//
+// Each label is painted as a white knockout halo plus its text, in zone order,
+// so that two labels landing on the same spot do not merely overlap: the later
+// one's halo ERASES the earlier one's glyphs. That is defect D3, and it is what
+// produced "PHON PHON PHONE BOOTH 3" and "O OPEN WORKS OPEN WORKSPACE" on the
+// delivered sheets — and, on dwg, a "Wellness Room" so far interleaved that a
+// text extractor reads it as "W" + "ELLNESS". The name is not clipped; there is
+// no clip region here at all. It is over-printed.
+//
+// So the labels are placed BEFORE any ink is laid down, through the drawing
+// set's own `tryPlaceNear`/`labelLeader`/`zoneBoxOnSheet` — the same machinery
+// A.02 and the plan graphic use (there is deliberately no second de-collision
+// system in this file), with the plate as a hard boundary so a displaced label
+// cannot walk off the drawing. A label that ends up off the room it names
+// carries a leader back to it.
+//
+// When even a displaced label has nowhere clear to go, the fit ladder
+// (`roomLabelForms`) steps the label down — shrink to a 70% floor, then wrap to
+// two lines, then the shared abbreviation map — and the placement is retried per
+// rung. Nothing is ever ellipsized and no fragment is ever printed.
+//
+// Fixture glyphs are then nudged off the final label boxes (`clearOfLabels`).
+// (screen pt, top-down)
 // ---------------------------------------------------------------------------
 
 interface LabelBox {
-  x: number // top-left
+  x: number // top-left of the knockout halo
   y: number
   w: number
   h: number
   cx: number // text centre
-  cy: number
-  text: string
+  cy: number // FIRST baseline
+  lines: string[]
+  size: number
+  leader: Leader | null
 }
 
-function boxesOverlap(ax: number, ay: number, aw: number, ah: number, b: LabelBox): boolean {
-  return ax < b.x + b.w && ax + aw > b.x && ay < b.y + b.h && ay + ah > b.y
+/** Room-label type: 7.5 pt, the face the schedules and the plan share. */
+const LABEL_SIZE = 7.5
+/** Horizontal padding of the knockout halo around the glyph run (3 pt a side —
+ *  the pad SG3 measures label separation with). */
+const HALO_PAD = 6
+/** Extra clearance reserved during PLACEMENT only, never drawn: `textWidth` is
+ *  an estimator and the delivered glyph run is measured by the renderer's own
+ *  font. Two labels are therefore parked 1 pt further apart than their halos
+ *  need, so an under-estimate cannot turn into a touching pair on the page. */
+const PLACE_SLACK = 2
+
+/** Halo box for a laid-out label, from its first baseline. Ascent/descent are
+ *  fractions of the type size, so the box tracks a shrunk rung exactly. */
+function haloBox(lines: string[], size: number, width: number, cx: number, baseline: number) {
+  const ascent = size * 1.07
+  const descent = size * 0.53
+  const gap = size * 1.4
+  const w = width + HALO_PAD
+  const h = ascent + descent + (lines.length - 1) * gap
+  return { x: cx - w / 2, y: baseline - ascent, w, h, gap, ascent }
 }
 
-/** Screen boxes for every non-circulation room label (same transform the plan
- *  uses). Label text baseline sits at `cy`; the box brackets the cap height. */
-function roomLabelBoxes(state: DocState, map: (x: number, y: number) => { x: number; y: number }): LabelBox[] {
+/**
+ * Every non-circulation room label, laid out and de-collided (same transform the
+ * plan uses). Zone order is the document's own id order, so the result is
+ * deterministic. `bounds` is the plate viewport — no label may leave it.
+ *
+ * `occ` is the SHEET's annotation occupancy, not a private one: the fixture
+ * glyphs and the lighting-circuit tags that are placed after these labels have
+ * to see where the names went, or they land under a halo and are erased by it —
+ * the same cross-family failure that put opening tags on room names on A.02.
+ *
+ * Room NAMES come from the one shared helper (`roomDisplayNames`), so a room
+ * that reads "Open Workspace (5)" here reads "Open Workspace (5)" on the finish
+ * schedule and in the QTO workbook too.
+ */
+function roomLabelBoxes(
+  state: DocState,
+  map: (x: number, y: number) => { x: number; y: number },
+  bounds: OccBox,
+  occ: OccBox[],
+): LabelBox[] {
+  const names = roomDisplayNames(state)
   const out: LabelBox[] = []
   for (const z of state.zones ?? []) {
     if (z.zone_type === 'Circulation' || !z.label) continue
     const ctr = zoneCenter(z.shape)
     const c = map(ctr.x, ctr.y)
-    const text = z.label.toUpperCase()
-    const w = textWidth(text, 7.5, false) + 6
-    const h = 12
-    out.push({ x: c.x - w / 2, y: c.y - 8, w, h, cx: c.x, cy: c.y, text })
+    const text = (names.get(z.id) ?? z.label).toUpperCase()
+    const room = zoneBoxOnSheet(z.shape, map)
+
+    const forms = roomLabelForms(text, LABEL_SIZE, (t, s) => textWidth(t, s, false))
+    let chosen = forms[0]
+    let pos: { x: number; y: number } | null = null
+    for (const form of forms) {
+      const box = haloBox(form.lines, form.size, form.width, c.x, c.y)
+      pos = tryPlaceNear(occ, c.x, c.y, box.w + PLACE_SLACK, box.h + PLACE_SLACK, bounds)
+      if (pos) {
+        chosen = form
+        break
+      }
+    }
+    const probe = haloBox(chosen.lines, chosen.size, chosen.width, c.x, c.y)
+    // Every rung collided everywhere: take the least-overlapping spot for the
+    // narrowest rung rather than dropping the room's name off the drawing.
+    if (!pos) pos = placeNear(occ, c.x, c.y, probe.w + PLACE_SLACK, probe.h + PLACE_SLACK, bounds)
+
+    const baseline = pos.y - probe.h / 2 + probe.ascent
+    const box = haloBox(chosen.lines, chosen.size, chosen.width, pos.x, baseline)
+    out.push({
+      x: box.x,
+      y: box.y,
+      w: box.w,
+      h: box.h,
+      cx: pos.x,
+      cy: baseline,
+      lines: chosen.lines,
+      size: chosen.size,
+      leader: labelLeader(c.x, c.y, pos, box.w, box.h, room),
+    })
   }
   return out
 }
 
-/** Nudge a glyph of radius `s` off any room label — try the true spot first,
- *  then a fixed ring of small offsets. Deterministic, so the same plan lays out
- *  identically. Only clears labels (glyph-on-glyph is unchanged / acceptable). */
-function clearOfLabels(cx: number, cy: number, s: number, labels: LabelBox[]): { x: number; y: number } {
-  const step = s * 2 + 2
-  const cands: [number, number][] = [
-    [0, 0],
-    [step, 0],
-    [-step, 0],
-    [0, step],
-    [0, -step],
-    [step, step],
-    [-step, step],
-    [step, -step],
-    [-step, -step],
-    [2 * step, 0],
-    [-2 * step, 0],
-  ]
-  for (const [dx, dy] of cands) {
-    if (!labels.some((l) => boxesOverlap(cx + dx - s, cy + dy - s, s * 2, s * 2, l))) {
-      return { x: cx + dx, y: cy + dy }
-    }
-  }
-  return { x: cx, y: cy }
+/**
+ * A services glyph whose meaning is a WORD rather than a shape: the exit
+ * luminaire's `E` and the distribution board's `DB`, both reversed out of an
+ * opaque amber tile. Every other ceiling/power symbol is a line figure that
+ * still reads through a neighbour.
+ *
+ * This is the line between "glyph-on-glyph is not a defect" and the defect: two
+ * troffers sharing a spot are two rectangles, and a reader sees two fixtures;
+ * two exit tiles sharing a spot are one amber square with an unreadable letter
+ * on it, and the second luminaire has vanished from the drawing.
+ */
+function glyphCarriesType(t: CeilingFixtureType | PowerPointType): boolean {
+  return t === 'exit' || t === 'db'
 }
 
-/** Paint the room-name labels on top with a white knockout halo so they stay
- *  legible over the faint ceiling grid and any nearby glyph. */
-function drawRoomLabels(p: Page, labels: LabelBox[]): void {
+/**
+ * Nudge a services glyph of radius `s` clear of the type already placed.
+ *
+ * THE SHARED STRICT PLACER, not a placement system of its own: `tryPlaceNear`
+ * walks the same 13 candidates and 20 wider rings every room label and opening
+ * tag is placed with, so a symbol moves the way a label moves. Glyph-on-TYPE is
+ * the thing being avoided: by the time the fixtures are placed `occ` holds the
+ * room names and the circuit tags, and a symbol yields to both.
+ *
+ * WHETHER THE GLYPH TAKES A SEAT is `glyphCarriesType`'s question, and it is the
+ * whole of defect D-R. A line-figure symbol is handed a COPY of `occ` and
+ * reserves nothing, deliberately — the ceiling/power grid is regular by intent
+ * and two overlapping troffers are still two readable troffers. A glyph that
+ * carries a WORD is annotation: it reserves in the sheet's one occupancy like
+ * every other family that prints type, so the next one cannot be nudged onto it.
+ * Without that seat, two exit luminaires were nudged 2.91 pt apart on seeded
+ * A.03 — one amber tile on another, their two `E`s 39% overlapped.
+ *
+ * WHEN NOTHING WITHIN REACH IS CLEAR the two kinds part again. A line figure
+ * stays on its grid point — it is derived from the layout and belongs there, and
+ * it can no longer erase what it lands on because every symbol is painted before
+ * any type. A word-carrying tile takes the third rung of the SAME ladder A.02's
+ * opening tags use, `placeNear`: the least-overlapping spot inside the plate,
+ * which always places and always reserves. Staying put is not open to it —
+ * "nowhere clear to go" is exactly the case where two of them ended up on one
+ * point, and the true spot is the one square already known to be taken. A tile
+ * that ended up away from its fixture carries a `labelLeader` back to it.
+ */
+function clearOfLabels(
+  cx: number,
+  cy: number,
+  s: number,
+  occ: OccBox[],
+  bounds: OccBox,
+  reserve: boolean,
+): { x: number; y: number } {
+  const box = s * 2
+  if (!reserve) return tryPlaceNear([...occ], cx, cy, box, box, bounds) ?? { x: cx, y: cy }
+  return tryPlaceNear(occ, cx, cy, box, box, bounds) ?? placeNear(occ, cx, cy, box, box, bounds)
+}
+
+/**
+ * The lighting-circuit tags (`LC-01` …), placed and queued.
+ *
+ * They used to be printed straight at their switch (`sw.x + 4, sw.y - 3`) with
+ * no de-collision and no seat in the sheet's occupancy, and they are the family
+ * that pays for that twice over: a room-label halo, painted afterwards, ERASES
+ * them (the `LC-` of `LC-02` eaten by FOCUS ROOM 2 on seeded A.03), and two
+ * circuits sharing a switch print their tags on the same point (six of them at
+ * one spot on seeded, five on dwg). Both are the A.02 blocker's failure class —
+ * a family that de-conflicts only within itself, and a mask that outranks
+ * someone else's type.
+ *
+ * So they take their turn in the SAME occupancy, after the names and the fixture
+ * glyphs, through the same strict placer; the original spot is candidate one, so
+ * a tag with room around it does not move. A tag that ends up away from its
+ * switch carries a `labelLeader` back to it.
+ */
+function circuitTags(
+  p: Page,
+  circuits: { sw: { x: number; y: number }; label: string }[],
+  map: (x: number, y: number) => { x: number; y: number },
+  bounds: OccBox,
+  occ: OccBox[],
+  ink: PlanInk,
+): void {
+  for (const cc of circuits) {
+    const sw = map(cc.sw.x, cc.sw.y)
+    const w = textWidth(cc.label, CIRCUIT_SIZE, true)
+    const asc = CIRCUIT_SIZE * 1.07
+    const h = asc + CIRCUIT_SIZE * 0.53
+    // Candidate one of the shared stack is the box centred here, i.e. exactly
+    // the left-aligned run at (sw.x + 4, sw.y - 3) this always drew.
+    const ax = sw.x + 4 + w / 2
+    const ay = sw.y - 3 - asc + h / 2
+    const pos =
+      tryPlaceNear(occ, ax, ay, w + 2, h + 2, bounds) ?? placeNear(occ, ax, ay, w + 2, h + 2, bounds)
+    const lead = labelLeader(ax, ay, pos, w + 2, h + 2)
+    if (lead) p.line(lead.x1, lead.y1, lead.x2, lead.y2, { rgb: CIRCUIT, width: 0.4 })
+    ink.type.push(() =>
+      p.text(pos.x - w / 2, pos.y - h / 2 + asc, CIRCUIT_SIZE, cc.label, { rgb: CIRCUIT, bold: true }),
+    )
+  }
+}
+
+/**
+ * Queue the room-name labels: leaders in place, halos into the sheet's MASK
+ * pass, glyphs into its GLYPH pass.
+ *
+ * ALL leaders first, then all halos: a leader may cross a neighbouring label's
+ * halo, and a leader painted over finished text would be the same over-printing
+ * defect in miniature. The boxes themselves cannot collide — `roomLabelBoxes`
+ * de-collided them before a single mark was made — so no halo can erase another
+ * label's glyphs.
+ *
+ * The halo goes into the caller's mask pass rather than being painted here for
+ * the same reason one sheet-wide occupancy exists: the halo is opaque, and the
+ * RCP carries two OTHER ink families (fixture glyphs, circuit tags). With every
+ * mask and every symbol behind all type, a halo can no longer erase a circuit
+ * tag whatever order the families were placed in.
+ */
+function drawRoomLabels(p: Page, labels: LabelBox[], ink: PlanInk): void {
   for (const l of labels) {
-    p.box(l.x, l.y, l.w, l.h, { fill: true, gray: 1 })
-    p.text(l.cx, l.cy, 7.5, l.text, { align: 'center', gray: 0.45 })
+    if (l.leader) p.line(l.leader.x1, l.leader.y1, l.leader.x2, l.leader.y2, { gray: 0.5, width: 0.4 })
+  }
+  for (const l of labels) ink.masks.push(() => p.box(l.x, l.y, l.w, l.h, { fill: true, gray: 1 }))
+  for (const l of labels) {
+    ink.type.push(() =>
+      l.lines.forEach((line, i) => {
+        p.text(l.cx, l.cy + i * l.size * 1.4, l.size, line, { align: 'center', gray: 0.45 })
+      }),
+    )
   }
 }
 
@@ -358,32 +552,51 @@ function rcpSheet(state: DocState, no: string, opts: ServicesSheetsOpts): Servic
     p.image({ bytes: canvasToJpeg(canvas), width: wPx, height: hPx }, b.planX, b.planY, b.planW, b.planH)
     const map = worldMapper(b, wPx, hPx, k, ox, oy)
 
+    // ONE occupancy for every ink family the plate carries (room names, fixture
+    // glyphs, circuit tags) and the three paint passes over it — knockouts,
+    // symbols, then type. See `circuitTags` / `drawRoomLabels`.
+    const plate = { x: b.planX, y: b.planY, w: b.planW, h: b.planH }
+    const occ: OccBox[] = []
+    const ink = planInk()
+
     const layout = ceilingLayout(state)
-    const labels = roomLabelBoxes(state, map)
-    // Ceiling grid first, so glyphs mask over it cleanly.
+    const labels = roomLabelBoxes(state, map, plate, occ)
+    // Ceiling grid first, so the fixture knockouts mask over it cleanly.
     for (const g of layout.grid) {
       const a = map(g.x1, g.y1)
       const c = map(g.x2, g.y2)
       p.line(a.x, a.y, c.x, c.y, { gray: 0.86, width: 0.35 })
     }
     // Lighting-circuit switch legs under the glyphs (thin green runs).
-    for (const cc of lightingCircuits(state)) {
+    const circuits = lightingCircuits(state)
+    for (const cc of circuits) {
       let prev = map(cc.sw.x, cc.sw.y)
       for (const lum of cc.luminaires) {
         const q = map(lum.x, lum.y)
         p.line(prev.x, prev.y, q.x, q.y, { rgb: CIRCUIT, width: 0.5 })
         prev = q
       }
-      const sw = map(cc.sw.x, cc.sw.y)
-      p.text(sw.x + 4, sw.y - 3, 6, cc.label, { rgb: CIRCUIT, bold: true })
     }
+    // TYPE BEFORE SYMBOLS. The circuit tags take their seats next, so they have
+    // only the room names to work around and the strict placer nearly always
+    // finds them a clear one; the fixture glyphs then nudge off both. A ceiling
+    // symbol carries its meaning in its shape and can absorb a nudge along the
+    // grid — a two-glyph tag under a symbol cannot be read at all.
+    circuitTags(p, circuits, map, plate, occ, ink)
     for (const f of layout.fixtures) {
       const pt = map(f.x, f.y)
       const size = f.type === 'luminaire' ? 6 : f.type === 'exit' ? 5 : 5.5
-      const q = clearOfLabels(pt.x, pt.y, size, labels)
-      ceilGlyph(p, f.type, q.x, q.y, size, true)
+      const carriesType = glyphCarriesType(f.type)
+      const q = clearOfLabels(pt.x, pt.y, size, occ, plate, carriesType)
+      // A word-carrying tile that had to move says where its fixture actually
+      // is; a line-figure symbol absorbs its nudge along the grid, as before.
+      const lead = carriesType ? labelLeader(pt.x, pt.y, q, size * 2, size * 2) : null
+      if (lead) p.line(lead.x1, lead.y1, lead.x2, lead.y2, { gray: 0.6, width: 0.4 })
+      ink.masks.push(() => mask(p, q.x, q.y, size))
+      ink.symbols.push(() => ceilGlyph(p, f.type, q.x, q.y, size, false))
     }
-    drawRoomLabels(p, labels)
+    drawRoomLabels(p, labels, ink)
+    paintPlanInk(ink)
 
     // Ceiling-height note bottom-left of the plan.
     p.text(b.planX + 12, b.planY + b.planH - 12, 9, `FINISHED CEILING HEIGHT  ${CEILING_HEIGHT.toFixed(2)} m`, {
@@ -426,15 +639,25 @@ function powerSheet(state: DocState, no: string, opts: ServicesSheetsOpts): Serv
     p.image({ bytes: canvasToJpeg(canvas), width: wPx, height: hPx }, b.planX, b.planY, b.planW, b.planH)
     const map = worldMapper(b, wPx, hPx, k, ox, oy)
 
+    // Same contract as the RCP: one occupancy, then knockouts, symbols, type.
+    const plate = { x: b.planX, y: b.planY, w: b.planW, h: b.planH }
+    const occ: OccBox[] = []
+    const ink = planInk()
+
     const layout = powerLayout(state)
-    const labels = roomLabelBoxes(state, map)
+    const labels = roomLabelBoxes(state, map, plate, occ)
     for (const pt of layout.points) {
       const m = map(pt.x, pt.y)
       const size = pt.type === 'db' ? 6 : pt.type === 'floorbox' ? 5.5 : 4.5
-      const q = clearOfLabels(m.x, m.y, size, labels)
-      powerGlyph(p, pt.type, q.x, q.y, size, true)
+      const carriesType = glyphCarriesType(pt.type)
+      const q = clearOfLabels(m.x, m.y, size, occ, plate, carriesType)
+      const lead = carriesType ? labelLeader(m.x, m.y, q, size * 2, size * 2) : null
+      if (lead) p.line(lead.x1, lead.y1, lead.x2, lead.y2, { gray: 0.6, width: 0.4 })
+      ink.masks.push(() => mask(p, q.x, q.y, size))
+      ink.symbols.push(() => powerGlyph(p, pt.type, q.x, q.y, size, false))
     }
-    drawRoomLabels(p, labels)
+    drawRoomLabels(p, labels, ink)
+    paintPlanInk(ink)
 
     const scaleN = planScaleN(metersPerPx, wPx, b.planW)
     scale = scaleN ? `1:${scaleN}` : 'NTS'

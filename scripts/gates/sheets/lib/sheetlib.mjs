@@ -12,8 +12,9 @@
 // independently out of source before any gate uses a rect from it — "metadata
 // the gate can validate is acceptable; metadata it must trust is not."
 // Everything the harness MEASURED rather than declared (page.wPx/hPx, sha256,
-// image, title, bytes) is never read: the raster's own IHDR and the static
-// SHEET_SPEC table supply those.
+// image, title, bytes) is never read: the raster's own IHDR, the static
+// `BASE_SHEETS` table and the delivered PDF's own title blocks supply those
+// (`sheetsFor` / `deliveredSheetNumbers`).
 
 import fs from 'node:fs'
 import path from 'node:path'
@@ -118,9 +119,10 @@ export function templateSpec() {
 // The sheet set's shape — a static table, not a measurement
 // ---------------------------------------------------------------------------
 
-/** File stem → sheet number / title, as `buildDrawingSetPdf` assembles the set.
- *  Static spec; SG1 proves the delivered title blocks agree with it. */
-export const SHEETS = [
+/** The UNCONDITIONAL sheets: file stem → page / number / title, as
+ *  `buildDrawingSetPdf` assembles them for EVERY document. Static spec; SG1
+ *  proves the delivered title blocks agree with it. */
+export const BASE_SHEETS = [
   { file: 'cover', page: 1, no: null, title: 'Cover' },
   { file: 'contents', page: 2, no: null, title: 'Contents' },
   { file: 'A01', page: 3, no: 'A.01', title: 'Demolition Plan' },
@@ -134,6 +136,136 @@ export const SHEETS = [
   { file: 'A09', page: 11, no: 'A.09', title: 'Room Finish Schedule' },
 ]
 
+/** The title `scheduleContPage` gives every continuation sheet (sheetSet.ts) —
+ *  spec, quoted, so SG1's title-block vocabulary knows it without reading the
+ *  page's own `title` field out of geometry.json. */
+const CONT_TITLE = 'Door & Window Schedule (cont.)'
+/** How many base sheets carry a number (A.01 … A.09) — where continuation
+ *  numbering picks up (`scheduleContSheets`: `A.(startNo + i + 1)`). */
+const BASE_NUMBERED = BASE_SHEETS.filter((s) => s.no).length
+
+/**
+ * THE SHEET LIST IS DERIVED PER PACK, NOT A CONSTANT.
+ *
+ * A.02's door/window schedule paginates only the openings its panel column
+ * cannot hold, so a document with 31 or fewer tagged openings legitimately
+ * produces NO continuation sheet and the set is 11 pages, not 12. The gates used
+ * to carry a static 12-row table and a `A10` entry, which made every one of them
+ * report `missing input: …/A10.geometry.json` on a perfectly correct short set
+ * (reports/sheets-defects-1.md, D-C).
+ *
+ * The rule, stated so it is falsifiable:
+ *
+ *   the 11 unconditional sheets above, carrying A.01 … A.09 in order,
+ *   followed by ZERO OR MORE continuation sheets numbered A.10, A.11, …
+ *
+ * The COUNT comes from the delivered PDF's own page objects; the IDENTITY of
+ * every page is then held to the sequence above by reading the `A.NN` out of
+ * each delivered page's sheet-number box (`deliveredSheetNumbers`). A page that
+ * carries the wrong number — the shape a swallowed section-sheet builder takes
+ * when a continuation sheet backfills the count — is a hard failure here, so
+ * deriving the count does not buy the producer a way to shrink its own test.
+ */
+export function sheetsFor(pack) {
+  const numbers = deliveredSheetNumbers(pack)
+  const cont = numbers.length - BASE_SHEETS.length
+  if (cont < 0) {
+    throw new GateError(
+      `${pack}: the delivered set has ${numbers.length} pages and ${BASE_SHEETS.length} sheets are unconditional — ` +
+        'a sheet builder threw and was swallowed by its try-wrapper (classically the two section sheets, ' +
+        'when Chromium has no GL context)',
+    )
+  }
+  const sheets = [
+    ...BASE_SHEETS,
+    ...Array.from({ length: cont }, (_, i) => {
+      const n = String(BASE_NUMBERED + 1 + i).padStart(2, '0')
+      return { file: `A${n}`, page: BASE_SHEETS.length + 1 + i, no: `A.${n}`, title: CONT_TITLE }
+    }),
+  ]
+  const wrong = sheets.filter((s, i) => numbers[i] !== s.no)
+  if (wrong.length > 0) {
+    throw new GateError(
+      `${pack}: the delivered sheet numbers are not the expected sequence — ` +
+        wrong
+          .slice(0, 4)
+          .map((s) => `page ${s.page} should carry ${s.no ?? 'no number'} but carries ${numbers[s.page - 1] ?? 'no number'}`)
+          .join('; '),
+    )
+  }
+  return sheets
+}
+
+// ---------------------------------------------------------------------------
+// The delivered set: how many pages, and what number each one carries
+// ---------------------------------------------------------------------------
+
+/** The harness's own name for "this render threw" (scripts/sheets/render-all.mjs
+ *  `FAILURE_MARKER`). It is written INTO the pack directory beside the previous,
+ *  untouched render. */
+const FAILURE_MARKER = 'RENDER-FAILED.json'
+
+/**
+ * A pack whose last render FAILED is a hard failure here, carrying the harness's
+ * own error — never a "missing input", and never a silent grading of whatever
+ * survived. The harness no longer empties a pack directory on the way to
+ * failing, so the evidence is still on disk; this is what stops a gate treating
+ * it as the current artifact.
+ */
+export function assertRendered(pack) {
+  const marker = path.join(SHEETS_DIR, pack, FAILURE_MARKER)
+  if (!fs.existsSync(marker)) return
+  let why = ''
+  try {
+    why = JSON.parse(fs.readFileSync(marker, 'utf8')).error ?? ''
+  } catch {
+    why = '(unreadable marker)'
+  }
+  throw new GateError(
+    `${pack}: the sheet harness FAILED on its last run and this pack was not re-rendered — ${why}\n` +
+      `  (the previous render is still on disk beside ${FAILURE_MARKER}; it is not the artifact under test)`,
+  )
+}
+
+const numberCache = new Map()
+
+/**
+ * The `A.NN` printed inside each delivered page's own sheet-number box, read out
+ * of the PDF's text layer. One entry per page, `null` where a page carries no
+ * number (the cover and the contents index draw no title block).
+ *
+ * The box is sheet.ts:325 `const x5 = right - 130` and :371
+ * `p.box(x5 + 12, top + 24, right - x5 - 24, TITLE_BLOCK_H - 44)` — template
+ * geometry, recomputed by `templateSpec()`. Confining the read to that rect is
+ * what distinguishes a page's own number from the eleven in the contents index
+ * and from A.02's "SCHEDULE CONTINUED ON A.10" pointer.
+ */
+export function deliveredSheetNumbers(pack) {
+  if (numberCache.has(pack)) return numberCache.get(pack)
+  assertRendered(pack)
+  const pdf = path.join(SHEETS_DIR, pack, 'drawing-set.pdf')
+  must(pdf, 'render the sheets first: node scripts/sheets/render-all.mjs')
+  let xml
+  try {
+    xml = execFileSync('pdftotext', ['-bbox', pdf, '-'], { encoding: 'utf8', maxBuffer: 64 << 20 })
+  } catch (err) {
+    throw new GateError(`pdftotext (poppler) is required and failed: ${err.message}\n  install it with:  brew install poppler`)
+  }
+  const nb = templateSpec().numberBox
+  const out = []
+  for (const pageXml of xml.split('<page ').slice(1)) {
+    let no = null
+    for (const m of pageXml.matchAll(/<word xMin="([\d.-]+)" yMin="([\d.-]+)" xMax="([\d.-]+)" yMax="([\d.-]+)">([\s\S]*?)<\/word>/g)) {
+      if (!/^A\.\d\d$/.test(m[5])) continue
+      if (Number(m[1]) >= nb.x && Number(m[3]) <= nb.x + nb.w && Number(m[2]) >= nb.y && Number(m[4]) <= nb.y + nb.h) no = m[5]
+    }
+    out.push(no)
+  }
+  if (out.length === 0) throw new GateError(`${pack}: the delivered PDF has no pages`)
+  numberCache.set(pack, out)
+  return out
+}
+
 // ---------------------------------------------------------------------------
 // geometry.json — loaded, then validated against the spec above
 // ---------------------------------------------------------------------------
@@ -145,6 +277,7 @@ const near = (a, b, eps = 1e-6) => Math.abs(a - b) <= eps
  * gate reads a rect out of it. Every failure mode is a hard error.
  */
 export function loadGeometry(pack, sheetFile) {
+  assertRendered(pack)
   const spec = templateSpec()
   const file = path.join(SHEETS_DIR, pack, `${sheetFile}.geometry.json`)
   const g = JSON.parse(must(file, 'render the sheets first: node scripts/sheets/render-all.mjs').toString('utf8'))
@@ -311,6 +444,7 @@ const wordCache = new Map()
 export function pageWords(pack, pageNo) {
   const key = `${pack}:${pageNo}`
   if (wordCache.has(key)) return wordCache.get(key)
+  assertRendered(pack)
   const pdf = path.join(SHEETS_DIR, pack, 'drawing-set.pdf')
   must(pdf, 'render the sheets first: node scripts/sheets/render-all.mjs')
   let xml
@@ -355,6 +489,7 @@ const streamCache = new Map()
 export function pageLines(pack, pageNo) {
   const key = `${pack}:${pageNo}`
   if (streamCache.has(key)) return streamCache.get(key)
+  assertRendered(pack)
   const spec = templateSpec()
   const pdf = must(path.join(SHEETS_DIR, pack, 'drawing-set.pdf'), 'render the sheets first').toString('latin1')
   // One `/Type /Page` object per line (pdf.ts writes each object on one line),
@@ -400,14 +535,165 @@ export async function coreState(pack) {
   return doc.state
 }
 
-/** Every scheduled (non-circulation) room, in the order the sheets take them. */
+/**
+ * THE ROOM-NAME GRAMMAR — re-derived here from CORE STATE, never imported from
+ * the drawing layer.
+ *
+ * WHY THE GATE HAS TO KNOW THIS AT ALL.  `zone.label` is what the CORE gives a
+ * room, and the core can give several rooms the same one: on the DWG pack zones
+ * 246 / 247 / 248 are all "Open Workspace" while 154 / 208 / 211 / 214 already
+ * carry "(1)"…"(4)" (`crates/ds-core/src/layout.rs:4340`).  A gate that expects
+ * `zone.label` on the page is therefore asserting that a drawing prints one
+ * name for three different rooms — which is defect D4 itself, not a check for
+ * it.  The PRINTED name is the label after disambiguation, so that is what the
+ * gate must predict.
+ *
+ * THE RULE, stated so it is falsifiable rather than borrowed:
+ *
+ *   * a room's BASE name is its label with any trailing ` (n)` removed;
+ *   * rooms are grouped by base name over every scheduled room in the document;
+ *   * a group of ONE prints its label unchanged — nothing unambiguous is
+ *     renamed;
+ *   * a group of MORE prints `base (1)`, `base (2)`, … in ROOM ID ORDER.
+ *
+ * Room id is the document's own stable ordering, so the whole prediction comes
+ * out of the input document: the gate can say, before opening a single sheet,
+ * that room 246 must read "Open Workspace (5)".  A drawing that prints anything
+ * else — including the old ambiguous "Open Workspace" — fails.  That is
+ * strictly stronger than the ` (n)`-is-admissible grammar SG4 shipped with.
+ *
+ * A room whose label is empty is not grouped; the `Room NN` fallback below is
+ * the gate's own synthesis and no sheet has to match an ordinal against it.
+ */
+const ORDINAL = /\s+\((\d+)\)\s*$/
+function displayNameByZoneId(zones) {
+  const groups = new Map()
+  for (const z of zones) {
+    const label = (z.label ?? '').trim()
+    if (!label) continue
+    const base = label.replace(ORDINAL, '').trim()
+    if (!base) continue
+    if (!groups.has(base)) groups.set(base, [])
+    groups.get(base).push(z.id)
+  }
+  const out = new Map()
+  for (const [base, ids] of groups) {
+    if (ids.length < 2) continue
+    ids.forEach((id, i) => out.set(id, `${base} (${i + 1})`))
+  }
+  return out
+}
+
+/** Every scheduled (non-circulation) room, in the order the sheets take them.
+ *  `label` is the core's own label; `display` is the name the sheets must
+ *  print (see `displayNameByZoneId`). */
 export function scheduledRooms(state) {
   const zones = (state.zones ?? []).filter((z) => z.zone_type !== 'Circulation')
-  return [...zones].sort((a, b) => a.id - b.id).map((z, i) => ({
+  const ordered = [...zones].sort((a, b) => a.id - b.id)
+  const display = displayNameByZoneId(ordered)
+  return ordered.map((z, i) => ({
     id: z.id,
     zone: z,
+    display: display.get(z.id) ?? ((z.label && z.label.trim()) || `Room ${String(i + 1).padStart(2, '0')}`),
     label: (z.label && z.label.trim()) || `Room ${String(i + 1).padStart(2, '0')}`,
   }))
+}
+
+/**
+ * THE WINDOW-RUN GRAMMAR — re-derived here from CORE STATE, never imported from
+ * the drawing layer, and never read back off the schedule it grades.
+ *
+ * WHY THE GATE HAS TO KNOW THIS AT ALL.  A window in this document is not an
+ * object: it is the glass on `DocWall.glazing === true`, and the generator emits
+ * one glazed front as many short collinear segments (sixteen 0.15 m pieces on
+ * the seeded plate).  So neither "one row per glazed wall" nor "one row per
+ * window component" is the truth the schedule owes; the truth is one row per
+ * *run* of contiguous collinear glass.  A gate that counted glazed WALLS would
+ * be red on every set the moment the merge did its job — calibrated on the
+ * present packs' conditions, which is the failure `.claude/rules/
+ * gate-independence.md` §"never calibrate against the population under test"
+ * describes.  So the gate derives the runs itself.
+ *
+ * THE RULE, stated so it is falsifiable rather than borrowed:
+ *
+ *   * a glazed segment lies on the INFINITE LINE given by its canonical unit
+ *     direction and its signed perpendicular offset from the origin;
+ *   * two segments share a line when their directions differ by less than
+ *     `ANG_TOL` and their offsets by less than `OFF_TOL`;
+ *   * along one line, segments whose 1-D spans touch or come within `GAP` are
+ *     ONE run; the run's width is the union span's length and its position is
+ *     that span's midpoint;
+ *   * runs are tagged `W1, W2, …` top-to-bottom then left-to-right — the order
+ *     `openingSchedule` states in its own contract.
+ *
+ * The three tolerances are the drafting policy, read out of `sheetSet.ts` by
+ * name (`sourceNumber`) exactly as the page template's constants are: a policy
+ * the gate can CITE, not a number the producer handed it for this run.  What the
+ * gate refuses to consume is the producer's *answer* — the run list itself.  A
+ * run dropped anywhere downstream of the geometry therefore has nothing to hide
+ * behind: it is still in core state, and the gate still predicts its row.
+ *
+ * Ordering is used for NAMING ONLY (`W4` in a failure message); every assertion
+ * built on this is a multiset comparison, so a change of sort order cannot
+ * redden it.
+ */
+export function glazedRuns(state) {
+  const ANG_TOL = sourceNumber('web/src/export/sheetSet.ts', 'ANG_TOL')
+  const OFF_TOL = sourceNumber('web/src/export/sheetSet.ts', 'OFF_TOL')
+  const GAP = sourceNumber('web/src/export/sheetSet.ts', 'GAP')
+
+  const lines = []
+  for (const w of state.walls ?? []) {
+    if (w.glazing !== true) continue
+    const dx = w.b.x - w.a.x
+    const dy = w.b.y - w.a.y
+    const len = Math.hypot(dx, dy)
+    if (len < 1e-9) continue
+    // Canonical direction: the half of the line with ux > 0 (or uy > 0 when
+    // vertical), so a→b and b→a describe the same line.
+    let ux = dx / len
+    let uy = dy / len
+    if (ux < 0 || (ux === 0 && uy < 0)) {
+      ux = -ux
+      uy = -uy
+    }
+    const off = w.a.x * -uy + w.a.y * ux // signed perpendicular offset
+    const ta = w.a.x * ux + w.a.y * uy
+    const tb = w.b.x * ux + w.b.y * uy
+    // Same line when the directions are within ANG_TOL (compared as the sine of
+    // the angle between them, i.e. the cross product of two unit vectors) and
+    // the offsets within OFF_TOL.
+    let line = lines.find(
+      (l) => Math.abs(l.ux * uy - l.uy * ux) < Math.sin(ANG_TOL) && Math.abs(l.off - off) < OFF_TOL,
+    )
+    if (!line) {
+      line = { ux, uy, off, spans: [] }
+      lines.push(line)
+    }
+    line.spans.push({ lo: Math.min(ta, tb), hi: Math.max(ta, tb) })
+  }
+
+  const runs = []
+  for (const l of lines) {
+    const spans = [...l.spans].sort((a, b) => a.lo - b.lo)
+    let lo = spans[0].lo
+    let hi = spans[0].hi
+    const close = () => {
+      const mid = (lo + hi) / 2
+      runs.push({ x: mid * l.ux + l.off * -l.uy, y: mid * l.uy + l.off * l.ux, len: hi - lo })
+    }
+    for (let i = 1; i < spans.length; i++) {
+      if (spans[i].lo <= hi + GAP) hi = Math.max(hi, spans[i].hi)
+      else {
+        close()
+        lo = spans[i].lo
+        hi = spans[i].hi
+      }
+    }
+    close()
+  }
+  runs.sort((a, b) => a.y - b.y || a.x - b.x)
+  return runs.map((r, i) => ({ ...r, tag: `W${i + 1}` }))
 }
 
 // ---------------------------------------------------------------------------

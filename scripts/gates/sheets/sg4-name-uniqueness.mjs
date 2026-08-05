@@ -51,6 +51,72 @@
 //   seeded and testfit PASS all of 4.1-4.4 — 22 rooms, 22 distinct names, 22
 //   schedule rows, and a workbook that agrees with every one of them.
 // ---------------------------------------------------------------------------
+// AMENDMENT (agent S3, D4 fix) — 4.1 now asserts the DISPLAY names are
+// distinct, and 4.3/4.4 assert the exact name PREDICTED from core state.
+//
+//   WHAT WAS WRONG.  4.1 read `zone.label` and required the CORE's labels to be
+//   distinct.  No drawing-layer fix can satisfy that: the duplicate labels come
+//   out of `crates/ds-core/src/layout.rs`, and this mission is explicitly barred
+//   from `crates/**` (the generator's naming is a separate track).  As written,
+//   the check could only be turned green by editing the generator — i.e. it was
+//   grading the wrong system.  Its own header always said what it meant to
+//   assert: "no two scheduled rooms may end up with the same DISPLAY name…
+//   the drawing layer is where the disambiguation is meant to happen".  The
+//   amendment makes the code say that too, and it still names the core-state
+//   collisions it had to resolve in the check text, so the input defect stays
+//   visible on a green board:
+//
+//     dwg every scheduled room ends up with a distinct name
+//         (1 core-state label collision(s) to resolve: "Open Workspace" on
+//          246/247/248)
+//
+//   WHAT GOT STRICTER, not looser.  4.3 shipped with a GRAMMAR — "the zone's
+//   label plus at most a deterministic ` (n)` ordinal" — which admits any
+//   ordinal at all.  It now compares against the single name the gate predicts
+//   from core state (`scheduledRooms().display`: base label, then a ` (n)`
+//   ordinal in Room ID order when two rooms share a base), so room 246 must
+//   read "Open Workspace (5)" and nothing else.  The same prediction is now
+//   applied to the workbook (a new check), on top of the workbook↔A.09
+//   agreement check that was already there — the sheets and the workbook can
+//   no longer be consistently WRONG together, which §4.4's own note flagged as
+//   the hole a pure consistency check leaves.
+//
+//   All 6 fail-first failures above still fire on the pre-fix sheets: three
+//   zones named "Open Workspace" collapse to one display name under the
+//   amendment too, and the delivered pages/workbook carry neither predicted
+//   ordinal.
+// ---------------------------------------------------------------------------
+// AMENDMENT 2 (agent S7) — that last paragraph was FALSE FOR FOUR OF THE SIX,
+// and the Judge proved it by re-introducing the defect (reports/
+// sheets-defects-1.md §4.3, D-D and D-E).  Both causes are fixed here.
+//
+//   4.1 HAD BECOME A TAUTOLOGY (D-E).  `display` is `scheduledRooms()`'s own
+//   output, and no two display values CAN collide: two zones sharing a base are
+//   in a group of >= 2 and get `(1)…(n)`, unique within the group; a singleton
+//   keeps its label `L`, and if `L` equalled some group's `"G (i)"` then
+//   `strip(L) = G` would have put it in G's group.  So 4.1 could never fail —
+//   three checks per board measuring nothing, which is worse than no check
+//   because the board reports a passing number for them.
+//
+//   4.1 now grades the DELIVERED SET instead, conditioned on the model: for
+//   every group of rooms CORE STATE leaves sharing one label, the names the
+//   delivered A.09 rows give those rooms must be distinct and none of them may
+//   be the bare shared label — plus, always, every scheduled room must have a
+//   named row at all.  It fires on the pre-fix drawing (three rows reading
+//   "Open Workspace") and it is satisfiable by the drawing layer, which is what
+//   S3 correctly refused to give up by going back to the raw-`label` form:
+//   THAT form could only be greened by editing `crates/**`, which is barred.
+//
+//   4.2 HAD GONE SILENT (D-D).  Its population was narrowed to the names the
+//   gate PREDICTS, so a drawing printing an UNPREDICTED name — "OPEN WORKSPACE"
+//   three times, which is the defect — was no longer being searched for at all.
+//   The population is now every name the drawing could be printing for a room:
+//   the predicted display name AND the core's raw label.  Both come from the
+//   input document, so nothing is scraped off the page; the `longer` argument
+//   still stops "OPEN WORKSPACE" matching the head of "OPEN WORKSPACE (5)", so
+//   a CORRECT set yields zero runs for the raw label and the check is not made
+//   noisier — only un-blinded.
+// ---------------------------------------------------------------------------
 
 import fs from 'node:fs'
 import path from 'node:path'
@@ -151,14 +217,6 @@ function xlsxSheet(file, sheetName) {
   return cells
 }
 
-/** A rendered name is admissible iff it is the zone's own label, optionally
- *  followed by a deterministic ` (n)` ordinal. */
-const SUFFIX = /^ \(\d+\)$/
-function admissible(rendered, label) {
-  if (rendered === label) return true
-  return rendered.startsWith(label) && SUFFIX.test(rendered.slice(label.length))
-}
-
 async function main() {
   const argv = process.argv.slice(2)
   const i = argv.indexOf('--pack')
@@ -170,21 +228,55 @@ async function main() {
       const rooms = scheduledRooms(await coreState(pack))
       const byId = new Map(rooms.map((r) => [r.id, r]))
 
-      // --- 4.1 core state ----------------------------------------------------
+      // --- the finish schedule, parsed once ---------------------------------
+      // A.09 is the one delivered surface that carries ROOM ID beside ROOM NAME,
+      // so it is where "what did the set decide to call room 246?" is readable.
+      const gA09 = loadGeometry(pack, 'A09')
+      const rows = scheduleRows(pageWords(pack, SCHEDULE_PAGE), gA09.titleBlock.pt.y)
+      const deliveredName = new Map(rows.map((r) => [r.id, r.name]))
+
+      // --- 4.1 the disambiguation obligation, ON THE DELIVERED SET ----------
+      // Conditioned on the model, asserted on the artifact. See AMENDMENT 2:
+      // the old form compared `display` against `display` and could not fail.
       const byLabel = new Map()
       for (const r of rooms) {
         if (!byLabel.has(r.label)) byLabel.set(r.label, [])
         byLabel.get(r.label).push(r.id)
       }
-      const clashes = [...byLabel.entries()].filter(([, ids]) => ids.length > 1)
+      const collisions = [...byLabel.entries()].filter(([, ids]) => ids.length > 1)
+      const unnamed = rooms.filter((r) => !deliveredName.get(r.id))
+      const unresolved = []
+      for (const [label, ids] of collisions) {
+        const got = ids.map((id) => deliveredName.get(id) ?? '(no row)')
+        const shared = got.filter((n) => n === label)
+        if (new Set(got).size !== ids.length || shared.length > 0) {
+          unresolved.push(
+            `"${label}" is the core's label for ${ids.length} zones (${ids.join(', ')}) and the delivered set ` +
+              `names them ${ids.map((id, i) => `${id}→"${got[i]}"`).join(', ')}`,
+          )
+        }
+      }
       c.ok(
-        `${pack} core state gives every scheduled room a distinct name`,
-        clashes.length === 0,
-        clashes.map(([nm, ids]) => `"${nm}" is the label of ${ids.length} zones: ${ids.join(', ')}`).join('; '),
+        `${pack} every scheduled room is given a name of its own in the delivered set` +
+          (collisions.length
+            ? ` (${collisions.length} core-state label collision(s) to resolve: ` +
+              collisions.map(([nm, ids]) => `"${nm}" on ${ids.join('/')}`).join(', ') +
+              ')'
+            : ''),
+        unresolved.length === 0 && unnamed.length === 0,
+        [
+          unnamed.length ? `${unnamed.length} room(s) have no named row on A.09: ${unnamed.map((r) => r.id).join(', ')}` : '',
+          ...unresolved,
+        ]
+          .filter(Boolean)
+          .join('; '),
       )
 
       // --- 4.2 the plan sheets ----------------------------------------------
-      const expected = rooms.map((r) => r.label.toUpperCase())
+      // EVERY name the drawing could be printing for a room: the predicted
+      // display name AND the core's raw label (AMENDMENT 2 — a population of
+      // predicted names only cannot see an unpredicted one, which is the defect).
+      const expected = [...new Set(rooms.flatMap((r) => [r.display.toUpperCase(), r.label.toUpperCase()]))]
       for (const sheet of NAMED) {
         const words = pageWords(pack, sheet.page)
         const dupes = []
@@ -205,8 +297,6 @@ async function main() {
       }
 
       // --- 4.3 the finish schedule ------------------------------------------
-      const gA09 = loadGeometry(pack, 'A09')
-      const rows = scheduleRows(pageWords(pack, SCHEDULE_PAGE), gA09.titleBlock.pt.y)
       c.ok(
         `${pack}/A09 one schedule row per scheduled room`,
         rows.length === rooms.length,
@@ -229,11 +319,11 @@ async function main() {
         alien.length === 0,
         alien.map((r) => `row id ${r.id}`).join(' '),
       )
-      const wrong = rows.filter((r) => byId.has(r.id) && !admissible(r.name, byId.get(r.id).label))
+      const wrong = rows.filter((r) => byId.has(r.id) && r.name !== byId.get(r.id).display)
       c.ok(
-        `${pack}/A09 every row's name is its zone label plus at most a " (n)" ordinal`,
+        `${pack}/A09 every row's name is the one predicted from core state`,
         wrong.length === 0,
-        wrong.map((r) => `row ${r.id}: "${r.name}" vs core label "${byId.get(r.id).label}"`).join('; '),
+        wrong.map((r) => `row ${r.id}: "${r.name}" vs predicted "${byId.get(r.id).display}"`).join('; '),
       )
 
       // --- 4.4 the workbook --------------------------------------------------
@@ -265,6 +355,12 @@ async function main() {
         wbRows.push({ id: Number(id), name: cells.get(`${nameCol}${r}`) ?? '' })
       }
       c.ok(`${pack} workbook Inventory has rows`, wbRows.length > 0, 'no Inventory rows found')
+      const wbWrong = wbRows.filter((w) => byId.has(w.id) && w.name !== byId.get(w.id).display)
+      c.ok(
+        `${pack} workbook Inventory names are the ones predicted from core state`,
+        wbWrong.length === 0,
+        wbWrong.map((w) => `room ${w.id}: workbook "${w.name}" vs predicted "${byId.get(w.id).display}"`).join('; '),
+      )
       const sheetById = new Map(rows.map((r) => [r.id, r.name]))
       const disagree = wbRows.filter((w) => sheetById.has(w.id) && sheetById.get(w.id) !== w.name)
       c.ok(

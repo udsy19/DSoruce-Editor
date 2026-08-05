@@ -1,4 +1,4 @@
-// Regression cover for the 11-sheet architectural drawing set (sheetSet.ts).
+// Regression cover for the architectural drawing set (sheetSet.ts).
 //
 //   node scripts/drawing-set.test.mjs                # check against the baseline
 //   node scripts/drawing-set.test.mjs --update       # re-record it (LOOK FIRST)
@@ -24,8 +24,19 @@
 //     fail loudly rather than measuring nothing);
 //   * a MISSING baseline is a FAILURE, never a skip.
 //
+// EVERY CASE IS GRADED, ALWAYS. A failing assertion is RECORDED, not thrown:
+// the first `assert.ok` to fire used to abort the whole run, so a single red
+// check (the baseline hand-off) left the SECOND case — dwg — never rendered and
+// never graded, and SG5 counted 25 checks where it expects 27
+// (reports/sheets-defects-1.md, D-F). Each case now runs inside its own
+// try/catch, failures accumulate, and the process still exits non-zero.
+//
 // What it asserts, per case (seeded + dwg):
-//   1. STRUCTURE  — 11 sheets, each expected title present exactly once.
+//   1. STRUCTURE  — the 11 unconditional sheets, each expected title present
+//      exactly once, plus ONE continuation sheet per further page. The count is
+//      DERIVED: A.02's schedule paginates only what its panel cannot hold, so a
+//      document with <= 31 tagged openings legitimately has none and the set is
+//      11 sheets, not 12.
 //   2. DETERMINISM — an independent second render is byte-identical (the same
 //      property G4 proves for plan.png, on the path G4 does not look at).
 //   3. ROOMS      — every non-circulation zone the core places is labelled
@@ -58,8 +69,9 @@ const TITLE_BLOCK_H = 116
 const PANEL_W = 316
 const PLAN_PAD_PX = 48
 
-// Sheet banner → how many sheets carry it. 11 sheets = cover + contents + these
-// (the section pack is two cuts, longitudinal + cross, under one banner).
+// Sheet banner → how many sheets carry it, for the UNCONDITIONAL sheets: every
+// document produces cover + contents + these 9 banners over 9 pages (the section
+// pack is two cuts, longitudinal + cross, under one banner) = 11 sheets.
 const SHEET_TITLES = [
   ['DEMOLITION PLAN', 1],
   ['CONSTRUCTION & FURNISHING PLAN', 1],
@@ -70,6 +82,14 @@ const SHEET_TITLES = [
   ['MOODBOARD', 1],
   ['ROOM FINISH SCHEDULE', 1],
 ]
+const BASE_SHEETS = 11
+
+// The one CONDITIONAL sheet kind. A.02's legend panel measures its own capacity
+// (31 rows on A3) and paginates only the openings it cannot hold, so the number
+// of these is a function of the DOCUMENT — 41/48/44 tagged openings give one
+// each, 25 would give none. Asserting a flat 12 made this file, and the whole
+// sheet-gate suite, inoperable below that threshold (D-C).
+const CONT_TITLE = 'DOOR & WINDOW SCHEDULE (CONT.)'
 
 // ---------------------------------------------------------------------------
 // PDF reader — from the bytes, not from the producer's op list
@@ -310,9 +330,44 @@ function textWidth(s, size, bold) {
 // ---------------------------------------------------------------------------
 
 let checks = 0
+/** Recorded, not thrown — see the header. One red check may not silence the
+ *  cases that come after it. */
+const failures = []
 const ok = (cond, msg) => {
   checks++
-  assert.ok(cond, msg)
+  if (!cond) failures.push(msg)
+  return cond
+}
+
+/**
+ * DISPLAY NAME → the zone(s) that print it, upper-cased, in Room ID order.
+ *
+ * The rule, re-derived from the document: strip a trailing ` (n)` to get a
+ * room's base name; a base shared by two or more rooms is re-numbered `(1)`,
+ * `(2)`, … in Room ID order; a base held by one room keeps its label untouched.
+ * Every group returned therefore has exactly ONE member — a group of two would
+ * itself be the duplicate-name defect — and the per-name count assertion below
+ * still reads as "drawn once per zone".
+ */
+function displayGroups(zones) {
+  const ordered = [...zones].sort((a, b) => a.id - b.id)
+  const bases = new Map()
+  for (const z of ordered) {
+    const label = (z.label || '').trim()
+    if (!label) continue
+    const base = label.replace(/\s+\(\d+\)\s*$/, '').trim()
+    if (!bases.has(base)) bases.set(base, [])
+    bases.get(base).push(z)
+  }
+  const out = new Map()
+  for (const [base, group] of bases) {
+    for (const [i, z] of group.entries()) {
+      const name = (group.length > 1 ? `${base} (${i + 1})` : (z.label || '').trim()).toUpperCase()
+      if (!out.has(name)) out.set(name, [])
+      out.get(name).push(z)
+    }
+  }
+  return out
 }
 
 /**
@@ -328,17 +383,15 @@ function checkRoomLabels(caseName, sheetNo, page, state, map) {
   let displaced = 0
   const led = []
 
-  // Zones grouped by drawn name: the sheets label rooms by NAME, and a plan can
-  // carry several zones with the same one (the dwg pack has three 'Open
-  // Workspace' pockets). The count must still match one-for-one; each drawn
-  // name is then paired with the nearest unclaimed zone of that name.
+  // Zones grouped by drawn name. The sheets label rooms by their DISPLAY name,
+  // which is the core's label plus a ` (n)` ordinal in Room ID order whenever
+  // two rooms share a base name — the dwg pack's three bare 'Open Workspace'
+  // pockets (246/247/248) print as (5)/(6)/(7), alongside the (1)…(4) the
+  // generator had already numbered. Re-derived here from core state rather than
+  // imported, like `textWidth` above: this test proves the sheets agree with the
+  // document, so it may not borrow the drawing layer's own answer.
   const byName = new Map()
-  for (const z of zones) {
-    const name = (z.label || '').toUpperCase()
-    if (!name) continue
-    if (!byName.has(name)) byName.set(name, [])
-    byName.get(name).push(z)
-  }
+  for (const [name, group] of displayGroups(zones)) byName.set(name, group)
 
   for (const [name, group] of byName) {
     const hits = page.ops.text.filter((t) => t.str.toUpperCase() === name && t.size === 8 && t.font === 'F2')
@@ -427,6 +480,17 @@ if (!recorded && !UPDATE) {
 
 const fresh = { meta: SHEET_META, cases: {} }
 for (const name of CASES) {
+  try {
+    await runCase(name)
+  } catch (err) {
+    // A structural throw (a malformed PDF, an unparsed content op) is this
+    // case's failure and nobody else's — the remaining cases still get graded.
+    checks++
+    failures.push(`${name}: ${err.message}`)
+  }
+}
+
+async function runCase(name) {
   const { pdf, doc } = await renderSheetSet(name)
   const pages = readPages(pdf)
   const digest = digestSet(pages)
@@ -436,13 +500,30 @@ for (const name of CASES) {
     for (const d of digest) fs.writeFileSync(path.join(DUMP, `${name}.sheet${d.sheet}.txt`), d.rows.join('\n'))
   }
 
-  // 1. structure
-  ok(pages.length === 11, `${name}: the set has ${pages.length} sheets, expected 11`)
+  // 1. structure — the 11 unconditional sheets, then the continuation sheets
+  //    the document's own opening count calls for.
+  const cont = pages.length - BASE_SHEETS
+  ok(
+    cont >= 0,
+    `${name}: the set has ${pages.length} sheets and ${BASE_SHEETS} are unconditional — a short set means a ` +
+      'sheet builder threw and was swallowed by its try-wrapper (classically the two section sheets, with no GL context)',
+  )
   const allText = pages.flatMap((p) => p.ops.text.map((t) => t.str))
   for (const [title, want] of SHEET_TITLES) {
     const n = allText.filter((s) => s === title).length
     ok(n === want, `${name}: sheet banner '${title}' appears ${n}x across the set, expected ${want}`)
   }
+  // Every page past the unconditional set is a continuation sheet, and they are
+  // the LAST pages — so a set that dropped a sheet and grew a continuation one
+  // cannot pass by arithmetic.
+  const contBanners = pages
+    .map((p, i) => (p.ops.text.some((t) => t.str === CONT_TITLE) ? i : -1))
+    .filter((i) => i >= 0)
+  ok(
+    contBanners.length === Math.max(0, cont) && contBanners.every((i) => i >= BASE_SHEETS),
+    `${name}: ${contBanners.length} sheet(s) carry '${CONT_TITLE}' (at ${contBanners.map((i) => i + 1).join(',') || 'nowhere'}) ` +
+      `for ${cont} page(s) past the ${BASE_SHEETS} unconditional sheets`,
+  )
 
   // 2. determinism — an independent second render, byte for byte
   const twin = await renderSheetSet(name)
@@ -457,22 +538,24 @@ for (const name of CASES) {
   const r1 = checkRoomLabels(name, 'A.01', pages[2], doc.state, map)
   const r2 = checkRoomLabels(name, 'A.02', pages[3], doc.state, map)
   console.log(
-    `  ${name}: 11 sheets · ${digest.reduce((t, d) => t + d.text, 0)} text / ` +
+    `  ${name}: ${pages.length} sheets · ${digest.reduce((t, d) => t + d.text, 0)} text / ` +
       `${digest.reduce((t, d) => t + d.line, 0)} line / ${digest.reduce((t, d) => t + d.rect, 0)} rect ops · ` +
       `rooms ${r1.rooms} · A.01 ${r1.displaced} off-room, ${r1.led.length} led [${r1.led.join(', ')}]` +
       ` · A.02 ${r2.displaced} off-room, ${r2.led.length} led [${r2.led.join(', ')}]`,
   )
 
-  // 4. baseline
+  // 4. baseline — RECORDED failures, so a stale baseline can no longer stop the
+  //    next case being rendered at all (D-F).
   if (!UPDATE) {
     const want = recorded.cases[name]
-    ok(want != null, `${name}: no recorded baseline for this case`)
+    if (!ok(want != null, `${name}: no recorded baseline for this case`)) return
     ok(
       want.sheets.length === digest.length,
       `${name}: baseline has ${want.sheets.length} sheets, this render has ${digest.length}`,
     )
     for (const d of digest) {
       const w = want.sheets[d.sheet - 1]
+      if (!ok(w != null, `${name} sheet ${d.sheet}: the baseline has no row for this sheet`)) continue
       if (w.md5 === d.md5) {
         checks++
         continue
@@ -480,7 +563,8 @@ for (const name of CASES) {
       const dump = path.join(REPO, `out/drawing-set.${name}.sheet${d.sheet}.txt`)
       fs.mkdirSync(path.dirname(dump), { recursive: true })
       fs.writeFileSync(dump, d.rows.join('\n'))
-      assert.fail(
+      ok(
+        false,
         `${name} sheet ${d.sheet}: content digest changed\n` +
           `    was  ${w.md5}  (${w.text} text / ${w.line} line / ${w.rect} rect / ${w.image} image ops)\n` +
           `    now  ${d.md5}  (${d.text} text / ${d.line} line / ${d.rect} rect / ${d.image} image ops)\n` +
@@ -495,6 +579,11 @@ if (UPDATE) {
   fs.mkdirSync(path.dirname(BASELINE), { recursive: true })
   fs.writeFileSync(BASELINE, JSON.stringify(fresh, null, 2) + '\n')
   console.log(`recorded ${path.relative(REPO, BASELINE)} — ${checks} checks passed on the way`)
+} else if (failures.length > 0) {
+  for (const f of failures) console.error(`  FAIL ${f}`)
+  // The scoreboard line keeps its exact shape whatever the colour — SG5 reads it.
+  console.log(`drawing-set FAIL (${checks} checks)`)
+  process.exit(1)
 } else {
   console.log(`drawing-set PASS (${checks} checks)`)
 }

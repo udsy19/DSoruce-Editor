@@ -31,7 +31,7 @@ cd "$REPO"
 
 OUT="${OUT_DIR:-$REPO/out}"
 
-declare -a IDS=(G1 G2 G3 G4 G5 G6 G7 G8 G9 G10 G11)
+declare -a IDS=(G1 G2 G3 G4 G5 G6 G7 G8 G9 G10 G11 G12)
 declare -a CMDS=(
   "python3 $HERE/g1-sheet-structure.py"
   "python3 $HERE/g2-formula-liveness.py"
@@ -44,6 +44,7 @@ declare -a CMDS=(
   "python3 $HERE/g9-roundtrip.py"
   "node $HERE/g10-one-action.mjs"
   "python3 $HERE/g11-furniture-agreement.py"
+  "node $HERE/sheets/run-all.mjs --no-produce --as-gate G12 SG1 SG2 SG3 SG4 SG6"
 )
 declare -a TITLES=(
   "Sheet structure"
@@ -57,6 +58,7 @@ declare -a TITLES=(
   "Round-trip"
   "One-action UX"
   "Furniture agreement"
+  "Drawing set (SG1-SG6)"
 )
 # The index of the gate that PRODUCES the pack (G10). Everything else reads.
 # G11 is appended AFTER it, so this index is unaffected by the append.
@@ -135,6 +137,15 @@ run_gate() {
   rc=$?
   line="$(printf '%s' "$out" | grep -E "^${id} (PASS|FAIL)" | tail -1)"
   [ -z "$line" ] && line="${id} FAIL: gate produced no scoreboard line (rc=$rc)"
+  # Count a failure when the EXIT CODE says so OR the scoreboard line does.
+  # Previously this was `[ $rc -ne 0 ]` alone, so a gate that exited 0 while
+  # printing a FAIL line — or printing no parseable line at all — was tallied as
+  # passing: the board printed "12/12 passing" directly above a G12 FAIL. A
+  # scoreboard that can disagree with its own rows is the same class of defect
+  # as a silently vanished check (SG5), one level up.
+  case "$line" in
+    "${id} FAIL"*) [ $rc -eq 0 ] && FAILED=$((FAILED+1)) ;;
+  esac
   [ $rc -ne 0 ] && FAILED=$((FAILED+1))
   LINES[$i]="$(printf '%-4s %-18s %s' "$id" "${TITLES[$i]}" "${line#"$id" }")"
   if [ "${VERBOSE:-0}" = "1" ]; then printf '%s\n' "$out" | grep -v -E "^${id} (PASS|FAIL)"; fi
@@ -172,9 +183,17 @@ fi
 # render (reports/sheets-S0-1.md §7.7). `SHEETS=1` is still accepted and is now
 # a no-op, so older invocations keep working.
 #
-# The sheet gates themselves are NOT on the board below while they are red by
-# design (they are the fail-first gates for an open defect mission); they run
-# from `node scripts/gates/sheets/run-all.mjs`, which re-runs this same producer.
+# The sheet gates ARE on the board below, as G12 — but deliberately as
+# `--no-produce SG1 SG2 SG3 SG4 SG6`, NOT the whole sheet board:
+#   * `--no-produce` because step 0b above already rendered the sheets. Letting
+#     G12 render them again would rewrite a graded artifact mid-run.
+#   * SG5 is EXCLUDED because it verifies this very board by invoking
+#     `run-all.sh` (sg5-board-integrity.mjs:78). Nested inside G12 that would
+#     re-run the producer G10, rewriting out/ while the outer integrity pass held
+#     a BEFORE snapshot — manufacturing exactly the mid-write failure the
+#     integrity pass exists to catch. SG5 is redundant here by construction: the
+#     board it checks is the one running. Run the full sheet board standalone
+#     (`node scripts/gates/sheets/run-all.mjs`) to exercise SG5.
 SHEETS_NOTE=""
 echo
 echo "  rendering the drawing sheets: node scripts/sheets/render-all.mjs"
