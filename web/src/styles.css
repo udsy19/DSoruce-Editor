@@ -2033,6 +2033,112 @@ button {
   color: var(--faint);
 }
 
+/* --------------------------- Candidate gallery ---------------------------- */
+/* Was an 11-key CSSProperties dictionary. Its `ACCENT` const was
+   `var(--accent, #E8A13C)` — the dead amber fallback again — but the AI badge's
+   TINT was a live `rgba(232, 161, 60, 0.12)`, i.e. real amber that never moved
+   when the accent went blue. The badge therefore rendered BLUE TEXT ON AN AMBER
+   GROUND. Fixed to --accent-soft: the approved amber→blue chrome move, and the
+   one place in this component where pixels change on purpose. */
+.cand-strip {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 10px 0 2px;
+}
+.cand-slot {
+  flex: 0 0 auto;
+  position: relative;
+}
+.cand-card {
+  width: 128px;
+  padding: 5px;
+  background: var(--surface);
+  border: 1.5px solid rgba(23, 26, 30, 0.12);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  font-family: var(--font-ui);
+}
+/* The candidate currently applied to the live document. */
+.cand-card.is-active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.cand-thumb {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 4px;
+  background: var(--canvas-mat);
+}
+.cand-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-top: 6px;
+}
+.cand-name {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text);
+}
+.cand-name.is-active {
+  color: var(--accent);
+}
+.cand-total {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.cand-sub-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 2px;
+}
+.cand-sub {
+  font-size: 9.5px;
+  color: var(--faint);
+}
+.cand-ai-badge {
+  margin-left: auto;
+  font-size: 9.5px;
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: 3px;
+  padding: 0 4px;
+}
+.cand-save-btn {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid rgba(23, 26, 30, 0.12);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--muted);
+  cursor: pointer;
+}
+.cand-ai-verdict {
+  margin-top: 3px;
+  font-size: 10.5px;
+  line-height: 1.3;
+  color: #6b7280; /* NOT --muted (#5c6670). 15/255 lighter, and the diff caught
+                     it — an unapproved ink change is still an ink change. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 /* ---------------------------- Place palette ------------------------------- */
 /* Was a 13-key CSSProperties dictionary + 18 hexes, all dead
    `var(--token, #hex)` fallbacks. Shares the card shell with `.layers-card`
