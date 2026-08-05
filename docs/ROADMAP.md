@@ -227,6 +227,21 @@ The qbiq-style flow: Project → Upload → Program → Generate → Editor → 
     adjacency/critique; the deterministic solver does geometry) is viable as a hybrid — build after the
     core is perfected. Pure-LLM geometric placement is unreliable (misalignment/overlaps, even GPT-5).
 
+- [x] **⚠ WRONG BUILDING UNDER THE WRONG NAME — a project's generate ran on another project's
+  plate.** Found while fixing the Generate-reload bug; the most serious defect of the overhaul.
+  Open project A, then open project B **without a reload**: the editor is a singleton that survives
+  navigation by design, so it still held A's drawing. `GenerateStep` asked "does the editor have a
+  drawing?" — the answer was yes, and it was the wrong one. B's Generate step produced three
+  test-fits **of A's floor plate, scored, badged, and labelled B**, savable as B's floor.
+  **THIRD INSTANCE OF ONE ROOT CAUSE: the always-mounted singleton editor.** The others:
+  1. Duplicate `data-testid="category-plan"` — one component live in two trees at once (slice 3).
+  2. A hidden `EditorView` still listening — `Delete` removing components off-screen (`2725490`).
+  3. This one: the editor's *document* belonging to a project you have navigated away from.
+  Each was found by chasing the general form of the previous. **The family is not closed** — the
+  question to ask of any shared singleton is not "does it have X" but "does it have *this
+  screen's* X". Fixed in `shell/resume.ts`: `resumeDrawing` tracks WHOSE drawing is loaded and
+  clears on a project switch; `GenerateStep` treats "no drawing for this project" as no plate
+  rather than reading a wall count that may belong to the last project.
 - [x] **Reloading the Generate step fabricated three test-fits** (found while starting the component
   migration; browser repro on the real project). **Repro:** be on `#/p/:id/generate` → press reload →
   wait. **Was:** three candidate cards, "3 ALTERNATIVES · BEST 64/100", A badged *"Most seats · Best
@@ -473,6 +488,24 @@ Audit + design system from a full naive-user walkthrough on the real DWG. Shippi
     mainline action): none fabricates, blanks, or loses state.
   - **Deliverables agree**: report `meetingSeats` 22 == Σ `zone_stats().capacity` 22 == the canvas
     tags; takeoff desk quantity 92 == report workstations 92; the takeoff still renders no occupancy.
+- [ ] **PROPOSED (deliberate, not a side effect): snap the off-ramp inks to the ramp.** The six
+  component migrations preserved every colour byte-for-byte, including values that sit a few units
+  off the ink ramp. Measured with `scripts/pixdiff.py`, each is invisible in isolation and thousands
+  of pixels wide: `#1e2329` → `--text` (#1a1d21, Δ4–8/255, 8,956 px in `.selcard` alone),
+  `#eef0f3` → `--hairline` (#e6e8ec, Δ8), `#6b7280` → `--muted` (#5c6670, Δ15 — the largest, on the
+  AI verdict line). Also unresolved: `--selcard-sub` / `--catplan-sub` `#7a828c`, which sits BETWEEN
+  `--muted` and `--faint` and cannot be snapped either way without visibly changing a subtitle — it
+  needs a ramp step, or a decision that secondary text is `--muted`. Doing this is a real
+  improvement; doing it inside a refactor would have been a design change smuggled in as cleanup.
+  Take it as its own change, with before/after captures.
+- [ ] **Expose `keepConfirmed` — "regenerate, but keep this."** The core has supported freezing
+  Confirmed components across a regeneration since S6 (`autoGenerate(..., { keepConfirmed })`), and
+  **no UI anywhere reaches it.** The whole loop is generate → evaluate → regenerate, while an
+  architect's actual response to a test-fit is "move the boardroom to the corner, keep the rest".
+  The closest we offer is anchor pins *before* generation and hand-editing *after*. Named in the
+  tone check (`docs/design/manual-session.md` §3) as the second of the three defects that would
+  embarrass us in a client demo — and unlike the other two it is a workflow gap, not a generator
+  one, so it belongs here rather than in Track B.
 - [~] **Awaiting the user's display** (`docs/design/manual-session.md`): 3D panel states and the
   naive-user walkthrough. Everything else in Track A′ is verified.
 - [x] **Slice 5 — typography + tokens.** Shipped: the numeric face on quantitative data (`.num`,
@@ -490,6 +523,19 @@ metres is a question about where the unit was dropped, not about appending "cm" 
 
 ## Track B — Test-fit generator quality (`docs/design/testfit-pro-quality.md`)
 Make generated plans read like a senior architect's work, not a diagram.
+
+> **Two of the three defects named in the overhaul's tone check
+> (`docs/design/manual-session.md` §3) land here, with measurements, and both are the
+> generator-search bake-off's (ADR 0005) to resolve — not UI work:**
+> 1. **Three strategies that differ by under 5%.** On the real 843 m² plate the Open / Balanced /
+>    Cellular candidates scored **111 / 109 / 106 seats** (matched A/B, 3 seeds each). Options that
+>    close are one option with noise, and the gallery's premise is that they are genuinely different
+>    ways to solve the brief. Whatever the bake-off picks has to produce *divergent* plans, not just
+>    better-scoring ones.
+> 2. **Irregular and small plates are handled by added cases.** The zero-desk rescue (rotated lattice
+>    for angled plates) and `SMALL_PLATE_FIELD_AREA` were each added after a real failure. The
+>    failure mode is not a crash — it is a plan that is quietly worse on a plate that does not suit
+>    the packer, which in front of a client with their own floor is a coin toss.
 
 - [x] **M1 — Enclosed rooms.** Generated partitions + glazed corridor front + 0.9m door w/ swing;
   circulation door-whitelist; `Wall.generated/glazing` flags.

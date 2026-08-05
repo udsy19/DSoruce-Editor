@@ -400,6 +400,32 @@ Three rules, in order of preference:
 Searching for a shared *name* finds honest copies. Searching for a shared *value* finds anonymous
 ones. Only reading finds a false citation — so when a comment says where a number came from, go look.
 
+### 3.6.3 The escalation ladder — what "verified" means for a named resource
+
+Four times in this run, a check that was *correct* was not *sufficient*, and each level was invisible
+to the method that caught the one before. This is the ladder, and it is the checklist for any
+resource the code NAMES rather than owns — a constant, a font, a token, an asset, an API field.
+
+| # | Failure | Found by | Missed by |
+|---|---|---|---|
+| 1 | **Name drift** — two declarations of the same named thing, disagreeing | grep the *name* (`OPEN_SHARE` twice: 0.85 and 0.90) | reading either file alone |
+| 2 | **Value drift** — the same number, independently authored, no shared name | grep the *value* (`0.15` in `layout.rs` and `archTools.ts`) | a name grep: there is no shared name |
+| 3 | **False citation** — a comment claiming a provenance that does not exist | *reading* (`MIN_AREA_PER_WS = 6.0 // see layout.rs`; no such constant ever existed there) | both greps: the name is unique and the value matches nothing |
+| 4 | **Wrong quantity / wrong facet** — the citation is false *and* the thing measured is not the thing named | reading the *definition on both sides* (that 6.0 compared m² per DESK against a scorer that judges m² per SEAT) | reading the comment, which described a real concept |
+
+Level 4 has a typographic twin, which is how the ladder was completed:
+`fonts.test.mjs` verified every family NAMED was a family LOADED — a level-1 check. It could not see
+`.sheets-title` asking `--font-display` for **font-weight 600** against a face that ships 500/700.
+The family resolves; the *weight* does not; CSS quietly substitutes a neighbour, so the stylesheet
+and the pixels disagree about what that element is. Same shape as the m²-per-desk/per-seat error: the
+name is right and the *facet* is wrong.
+
+**So: a resource is verified when its name resolves, its value matches its owner, its stated
+provenance is true, and the facet you are using is the facet the owner defines.** Anything short of
+all four is an unchecked claim. Where the check can be automated it belongs in
+`web/src/coreParity.test.mjs` or `web/src/ui/fonts.test.mjs`; where it cannot, it belongs in a
+review, not in a comment.
+
 ### 3.7 Acceptance test for the whole spec
 
 A zoom sweep at 8 / 20 / 45 / 110 / 300 px/m on the same plan, in both canvases, at DPR 1 and 2, in
