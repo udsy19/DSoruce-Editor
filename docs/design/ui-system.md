@@ -365,6 +365,13 @@ Two rules, learned the hard way while verifying these slices.
    - Verify ownership by the **listening process's cwd**, not by getting a 200.
    - Grep the served module for an **identifier, never comment text** — esbuild strips comments in
      dev, so a comment grep returns 0 against perfectly current code and sends you chasing a phantom.
+4. **Verify through the app's own module graph, not a hand-rolled import.** A console probe that does
+   `import('/src/wasm/ds_core.js')` gets a **second, uninitialised** copy of the wasm module whose
+   free functions throw — while the app's own `openShare()` returns 0.9 from the live instance a few
+   milliseconds later. The probe is wrong, the app is fine, and the failure looks exactly like a
+   broken export. This matters beyond the one case: **false reds train you to re-run until green**,
+   and that habit is precisely how a false green gets through. Reach for the module the app imports
+   (`import('/src/editor/EditorCanvas.ts')`), or drive the real code path.
 
 ### 3.6.2 A provenance comment is a claim to verify, not documentation
 
