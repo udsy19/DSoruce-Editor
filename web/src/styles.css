@@ -2033,6 +2033,125 @@ button {
   color: var(--faint);
 }
 
+/* ----------------------------- Layers panel ------------------------------- */
+/* Was a 10-key CSSProperties dictionary + 19 hexes, all of them dead
+   `var(--token, #hex)` fallbacks. */
+.layers-card {
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  padding: 10px 0 8px;
+  font-family: var(--font-ui);
+  color: var(--text);
+  min-width: 220px;
+}
+.layers-eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--eyebrow);
+  padding: 0 12px 8px;
+}
+.layers-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  cursor: default;
+  background: transparent;
+  opacity: 1;
+}
+/* The layer new geometry is drawn on. */
+.layers-row.is-active {
+  background: var(--accent-soft);
+}
+/* Hidden layer — dimmed, not removed, so its count stays readable. */
+.layers-row.is-hidden {
+  opacity: 0.55;
+}
+.layers-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: transparent;
+  border-radius: 5px;
+  cursor: pointer;
+  padding: 0;
+  color: var(--text-2);
+}
+.layers-radio {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  border: 1.5px solid var(--hairline-strong);
+  background: var(--surface);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  flex: none;
+}
+.layers-radio.is-active {
+  border-color: var(--accent);
+}
+.layers-radio-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.layers-name {
+  flex: 1;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  font-weight: 400;
+}
+.layers-name.is-active {
+  font-weight: 600;
+}
+.layers-count {
+  font-size: 11px;
+  color: var(--muted);
+}
+.layers-add-form {
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px 2px;
+  border-top: 1px solid var(--hairline);
+  margin-top: 6px;
+}
+.layers-add-input {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  padding: 5px 8px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-xs);
+  background: var(--surface-2);
+  color: var(--text);
+  outline: none;
+}
+.layers-add-btn {
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 5px 10px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-xs);
+  background: var(--surface);
+  color: var(--text-2);
+  cursor: pointer;
+}
+
 /* ---------------------- Plan library panel (editor) ----------------------- */
 /* Was a 40-key `S: Record<string, CSSProperties>` dictionary applied at 55 call
    sites, carrying 68 hard-coded hexes. 11 of those were `var(--accent, #E8A13C)`
