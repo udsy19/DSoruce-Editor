@@ -63,9 +63,12 @@ const BASELINE_INTEGRITY = 12
  *  number that means less than it did. Keep the strict equality. */
 const BASELINE_DRAWING_SET = 283
 
-function run(cmd, args) {
+function run(cmd, args, env) {
   try {
-    return execFileSync(cmd, args, { cwd: REPO, encoding: 'utf8', maxBuffer: 256 << 20, stdio: ['ignore', 'pipe', 'pipe'] })
+    return execFileSync(cmd, args, {
+      cwd: REPO, encoding: 'utf8', maxBuffer: 256 << 20, stdio: ['ignore', 'pipe', 'pipe'],
+      env: env ? { ...process.env, ...env } : process.env,
+    })
   } catch (err) {
     // A red board still prints a scoreboard; keep it and let the checks speak.
     if (err.stdout != null) return err.stdout + (err.stderr ?? '')
@@ -99,6 +102,22 @@ async function main() {
       integ ? `${integ[1]} checks` : 'no integrity line on the board',
     )
     c.ok('the board is green', /ALL GATES GREEN\./.test(board), board.split('\n').filter((l) => /^FAIL/.test(l)).join(' | '))
+
+    // ---- the runner is itself a system under test --------------------------
+    // A grading system whose summary can disagree with its own rows is the
+    // meta-instance of every defect this suite exists to catch. It shipped:
+    // while G12 was being wired the board printed "12/12 passing" directly above
+    // "G12 FAIL", because FAILED incremented on the exit code alone — a status
+    // supplied by the very thing being summarised.
+    // GSELF exits 0 while printing FAIL. Proving the runner catches it every run
+    // beats reasoning that it does.
+    const liar = run('bash', [path.join(REPO, 'scripts/gates/run-all.sh'), 'GSELF'],
+      { GATE_SELFTEST: '1' })
+    c.ok(
+      'the runner reports a gate that exits 0 while printing FAIL as RED',
+      /GSELF\s+Runner self-test\s+FAIL/.test(liar) && /\b0\/1 passing\b/.test(liar),
+      liar.split('\n').filter((l) => /GSELF|passing/.test(l)).join(' | ') || 'no GSELF line',
+    )
 
     const ds = run('node', [path.join(REPO, 'scripts/drawing-set.test.mjs')])
     const m = ds.match(/drawing-set (PASS|FAIL) \((\d+) checks?\)/)

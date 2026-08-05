@@ -90,6 +90,61 @@ verified clean. Never the artifact under test.
 Watch for this in review — it is the third member of the family, alongside producer-supplied metadata
 and emission-vs-visibility, and it is the hardest to see because the measurement looks rigorous.
 
+## A prescribed fix is a hypothesis — the gate falsifies the FIX as much as the defect
+
+Write the gate against the **property that must hold**, never against the fix someone specified. The
+person specifying the fix — including whoever wrote the task — is not exempt.
+
+**Worked case (drawing set, D3).** The brief diagnosed "text drawn at fixed size into a clip region
+with no fit check" and prescribed a fit ladder: wrap → shrink → abbreviate → displace. Both the
+diagnosis and the prescription were wrong.
+- The real cause was one step further back: labels were placed **at their zone centre and nowhere
+  else**, and each label's white knockout halo then *erased* the previous one. A fit ladder would not
+  have touched it.
+- **Two prescribed rungs were actively harmful.** Wrapping a name onto two lines made the gate report
+  `"Open Workspace (4)" rendered 0×` — because a wrapped name is no longer **one recoverable glyph
+  run**, the very property the gate anchors on. The prescribed remedy destroyed what it was meant to
+  preserve. Rungs are now ordered by damage, displacement first.
+
+Only a gate anchored to the property (one recoverable glyph run) could reveal that. A gate written to
+confirm the prescription would have certified the harm.
+
+Across two missions the count is: **10 defects fixed against 4 reported, and 3 of 4 root causes
+falsified before a line of fix code was written.**
+
+## The board runner is itself a system under test
+
+A grading system whose summary can disagree with its own rows is the meta-instance of everything here:
+**the scoreboard trusted a status code supplied by the thing it was summarising.**
+
+It shipped. While the sheet gates were being wired onto the board, `FAILED` incremented on the gate's
+**exit code alone**, so a gate that exited 0 while printing `FAIL` was tallied as passing — the board
+printed `12/12 passing` directly above `G12 FAIL`. Both runners now fail on the exit code **or** the
+scoreboard line.
+
+The durable rule is not the fix, it is the check: **keep a deliberately lying gate as a permanent
+fixture.** `GATE_SELFTEST=1` appends `GSELF`, which exits 0 while printing `FAIL`; SG5 runs it every
+time and asserts the board reports it red. Proven, not assumed — and falsified: reverting the counting
+fix reproduces `1/1 passing` above a `FAIL` row, and SG5 goes `FAIL (28 checks, 1 failing)`.
+
+## Completeness gates: derive the full expected set, never presence-match two artifact-derived lists
+
+Anchoring **one side** of a completeness check to ground truth is not enough. If the other side is
+also derived from the artifact, the two contaminated sides **agree with each other about the missing
+element** and the gate sees nothing. Presence-matching between two artifact-derived lists is mutual
+contamination wearing a gate's clothes.
+
+**Worked case (drawing set, D-O)** — the fourth recurrence, *inside a gate written to enforce this
+file*. SG1's schedule-completeness check anchored only the **Door** half to core state; the **Window**
+half compared plan tags against schedule rows, both descended from one upstream list. Dropping a
+glazed run upstream removed the tag **and** the row together — and `SG1 71 / SG2 8 / SG3 97` all
+passed.
+
+The rule: **derive the complete expected set from core state, then check each artifact against it
+independently.** The fix re-derives glazed runs from wall geometry and matches delivered rows against
+*that*; its falsification drops a segment **inside** the merge, proving the anchor reaches the
+geometry rather than the producer's list.
+
 ## In practice
 
 - **Derive from bytes or core state.** Segment the image; parse the workbook; re-project from the

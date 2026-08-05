@@ -60,6 +60,24 @@ declare -a TITLES=(
   "Furniture agreement"
   "Drawing set (SG1-SG6)"
 )
+# ---- the lying gate ---------------------------------------------------------
+# GSELF exits 0 while printing a FAIL line. It is the adversarial check on THIS
+# RUNNER: a grading system whose summary can disagree with its own rows is the
+# meta-instance of every defect this suite exists to catch — the scoreboard
+# trusting a status code supplied by the thing it summarises. That is not
+# hypothetical; it shipped. While G12 was being wired the board printed
+# "12/12 passing" directly above "G12 FAIL", because FAILED incremented on the
+# exit code alone.
+#
+# Kept permanently and opt-in (GATE_SELFTEST=1) rather than reasoned about, so
+# the runner's integrity is PROVEN each run instead of assumed. SG5 invokes it
+# and asserts the board reports it red. See .claude/rules/gate-independence.md.
+if [ "${GATE_SELFTEST:-0}" = "1" ]; then
+  IDS+=(GSELF)
+  CMDS+=("bash -c 'echo \"GSELF FAIL: deliberate liar — exits 0, prints FAIL\"; exit 0'")
+  TITLES+=("Runner self-test")
+fi
+
 # The index of the gate that PRODUCES the pack (G10). Everything else reads.
 # G11 is appended AFTER it, so this index is unaffected by the append.
 PRODUCER_IDX=9
