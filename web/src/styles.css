@@ -2033,6 +2033,141 @@ button {
   color: var(--faint);
 }
 
+/* --------------------- Plan by category (Materio list) -------------------- */
+/* Was 18 inline style objects + 12 hard-coded hexes in CategoryPlan.tsx. Same
+   contract as `.selcard`: values are byte-identical, off-ramp inks are declared
+   once as component-scoped properties rather than pushed into :root. */
+.catplan {
+  --catplan-ink: #1e2329;
+  --catplan-sub: #7a828c;
+  --catplan-faint: var(--faint); /* #9aa2ad — already on the ramp */
+  --catplan-tint: #eef0f3;
+  --catplan-tint-2: #e6e9ee;
+  font-family: var(--font-ui);
+}
+.catplan-eyebrow {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--catplan-sub);
+  margin: 2px 0 6px;
+}
+.catplan-group {
+  background: var(--surface);
+  border-radius: var(--r-md);
+  box-shadow: 0 1px 3px rgba(24, 30, 40, 0.08);
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+.catplan-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+.catplan-cat {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--catplan-ink);
+  text-transform: capitalize;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.catplan-count {
+  font-size: 10.5px;
+  color: var(--catplan-faint);
+}
+.catplan-total {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--catplan-ink);
+}
+.catplan-chevron {
+  color: var(--catplan-faint);
+  line-height: 0;
+  transition: transform 120ms ease;
+}
+/* Collapsed group → the chevron points right. */
+.catplan-chevron.is-collapsed {
+  transform: rotate(-90deg);
+}
+.catplan-items {
+  padding: 0 6px 6px;
+}
+.catplan-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 6px;
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  cursor: default;
+  text-align: left;
+  font: inherit;
+}
+/* Rows are only clickable when the host passes an onPick. */
+.catplan-item.is-pickable {
+  cursor: pointer;
+}
+.catplan-thumb {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--r-xs);
+  object-fit: cover;
+  flex: none;
+  background: var(--catplan-tint);
+}
+.catplan-thumb.is-empty {
+  background: var(--catplan-tint-2);
+}
+.catplan-name {
+  font-size: 12.5px;
+  color: var(--catplan-ink);
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* LEGEND, not chrome (ui-system.md §4.1.1): this dot means "a product is bound
+   to this item" — the same fact `--canvas-bound` states on the drawing. It is
+   the marker-ref-pin case, so it takes the CANVAS token. It read
+   `var(--accent)`, which is the same hex today and the wrong meaning: a rebrand
+   would have recoloured a data legend. */
+.catplan-bound-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--canvas-bound);
+  margin-right: 6px;
+  vertical-align: middle;
+}
+.catplan-qty {
+  font-size: 11px;
+  color: var(--catplan-faint);
+  flex: none;
+}
+.catplan-price {
+  font-size: 11.5px;
+  color: var(--catplan-ink);
+  flex: none;
+  min-width: 52px;
+  text-align: right;
+}
+
 /* ------------------- Selection card (Materio floating) -------------------- */
 /* Was 14 inline style objects + 15 hard-coded hexes inside SelectionCard.tsx.
    The card's own off-ramp inks are declared ONCE here as component-scoped
