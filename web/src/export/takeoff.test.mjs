@@ -41,8 +41,24 @@ await build({
   platform: 'node',
   logLevel: 'silent',
 })
-const { buildTakeoffModel } = await import(pathToFileURL(outFile).href)
+const { buildTakeoffModel, zoneAtPoint } = await import(pathToFileURL(outFile).href)
 fs.rmSync(outFile, { force: true })
+
+// The Inventory sheet's own room-type derivation, bundled independently. The
+// point of the room-type checks below is that these two modules agree, so the
+// test must reach `roomTypeLabel` through its OWN entry point — not through the
+// copy takeoff.ts bundled — or it would only be comparing a value with itself.
+const finishOut = path.join(os.tmpdir(), `ds-finish-${Date.now()}.mjs`)
+await build({
+  entryPoints: [path.join(here, 'finishSchedule.ts')],
+  outfile: finishOut,
+  bundle: true,
+  format: 'esm',
+  platform: 'node',
+  logLevel: 'silent',
+})
+const { roomTypeLabel, TYPE_LABEL } = await import(pathToFileURL(finishOut).href)
+fs.rmSync(finishOut, { force: true })
 
 // --- load the wasm core and instantiate from bytes -------------------------
 const wasmJs = pathToFileURL(path.join(here, '../wasm/ds_core.js')).href
@@ -155,19 +171,60 @@ check(
   'room ids resolve (numeric zone id or "OS" catch-all)',
   model.furniture.every((r) => typeof r.roomId === 'number' || r.roomId === 'OS'),
 )
+// --- ONE room-type derivation across the workbook ---------------------------
+// The `Furniture Inventory` Room Type and the `Inventory` Subcategory must be
+// the same string for the same Room ID. They used to be two mappings: a private
+// zone_type table here billed Reception (an `Amenity` zone) as "Kitchen" while
+// the Inventory row said "Reception". Both now resolve through `roomTypeLabel`.
+const VOCAB = new Set([...Object.values(TYPE_LABEL), 'Circulation'])
 check(
-  'room types come from the sample vocabulary',
-  model.furniture.every((r) =>
-    [
-      'Open Space WorkStation',
-      'Conference',
-      'Comfort Zone',
-      'Executive Office',
-      'Kitchen',
-      'Other',
-      'Open Space',
-    ].includes(r.roomType),
-  ),
+  'room types come from the ONE canonical vocabulary (finishSchedule TYPE_LABEL)',
+  model.furniture.every((r) => VOCAB.has(r.roomType)),
+)
+// Independently recompute the Inventory's label for every billed room and
+// compare. This is the assertion that fails the moment a second mapping appears.
+const zonesById = new Map((state.zones ?? []).map((z) => [z.id, z]))
+const typeDisagreements = model.furniture.filter((r) => {
+  const zone = typeof r.roomId === 'number' ? zonesById.get(r.roomId) ?? null : null
+  return r.roomType !== roomTypeLabel(zone)
+})
+for (const r of typeDisagreements)
+  console.log(`  room ${r.roomId}: Furniture Inventory "${r.roomType}" vs Inventory "${roomTypeLabel(zonesById.get(r.roomId) ?? null)}"`)
+check(
+  `Furniture Inventory Room Type === Inventory Subcategory for every billed room (${typeDisagreements.length} disagreements)`,
+  typeDisagreements.length === 0,
+)
+const receptionRow = model.furniture.find(
+  (r) => (zonesById.get(r.roomId)?.label ?? '').toLowerCase().includes('reception'),
+)
+check(
+  'a Reception room is NOT billed as a Kitchen',
+  receptionRow == null || receptionRow.roomType === 'Reception',
+)
+
+// --- zone bucketing matches the core's rule ---------------------------------
+// `zoneAtPoint` must return the MOST SPECIFIC containing zone, exactly as
+// `Document::zone_index_at` does — not merely the first in emission order.
+// Synthetic zones: a small room fully inside a plate-spanning workspace field,
+// with the field emitted FIRST so a first-wins scan would swallow the room.
+const nested = [
+  { id: 1, zone_type: 'Circulation', label: 'Corridor', shape: { kind: 'Rect', x: 9, y: 6, w: 18, h: 12 }, component_ids: [] },
+  { id: 2, zone_type: 'Workspace', label: 'Open Workspace', shape: { kind: 'Rect', x: 9, y: 6, w: 16, h: 10 }, component_ids: [] },
+  { id: 3, zone_type: 'ClosedOffice', label: 'Cabin 1', shape: { kind: 'Rect', x: 4, y: 4, w: 3, h: 3 }, component_ids: [] },
+]
+check('zoneAtPoint picks the SMALLEST containing zone, not the first', zoneAtPoint(4, 4, nested)?.id === 3)
+check('zoneAtPoint prefers a specific zone over Circulation', zoneAtPoint(14, 9, nested)?.id === 2)
+check('zoneAtPoint falls back to Circulation when nothing else contains the point', zoneAtPoint(17.5, 11.5, nested)?.id === 1)
+// Agreement with the core is now structural: every component the core bucketed
+// into a zone must land in that same zone here.
+const coreDisagreements = state.components.filter((c) => {
+  const zone = (state.zones ?? []).find((z) => (z.component_ids ?? []).includes(c.id))
+  if (!zone) return false
+  return zoneAtPoint(c.x, c.y, state.zones ?? [])?.id !== zone.id
+})
+check(
+  `zoneAtPoint agrees with the core's component bucketing for all ${state.components.length} components (${coreDisagreements.length} disagreements)`,
+  coreDisagreements.length === 0,
 )
 check(
   'per-row total = qty × unit price',

@@ -259,6 +259,24 @@ export function finishTypeFor(z: DocZone): FinishKey {
   }
 }
 
+/**
+ * **The one room-type label the whole deliverable shows.** Every sheet that
+ * names a room's type reads this: the workbook's `Inventory` *Subcategory*, its
+ * `Furniture Inventory` *Room Type* (via `takeoff.ts`) and the drawing set's
+ * Room Finish Schedule *ROOM TYPE* column. There is deliberately no second
+ * vocabulary — a room that reads "Reception" on one sheet cannot read
+ * "Kitchen" on another.
+ *
+ * `null` (a component standing outside every zone) and `Circulation` are not
+ * schedulable rooms: circulation collapses onto the plan's own aggregated
+ * `Room ID "0"` row, which is labelled `Circulation`.
+ */
+export function roomTypeLabel(z: DocZone | null): string {
+  if (!z) return TYPE_LABEL.other
+  if (z.zone_type === 'Circulation') return 'Circulation'
+  return TYPE_LABEL[finishTypeFor(z)]
+}
+
 /** Enclosed area (m²) of a zone shape; rings exclude the hole, polys shoelace. */
 const zoneArea = zoneShapeArea
 
@@ -289,7 +307,7 @@ function scheduleRows(state: DocState): Row[] {
     return {
       id: z.id,
       name,
-      type: TYPE_LABEL[key],
+      type: roomTypeLabel(z),
       spec: FINISH_SPEC[key],
       ceilHt: `${CEILING_HEIGHT.toFixed(2)} m`,
       area: zoneArea(z.shape).toFixed(1),

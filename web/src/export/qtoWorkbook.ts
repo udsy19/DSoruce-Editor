@@ -14,6 +14,9 @@
 //     crates/ds-core/src/quantity.rs). The TS side never classifies a wall.
 //   * the room set (Inventory rows == plan labels) → `planRoomList` (planGraphic)
 //   * floor/ceiling materials → `FINISH_SPEC` / `finishTypeFor` (finishSchedule)
+//   * room TYPE, on every sheet that names one → `roomTypeLabel` (finishSchedule).
+//     `Inventory!Subcategory` and `Furniture Inventory!Room Type` are the same
+//     call on the same zone, so the workbook cannot contradict itself.
 //   * furniture rows → `buildTakeoffModel` (takeoff.ts)
 //   * legend chip hexes → `PLAN_LEGEND_CHIPS` (qbiqPalette → palette.json)
 //   * the OOXML byte stream → `buildXlsx` (workbook.ts)
@@ -23,10 +26,10 @@
 
 import type { DocState, DocZone } from '../editor/EditorCanvas'
 import { zoneArea } from '../util/zoneGeom'
-import { FINISH_SPEC, TYPE_LABEL, finishTypeFor } from './finishSchedule'
+import { FINISH_SPEC, finishTypeFor, roomTypeLabel } from './finishSchedule'
 import { CIRCULATION_ROOM_ID, planRoomList, type PlanRoom } from './planGraphic'
 import { PLAN_LEGEND_CHIPS, WORKBOOK_CHROME } from './qbiqPalette'
-import { buildTakeoffModel, type TakeoffOptions } from './takeoff'
+import { buildTakeoffModel, type TakeoffFurnitureRow, type TakeoffOptions } from './takeoff'
 import { buildXlsx, colName, pxToEmu, type Cell, type SheetSpec, type StyleSpec } from './workbook'
 import { triggerDownload } from './png'
 
@@ -278,7 +281,12 @@ export function buildQtoModel(
       zoneId: pr.zoneId,
       department: 'GENERAL',
       spaceType: pr.zoneId == null ? 'Circulation' : qr?.spaceType ?? pr.label,
-      subcategory: pr.zoneId == null ? 'Circulation' : TYPE_LABEL[key],
+      // ONE room-type derivation for the whole workbook: this cell and the
+      // `Furniture Inventory` Room Type cell for the same Room ID are the same
+      // call on the same zone (`roomTypeLabel`), so they cannot disagree.
+      // The aggregated circulation row anchors on a `Circulation` zone, which
+      // `roomTypeLabel` labels 'Circulation' — no special case needed here.
+      subcategory: roomTypeLabel(zone),
       name: pr.label,
       headcount: pr.zoneId == null ? 0 : qr?.headcount ?? 0,
       areaM2,
@@ -333,6 +341,8 @@ export function buildQtoModel(
     count: d.count,
   }))
 
+  assertOneRoomType(rooms, takeoff.furniture)
+
   return {
     quantities,
     rooms,
@@ -345,6 +355,35 @@ export function buildQtoModel(
     doors,
     floor: opts.floor ?? 1,
     project: opts.project ?? 'DSource Test-Fit',
+  }
+}
+
+/**
+ * The workbook must never tell two stories about one Room ID: the
+ * `Furniture Inventory` *Room Type* and the `Inventory` *Subcategory* for the
+ * same room have to be the same string. Both sides call `roomTypeLabel` on the
+ * same zone, so this cannot fire today — it is the tripwire that makes a second
+ * room-type mapping impossible to reintroduce **silently**. Throwing here fails
+ * the export itself, so every artifact gate that runs through `buildQtoPack`
+ * (G1/G3/G5/G9/G10) sees it, not just the unit test.
+ *
+ * Rows whose Room ID has no Inventory row (the `"OS"` catch-all for a component
+ * standing outside every zone) are skipped — there is nothing to contradict.
+ */
+function assertOneRoomType(rooms: QtoRoomRow[], furniture: TakeoffFurnitureRow[]): void {
+  const subcategoryById = new Map(rooms.map((r) => [r.id, r.subcategory]))
+  const bad: string[] = []
+  for (const f of furniture) {
+    const sub = subcategoryById.get(String(f.roomId))
+    if (sub !== undefined && sub !== f.roomType) {
+      bad.push(`Room ${f.roomId}: Furniture Inventory "${f.roomType}" vs Inventory "${sub}"`)
+    }
+  }
+  if (bad.length > 0) {
+    throw new Error(
+      `qtoWorkbook: ${bad.length} room(s) carry two different types across sheets — ` +
+        `every sheet must read roomTypeLabel(). ${[...new Set(bad)].join(' · ')}`,
+    )
   }
 }
 

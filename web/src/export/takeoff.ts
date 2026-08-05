@@ -16,9 +16,10 @@
 // aggregated per room and per item. Currency is ₹ (INR) per CLAUDE.md.
 // Item Descriptions carry W×L in cm ("Desk W70 X L140"), matching the sample.
 
-import type { DocState, DocComponent, DocZone, ZoneType } from '../editor/EditorCanvas'
-import { pointInZoneShape } from '../util/zoneGeom'
+import type { DocState, DocComponent, DocZone } from '../editor/EditorCanvas'
+import { pointInZoneShape, zoneArea } from '../util/zoneGeom'
 import { catByCategory } from '../editor/catalog'
+import { roomTypeLabel } from './finishSchedule'
 
 // ---------------------------------------------------------------------------
 // Model (pure — unit-testable without the xlsx layer)
@@ -75,16 +76,12 @@ export interface TakeoffModel {
 
 const DEFAULT_SUPPLIER = 'Can be customized'
 
-// zone_type -> the sample's room-type vocabulary.
-const ROOM_TYPE: Record<ZoneType, string> = {
-  Workspace: 'Open Space WorkStation',
-  Meeting: 'Conference',
-  Collaboration: 'Comfort Zone',
-  ClosedOffice: 'Executive Office',
-  Amenity: 'Kitchen',
-  Core: 'Other',
-  Circulation: 'Open Space',
-}
+// The Room Type column is `roomTypeLabel` (finishSchedule.ts) — the SAME
+// derivation the Inventory sheet's Subcategory uses. A private zone_type ->
+// vocabulary table used to live here; it collapsed the core's 7 ZoneType values
+// onto 7 strings of its own and therefore billed Reception (an `Amenity` zone)
+// as a "Kitchen" while the Inventory row for the same Room ID said "Reception".
+// One deliverable cannot tell two stories about one room, so it is deleted.
 
 // Short per-category cost code (the sample leaves this "Can be customized";
 // a real code is more useful and still overridable downstream).
@@ -118,14 +115,38 @@ function itemDescription(c: DocComponent): string {
   return `${itemName(c)} W${a} X L${b}`
 }
 
-/** The zone whose rect contains point (px,py) in EDITOR coords, or null.
- *  Exported so the room-marker → zone association (App.tsx) reuses the one
- *  point-in-zone test rather than forking it (no-bloat). */
+/**
+ * The MOST SPECIFIC zone containing point (px,py) in EDITOR coords, or null.
+ * Exported so the room-marker → zone association (App.tsx) reuses the one
+ * point-in-zone test rather than forking it (no-bloat).
+ *
+ * Mirrors the core's `Document::zone_index_at` rule exactly — a specific zone
+ * outranks any `Circulation` zone, and within a class the SMALLEST-area zone
+ * wins — so the Furniture Elements column (this function) and the Headcount
+ * column (the core's bucketing) can never disagree. A first-wins scan happened
+ * to agree with the core on generated documents because rooms are emitted
+ * before the plate-spanning workspace field; that agreement was an accident of
+ * emission order, and this makes it structural.
+ */
 export function zoneAtPoint(px: number, py: number, zones: DocZone[]): DocZone | null {
+  let chosen: DocZone | null = null
+  let chosenArea = 0
+  let foundSpecific = false
   for (const z of zones) {
-    if (pointInZoneShape(z.shape, px, py)) return z
+    if (!pointInZoneShape(z.shape, px, py)) continue
+    const circ = z.zone_type === 'Circulation'
+    if (circ && foundSpecific) continue // a specific zone already outranks it
+    const area = zoneArea(z.shape)
+    if (!circ && !foundSpecific) {
+      foundSpecific = true // first specific zone displaces circulation
+      chosen = z
+      chosenArea = area
+    } else if (chosen === null || area < chosenArea) {
+      chosen = z
+      chosenArea = area
+    }
   }
-  return null
+  return chosen
 }
 
 /** The zone whose rect contains a component's center, or null (→ catch-all). */
@@ -170,7 +191,7 @@ export function buildTakeoffModel(state: DocState, opts: TakeoffOptions = {}): T
     if (c.reference) continue
     const zone = zoneFor(c, zones)
     const roomId = zone ? (roomRefs?.get(zone.id) ?? zone.id) : 'OS'
-    const roomType = zone ? ROOM_TYPE[zone.zone_type] : 'Open Space'
+    const roomType = roomTypeLabel(zone)
     const desc = itemDescription(c)
     const unitPrice = priceOf(c)
     const supplier = supplierOf(c)

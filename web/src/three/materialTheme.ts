@@ -831,6 +831,12 @@ export function buildInteriorScene(state: DocState, opts: InteriorSceneOpts = {}
     g.rotation.y = -c.rotation
     g.add(buildFurniture3D(c.category, c.w, c.h, { color: theme.furnitureAccent(c.category) }))
     redressFurniture(g, c.category, theme)
+    // Marked so a camera can tell "there is a desk 2 m in front of me" from
+    // "there is a wall 2 m in front of me" — the two read completely differently
+    // in a frame and nothing else in the scene graph distinguishes them.
+    g.traverse((o) => {
+      o.userData.furniture = true
+    })
     root.add(g)
   }
 

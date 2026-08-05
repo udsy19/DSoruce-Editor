@@ -101,7 +101,7 @@ AI drivers (Local/Cerebras/Claude) + Claude soft-goal evaluator, exports (CSV/PN
 per-room thumbnails, live pricing), four 4K room renders, a 43 s 1080p walkthrough mp4, and a
 self-hosted `/share/<id>` 3D viewer; all derived from one `Editor` state. Acceptance gates live in
 `scripts/gates/` — **`bash scripts/gates/run-all.sh` is the only trusted signal** (10/10 green).
-Rust: 147 tests.
+Rust: 150 tests.
 Parked: multiplayer (designed in `docs/design/multiplayer.md`; a presence milestone was built and
 reverted — recover from commits `3a923ea` + `706c7cf` when resumed). Next: cloud plan sync.
 See `research/08-open-questions.md`.

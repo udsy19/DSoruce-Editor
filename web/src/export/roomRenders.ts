@@ -3,6 +3,7 @@ import { canvasToPngBytes } from './planGraphic'
 import type { WallSpan } from './wallTypes'
 import { buildInteriorScene, type InteriorRoom, type InteriorScene } from '../three/materialTheme'
 import { placeRoomCamera, renderInteriorStill, type StillOpts } from '../three/interiorStill'
+import { buildClearanceGrid, type ClearanceGrid } from './composition'
 import { FINISH_SPEC } from './finishSchedule'
 import { zoneArea } from '../util/zoneGeom'
 
@@ -131,8 +132,11 @@ function shoot(
   state: DocState,
   opts: RoomPackOpts,
   framing: RoomRenderSpec['framing'],
+  avoidEyes: Array<[number, number]>,
+  grid: ClearanceGrid,
+  floorEvidence?: 'required',
 ): ReturnType<typeof renderInteriorStill> {
-  const cam = placeRoomCamera(scene, room, state, { ...opts, framing })
+  const cam = placeRoomCamera(scene, room, state, { ...opts, framing, avoidEyes, grid, floorEvidence })
   return renderInteriorStill(scene, cam, {
     width: opts.width ?? 3840,
     height: opts.height ?? 2160,
@@ -170,36 +174,55 @@ export async function renderRoomPack(state: DocState, opts: RoomPackOpts = {}): 
     plate: opts.plate,
     ...opts.scene,
   })
+  // Built ONCE and handed to every camera search: the shared composition field
+  // is a property of the building, not of a shot, and it is the same field the
+  // walkthrough frames against (`export/composition.ts`).
+  const grid = opts.grid ?? buildClearanceGrid(state, scene.plate)
   try {
     const specs = opts.only
       ? ROOM_RENDER_SPECS.filter((s) => opts.only!.includes(s.key))
       : ROOM_RENDER_SPECS
     const taken = new Set<number>()
+    /** Where a still of each room already stood, so a second still of the SAME
+     *  open floor (the reference pack does this too) is a different picture of
+     *  it rather than the same camera search returning the same answer. */
+    const shotFrom = new Map<number, Array<[number, number]>>()
     const out: RoomRender[] = []
     for (let i = 0; i < specs.length; i++) {
       const spec = specs[i]
       const room = pickRoom(scene, spec, taken)
       if (!room) continue
       taken.add(room.zone.id)
+      const avoid = shotFrom.get(room.zone.id) ?? []
 
-      // Shoot the spec's framing; if that camera cannot see the room's OWN
-      // floor cleanly, reframe and shoot again rather than publish a still that
-      // cannot evidence its finish. A pack whose renders do not agree with the
-      // takeoff is the defect — dropping the claim only hid it (D1).
+      // Shoot the best-composed camera first. If the developed still cannot
+      // show the room's OWN floor, come back and pay for it — first by making
+      // floor evidence outrank composition from the same framing, then by
+      // reframing. A pack whose renders do not agree with the takeoff is the
+      // defect, and dropping the claim only hid it (D1) — but the price is only
+      // worth paying when the shot ACTUALLY fails, which is the whole point of
+      // asking the rendered floor mask instead of a 20-ray guess. Three of the
+      // four rooms never reach this branch.
       let framing = spec.framing
-      let still = shoot(scene, room, state, opts, framing)
+      let still = shoot(scene, room, state, opts, framing, avoid, grid)
       if (floorCheckOf(still) !== 'ok') {
-        const alt: RoomRenderSpec['framing'] = framing === 'wide' ? 'close' : 'wide'
-        const retry = shoot(scene, room, state, opts, alt)
-        // Only a shot that ACTUALLY evidences the floor is worth losing the
-        // spec's composition for. Trading the intended framing for a merely
-        // less-bad one buys nothing and produces a table-top close-up.
-        if (floorCheckOf(retry) === 'ok') {
-          still = retry
-          framing = alt
+        const paid = shoot(scene, room, state, opts, framing, avoid, grid, 'required')
+        if (floorCheckOf(paid) === 'ok') {
+          still = paid
+        } else {
+          const alt: RoomRenderSpec['framing'] = framing === 'wide' ? 'close' : 'wide'
+          const retry = shoot(scene, room, state, opts, alt, avoid, grid, 'required')
+          // Only a shot that ACTUALLY evidences the floor is worth losing the
+          // spec's composition for. Trading the intended framing for a merely
+          // less-bad one buys nothing and produces a table-top close-up.
+          if (floorCheckOf(retry) === 'ok') {
+            still = retry
+            framing = alt
+          }
         }
       }
       const cam = still.camera
+      shotFrom.set(room.zone.id, [...avoid, [cam.eye.x, cam.eye.z]])
       out.push({
         key: spec.key,
         title: spec.title,

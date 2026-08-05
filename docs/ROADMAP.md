@@ -305,7 +305,7 @@ so the workbook, plan, renders, video and viewer cannot disagree.
   (byte-identical re-render), colours imported from `spec/palette.json` so legend and linework can't drift.
 - [x] **Per-room renders** — four 3840×2160 stills on a shared material theme (`three/materialTheme.ts`),
   floor materials resolved through `FINISH_SPEC` so renders and workbook agree.
-- [x] **Walkthrough video** — `export/walkthrough.ts`, 43 s H.264 1080p30, circulation-graph route,
+- [x] **Walkthrough video** — `export/walkthrough.ts`, 43 s H.264 1080p60 (CRF 15), circulation-graph route,
   branded title card + in-scene screens.
 - [x] **Shareable web 3D viewer** — `/share/<id>` serving a GLB into `web/viewer.html`. No Autodesk,
   no token, no CDN. `deploy/shareStore.ts` is one implementation shared by dev middleware and prod.
@@ -319,8 +319,24 @@ so the workbook, plan, renders, video and viewer cannot disagree.
   and `editor/furniture.ts` drew its last implied seat, so meeting rooms report **headcount 8**, not 0.
   `Document::zone_index_at` buckets by smallest containing zone, so identical rooms report identical
   headcount (whole-plan 67 → 112).
-- Follow-ups (tracked in `reports/ORCHESTRATOR_LOG.md`):
-  Tier-2 3D room thumbnails. `Conference_room` is the weakest still (5×4 m room, no camera solution).
+- [x] **Adversarial QA — three Judge rounds** (`reports/defects-{1,2,3}.md`). Rounds 1 and 2 each found
+  BLOCKERS against a 10/10 board, both times in a **gate**, both proven by falsification. The recurring
+  root cause was a gate trusting metadata supplied by the thing it tests: the producer chose first
+  *whether* its floor was checked, then *where*. G6 now segments the image itself and reads no producer
+  metadata (moving every `floorRect` onto a wall and deleting the field give byte-identical output).
+  Round 3 declared the pack **shippable, no blocker** — the first round where a fix survived
+  falsification instead of relocating.
+- Follow-ups (tracked in `reports/ORCHESTRATOR_LOG.md`, defect IDs in `reports/defects-*.md`):
+  - **Renders remain the weakest deliverable (D3/E6)** — ~2.0× the reference's flatness and 0.43× its
+    edge density; the video has a 40.4%-blown frame at t=22.2 that G7 structurally cannot see.
+    `Conference_room` is capped by geometry (a 2.9 m table in a 5×4 m room) and **is not closed**.
+  - **Only 3 of 4 renders evidence their floor, with zero headroom**, and the camera that fixed
+    `Conference_room`'s composition is what cost the fourth (7.01% on the prior camera).
+  - **E7** — the plan bills furniture it doesn't draw (the pack's only artifact-level inconsistency).
+  - Gate coverage: G6 certifies from the bottom ~15% of frame and has no room-identity check;
+    G4 passes on a plan with every perimeter-window pixel deleted. Being hardened.
+  - Headless-vs-in-app divergence: `render-rooms.mjs` passes `--lamp 2`, `deliverablePack.ts` none.
+  - Tier-2 3D room thumbnails; round-1 minors D6, D10, D12–D17.
 - [x] **Report cover branding + A/B/C differentiation** — client logo focal on the cover, project/address/
   floor laid out qbiq-style; per-alt accent chips + winner ribbons (shared `computeWinners` w/ the S7
   gallery); summary highlights each metric's leading alternative. (Building *photo* still N/A — no source.)

@@ -263,22 +263,6 @@ def pixels(im):
     return list(im.getdata())
 
 
-def median_rgb(im, rect_frac=None):
-    """Median RGB of a fractional (x0,y0,x1,y1) sub-rect of a PIL image."""
-    import statistics
-    im = im.convert("RGB")
-    if rect_frac:
-        W, H = im.size
-        x0, y0, x1, y1 = rect_frac
-        im = im.crop((int(x0 * W), int(y0 * H), int(x1 * W), int(y1 * H)))
-    im = im.copy()
-    im.thumbnail((300, 300))
-    d = pixels(im)
-    if not d:
-        return (0, 0, 0)
-    return tuple(int(statistics.median([p[i] for p in d])) for i in range(3))
-
-
 def mean_luma(im):
     from PIL import ImageStat
     g = im.convert("L").copy()

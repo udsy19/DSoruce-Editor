@@ -12,12 +12,22 @@ import {
   createInteriorLighting,
   interiorEnvironment,
   interiorSkyTexture,
-  pointInPolygon,
   type InteriorRoom,
   type InteriorScene,
 } from '../three/materialTheme'
 import { EYE_HEIGHT } from '../three/interiorStill'
 import type { WallSpan } from './wallTypes'
+// The composition field and its scorer live in `./composition` — the walkthrough
+// and the room stills share one answer to "what is worth pointing a camera at",
+// and neither owns it.
+import {
+  bestVista,
+  buildClearanceGrid,
+  clearanceAt,
+  distToPlate,
+  frameLook,
+  type ClearanceGrid,
+} from './composition'
 
 /**
  * DELIVERABLE 3 — the branded walkthrough video.
@@ -31,24 +41,22 @@ import type { WallSpan } from './wallTypes'
  *
  * What this module owns, and nothing else does:
  *
- *  1. **A walkable clearance field.** `crates/ds-core/src/circulation.rs` builds
- *     exactly this (occupancy grid + distance transform), but `Editor.
- *     circulation()` only returns SCORES across the wasm boundary — no grid, no
- *     skeleton. Rather than edit the core (owned elsewhere) this rebuilds the
- *     equivalent field in TS at the core's own 0.15 m cell size, seeded from
- *     `circulation()`'s `cell_size` when one is supplied.
- *  2. **A route through it.** Dijkstra between semantic stops (reception →
- *     corridor → open space → hero bay) over a cost that *prefers width*, so
- *     the path lands on the corridor centreline rather than scraping doorframes.
+ *  1. **A route over the shared clearance field.** The field itself, and the
+ *     "what is worth looking at from here?" scorer over it, live in
+ *     `./composition` — the room stills compose with the same two, so the video
+ *     and the still pack cannot disagree about which wall is worth filming.
+ *     What this module adds is the ROUTE: Dijkstra between semantic stops
+ *     (reception → corridor → open space → hero bay) over a cost that *prefers
+ *     width*, so the path lands on the corridor centreline, not on doorframes.
  *     The result is simplified, splined (centripetal Catmull-Rom) and pushed
  *     back off obstacles — a spline through circulation-graph waypoints.
- *  3. **A camera that cannot enter geometry.** Two independent guarantees: the
+ *  2. **A camera that cannot enter geometry.** Two independent guarantees: the
  *     2D clearance field, and an exact world-AABB containment test in 3D. The
  *     AABB test is deliberate — a ray-parity "am I inside a solid?" count is
  *     UNSOUND here, because every material is `FrontSide`, so a ray crossing a
  *     closed box reports one hit and a ray fired from inside it reports none
  *     (`interiorStill.ts` records the same correction).
- *  4. **Branding.** The DSource mark from `export/qtoWorkbook.renderBrandMarkPng`
+ *  3. **Branding.** The DSource mark from `export/qtoWorkbook.renderBrandMarkPng`
  *     — the repo's one brand mark — composited onto in-scene wall displays AND
  *     onto a 1.5 s title card that cross-dissolves into the take.
  *
@@ -97,10 +105,6 @@ const SIGHT_CLEAR_M = 0.32
  *  (deg). A pedestrian looks around by this much without it reading as a pan;
  *  beyond it the walk starts to look like it is going sideways. */
 const LOOK_BIAS_MAX_DEG = 30
-/** Angular resolution of the interest fan (deg). */
-const FAN_STEP_DEG = 1.5
-/** How far an interest ray marches before it counts as "open" (m). */
-const RAY_MAX_M = 22
 /** Ceiling-luminaire grid (m) — `materialTheme`'s `DOWNLIGHT_SPACING`. Snapping
  *  the follow-light focus to THIS pitch is what makes a moving rig flicker-free:
  *  lamps only ever enter/leave at the reach boundary, where a decay-2 light of
@@ -109,31 +113,6 @@ const LAMP_PITCH = 2.4
 const LAMP_REACH_M = 11
 
 // ── Public shapes ────────────────────────────────────────────────────────────
-
-/** What a cell holds, for the composition heuristic. Free space and furniture
- *  are both see-through at eye height; only the last three stop a sight line. */
-export const CELL_FREE = 0
-/** Blank interior partition — the surface this take must not stare at. */
-export const CELL_WALL = 1
-/** Glazed partition or the (spandrel + glazing) perimeter: worth looking at. */
-export const CELL_GLASS = 2
-/** The service core. Solid, but it carries the wayfinding display. */
-export const CELL_CORE = 3
-/** A furniture footprint: content. A sight line passes over it at 1.6 m. */
-export const CELL_CONTENT = 4
-
-/** Distance-to-nearest-obstacle field over the plan, in metres. */
-export interface ClearanceGrid {
-  cols: number
-  rows: number
-  cell: number
-  ox: number
-  oy: number
-  /** Metres from each cell centre to the nearest blocked cell (0 when blocked). */
-  dist: Float32Array
-  /** `CELL_*` per cell — what the camera would be looking at there. */
-  kind: Uint8Array
-}
 
 /** One authored waypoint on the route. */
 export interface WalkStop {
@@ -252,202 +231,6 @@ export interface WalkthroughSummary {
   /** Doorways opened (leaf hidden) so the take can pass through them. */
   doorsOpened: number
   softwareGL: boolean
-}
-
-// ── 1. Clearance field ───────────────────────────────────────────────────────
-
-/**
- * Rasterise the document's obstacles and distance-transform them.
- *
- * Blocked: wall runs at true thickness, every non-door component footprint
- * (rotated), the service core, and everything outside the floor plate. Door
- * components then RE-CARVE their own opening, because a door is a hole in a
- * wall, not an obstacle — without this no route reaches any room.
- */
-export function buildClearanceGrid(state: DocState, plate: Pt[] | null, cell = 0.15): ClearanceGrid {
-  let minX = Infinity
-  let minY = Infinity
-  let maxX = -Infinity
-  let maxY = -Infinity
-  const grow = (x: number, y: number) => {
-    if (x < minX) minX = x
-    if (x > maxX) maxX = x
-    if (y < minY) minY = y
-    if (y > maxY) maxY = y
-  }
-  for (const w of state.walls) {
-    grow(w.a.x, w.a.y)
-    grow(w.b.x, w.b.y)
-  }
-  if (!isFinite(minX)) throw new Error('walkthrough: the document has no walls to walk inside')
-
-  const pad = 1.0
-  const ox = minX - pad
-  const oy = minY - pad
-  const cols = Math.max(4, Math.ceil((maxX - minX + 2 * pad) / cell))
-  const rows = Math.max(4, Math.ceil((maxY - minY + 2 * pad) / cell))
-  const blocked = new Uint8Array(cols * rows)
-  const kind = new Uint8Array(cols * rows)
-  const idx = (cx: number, cy: number) => cy * cols + cx
-
-  const stampRect = (
-    cx: number,
-    cy: number,
-    hw: number,
-    hh: number,
-    rot: number,
-    value: 0 | 1,
-    cellKind: number = CELL_WALL,
-  ) => {
-    const c = Math.cos(rot)
-    const s = Math.sin(rot)
-    const r = Math.hypot(hw, hh)
-    const gx0 = Math.max(0, Math.floor((cx - r - ox) / cell))
-    const gx1 = Math.min(cols - 1, Math.ceil((cx + r - ox) / cell))
-    const gy0 = Math.max(0, Math.floor((cy - r - oy) / cell))
-    const gy1 = Math.min(rows - 1, Math.ceil((cy + r - oy) / cell))
-    for (let gy = gy0; gy <= gy1; gy++) {
-      const wy = oy + (gy + 0.5) * cell
-      for (let gx = gx0; gx <= gx1; gx++) {
-        const wx = ox + (gx + 0.5) * cell
-        const dx = wx - cx
-        const dy = wy - cy
-        // Into the rect's own frame.
-        const lx = dx * c + dy * s
-        const ly = -dx * s + dy * c
-        if (Math.abs(lx) <= hw && Math.abs(ly) <= hh) {
-          const i = idx(gx, gy)
-          blocked[i] = value
-          kind[i] = value ? cellKind : CELL_FREE
-        }
-      }
-    }
-  }
-
-  // Walls, at true thickness. A run whose whole length sits on the plate edge is
-  // the building envelope — which renders as a spandrel with a glazed band above
-  // it, so it is daylight, not a blank surface. Glazed partitions read the same.
-  for (const w of state.walls) {
-    const dx = w.b.x - w.a.x
-    const dy = w.b.y - w.a.y
-    const len = Math.hypot(dx, dy)
-    if (len < 1e-6) continue
-    const onPlate =
-      distToPlate(plate, w.a.x, w.a.y) < 0.5 && distToPlate(plate, w.b.x, w.b.y) < 0.5
-    stampRect(
-      (w.a.x + w.b.x) / 2,
-      (w.a.y + w.b.y) / 2,
-      len / 2,
-      Math.max(cell * 0.6, w.thickness / 2),
-      Math.atan2(dy, dx),
-      1,
-      w.glazing || onPlate ? CELL_GLASS : CELL_WALL,
-    )
-  }
-
-  // Furniture. Doors are handled below; windows and ceiling elements are not
-  // things a walker collides with at 1.6 m.
-  const SKIP = new Set(['Door', 'Window', 'FallCeiling'])
-  for (const c of state.components) {
-    if (SKIP.has(c.category)) continue
-    stampRect(c.x, c.y, c.w / 2, c.h / 2, -c.rotation, 1, CELL_CONTENT)
-  }
-
-  // The service core is solid all the way up.
-  for (const z of state.zones ?? []) {
-    if (z.zone_type !== 'Core') continue
-    const b = zoneBBox(z.shape)
-    stampRect((b.minX + b.maxX) / 2, (b.minY + b.maxY) / 2, (b.maxX - b.minX) / 2, (b.maxY - b.minY) / 2, 0, 1, CELL_CORE)
-  }
-
-  // Outside the plate is not walkable. A sight line that reaches it has gone out
-  // through the glazing, so it is looking at daylight.
-  if (plate && plate.length >= 3) {
-    for (let gy = 0; gy < rows; gy++) {
-      const wy = oy + (gy + 0.5) * cell
-      for (let gx = 0; gx < cols; gx++) {
-        if (!pointInPolygon(plate, ox + (gx + 0.5) * cell, wy)) {
-          const i = idx(gx, gy)
-          if (!blocked[i]) kind[i] = CELL_GLASS
-          blocked[i] = 1
-        }
-      }
-    }
-  }
-
-  // A door is an OPENING. Re-carve it, generously enough that the doorway's own
-  // centreline clears MIN_CLEARANCE, and deep enough to punch the wall through.
-  for (const d of state.components) {
-    if (d.category !== 'Door') continue
-    const halfW = Math.max(0.5, d.w / 2 + 0.06)
-    stampRect(d.x, d.y, halfW, halfW, -d.rotation, 0)
-  }
-
-  return { cols, rows, cell, ox, oy, kind, dist: distanceTransform(blocked, cols, rows, cell) }
-}
-
-/** Exact Euclidean distance transform (Felzenszwalb & Huttenlocher), in metres. */
-function distanceTransform(blocked: Uint8Array, cols: number, rows: number, cell: number): Float32Array {
-  const INF = 1e12
-  const f = new Float64Array(Math.max(cols, rows))
-  const d = new Float64Array(Math.max(cols, rows))
-  const v = new Int32Array(Math.max(cols, rows))
-  const z = new Float64Array(Math.max(cols, rows) + 1)
-  const sq = new Float64Array(cols * rows)
-
-  const edt1d = (n: number) => {
-    let k = 0
-    v[0] = 0
-    z[0] = -INF
-    z[1] = INF
-    for (let q = 1; q < n; q++) {
-      let s = (f[q] + q * q - (f[v[k]] + v[k] * v[k])) / (2 * q - 2 * v[k])
-      while (s <= z[k]) {
-        k--
-        s = (f[q] + q * q - (f[v[k]] + v[k] * v[k])) / (2 * q - 2 * v[k])
-      }
-      k++
-      v[k] = q
-      z[k] = s
-      z[k + 1] = INF
-    }
-    k = 0
-    for (let q = 0; q < n; q++) {
-      while (z[k + 1] < q) k++
-      d[q] = (q - v[k]) * (q - v[k]) + f[v[k]]
-    }
-  }
-
-  for (let x = 0; x < cols; x++) {
-    for (let y = 0; y < rows; y++) f[y] = blocked[y * cols + x] ? 0 : INF
-    edt1d(rows)
-    for (let y = 0; y < rows; y++) sq[y * cols + x] = d[y]
-  }
-  for (let y = 0; y < rows; y++) {
-    for (let x = 0; x < cols; x++) f[x] = sq[y * cols + x]
-    edt1d(cols)
-    for (let x = 0; x < cols; x++) sq[y * cols + x] = d[x]
-  }
-
-  const out = new Float32Array(cols * rows)
-  for (let i = 0; i < out.length; i++) out[i] = Math.sqrt(sq[i]) * cell
-  return out
-}
-
-/** Bilinear clearance (m) at a plan point; 0 outside the field. */
-export function clearanceAt(g: ClearanceGrid, x: number, y: number): number {
-  const fx = (x - g.ox) / g.cell - 0.5
-  const fy = (y - g.oy) / g.cell - 0.5
-  const x0 = Math.floor(fx)
-  const y0 = Math.floor(fy)
-  if (x0 < 0 || y0 < 0 || x0 + 1 >= g.cols || y0 + 1 >= g.rows) return 0
-  const tx = fx - x0
-  const ty = fy - y0
-  const a = g.dist[y0 * g.cols + x0]
-  const b = g.dist[y0 * g.cols + x0 + 1]
-  const c = g.dist[(y0 + 1) * g.cols + x0]
-  const e = g.dist[(y0 + 1) * g.cols + x0 + 1]
-  return (a * (1 - tx) + b * tx) * (1 - ty) + (c * (1 - tx) + e * tx) * ty
 }
 
 export interface FreePointOpts {
@@ -831,22 +614,6 @@ function offDoor(room: InteriorRoom, door: DocComponent, back: number): Pt {
   return [door.x + (vx / len) * back, door.y + (vy / len) * back]
 }
 
-/** Metres from a point to the nearest edge of the floor plate. */
-function distToPlate(plate: Pt[] | null, x: number, y: number): number {
-  if (!plate || plate.length < 3) return Infinity
-  let best = Infinity
-  for (let i = 0, j = plate.length - 1; i < plate.length; j = i++) {
-    const [ax, ay] = plate[j]
-    const [bx, by] = plate[i]
-    const dx = bx - ax
-    const dy = by - ay
-    const l2 = dx * dx + dy * dy || 1
-    const t = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / l2))
-    best = Math.min(best, Math.hypot(x - (ax + dx * t), y - (ay + dy * t)))
-  }
-  return best
-}
-
 /**
  * The wall a camera entering at `from` ends up facing — the room's own identity
  * surface, and where its branded display hangs.
@@ -989,12 +756,30 @@ export function planWalkRoute(
     const base = onSpine(rd ? offDoor(reception, rd, -1.1) : [reception.center.x, reception.bbox.maxY + 1.2])
     const dir = along(finish) >= along(base) ? -1 : 1
     head = snap([base[0] + axis[0] * dir * 2.6, base[1] + axis[1] * dir * 2.6], 1.0)
+    // The opening beat is chosen the same way the closing one is: `bestVista`
+    // over the shared scorer, but inside a cone around the reception so the take
+    // still OPENS on the reception rather than on whatever is richest in the
+    // building. Aiming dead at the room's centroid — which is what this did —
+    // pointed a 70 deg frame at a 4 x 3 m glazed box from 2.7 m, and the right
+    // third of it was the blank flank of the room next door: t = 2.2 s measured
+    // 77.5 % blank at eye level, the worst frame in the film once the tail was
+    // fixed. The cone is wide enough (±55 deg) to trade that flank for the
+    // corridor's depth and narrow enough that the reception stays the subject.
+    const inward = Math.atan2(reception.center.y - head[1], reception.center.x - head[0])
+    const openYaw = bestVista(g, head[0], head[1], (hfovDeg * Math.PI) / 180, {
+      yaw: inward,
+      halfRangeRad: (55 * Math.PI) / 180,
+    })
     stops.push({
       name: 'outside-reception',
       at: head,
-      look: [reception.center.x, reception.center.y],
-      lookWeight: 0.9,
-      span: 5.5,
+      look: [head[0] + Math.cos(openYaw) * 12, head[1] + Math.sin(openYaw) * 12],
+      // Was 0.9, which left the per-frame composition bias a tenth of the yaw —
+      // i.e. authored the opening and then forbade the machinery that fixed the
+      // rest of the film from touching it. Half the yaw is authored; the bias
+      // trims the other half.
+      lookWeight: 0.55,
+      span: 5.0,
     })
   } else {
     head = snap(onSpine([cb?.minX ?? 0, cb?.minY ?? 0]), 1.6)
@@ -1084,76 +869,7 @@ export function planWalkRoute(
   return { stops, reception, open }
 }
 
-// ── 3b. Composition: what is actually in the frame ───────────────────────────
-
-/**
- * Score one sight line: how much is there to see along it?
- *
- * The ray marches the `kind` field. Furniture does NOT stop it — an eye at
- * 1.6 m looks over a 0.75 m desk — so a desk bank is accumulated as *content*
- * and the ray carries on to the surface behind it. Only a partition, the core,
- * the envelope or the edge of the plate ends the line.
- *
- * Three things make a direction worth pointing a camera at, and this is all
- * three: depth (a vanishing point rather than a wall at arm's length), content
- * crossed (desks, pods, tables), and what the line finally lands on (daylight
- * and glazed fronts are worth framing; blank plasterboard is not).
- */
-function rayInterest(g: ClearanceGrid, x: number, y: number, theta: number): number {
-  const dx = Math.cos(theta)
-  const dy = Math.sin(theta)
-  const step = g.cell * 2
-  let content = 0
-  let hit = -1
-  let d = step
-  for (; d < RAY_MAX_M; d += step) {
-    const gx = Math.floor((x + dx * d - g.ox) / g.cell)
-    const gy = Math.floor((y + dy * d - g.oy) / g.cell)
-    if (gx < 0 || gy < 0 || gx >= g.cols || gy >= g.rows) break
-    const k = g.kind[gy * g.cols + gx]
-    if (k === CELL_CONTENT) {
-      content += step
-      continue
-    }
-    if (k !== CELL_FREE) {
-      hit = k
-      break
-    }
-  }
-  const depth = Math.min(d, 16) / 16
-  const surf = hit < 0 ? 0.5 : hit === CELL_GLASS ? 0.9 : hit === CELL_CORE ? 0.35 : 0
-  return 0.4 * depth + 0.35 * Math.min(1, content / 2.5) + 0.25 * surf
-}
-
-/**
- * The heading whose FRAME is worth standing still for: a full-circle scan of
- * `rayInterest`, scored as the sum over the frame the heading would deliver.
- *
- * `frameLook` below solves a different problem — a bounded, per-frame, soft
- * correction on top of a yaw the walk already has — and cannot be reused here:
- * it fans only ±(hfov/2 + maxBias) around a base yaw, and there is no base yaw
- * for a hero shot. This is the unbounded, once-per-route authoring form, and it
- * shares the scoring function so the two never disagree about what is worth
- * looking at.
- */
-function bestVista(g: ClearanceGrid, x: number, y: number, hfovRad: number): number {
-  const step = (FAN_STEP_DEG * Math.PI) / 180
-  const n = Math.max(8, Math.round((2 * Math.PI) / step))
-  const v = new Float64Array(n)
-  for (let j = 0; j < n; j++) v[j] = rayInterest(g, x, y, (j * 2 * Math.PI) / n)
-  const half = Math.max(1, Math.round(hfovRad / 2 / ((2 * Math.PI) / n)))
-  let best = 0
-  let bs = -Infinity
-  for (let c = 0; c < n; c++) {
-    let acc = 0
-    for (let k = -half; k <= half; k++) acc += v[(c + k + n) % n]
-    if (acc > bs) {
-      bs = acc
-      best = c
-    }
-  }
-  return (best * 2 * Math.PI) / n
-}
+// ── 3b. Sight lines ──────────────────────────────────────────────────────────
 
 /** Is the straight sight line from a to b unobstructed at eye height? */
 function sightClear(g: ClearanceGrid, ax: number, ay: number, bx: number, by: number): boolean {
@@ -1198,78 +914,6 @@ function visibleLookAhead(
     best = q
   }
   return best
-}
-
-/** How the frame at a pose reads, and the yaw offset that would improve it. */
-interface FrameLook {
-  /** Radians to add to the yaw so the open/occupied side fills the frame. */
-  biasRad: number
-  /** Fraction of the UNBIASED frame that is a near blank surface (0–1). */
-  blankFraction: number
-}
-
-/**
- * The fix for the take's one real composition defect: at a couple of instants a
- * blank partition being walked past filled more than half the frame, because
- * the camera was aimed square at it by pure look-ahead.
- *
- * A fan of sight lines is scored across the frame plus the bias range either
- * side, then every admissible yaw offset is scored as the mean over the window
- * it would frame, minus a quadratic penalty on turning at all. The offset is a
- * SOFT argmax (a temperature-weighted mean, not a pick), so it varies
- * continuously along the walk — a hard pick would step and put a kink in the
- * pan that the yaw smoother could not absorb.
- *
- * This is a framing change, not a dressing change: no geometry moves, no filter
- * is laid over the image. The camera simply stops staring at plasterboard.
- */
-function frameLook(
-  g: ClearanceGrid,
-  x: number,
-  y: number,
-  baseYaw: number,
-  hfovRad: number,
-  maxBias: number,
-): FrameLook {
-  const step = (FAN_STEP_DEG * Math.PI) / 180
-  const half = Math.round(hfovRad / 2 / step)
-  const bias = Math.round(maxBias / step)
-  const n = 2 * (half + bias) + 1
-  const v = new Float64Array(n)
-  for (let j = 0; j < n; j++) v[j] = rayInterest(g, x, y, baseYaw + (j - half - bias) * step)
-
-  const mean = (c: number) => {
-    let acc = 0
-    for (let k = c - half; k <= c + half; k++) acc += v[k]
-    return acc / (2 * half + 1)
-  }
-  const centre = half + bias
-  let blank = 0
-  for (let k = centre - half; k <= centre + half; k++) if (v[k] < 0.1) blank++
-
-  // Soft argmax over the offsets. TURN_PENALTY is what keeps the camera honest:
-  // a small gain never buys a turn, and only a frame that is genuinely dominated
-  // by a flat near surface moves it the whole way.
-  const TURN_PENALTY = 0.1
-  const TAU = 0.06
-  let wSum = 0
-  let acc = 0
-  let bestScore = -Infinity
-  const scores = new Float64Array(2 * bias + 1)
-  for (let o = -bias; o <= bias; o++) {
-    const s = mean(centre + o) - (bias > 0 ? TURN_PENALTY * (o / bias) * (o / bias) : 0)
-    scores[o + bias] = s
-    if (s > bestScore) bestScore = s
-  }
-  for (let o = -bias; o <= bias; o++) {
-    const w = Math.exp((scores[o + bias] - bestScore) / TAU)
-    wSum += w
-    acc += w * o * step
-  }
-  return {
-    biasRad: wSum > 0 ? acc / wSum : 0,
-    blankFraction: blank / (2 * half + 1),
-  }
 }
 
 // ── 4. Poses ─────────────────────────────────────────────────────────────────

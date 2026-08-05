@@ -46,3 +46,7 @@ docs/reference/qbiq/extracted/Rendered Images Samples from Qbiq/
 docs/reference/qbiq/extracted/**/__MACOSX/
 **/.DS_Store
 docs/reference/rayon-output/*.pdf
+
+# Python bytecode (gate helper libs)
+__pycache__/
+*.pyc

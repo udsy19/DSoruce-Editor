@@ -8,15 +8,20 @@
 # Exits non-zero if any gate fails. A gate whose artifact does not exist yet
 # fails with "artifact missing: <path>" — that is the expected day-one state.
 #
-# ORDER: G10 FIRST, then the content gates, then an integrity pass.
+# ORDER: G9's inputs, then G10, then the content gates, then an integrity pass.
 # G10 is not a reader — it clicks the product's one export control and the app
 # rewrites the whole of `out/`. Running it last (as this script used to) meant
 # G1-G9 graded the PREVIOUS run's files and nothing ever looked at what G10 left
 # behind: measured, `walkthrough.mp4` went 25,704,418 -> 14,155,824 B after a
-# green board (defect D2, reports/defects-1.md). So the producer runs first, the
-# graders grade its output, and the closing integrity pass proves the pack was
-# not rewritten underneath them — a green board now names the exact bytes it
-# graded.
+# green board (defect D2, reports/defects-1.md). So the producers run first, the
+# graders grade their output, and the closing integrity pass proves nothing was
+# rewritten underneath them — a green board now names the exact bytes it graded.
+#
+# G10 is not the only producer: `out/cases/*` (G9's twelve inputs, 21 of the
+# checks) comes from `scripts/export-pack.mjs`, which nothing here used to run
+# and the snapshot did not watch — they were measured 27 minutes stale under two
+# green boards (defect E5, reports/defects-2.md). They are regenerated in step 0
+# and snapshotted with everything else.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -69,6 +74,19 @@ declare -a PACK_FILES=(
   "$OUT/share.json"
 )
 
+# G9's inputs. NOT part of the one-action pack — `node scripts/export-pack.mjs`
+# is the only thing that writes them — so they used to be produced by nobody and
+# watched by nobody: measured 27 minutes stale under two consecutive green boards
+# while the scoreboard said "unchanged since G10 produced it" (defect E5,
+# reports/defects-2.md). They now get the same treatment as every other graded
+# byte: produced by this runner below, and diffed by the closing integrity pass.
+declare -a CASE_FILES=()
+for _c in seeded dwg testfit; do
+  for _f in quantity-takeoff.xlsx ground-truth.json plan.png plan.repeat.png; do
+    CASE_FILES+=("$OUT/cases/$_c/$_f")
+  done
+done
+
 # name · size · mtime for each pack file, one line each. Portable (BSD/GNU).
 snapshot_pack() {
   python3 - "$@" <<'PY'
@@ -118,12 +136,32 @@ run_gate() {
   if [ "${VERBOSE:-0}" = "1" ]; then printf '%s\n' "$out" | grep -v -E "^${id} (PASS|FAIL)"; fi
 }
 
+# ---- 0. produce G9's inputs -------------------------------------------------
+# Regenerating all three round-trip cases costs ~1.3 s, so the runner does it
+# every time rather than trusting whatever a previous, unrelated invocation left
+# behind. (G9 also fails on its own if a case is older than the generator, so
+# running the gate outside this script is stale-proof too.)
+CASES_NOTE=""
+if selected G9; then
+  echo
+  echo "  producing G9's round-trip cases: node scripts/export-pack.mjs"
+  if [ "${VERBOSE:-0}" = "1" ]; then
+    node "$REPO/scripts/export-pack.mjs" --out "$OUT"
+  else
+    node "$REPO/scripts/export-pack.mjs" --out "$OUT" >/dev/null 2>&1
+  fi
+  if [ $? -ne 0 ]; then
+    SUITE_FAIL=1
+    CASES_NOTE="scripts/export-pack.mjs FAILED — G9's cases are whatever was on disk"
+  fi
+fi
+
 # ---- 1. produce the pack (the one action), before anything grades it --------
 PRODUCED=0
 if selected "${IDS[$PRODUCER_IDX]}"; then
   run_gate "$PRODUCER_IDX"
   PRODUCED=1
-  BEFORE="$(snapshot_pack "${PACK_FILES[@]}")"
+  BEFORE="$(snapshot_pack "${PACK_FILES[@]}" "${CASE_FILES[@]}")"
 fi
 
 # ---- 2. grade what it left --------------------------------------------------
@@ -136,7 +174,7 @@ done
 # ---- 3. integrity: the graded pack is still the pack ------------------------
 INTEGRITY=""
 if [ "$PRODUCED" = "1" ]; then
-  AFTER="$(snapshot_pack "${PACK_FILES[@]}")"
+  AFTER="$(snapshot_pack "${PACK_FILES[@]}" "${CASE_FILES[@]}")"
   if [ "$BEFORE" != "$AFTER" ]; then
     SUITE_FAIL=1
     INTEGRITY="CHANGED under the gates — the board above does NOT describe these files:
@@ -165,8 +203,17 @@ describe_pack() {
   python3 - "$@" <<'PY'
 import os, subprocess, sys, time
 paths = sys.argv[1:]
-n = sum(1 for p in paths if os.path.exists(p))
-print(f"  graded pack: {n}/{len(paths)} artifacts in {os.path.relpath(os.path.dirname(paths[0]))}/")
+pack = [p for p in paths if os.sep + 'cases' + os.sep not in p]
+cases = [p for p in paths if os.sep + 'cases' + os.sep in p]
+n = sum(1 for p in pack if os.path.exists(p))
+print(f"  graded pack: {n}/{len(pack)} artifacts in {os.path.relpath(os.path.dirname(pack[0]))}/")
+if cases:
+    c = sum(1 for p in cases if os.path.exists(p))
+    newest = max((os.stat(p).st_mtime for p in cases if os.path.exists(p)), default=0)
+    oldest = min((os.stat(p).st_mtime for p in cases if os.path.exists(p)), default=0)
+    print(f"               + {c}/{len(cases)} G9 round-trip case files, written "
+          f"{time.strftime('%H:%M:%S', time.localtime(oldest))}"
+          + (f"-{time.strftime('%H:%M:%S', time.localtime(newest))}" if newest - oldest > 1 else ""))
 for p in paths:
     if not p.endswith('.mp4') or not os.path.exists(p):
         continue
@@ -185,8 +232,9 @@ PY
 }
 
 echo
-describe_pack "${PACK_FILES[@]}"
+describe_pack "${PACK_FILES[@]}" "${CASE_FILES[@]}"
 [ -n "$INTEGRITY" ] && echo "               $INTEGRITY"
+[ -n "$CASES_NOTE" ] && echo "               $CASES_NOTE"
 echo
 
 if [ $FAILED -ne 0 ]; then

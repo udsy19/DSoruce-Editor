@@ -183,18 +183,77 @@ with a green board.**
   ring of implied chairs pitched in screen pixels; emitting components would visibly double the
   seating on the plan — trading a deliverable-2 regression for a deliverable-1 fix.
 
-### Open defects (tracked, not gate-blocking)
-1. **`Perimeter windows` = 0.00 m on all three cases; the reference bills 125.47 m.** Not a
-   classifier bug — no plate wall sets `glazing: true`, so facade runs correctly bill as
-   `Perimeter wall`. Fix is upstream in the generator/importer. A side-by-side reviewer WILL see this.
-2. **Meeting rooms report `headcount 0`.** Blocked on `furniture.ts` dropping its implied-seat
-   glyphs (exact blocks identified in `reports/B1-3.md` §3). Deferred until E/F land — it touches
-   `drawFurnitureSymbol`, which G4/G5 measure.
-3. **`real_building_plate_spreads_the_program` asserts a 150 ms debug wall-clock budget** and is
-   flaky under concurrent load (failed 3/4 baseline runs before any change). Should become a
-   non-timing assertion.
-4. `Conference_room` is the weakest still; the demo's 5×4 m meeting room cannot yield the
-   reference's corridor-through-glass shot.
+### Open defects from cycle 9 — ALL FOUR NOW CLOSED (verified by Judge round 2)
+1. ~~`Perimeter windows` = 0.00 m~~ → `layout::glaze_facade` cuts each perimeter wall into
+   pier/glazed band/pier: **123.20 m** vs the reference's 125.47 m. Closed (K).
+2. ~~Meeting rooms `headcount 0`~~ → implied-seat glyphs deleted, real chairs emitted: **8 drawn /
+   8 billed / HC 8**. Closed (K).
+3. ~~150 ms wall-clock flake~~ → re-scoped to a 3000 ms blow-up guard. Closed (orchestrator).
+4. **`Conference_room` weakest still — IMPROVED, NOT CLOSED.** The camera was OUTSIDE the room
+   shooting through its own glass front; "inside" is now a lexicographic tier rather than a soft
+   weight, and blown-white went 23.1% → 4.0% (reference 5.1%). But D3/E6 stand: the stills are still
+   ~2.0x the reference's flatness and 0.43x its edge density. `ROADMAP.md` and `reports/N-1.md`
+   correctly still list this as open — an earlier revision of this log wrongly marked it closed.
+
+---
+
+## Cycles 10-14 — the Judge rounds. THE central lesson of this mission.
+
+**Two adversarial Judge passes found that "10/10 green" was twice untrustworthy**, and both times the
+failure was in a GATE, not the product. Every blocker was proven by *falsification* — building a
+deliberately wrong artifact and showing the gate still passed — never by argument.
+
+| Round | Board when judged | Blockers found |
+| --- | --- | --- |
+| 1 | 10/10 (321 checks) | **D1** G6's render↔model check could be switched off by the artifact under test · **D2** the runner graded a pack G10 then replaced, and G10 passed on a half-written mp4 |
+| 2 | 10/10 (363 checks) | **E1** D1's fix moved the exploit rather than closing it |
+
+### The root cause, three times running: *the gate trusted metadata supplied by the thing it tests.*
+- Round 1: the producer chose **whether** `floorMaterial` existed — omit it and G6 skipped its only
+  render-to-model assertion. Falsified with magenta floors: `G6 PASS (13 checks)`.
+- Round 2: the fix made it unconditional, so the producer instead chose **where** — `floorRect` is
+  producer-supplied and the gate never checked the crop was floor. Painting the bottom 34% magenta and
+  picking a *legal* crop in the untouched upper frame gave `G6 PASS (35 checks), 4/4 MATCHES`, sampling a
+  slat wall and a ceiling junction. Live, not hypothetical: the shipped `Conference_room` entry recorded
+  `floorRectPurity: 0.0` and was certified as "carpet under shadow" under two green boards.
+- Round 3 (Agent M) targets the **class**: the gate must establish the floor region itself; metadata is
+  acceptable only where the gate can *validate* it rather than trust it.
+
+**Corollary, learned the same way:** structural gates verify presence, not correctness. Three separate
+agents found real defects by LOOKING at output that every gate waved through — the 19x3 px plan smudge,
+frames breaching G7's own luminance ceiling, and the mullion through the conference table. "Open it and
+look at it" now sits in every brief.
+
+### Judge round 2's other findings (the majors below fixed; its E6-E10 minors remain open)
+- **The workbook billed Reception as a "Kitchen"** — worse than reported: `takeoff.ts` kept a private
+  `ROOM_TYPE` table on the core's 7 `ZoneType` values while `Inventory` used `finishTypeFor` +
+  `TYPE_LABEL` (16 types), so **14 of 18 rooms** carried two types. `Amenity` covers Reception, Pantry,
+  Print Point, Storage, Wellness and IT/Server — exactly why it said "Kitchen". One entry point
+  (`roomTypeLabel`) now feeds every sheet; 18/18 agree (O).
+- **G9's inputs were 27 minutes stale under two green boards** — `run-all.sh` never produced or watched
+  `out/cases/*` (M).
+- **`Reception` regressed as a direct cost of the D1 fix** — a 20-ray floor proxy outranked composition,
+  and the frame it discarded had a 100%-pure floor. Evidence is now decided by the rendered mask (N).
+
+### Adversarial dynamics worth keeping
+- The Judge **corrected itself**: it re-graded D11 from defect to parity (the reference's own print layout
+  is worse), and expected to file the zero unit prices as a blocker until it checked the reference and
+  found qbiq ships zeros too.
+- An implementer **corrected the Judge**: round 1's D5 evidence counted 2,406 px of `#DCDBEE` as proof the
+  plan drew windows the takeoff didn't bill. Agent K showed there were **zero** exact matches — they were
+  anti-aliased blends of `#AEB6FF` over the pink wash, inside the ±8 tolerance by coincidence. Plan and
+  takeoff were agreeing; they agreed the facade was solid, which was the real defect.
+- Agents **reverted their own work** rather than tune to green: J tried two G6 relaxations to rescue
+  Conference_room, found they shrank the margin on the three rooms that legitimately pass, and reverted
+  both. L threw away a working 168-degree door swing because the folded leaf filled the hero shot.
+
+### Open (tracked, not blocking)
+- **Headless-vs-in-app parameter divergence**: `render-rooms.mjs` passes `--lamp 2`, `deliverablePack.ts`
+  passes none — worth 5.8 pts of flat% on Conference_room. The "one code path, two hosts" claim has an
+  unshared parameter (found by N).
+- On the DWG case a component outside every zone bills to an `"OS"` catch-all with no Inventory row —
+  upstream, pre-existing (found by O).
+- Round-1 minors still open: D6, D10, D12-D17, plus the *gate* halves of D5 and D9.
 
 ---
 

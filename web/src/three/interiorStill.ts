@@ -17,6 +17,7 @@ import {
   type InteriorScene,
   type InteriorSceneOpts,
 } from './materialTheme'
+import { bestVista, buildClearanceGrid, frameLook, type ClearanceGrid } from '../export/composition'
 
 /**
  * OFFSCREEN PHOTOREAL STILL RENDERER — the Enscape-like tier, headless.
@@ -67,6 +68,20 @@ export interface CameraPlacementOpts {
   clearanceM?: number
   /** Minimum metres the view must travel before it hits anything. */
   forwardClearanceM?: number
+  /** The shared composition field (`export/composition.buildClearanceGrid`).
+   *  Pass one built once per document — four stills would otherwise rebuild the
+   *  same field four times. It is what lets a still be composed by the SAME
+   *  scorer the walkthrough frames with. Omitted, it is built here. */
+  grid?: ClearanceGrid
+  /** `'required'` makes showing the room's own floor outrank composition — the
+   *  fallback `roomRenders` uses when the best-composed still turns out not to
+   *  evidence its finish. Default is composition-first; see `placeRoomCamera`. */
+  floorEvidence?: 'required'
+  /** Plan points no camera may stand within {@link EYE_SEPARATION_M} of. Two
+   *  stills legitimately share one open floor (the reference's do), but they
+   *  have to be two different pictures of it — and the same scorer, run twice
+   *  on the same room, otherwise returns the same standing point twice. */
+  avoidEyes?: Array<[number, number]>
 }
 
 export interface StillOpts extends CameraPlacementOpts {
@@ -113,26 +128,40 @@ export interface StillResult {
 const SOLID_SKIP = /glass|mullion|emissive/i
 
 /**
- * How much a camera standing IN the room is preferred over one in the corridor
- * looking through its glass wall. Not a stylistic nudge: a glazed pane adds its
- * own tint and a Fresnel reflection of a bright interior to every pixel behind
- * it, which is exactly the render-vs-takeoff drift this deliverable exists to
- * prevent. The corridor shot still wins when the room genuinely cannot be stood
- * in — but it has to win by a real margin.
+ * How far the composition search may swing a still off its subject (deg).
+ *
+ * The walkthrough allows 30°, because a walker's head turns and the room is
+ * whatever it is passing. A still is OF a named room, so it gets less — and the
+ * swing is not free either way: the biased heading is re-scored from scratch
+ * (`visible` included), so a swing that loses the room loses the comparison.
+ * One scorer (`export/composition`), two budgets.
  */
-const INSIDE_BONUS = 1.5
+const STILL_BIAS_MAX_DEG = 25
+
+/** How far the aim drops (m) at a full-budget composition swing — see the note
+ *  in `evaluate`. Small: it is a tilt of ~4 deg at typical room distances, not
+ *  a change of shot. */
+const TILT_WITH_BIAS_M = 0.25
+
+/** How far apart two stills of the SAME room must stand (m). Roughly a bay and
+ *  a half on an office grid: far enough that the second shot is a different
+ *  view of the floor rather than the same one nudged. */
+export const EYE_SEPARATION_M = 9
 
 /**
  * Fraction of the lower frame that must land DIRECTLY on the room's own floor
- * before the still counts as able to evidence its finish.
+ * before the still counts as able to evidence its finish. Decided BEFORE score
+ * (see `placeRoomCamera`'s tiers), because a prettier frame must never cost the
+ * render↔takeoff cross-check the pack rests on.
  *
- * `INSIDE_BONUS` alone was not enough: a corridor camera that frames the whole
- * of a small glazed room outscores every camera standing in it, and then the
- * still shows the floor only through glass — where the mask (and gate G6's
- * sample) cannot reach it. That is not a stylistic loss, it is the loss of the
- * render↔takeoff cross-check the pack rests on, so it is decided BEFORE score:
- * cameras that can show the floor are ranked among themselves, and the pretty
- * corridor shot wins only when no camera anywhere can see the floor at all.
+ * Left at 0.15, and lowering it was tried and reverted. The Reception still's
+ * blank-wall defect looked like a cost of this bar; it was not. It was the
+ * corner inset (see `candidateEyes`) spending the small room's depth, and at
+ * 0.08 the bar instead started admitting *worse* shots to the top tier on a
+ * 1-probe-in-20 difference — it flipped the meeting room from the corner that
+ * shows its glazed front and slat panel to the one that shows two bare walls.
+ * A 20-probe estimate cannot resolve 0.05 from 0.10; it can resolve 0.00 from
+ * 0.15, which is the question this constant is actually asked.
  */
 const FLOOR_EVIDENCE_MIN = 0.15
 
@@ -145,28 +174,39 @@ interface Candidate {
 /**
  * Candidate eye positions.
  *
- * Crucially they are NOT all inside the room. A 4 × 3 m reception or a 5 × 4 m
- * meeting room cannot be framed from inside itself at a human eye height — the
- * reference pack shoots its own conference room from the corridor, through the
- * glass wall — so candidates also stand back through the doorway and outside
- * each boundary. What makes that safe rather than arbitrary is that an outside
- * candidate only survives if the view actually reaches the room: glazing and
- * door openings are not in the solid set, a blank partition is, and every
- * candidate must still sit inside the building's floor plate.
+ * They are not all inside the room: candidates also stand back through the
+ * doorway and outside each boundary, because a room with no standable interior
+ * still has to be photographed from somewhere. But those are a strictly LOWER
+ * TIER in `placeRoomCamera` and never merely a cheaper option — the reference
+ * pack shoots its conference room through a glass wall and can carry it; ours
+ * tried and put a mullion through the middle of the table. What makes an
+ * outside candidate safe rather than arbitrary is that it only survives if the
+ * view actually reaches the room: glazing and door openings are not in the
+ * solid set, a blank partition is, and every candidate must still sit inside
+ * the building's floor plate.
  */
 function candidateEyes(
   room: InteriorRoom,
   state: DocState,
   framing: 'wide' | 'close',
   plate: Array<[number, number]> | null,
+  clearanceM: number,
 ): { inside: Candidate[]; outside: Candidate[] } {
   const { minX, minY, maxX, maxY } = room.bbox
   const w = maxX - minX
   const h = maxY - minY
   // The inset must clear the wall by more than `clearanceM`, or a small room's
-  // corner cameras are all rejected for standing too close to the wall they
-  // are meant to stand in front of.
-  const inset = THREE.MathUtils.clamp(Math.min(w, h) * 0.24, 0.75, 1.1)
+  // corner cameras are all rejected for standing too close to the wall they are
+  // meant to stand in front of — but only just. A 5 × 4 m meeting room holding a
+  // 2.9 m table has one composition available: back into a corner so the table
+  // runs away diagonally. A metre of inset spends the only depth the room has,
+  // and the table then IS the picture. So the corner sits as tight to the walls
+  // as the clearance test will accept.
+  const inset = THREE.MathUtils.clamp(
+    Math.max(clearanceM + 0.15, Math.min(w, h) * 0.2),
+    0.6,
+    1.1,
+  )
   const cx = (minX + maxX) / 2
   const cy = (minY + maxY) / 2
   const inside: Candidate[] = []
@@ -215,13 +255,15 @@ function candidateEyes(
   }
 
   // A coarse interior grid — the only way a `close` camera can stand between
-  // two desk rows rather than at the room edge.
-  const step = Math.max(1.4, Math.min(w, h) / 5)
-  if (framing === 'close' || Math.max(w, h) > 12) {
-    for (let x = minX + inset; x <= maxX - inset; x += step) {
-      for (let y = minY + inset; y <= maxY - inset; y += step) {
-        inside.push({ x, z: y, kind: 'interior' })
-      }
+  // two desk rows rather than at the room edge, and, in a small room, the only
+  // way the INSIDE pool has more than a corner or two to choose from once the
+  // minimum-subject-distance test has thinned it. It is unconditional: a shot
+  // from inside the room is not optional (see `placeRoomCamera`'s tiers), so
+  // every framing needs a real choice of standing points.
+  const step = Math.max(1.0, Math.min(w, h) / 5)
+  for (let x = minX + inset; x <= maxX - inset; x += step) {
+    for (let y = minY + inset; y <= maxY - inset; y += step) {
+      inside.push({ x, z: y, kind: 'interior' })
     }
   }
 
@@ -305,7 +347,15 @@ export function placeRoomCamera(
 
   const target = new THREE.Vector3(room.focus.x, targetY, room.focus.y)
   const diag = roomDiag
-  const ideal = framing === 'wide' ? diag * 0.8 : THREE.MathUtils.clamp(diag * 0.3, 3.5, 9)
+  // How far back the shot wants to stand from the room's furniture centroid.
+  // CAPPED for the wide: on a 38 m open floor `diag * 0.8` asks the camera to
+  // stand 30 m back, which on this plate means the far corner — and every metre
+  // beyond about fifteen is bare carpet between the lens and the desks. Past
+  // that distance a wider view buys nothing a client can read.
+  const ideal =
+    framing === 'wide'
+      ? Math.min(diag * 0.8, 14)
+      : THREE.MathUtils.clamp(diag * 0.3, 3.5, 9)
 
   const halfFov = (fov * Math.PI) / 360
   const ray = new THREE.Raycaster()
@@ -343,13 +393,34 @@ export function placeRoomCamera(
   for (const fx of [-0.8, -0.4, 0, 0.4, 0.8]) {
     for (const fy of [-0.9, -0.7, -0.5, -0.3]) floorProbes.push([fx, fy])
   }
-  /** Fraction of the lower frame that lands directly on THIS room's floor. A
-   *  camera scoring 0 here can produce a pretty picture but cannot support the
-   *  Inventory cross-check, which is half of what these stills are for. */
-  const floorVisibility = (eye: THREE.Vector3, fwd: THREE.Vector3): number => {
+  /** How far in front of the camera a piece of furniture still counts as
+   *  FOREGROUND rather than as part of the far field (m). */
+  const FOREGROUND_M = 7
+  /**
+   * One pass down the lower frame, answering two questions the plan-space
+   * scorer cannot:
+   *
+   *  `floor`      fraction landing directly on THIS room's floor. A camera
+   *               scoring 0 here can produce a pretty picture but cannot
+   *               support the Inventory cross-check, which is half of what
+   *               these stills are for.
+   *  `foreground` fraction landing on near furniture — the difference between
+   *               a photograph of an office and a photograph of the carpet in
+   *               front of one. Every reference still puts a desk, a chair or a
+   *               planter in the bottom of frame and reads the room past it;
+   *               ours shot across 10 m of empty floor because "see the whole
+   *               room" and "look a long way" were the only things scored.
+   *               Depth layering is a plan-space blind spot: the field knows a
+   *               ray crosses a desk, never how far away that desk is.
+   */
+  const lowerFrame = (
+    eye: THREE.Vector3,
+    fwd: THREE.Vector3,
+  ): { floor: number; foreground: number } => {
     const right = new THREE.Vector3().crossVectors(fwd, new THREE.Vector3(0, 1, 0)).normalize()
     const up = new THREE.Vector3().crossVectors(right, fwd).normalize()
     let hit = 0
+    let near = 0
     const d = new THREE.Vector3()
     for (const [fx, fy] of floorProbes) {
       d.copy(fwd)
@@ -358,9 +429,12 @@ export function placeRoomCamera(
         .normalize()
       ray.set(eye, d)
       const hits = ray.intersectObjects(occluders, false)
-      if (hits.length && hits[0].object.userData?.zoneId === room.zone.id) hit++
+      if (!hits.length) continue
+      const h = hits[0]
+      if (h.object.userData?.zoneId === room.zone.id) hit++
+      else if (h.object.userData?.furniture && h.distance <= FOREGROUND_M) near++
     }
-    return hit / floorProbes.length
+    return { floor: hit / floorProbes.length, foreground: near / floorProbes.length }
   }
   const clutterOf = (eye: THREE.Vector3, fwd: THREE.Vector3): number => {
     const right = new THREE.Vector3().crossVectors(fwd, new THREE.Vector3(0, 1, 0)).normalize()
@@ -398,12 +472,27 @@ export function placeRoomCamera(
       ? Math.max(1.5, Math.min(2.6, diag * 0.32))
       : Math.min(1.6, Math.max(1.0, diag * 0.3))
 
-  /** Validate one candidate and score it, or null if it must not be used. */
+  // The shared composition field: what is worth looking at, from anywhere on
+  // this plate. Same builder, same scorer as the walkthrough's per-frame bias.
+  const grid = opts.grid ?? buildClearanceGrid(state, scene.plate, 0.15)
+
+  /** Validate one candidate and score it, or null if it must not be used.
+   *  `bias` shoots the SAME standing point on a composition-biased heading
+   *  instead of straight at the room's focus; both are offered to the ranking,
+   *  so a bias that loses the room simply loses. */
   let lastReject = ''
-  const evaluate = (c: Candidate): { cam: StillCamera; score: number; floorSeen: number } | null => {
+  const evaluate = (
+    c: Candidate,
+    bias?: { yaw: number; dropM: number },
+  ): { cam: StillCamera; score: number; floorSeen: number; yaw: number; detail: string } | null => {
     const eye = new THREE.Vector3(c.x, eyeY, c.z)
     const dist = eye.distanceTo(target)
     if (dist < minDist) { lastReject = `dist ${dist.toFixed(2)}<${minDist.toFixed(2)}`; return null }
+
+    // 0. not where another still of this room already stood.
+    for (const [ax, az] of opts.avoidEyes ?? []) {
+      if (Math.hypot(c.x - ax, c.z - az) < EYE_SEPARATION_M) { lastReject = 'too near a sibling still'; return null }
+    }
 
     // 1. the eye must not be inside a wall or a piece of furniture
     if (insideSolid(eye)) {
@@ -426,7 +515,23 @@ export function placeRoomCamera(
     //    for most of the way to the target (glazing is not in `solids`, so a
     //    camera looking through a glass wall passes; one facing a blank
     //    partition does not).
-    const fwd = target.clone().sub(eye).normalize()
+    let aim = target
+    if (bias) {
+      // Same standing point, a different heading — and a slightly lower aim.
+      // Turning off a near blank wall swings the room's own floor toward the
+      // frame edge (measured: the Reception's floor probes fall 0.15 -> 0.10
+      // across a 17 deg swing), so the shot tilts down by the same argument
+      // that turned it. Without the tilt the better-composed frame has to be
+      // discarded for losing its floor evidence, which is exactly the trade
+      // that made the shipped still a photograph of drywall.
+      const horiz = Math.hypot(target.x - eye.x, target.z - eye.z)
+      aim = new THREE.Vector3(
+        eye.x + Math.cos(bias.yaw) * horiz,
+        targetY - bias.dropM,
+        eye.z + Math.sin(bias.yaw) * horiz,
+      )
+    }
+    const fwd = aim.clone().sub(eye).normalize()
     const forward = nearestHit(eye, fwd)
     if (forward < Math.min(fwdMin, dist * 0.85)) { lastReject = `fwd ${forward.toFixed(2)}<${Math.min(fwdMin, dist*0.85).toFixed(2)}`; return null }
 
@@ -451,9 +556,9 @@ export function placeRoomCamera(
     const clutter = clutterOf(eye, fwd)
     if (clutter > 0.45) { lastReject = `clutter ${clutter.toFixed(2)}`; return null }
 
-    // 6. can this camera see the room's own floor, unglazed? Without that the
-    //    still cannot carry the Inventory floor-material cross-check.
-    const floorSeen = floorVisibility(eye, fwd)
+    // 6. what the lower frame lands on: the room's own floor (the Inventory
+    //    cross-check) and near furniture (the picture's foreground).
+    const { floor: floorSeen, foreground } = lowerFrame(eye, fwd)
 
     // 7. is the room's accent wall — its identity surface — actually in shot?
     //    Weighted as a tie-breaker only: a prettier shot must never outrank one
@@ -467,8 +572,29 @@ export function placeRoomCamera(
       }
     }
 
+    // 8. what is actually IN the picture — the shared composition scorer, the
+    //    same one the walkthrough biases every frame with. `visible` says the
+    //    room is in shot; this says whether the shot is worth looking at:
+    //    depth, content crossed, and glazing rather than plasterboard at the
+    //    end of each sight line. Without it a camera can score full marks for
+    //    framing a room and still deliver 46 % of the frame as one blank wall,
+    //    which is exactly what the Reception still shipped.
+    const yaw = Math.atan2(fwd.z, fwd.x)
+    const fl = frameLook(grid, eye.x, eye.z, yaw, halfFov * 2, 0)
+
+    // A foreground is worth having and worth having ONCE: past about half the
+    // lower frame the near desk stops layering the picture and starts being it.
+    const layering = Math.min(foreground, 0.5) / 0.5
+
     let score =
-      visible * 9 + floorSeen * 7 + facingAccent * 1.2 - Math.abs(dist - ideal) * 0.5 - clutter * 14
+      visible * 9 +
+      floorSeen * 7 +
+      fl.interest * 9 -
+      fl.blankFraction * 8 +
+      layering * (framing === 'close' ? 6 : 5) +
+      facingAccent * 1.2 -
+      Math.abs(dist - ideal) * 0.5 -
+      clutter * 14
     if (c.kind === 'door') score += framing === 'wide' ? 1.2 : 0.3
     if (c.kind === 'corner') score += framing === 'wide' ? 0.8 : 0
     // A little depth still helps a wide shot read as an interior, not a box.
@@ -477,9 +603,13 @@ export function placeRoomCamera(
     return {
       score,
       floorSeen,
+      yaw,
+      detail:
+        `vis${visible.toFixed(2)} flr${floorSeen.toFixed(2)} fg${foreground.toFixed(2)} int${fl.interest.toFixed(2)} ` +
+        `blk${fl.blankFraction.toFixed(2)} clt${clutter.toFixed(2)} d${dist.toFixed(1)}/${ideal.toFixed(1)}`,
       cam: {
         eye,
-        target,
+        target: aim,
         fovHorizontalDeg: fov,
         placement: c.kind,
         forwardClearanceM: forward === Infinity ? 999 : forward,
@@ -487,47 +617,97 @@ export function placeRoomCamera(
     }
   }
 
-  // INSIDE candidates first, and the corridor only as a fallback. A camera in
-  // the room sees its floor and finishes directly; one outside sees them
-  // through a glazed wall, where the pane's tint and reflection colour every
-  // pixel — measured at ~L 0.64 / S 0.07 for a floor that is L 0.35 / S 0.22
-  // seen directly. That is precisely the render-vs-takeoff drift this
-  // deliverable exists to make impossible, so it is not a matter of taste.
-  const pools = candidateEyes(room, state, framing, scene.plate)
-  if (typeof window !== 'undefined' && (window as any).DS_CAMERA_DEBUG) {
-    const rep = (c: Candidate): string => {
-      const r = evaluate(c)
-      return `${c.kind}(${c.x.toFixed(1)},${c.z.toFixed(1)})=` +
-        (r ? `${r.score.toFixed(2)}/floor${r.floorSeen.toFixed(2)}` : `REJ:${lastReject || '?'}`)
-    }
-    console.warn(`cam ${room.zone.label} inside[${pools.inside.length}] ${pools.inside.map(rep).join(' ')}`)
-    console.warn(`cam ${room.zone.label} outside[${pools.outside.length}] ${pools.outside.map(rep).join(' ')}`)
-  }
+  /**
+   * Ranking is LEXICOGRAPHIC, not a weighted sum, because standing inside the
+   * room is not tradeable against picture quality:
+   *
+   *   tier 1  inside the room
+   *   tier 0  outside it — only when the room cannot be stood in at all
+   *
+   * A still of room X shot from the corridor is a photograph of X's glass
+   * front, and the pane it shoots through is then IN the picture: the shipped
+   * Conference_room still stood 1.25 m outside a 5 × 4 m meeting room and put a
+   * floor-to-ceiling mullion down the middle of the conference table. A soft
+   * bonus could not prevent that — the corridor camera outscored every camera
+   * in the room by more than any bonus worth paying — so being inside is a
+   * rank, not a term.
+   *
+   * **Floor evidence is deliberately NOT a rank here by default.** It was, and
+   * that is what turned the Reception still into a photograph of drywall: a
+   * 20-probe estimate of "how much floor is in the lower frame" ranked a blank
+   * white wall above a composed frame whose floor crop measured 100 % pure
+   * anyway. The evidence question has an exact answer — the rendered floor mask
+   * — so `roomRenders` asks THAT: it shoots the best-composed camera, and only
+   * if the developed still genuinely cannot evidence its finish does it come
+   * back with `floorEvidence: 'required'` and pay for it. Trading composition
+   * for evidence up front paid a cost that was, in three of four rooms, not
+   * owed.
+   */
+  const requireFloor = opts.floorEvidence === 'required'
+  const pools = candidateEyes(room, state, framing, scene.plate, clearance)
+  const debug = typeof window !== 'undefined' && (window as any).DS_CAMERA_DEBUG
   let best: StillCamera | null = null
+  let bestRank = -1
   let bestScore = -Infinity
-  // Ranked separately, and preferred outright: see FLOOR_EVIDENCE_MIN.
-  let evidencing: StillCamera | null = null
-  let evidencingScore = -Infinity
-  for (const [pool, bonus] of [
-    [pools.inside, INSIDE_BONUS],
-    [pools.outside, 0],
-  ] as const) {
-    for (const c of pool) {
-      const r = evaluate(c)
-      if (!r) continue
-      const s = r.score + bonus
-      if (s > bestScore) {
-        bestScore = s
+  const consider = (c: Candidate, inside: boolean, report?: string[]) => {
+    const straight = evaluate(c)
+    const takes = straight ? [straight] : []
+    if (straight) {
+      // ...and the same standing point on the best-composed heading within the
+      // swing budget. This is `bestVista` — the shared scorer's HARD argmax —
+      // not `frameLook`'s soft one: the soft form exists to keep a walking
+      // camera's pan continuous frame to frame, and a still has no next frame
+      // to be continuous with. Measured on the Reception, the soft form gives
+      // up at +12 deg (its turn penalty is a continuity cost, not a composition
+      // one) where the best frame available is at +26 deg.
+      const maxBias = (STILL_BIAS_MAX_DEG * Math.PI) / 180
+      const yaw = bestVista(grid, c.x, c.z, halfFov * 2, {
+        yaw: straight.yaw,
+        halfRangeRad: maxBias,
+      })
+      let off = yaw - straight.yaw
+      while (off > Math.PI) off -= 2 * Math.PI
+      while (off < -Math.PI) off += 2 * Math.PI
+      if (Math.abs(off) > 0.02) {
+        const biased = evaluate(c, {
+          yaw,
+          dropM: TILT_WITH_BIAS_M * Math.min(1, Math.abs(off) / maxBias),
+        })
+        if (biased) takes.push(biased)
+      }
+    }
+    for (const r of takes) {
+      const rank =
+        (inside ? 2 : 0) +
+        (requireFloor && r.floorSeen >= FLOOR_EVIDENCE_MIN ? 1 : 0)
+      if (rank > bestRank || (rank === bestRank && r.score > bestScore)) {
+        bestRank = rank
+        bestScore = r.score
         best = r.cam
       }
-      if (r.floorSeen >= FLOOR_EVIDENCE_MIN && s > evidencingScore) {
-        evidencingScore = s
-        evidencing = r.cam
-      }
+    }
+    if (report) {
+      report.push(
+        `${c.kind}(${c.x.toFixed(1)},${c.z.toFixed(1)})=` +
+          (takes.length
+            ? takes
+                .map((r) => `${r.score.toFixed(2)}[${r.detail}]`)
+                .join('|')
+            : `REJ:${lastReject || '?'}`),
+      )
     }
   }
+  const insideRep: string[] = []
+  const outsideRep: string[] = []
+  for (const c of pools.inside) consider(c, true, debug ? insideRep : undefined)
+  // Outside candidates are still evaluated: a room too small or too full to
+  // stand in has to be shot from its threshold, and tier 0 is how that happens.
+  for (const c of pools.outside) consider(c, false, debug ? outsideRep : undefined)
+  if (debug) {
+    console.warn(`cam ${room.zone.label} inside[${pools.inside.length}] ${insideRep.join(' ')}`)
+    console.warn(`cam ${room.zone.label} outside[${pools.outside.length}] ${outsideRep.join(' ')}`)
+  }
 
-  if (evidencing) return evidencing
   if (best) return best
   // Nothing survived (a tiny room packed with furniture). Fall back to the room
   // centre raised above the furniture — never inside a wall, just less flattering.
