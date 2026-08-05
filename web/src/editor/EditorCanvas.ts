@@ -187,6 +187,9 @@ export interface RoomReq {
   /** Depth (m); omitted → the kind's default. */
   d?: number
   placement?: Placement
+  /** Briefed occupancy — the room's INTENT, carried to the generator so the
+   *  furniture seats what was asked for. 0 = derive from the table. */
+  seats?: number
 }
 
 /** A room tag computed by drawZones, drawn above furniture by drawZoneTags. */

@@ -472,6 +472,17 @@ pub struct RoomReq {
     pub d: Option<f64>,
     #[serde(default)]
     pub placement: Placement,
+    /// **How many people this room is briefed to seat** — the user's intent,
+    /// travelling with the request so the furniture honours it.
+    ///
+    /// The Program builder offers "2 / 4 / 6 / 8 person" team rooms, but the
+    /// table `furnish_room` fitted was sized to the ROOM, so a "6 person" room
+    /// was furnished with a table seating 8 and reported 8 pax on the plan and in
+    /// the report. Over-delivering is still a plan that does not match its own
+    /// brief: the headcount maths, the meeting-seat total and the density all
+    /// ran on 6. `0` = no explicit brief, derive as before.
+    #[serde(default)]
+    pub seats: u32,
 }
 
 /// The full professional program for a headcount, per the spec §1.1 table.
@@ -900,6 +911,8 @@ struct RoomSpec {
     /// Door leaf width (m); 1.0 for NBC-exit rooms (pantry).
     door_w: f64,
     furniture: RoomFurniture,
+    /// Briefed occupancy from `RoomReq::seats` (0 = derive from the table).
+    seats: u32,
 }
 
 /// Append one generated wall segment (partition or glass front).
@@ -1043,13 +1056,13 @@ fn emit_room(doc: &mut Document, cx: f64, cy: f64, w: f64, h: f64, side: Corrido
         &spec.label,
     );
 
-    furnish_room(doc, cx, cy, w, h, side, spec.furniture);
+    furnish_room(doc, cx, cy, w, h, side, spec.furniture, spec.seats);
 }
 
 /// Place a room's interior furniture (existing Table/Chair categories only).
 /// `side` is the door/front side; furniture faces it, rear pieces back onto
 /// the opposite wall. Everything snaps to the module.
-fn furnish_room(doc: &mut Document, cx: f64, cy: f64, w: f64, h: f64, side: CorridorSide, furniture: RoomFurniture) {
+fn furnish_room(doc: &mut Document, cx: f64, cy: f64, w: f64, h: f64, side: CorridorSide, furniture: RoomFurniture, briefed_seats: u32) {
     // Outward front normal, and the rotation mapping local +y (the side a
     // seated user faces) onto it: R(θ)·(0,1) = (−sinθ, cosθ) = f.
     let (fx, fy) = match side {
@@ -1074,6 +1087,18 @@ fn furnish_room(doc: &mut Document, cx: f64, cy: f64, w: f64, h: f64, side: Corr
             let th = (h - 2.0 * PARTITION_T - 2.0 * TABLE_CLEAR).max(0.8).min(h - 2.0 * PARTITION_T - 0.2);
             if tw > 0.3 && th > 0.3 {
                 push_component(doc, "Table", cx, cy, tw, th, 0.0);
+                // THE BRIEF WINS. The table is sized to the ROOM, so its
+                // perimeter can seat more than the room was asked for — a
+                // "6 person" team room fitted a table seating 8, and that 8 then
+                // flowed to the plan tag, the report's meeting seats and the
+                // density. Clamp the object's occupancy to what was briefed
+                // (never above what physically fits) so the drawing, the tag and
+                // the brief are the same number.
+                if briefed_seats > 0 {
+                    if let Some(t) = doc.components.last_mut() {
+                        t.seats = t.seats.min(briefed_seats);
+                    }
+                }
             }
         }
         RoomFurniture::WorkPoint => {
@@ -1583,6 +1608,7 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
                 program.meeting_w,
                 program.meeting_h,
                 Placement::Flexible,
+                0, // derived meeting: no explicit brief
             ));
         }
         take(&mut jobs, SpaceKind::Focus);
@@ -2928,6 +2954,8 @@ struct RoomJob {
     glass_front: bool,
     door_w: f64,
     furniture: RoomFurniture,
+    /// Briefed occupancy from `RoomReq::seats` (0 = derive from the table).
+    seats: u32,
     /// false → open setting (collab / print alcove): zone + furniture, no
     /// partitions and no door — spec §1.1 marks them open.
     walls: bool,
@@ -2994,7 +3022,7 @@ fn support_jobs(program: &Program, plate_area: f64) -> Vec<RoomJob> {
             // Derived rooms carry their derive() footprint. Focus rooms are pinned
             // to the facade (`Window`) — item 4a's HARD daylight rule; the rest stay
             // placement-neutral (`Flexible`), so the derive path is otherwise unchanged.
-            jobs.push(t.to_job(req.kind, label, snap_module(req.w), snap_module(req.d), derived_placement(req.kind)));
+            jobs.push(t.to_job(req.kind, label, snap_module(req.w), snap_module(req.d), derived_placement(req.kind), 0));
         }
     }
     jobs
@@ -3019,7 +3047,7 @@ struct JobTemplate {
 }
 
 impl JobTemplate {
-    fn to_job(&self, kind: SpaceKind, label: String, w: f64, d: f64, placement: Placement) -> RoomJob {
+    fn to_job(&self, kind: SpaceKind, label: String, w: f64, d: f64, placement: Placement, seats: u32) -> RoomJob {
         RoomJob {
             kind,
             label,
@@ -3029,6 +3057,7 @@ impl JobTemplate {
             glass_front: self.glass_front,
             door_w: self.door_w,
             furniture: self.furniture,
+            seats,
             walls: self.walls,
             far: self.far,
             placement,
@@ -3079,7 +3108,7 @@ fn explicit_jobs(program: &Program) -> Vec<RoomJob> {
             } else {
                 format!("{} {}", t.name, i + 1)
             };
-            jobs.push(t.to_job(req.kind, label, w, d, req.placement));
+            jobs.push(t.to_job(req.kind, label, w, d, req.placement, req.seats));
         }
     }
     // Reception first (entry-adjacent), then largest footprint first.
@@ -3106,6 +3135,7 @@ fn anchor_jobs(program: &Program, anchors: &[crate::document::Anchor]) -> Vec<(R
                 snap_module(t.w.max(0.5)),
                 snap_module(t.d.max(0.5)),
                 Placement::Flexible,
+                0, // anchor pin: kind only, no seat brief
             );
             (job, a.x, a.y)
         })
@@ -3716,6 +3746,7 @@ fn emit_job(doc: &mut Document, job: &RoomJob, cx: f64, cy: f64, w: f64, h: f64,
                 glass_front: job.glass_front,
                 door_w: job.door_w,
                 furniture: job.furniture,
+                seats: job.seats,
             },
         );
     } else {
@@ -5788,8 +5819,8 @@ mod tests {
     #[test]
     fn explicit_program_overrides_strategy_counts() {
         let rooms = vec![
-            RoomReq { kind: SpaceKind::Cabin, count: 3, w: None, d: None, placement: Placement::Flexible },
-            RoomReq { kind: SpaceKind::Meeting, count: 2, w: None, d: None, placement: Placement::Flexible },
+            RoomReq { kind: SpaceKind::Cabin, count: 3, w: None, d: None, placement: Placement::Flexible, seats: 0 },
+            RoomReq { kind: SpaceKind::Meeting, count: 2, w: None, d: None, placement: Placement::Flexible, seats: 0 },
         ];
         let count_offices = |strat: Strategy| {
             let mut program = Program::default();
@@ -5973,6 +6004,50 @@ mod tests {
             program.desk_clearance_m
         );
         assert!(score.score >= 55.0, "circulation score {:.1} < 55", score.score);
+    }
+
+    /// A briefed room seats what it was briefed to seat.
+    ///
+    /// The Program builder offers "2 / 4 / 6 / 8 person" team rooms, but the
+    /// table is fitted to the ROOM, so its perimeter could seat MORE — a 6-person
+    /// room was furnished with a table for 8, and that 8 flowed to the plan tag,
+    /// the report's meeting-seat total and the density. Three of the ten room
+    /// types disagreed with their own brief (team-2 → 4, team-6 → 8, team-8 → 10).
+    #[test]
+    fn briefed_room_seats_match_the_brief() {
+        for (w, d, briefed) in [(2.4, 2.7, 2u32), (2.7, 3.3, 4), (3.6, 4.2, 6), (3.6, 4.8, 8)] {
+            let mut doc = Document::new();
+            // A plate big enough that placement never becomes the variable.
+            for (ax, ay, bx, by) in [(0.0, 0.0, 30.0, 0.0), (30.0, 0.0, 30.0, 20.0),
+                                     (30.0, 20.0, 0.0, 20.0), (0.0, 20.0, 0.0, 0.0)] {
+                let id = doc.alloc_id();
+                doc.walls.push(crate::model::Wall {
+                    id, a: Point { x: ax, y: ay }, b: Point { x: bx, y: by },
+                    thickness: 0.2, generated: false, glazing: false,
+                });
+            }
+            let mut program = Program::default();
+            program.headcount = Some(10);
+            program.support_spaces = false;
+            program.rooms = vec![RoomReq {
+                kind: SpaceKind::Meeting4P, count: 1,
+                w: Some(w), d: Some(d), placement: Placement::Flexible, seats: briefed,
+            }];
+            generate(&mut doc, &program, 1, false);
+
+            // The table inside the briefed room seats exactly the brief.
+            let tables: Vec<u32> = doc.components.iter()
+                .filter(|c| c.category == "Table" && c.seats > 0)
+                .map(|c| c.seats).collect();
+            assert!(
+                tables.contains(&briefed),
+                "{w}x{d} briefed for {briefed}: table seat counts were {tables:?}",
+            );
+            assert!(
+                tables.iter().all(|&s| s <= briefed),
+                "{w}x{d} briefed for {briefed}: a table over-delivers — {tables:?}",
+            );
+        }
     }
 
     #[test]
@@ -6890,8 +6965,8 @@ mod tests {
         let mut program = Program::default();
         program.headcount = Some(40); // desks still derive from this
         program.rooms = vec![
-            RoomReq { kind: SpaceKind::Cabin, count: 4, w: None, d: None, placement: Placement::Flexible },
-            RoomReq { kind: SpaceKind::Meeting, count: 1, w: None, d: None, placement: Placement::Flexible },
+            RoomReq { kind: SpaceKind::Cabin, count: 4, w: None, d: None, placement: Placement::Flexible, seats: 0 },
+            RoomReq { kind: SpaceKind::Meeting, count: 1, w: None, d: None, placement: Placement::Flexible, seats: 0 },
         ];
         let mut doc = room(30.0, 22.0);
         generate(&mut doc, &program, 1, false);
@@ -6925,7 +7000,7 @@ mod tests {
     /// it (feeding the rooms in the opposite order yields the SAME layout).
     #[test]
     fn explicit_placement_biases_window_toward_facade() {
-        let cabin = |p: Placement| RoomReq { kind: SpaceKind::Cabin, count: 2, w: None, d: None, placement: p };
+        let cabin = |p: Placement| RoomReq { kind: SpaceKind::Cabin, count: 2, w: None, d: None, placement: p, seats: 0 };
         let mut win_first = Program::default();
         win_first.support_spaces = false;
         win_first.headcount = Some(20);
@@ -6965,8 +7040,8 @@ mod tests {
     fn program_rooms_serde_round_trip() {
         let mut p = Program::default();
         p.rooms = vec![
-            RoomReq { kind: SpaceKind::Cabin, count: 3, w: Some(4.5), d: Some(4.0), placement: Placement::Window },
-            RoomReq { kind: SpaceKind::Pantry, count: 1, w: None, d: None, placement: Placement::Core },
+            RoomReq { kind: SpaceKind::Cabin, count: 3, w: Some(4.5), d: Some(4.0), placement: Placement::Window, seats: 0 },
+            RoomReq { kind: SpaceKind::Pantry, count: 1, w: None, d: None, placement: Placement::Core, seats: 0 },
         ];
         let s = serde_json::to_string(&p).expect("serialize");
         let p2: Program = serde_json::from_str(&s).expect("round-trip");
@@ -7492,7 +7567,7 @@ mod tests {
         let mut program = Program::default();
         program.support_spaces = false;
         program.meeting_rooms = 0;
-        program.rooms = vec![RoomReq { kind: SpaceKind::Cabin, count: 2, w: None, d: None, placement: Placement::Flexible }];
+        program.rooms = vec![RoomReq { kind: SpaceKind::Cabin, count: 2, w: None, d: None, placement: Placement::Flexible, seats: 0 }];
         let mut doc = room(26.0, 18.0);
         doc.anchors.push(crate::document::Anchor { kind: SpaceKind::Cabin, x: 6.0, y: 5.0 });
         generate(&mut doc, &program, 4, false);
@@ -8050,6 +8125,7 @@ mod tests {
                         glass_front: true,
                         door_w: 0.9,
                         furniture: RoomFurniture::ConferenceTable,
+                        seats: 0,
                     },
                 );
             }

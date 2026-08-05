@@ -84,10 +84,12 @@ export const ROOM_DEFS: RoomDef[] = [
   { kind: 'office-small', group: 'offices', label: 'Small', space: 'Cabin', w: 2.7, d: 3.0, seats: 1, enclosed: true },
   { kind: 'office-focus', group: 'offices', label: 'Focus', space: 'Focus', w: 1.8, d: 2.4, seats: 1, enclosed: true },
   // Team rooms — sized by people (2/4/6/8) onto Meeting4P/6P.
-  { kind: 'team-2', group: 'team', label: '2 person', space: 'Meeting4P', w: 2.4, d: 2.7, seats: 2, enclosed: true },
-  { kind: 'team-4', group: 'team', label: '4 person', space: 'Meeting4P', w: 2.7, d: 3.3, seats: 4, enclosed: true },
-  { kind: 'team-6', group: 'team', label: '6 person', space: 'Meeting6P', w: 3.6, d: 4.2, seats: 6, enclosed: true },
-  { kind: 'team-8', group: 'team', label: '8 person', space: 'Meeting6P', w: 3.6, d: 4.8, seats: 8, enclosed: true },
+  // Team-room labels are DERIVED from `seats` below — "6 person" was a
+  // hand-typed restatement of a field sitting beside it, free to drift.
+  { kind: 'team-2', group: 'team', label: '', space: 'Meeting4P', w: 2.4, d: 2.7, seats: 2, enclosed: true },
+  { kind: 'team-4', group: 'team', label: '', space: 'Meeting4P', w: 2.7, d: 3.3, seats: 4, enclosed: true },
+  { kind: 'team-6', group: 'team', label: '', space: 'Meeting6P', w: 3.6, d: 4.2, seats: 6, enclosed: true },
+  { kind: 'team-8', group: 'team', label: '', space: 'Meeting6P', w: 3.6, d: 4.8, seats: 8, enclosed: true },
   // Conference.
   { kind: 'conf-boardroom', group: 'conference', label: 'Boardroom', space: 'Boardroom', w: 4.5, d: 6.5, seats: 14, enclosed: true },
   { kind: 'conf-xl', group: 'conference', label: 'XL', space: 'Boardroom', w: 4.5, d: 5.5, seats: 12, enclosed: true },
@@ -105,6 +107,12 @@ export const ROOM_DEFS: RoomDef[] = [
   { kind: 'amenity-copyprint', group: 'amenities', label: 'Copy / print', space: 'Print', w: 2.0, d: 1.5, seats: 0, enclosed: false },
   { kind: 'amenity-storageit', group: 'amenities', label: 'Storage / IT', space: 'Storage', w: 3.0, d: 2.0, seats: 0, enclosed: true },
 ]
+
+// Fill the derived labels: a team room IS "N person", so the string is generated
+// from `seats` rather than typed next to it.
+for (const d of ROOM_DEFS) {
+  if (d.group === 'team' && !d.label) d.label = `${d.seats} person`
+}
 
 export const ROOM_DEF: Record<UiRoomKind, RoomDef> = Object.fromEntries(
   ROOM_DEFS.map((r) => [r.kind, r]),
@@ -238,7 +246,7 @@ export function programSpecToProgram(spec: ProgramSpec, base: Program = DEFAULT_
       def.group === 'offices' || def.group === 'team' || def.group === 'conference'
         ? spec.placements[def.group]
         : undefined
-    rooms.push({ kind: def.space, count, w: def.w, d: def.d, ...(placement ? { placement } : {}) })
+    rooms.push({ kind: def.space, count, w: def.w, d: def.d, seats: def.seats, ...(placement ? { placement } : {}) })
   }
   const desk = deskFootprint(spec.deskSize)
   return {

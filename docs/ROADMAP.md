@@ -340,6 +340,28 @@ Audit + design system from a full naive-user walkthrough on the real DWG. Shippi
     the decision that a Save button in a browser CAD tool teaches users their work is only
     conditionally safe. The two file buttons became **Download** / **Open file…** so they describe
     what they do. **If you are skimming this line, do not read it as a copy tweak.**
+  - [x] **⚠ PARITY NUMBERS MOVE — a briefed room now seats what it was briefed to seat.**
+    Fourth instance of one structural bug: **a brief disagreeing with its own output.** (The others:
+    the room tag's pax vs the chairs drawn; `DESK_SIZES` metres vs a hand-typed cm label; the Program
+    summary promising 75 desks while the generator laid 80.) This is the one the user reads first.
+    The Program builder offers "2 / 4 / 6 / 8 person" team rooms, but `furnish_room` sized the table
+    to the ROOM, so its perimeter seated more: **team-2 → 4, team-6 → 8, team-8 → 10.** Three of ten
+    room types. Over-delivering is still a plan that does not match its brief — the headcount maths,
+    the meeting-seat total and the density all ran on the briefed number.
+    Fixed by collapsing three representations into one: `RoomReq.seats` (additive, serde default 0)
+    carries the INTENT to the generator; `furnish_room` clamps the table's occupancy to it (never
+    above what physically fits); and the team-room label is **derived** from `seats` — `'6 person'`
+    was a hand-typed restatement of the field beside it. Rust test
+    `briefed_room_seats_match_the_brief` pins it (135 tests).
+    **Measured on the real 882 m² DWG**, briefing team-2/4/6/8 + boardroom: the placed 8-person team
+    room reports **8 (was 10)** → `meetingSeats` −2 → `seats` −2 → density up. **Winner badges did NOT
+    shift** — A "Most seats" + "Best density", C "Best daylight", B none, same as before. As in slice
+    2, "Best density" is workstations/NIA and "Best daylight" is geometric, so neither reads capacity.
+    Occupancy render census (all paths checked, per the "find all three" requirement): canvas room
+    tag and report `meetingSeats`→seats→density→"Most seats" both read `zone_stats().capacity` (one
+    owner); Program summary reads `ROOM_DEFS.seats` (the brief); takeoff and 3D render no occupancy.
+    `stats.ts` `zonePax` is a **deliberately different metric** — Pax == Workstations, enclosed-room
+    capacity intentionally excluded so Pax can't disagree with Workstations — and is left alone.
   - [ ] Unguarded project delete · [ ] destructive Import warning · [ ] unit drift ·
         [ ] Program `disabledReason` · [ ] stale raster-import line (Track E).
 - [ ] Slice 5 — typography/tokens.
