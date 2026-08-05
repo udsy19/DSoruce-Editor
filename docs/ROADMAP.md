@@ -436,7 +436,49 @@ Audit + design system from a full naive-user walkthrough on the real DWG. Shippi
       finds a false citation.
   - [ ] Unguarded project delete · [ ] destructive Import warning · [ ] unit drift ·
         [ ] Program `disabledReason` · [ ] stale raster-import line (Track E).
-- [ ] Slice 5 — typography/tokens.
+- [x] **Slice 7 — the six-component style migration.** `SelectionCard` · `CategoryPlan` ·
+  `LibraryPanel` · `LayersPanel` · `PlacePalette` · `CandidateGallery`, one commit each, ordered by
+  RISK (state-encoding first) rather than size. **71 inline style objects and 140 hard-coded hexes
+  removed.** Every conditional style path was enumerated from the source and rendered in a
+  before/after state matrix (`ux-audit/tokens-{before,after}/<component>/`) through the app's own
+  module graph; state variants became class modifiers (`.is-active`, `.is-selected`, `.is-below`,
+  `.is-collapsed`, `.is-indented`, `.is-num`), never merged style dictionaries at the call site.
+  **Measured, not eyeballed** — `scripts/pixdiff.py` (new) reports differing pixels, the worst
+  per-channel delta and where. **Four real defects the pass surfaced:**
+  1. **11 dead `var(--accent, #E8A13C)` fallbacks** in `LibraryPanel` — amber from before the accent
+     went blue. Never rendered; had `--accent` ever failed to resolve, half the panel would have gone
+     amber. Same species as slice 5's 40 never-loaded Plex Mono references.
+  2. **The AI badge really was amber** (`rgba(232,161,60,0.12)` — a literal, not a fallback), so it
+     rendered **blue text on an amber ground**: the text followed the variable when the accent moved
+     and the background, being a literal, stayed behind. The one intentional colour change here.
+  3. **`CategoryPlan`'s bound-dot used `var(--accent)`** for a CANVAS legend. Zero pixels (same hex
+     today) — the point is a rebrand must not recolour a data legend (§4.1.1, marker-pin precedent).
+  4. **A 5px→6px radius my own shared rule introduced** on the history Restore button, caught by the
+     diff as a symmetric border transition, not by eye.
+  **Three unapproved colour drifts of my own were caught and reverted before commit**
+  (`#1e2329`→`--text`, `#eef0f3`→`--hairline`, `#6b7280`→`--muted`): 4–15/255 each, invisible in
+  isolation, thousands of pixels in the diff. Snapping off-ramp inks to the ramp is a real
+  improvement and a SEPARATE decision — a refactor does not get to make it quietly.
+- [x] **Final verification pass** (`make build` clean · `cargo test -p ds-core` 135/135 · JS 24/24 ·
+  `coreParity` green). Browser-verified on the real 882 m² DWG, pre-flight before every check:
+  - **Zoom sweep** 8 / 20 / 45 / 80 / 140 px/m (`ux-audit/after/zoom-final/`). Symbol CONTENT is
+    constant: the same TEAM ROOM tags "15 m² · 6 pax" and draws exactly 6 chairs at 45 and at 140;
+    its neighbour reads 10 pax and draws 10. Wall poché at true thickness, door swings, no pop.
+  - **DPR 1 and 2** — DPR forced at the seam the canvas reads (`window.devicePixelRatio` →
+    `resize()`), witnessed at both; hairlines crisp, symbol content identical.
+  - **Scroll ownership**, per route: `#/` 0 panes · `#/new` 0 · space 1 (`.space-detail`) ·
+    program 1 (`.program-step`) · editor 1 (`.inspector`). `document.scrollingElement` never
+    scrolls on any route — the page itself is not a scroll owner anywhere.
+  - **Reload on every route** (new to the checklist, because the Generate finding proved reload is a
+    mainline action): none fabricates, blanks, or loses state.
+  - **Deliverables agree**: report `meetingSeats` 22 == Σ `zone_stats().capacity` 22 == the canvas
+    tags; takeoff desk quantity 92 == report workstations 92; the takeoff still renders no occupancy.
+- [~] **Awaiting the user's display** (`docs/design/manual-session.md`): 3D panel states and the
+  naive-user walkthrough. Everything else in Track A′ is verified.
+- [x] **Slice 5 — typography + tokens.** Shipped: the numeric face on quantitative data (`.num`,
+  tabular figures, −0.02em), amber resolved out of UI chrome, the never-loaded-font guard
+  (`ui/fonts.test.mjs`) — extended in the final pass to check WEIGHTS, which immediately caught
+  `.sheets-title` asking `--font-display` for a 600 the face does not ship.
 
 ### Method note — trace the value, don't rename at the render site
 Two of the three worst defects in this overhaul were filed as cosmetic and turned out to be
