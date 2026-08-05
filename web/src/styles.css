@@ -2033,6 +2033,437 @@ button {
   color: var(--faint);
 }
 
+/* ---------------------- Plan library panel (editor) ----------------------- */
+/* Was a 40-key `S: Record<string, CSSProperties>` dictionary applied at 55 call
+   sites, carrying 68 hard-coded hexes. 11 of those were `var(--accent, #E8A13C)`
+   — a DEAD amber fallback from before the accent went blue, which would have
+   repainted half this panel amber the day `--accent` failed to resolve. Same
+   class of lie as the 40 never-loaded Plex Mono references slice 5 removed: a
+   value that is wrong and can't be seen to be wrong. The fallbacks are gone; the
+   variables are always defined by :root. */
+.lib {
+  --lib-danger: #c94f38; /* delete-confirm red — darker than --danger for a
+                            1px border on a tinted ground; not hoisted */
+  font-family: var(--font-ui);
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+}
+.lib-save-form {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--hairline);
+  margin-bottom: 12px;
+}
+.lib-save-input {
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  padding: 6px 9px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-xs);
+  background: var(--surface-2);
+  color: var(--text);
+  outline: none;
+  min-width: 0;
+}
+.lib-save-btn {
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 7px 10px;
+  border: 1px solid var(--accent);
+  border-radius: var(--r-xs);
+  background: var(--accent);
+  color: var(--accent-ink);
+  cursor: pointer;
+}
+.lib-sync-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 2px 12px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--hairline);
+}
+.lib-sync-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lib-sync-status.is-error {
+  color: var(--lib-danger);
+}
+.lib-sync-btn,
+.lib-restore-btn {
+  font-family: var(--font-ui);
+  font-weight: 600;
+  flex: none;
+  border-radius: var(--r-xs);
+  border: 1px solid var(--hairline-strong);
+  background: var(--surface);
+  color: var(--text-2);
+  cursor: pointer;
+}
+.lib-sync-btn {
+  font-size: 11.5px;
+  padding: 4px 11px;
+}
+.lib-restore-btn {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 5px; /* NOT --r-xs (6px) — the source used 5 here and 6 on the
+                         sync button. Sharing the rule silently rounded it. */
+}
+.lib-eyebrow-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 8px;
+}
+.lib-eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--eyebrow);
+}
+.lib-compare {
+  font-family: var(--font-ui);
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: var(--r-xs);
+  border: 1px solid var(--hairline-strong);
+}
+/* Armed: exactly two plans ticked. */
+.lib-compare.is-on {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+  cursor: pointer;
+}
+.lib-compare.is-off {
+  background: var(--surface);
+  color: var(--muted);
+  opacity: 0.6;
+  cursor: default;
+}
+.lib-compare-count {
+  font-weight: 600;
+}
+.lib-lead {
+  margin: 0 0 10px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.lib-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 4px;
+  border-radius: var(--r-sm);
+  border-bottom: 1px solid var(--hairline);
+  background: transparent;
+}
+/* Ticked for compare. */
+.lib-row.is-selected {
+  background: var(--accent-soft);
+}
+/* A floor sits indented beneath its project header. */
+.lib-row.is-indented,
+.lib-assign-form.is-indented {
+  margin-left: 14px;
+}
+.lib-project-header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 10px 4px 4px;
+}
+.lib-project-name {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+.lib-project-count {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--muted); /* the source said `var(--muted, #9aa2ad)` — the FALLBACK
+                          was --faint's value and never rendered; --muted is what
+                          this has always been */
+  white-space: nowrap;
+}
+.lib-floor-tag {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+  white-space: nowrap;
+  flex: none;
+}
+.lib-assign-form {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 4px 8px 26px;
+  border-bottom: 1px solid var(--hairline);
+}
+.lib-assign-input,
+.lib-assign-floor {
+  border: 1px solid var(--hairline-strong);
+  border-radius: 5px;
+  background: var(--surface-2);
+  color: var(--text);
+  outline: none;
+}
+.lib-assign-input {
+  font-family: var(--font-ui);
+  font-size: 12px;
+  flex: 1;
+  min-width: 0;
+  padding: 4px 7px;
+}
+.lib-assign-floor {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  width: 44px;
+  flex: none;
+  padding: 4px 6px;
+}
+.lib-assign-btn {
+  font-family: var(--font-ui);
+  font-size: 11.5px;
+  font-weight: 600;
+  flex: none;
+  padding: 4px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 5px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  cursor: pointer;
+}
+/* Nothing typed yet — the submit is inert and says so. */
+.lib-assign-btn:disabled {
+  opacity: 0.5;
+}
+.lib-switcher {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0 12px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--hairline);
+}
+.lib-switcher-name {
+  font-size: 12px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+.lib-switcher-floors {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  flex: none;
+}
+.lib-floor-chip {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--text-2);
+  cursor: pointer;
+}
+/* The floor currently open in the editor. */
+.lib-floor-chip.is-on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  cursor: default;
+}
+.lib-check {
+  accent-color: var(--accent);
+  flex: none;
+  margin: 0;
+  cursor: pointer;
+}
+.lib-thumb-btn {
+  flex: none;
+  padding: 0;
+  border: 1px solid var(--hairline);
+  border-radius: 5px;
+  background: var(--canvas-mat);
+  cursor: pointer;
+  overflow: hidden;
+  line-height: 0;
+}
+.lib-thumb-img {
+  display: block;
+  width: 52px;
+  height: 38px;
+  object-fit: cover;
+}
+.lib-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.lib-name-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.lib-name {
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: text;
+}
+.lib-name-input {
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border: 1px solid var(--accent);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--text);
+  outline: none;
+  min-width: 0;
+}
+.lib-metric {
+  font-size: 10.5px;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lib-ago {
+  font-size: 10px;
+  color: var(--muted); /* same dead-fallback story as .lib-project-count */
+}
+.lib-tiny-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border: none;
+  background: transparent;
+  border-radius: 5px;
+  cursor: pointer;
+  padding: 0;
+  color: var(--muted);
+}
+/* Delete, second press — the destructive confirm. */
+.lib-confirm-btn {
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 600;
+  flex: none;
+  padding: 3px 8px;
+  border: 1px solid var(--lib-danger);
+  border-radius: 5px;
+  background: rgba(201, 79, 56, 0.08);
+  color: var(--lib-danger);
+  cursor: pointer;
+}
+.lib-history-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  margin-top: 16px;
+  padding: 8px 0;
+  border: none;
+  border-top: 1px solid var(--hairline);
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+.lib-caret {
+  display: inline-flex;
+  color: var(--muted);
+  transition: transform 0.12s;
+  transform: rotate(0deg);
+}
+.lib-caret.is-collapsed {
+  transform: rotate(-90deg);
+}
+.lib-history-count {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--muted);
+}
+.lib-history-row {
+  padding: 4px 2px;
+  border-bottom: 1px solid var(--hairline);
+}
+.lib-history-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.lib-history-label {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lib-mono-bit {
+  font-size: 11.5px;
+}
+.lib-storage-foot {
+  margin-top: 14px;
+  padding-top: 8px;
+  border-top: 1px solid var(--hairline);
+  font-size: 10.5px;
+  color: var(--muted);
+}
+.lib-history-thumb {
+  display: block;
+  width: 120px;
+  height: auto;
+  margin-top: 5px;
+  border-radius: 4px;
+  border: 1px solid var(--hairline);
+  background: var(--canvas-mat);
+}
+.lib-cloud-icon {
+  flex: none;
+}
+
 /* --------------------- Plan by category (Materio list) -------------------- */
 /* Was 18 inline style objects + 12 hard-coded hexes in CategoryPlan.tsx. Same
    contract as `.selcard`: values are byte-identical, off-ramp inks are declared
