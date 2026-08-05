@@ -380,7 +380,7 @@ Audit + design system from a full naive-user walkthrough on the real DWG. Shippi
   mounted, replacing three ad-hoc names (`__dc`/`__spacedc`/`__programdc` — the previous answer to
   the collision was to add more names). Control verified: every shortcut still works in the editor.
   Rust 134/134, JS 22/22.
-- [~] **Slice 4 — workflow repairs.**
+- [x] **Slice 4 — workflow repairs.**
   - [x] **⚠ DATA LOSS, not a naming problem — edits to an open floor were never saved.** This was
     filed as "Save/Open ambiguity against IndexedDB autosave". It was not an ambiguity. **No code
     path wrote an edit back to the floor record.** Topbar "Save" was `triggerDownload()` (a .dsource
@@ -449,8 +449,14 @@ Audit + design system from a full naive-user walkthrough on the real DWG. Shippi
     - Rule written into `ui-system.md` §3.6.2: **a provenance comment is a claim to verify, not
       documentation.** Name-grep finds honest copies, value-grep finds anonymous ones, only reading
       finds a false citation.
-  - [ ] Unguarded project delete · [ ] destructive Import warning · [ ] unit drift ·
-        [ ] Program `disabledReason` · [ ] stale raster-import line (Track E).
+  - [x] **All five remaining slice-4 items shipped in `e2374fc`** — this line was stale bookkeeping,
+    caught by auditing the tracker against the tree at closeout rather than by ticking it. Verified
+    in the code, not from the commit message: project delete confirms and states the floors' fate
+    (`ProjectLibrary.tsx`); the wizard-owned plate replaces silently while a user-driven import into
+    a hand-built document asks first (`App.tsx`, with the distinction written down); unit drift fixed
+    at its source (`util/units.ts`, one `SF_PER_M2`); `disabledReason` wired at all three wizard
+    gates ("Enter a property name to continue" / "Upload a floor plan to continue" / "Loading your
+    program…"); the raster-import line matches `import/rasterImport.ts`.
 - [x] **Slice 7 — the six-component style migration.** `SelectionCard` · `CategoryPlan` ·
   `LibraryPanel` · `LayersPanel` · `PlacePalette` · `CandidateGallery`, one commit each, ordered by
   RISK (state-encoding first) rather than size. **71 inline style objects and 140 hard-coded hexes
@@ -493,11 +499,14 @@ Audit + design system from a full naive-user walkthrough on the real DWG. Shippi
   off the ink ramp. Measured with `scripts/pixdiff.py`, each is invisible in isolation and thousands
   of pixels wide: `#1e2329` → `--text` (#1a1d21, Δ4–8/255, 8,956 px in `.selcard` alone),
   `#eef0f3` → `--hairline` (#e6e8ec, Δ8), `#6b7280` → `--muted` (#5c6670, Δ15 — the largest, on the
-  AI verdict line). Also unresolved: `--selcard-sub` / `--catplan-sub` `#7a828c`, which sits BETWEEN
-  `--muted` and `--faint` and cannot be snapped either way without visibly changing a subtitle — it
-  needs a ramp step, or a decision that secondary text is `--muted`. Doing this is a real
-  improvement; doing it inside a refactor would have been a design change smuggled in as cleanup.
-  Take it as its own change, with before/after captures.
+  AI verdict line). Doing this is a real improvement; doing it inside a refactor would have been a
+  design change smuggled in as cleanup. Take it as its own change, with before/after captures.
+  **RESOLVED and shipped, the one piece that had a ruling:** `#7a828c` — *secondary text is
+  `--muted`, no new ramp step*. `.selcard-sub` → `--muted` (**10,037 px**, the subtitle darkens by
+  30/255 — a deliberate, ruled change, not a drift). Its twin in `CategoryPlan` turned out to be an
+  **eyebrow**, not secondary text, and the app already has `--eyebrow` for exactly that role — every
+  other eyebrow in the stylesheet uses it — so it took `--eyebrow` (**4,581 px**). No `#7a828c`
+  remains anywhere in `web/src`. The other three inks above stay proposed.
 - [ ] **Expose `keepConfirmed` — "regenerate, but keep this."** The core has supported freezing
   Confirmed components across a regeneration since S6 (`autoGenerate(..., { keepConfirmed })`), and
   **no UI anywhere reaches it.** The whole loop is generate → evaluate → regenerate, while an

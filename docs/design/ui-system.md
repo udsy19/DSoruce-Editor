@@ -498,6 +498,27 @@ are the canvas palette's only readers, and they resolve canvas tokens — not `-
   become classes. Inline stays only for computed geometry (a flyout's `left/top`, a swatch's colour).
 - **Delete vestigial fallbacks**: `var(--accent, #e8a13c)`, `var(--font-ui, 'Space Grotesk', …)`.
 
+#### 4.2.1 How a component migration is actually done (learned doing six)
+
+1. **Enumerate states from the conditionals, not from the screen.** Read every ternary and `&&` in
+   the component's styles and render one case per branch. `SelectionCard`'s `image` prop has *three*
+   states (url → `<img>`, `null` → placeholder, `undefined` → nothing); two of them are invisible
+   until you look at the source. Mount the matrix through the app's own module graph (§3.6.1 rule 4).
+2. **State becomes a class modifier**, matching the conventions already in `styles.css` —
+   `.is-active`, `.is-selected`, `.is-below`, `.is-collapsed`, `.is-indented`. Never a merged style
+   object at the call site: `{...S.chip, ...(on ? S.chipOn : {})}` hides which properties belong to
+   the state.
+3. **A colour that belongs to one component and matches no token is a component-scoped custom
+   property on that component's block** — not a new `:root` entry. Hoisting one-offs into the global
+   palette is how a token set stops meaning anything.
+4. **Measure. `scripts/pixdiff.py before.png after.png`.** The bar is *identical unless the change was
+   approved*, and "identical" is a pixel count, not an impression. Three of my own colour changes in
+   this migration were 4–15/255 — invisible to me, thousands of pixels wide, all three reverted. A
+   shared rule I wrote also silently rounded a 5px radius to 6px; the diff caught it as a symmetric
+   border transition and my eye did not.
+5. **Snapping off-ramp values to the ramp is a separate, deliberate change.** It is usually right. It
+   is never something a refactor gets to do quietly — file it, get it ruled, ship it with captures.
+
 ### 4.3 Rhythm, states, motion
 
 - **Spacing** on a 4 px grid; section rhythm 8 / 12 / 16 / 24 / 32.

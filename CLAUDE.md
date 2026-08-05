@@ -67,8 +67,41 @@ cd web && pnpm dev               # frontend only (uses existing wasm bindings)
   `--accent` today and is deliberately **not** aliased to it: a rebrand must not silently recolour
   every specified item on every plan. UI elements that are *legends* for canvas state (a marker's ref
   pin) correctly use the canvas token.
+- **One scroll owner per screen** (`docs/design/ui-system.md` §1). `#root` owns the viewport
+  (`100dvh`); exactly one pane per screen scrolls; the canvas pans and never scrolls; `vh`/`dvh`
+  appears nowhere but `#root`. A viewport-unit box inside a non-viewport box is how the double
+  scrollbar happened.
+- **Appearance lives in `styles.css`, state lives in class modifiers.** No inline `CSSProperties`
+  dictionaries, no hard-coded hexes in components; state variants are `.is-active` / `.is-selected` /
+  `.is-collapsed`, never merged style objects at the call site. When a colour genuinely belongs to
+  one component and no token fits, declare it once as a component-scoped custom property on that
+  component's block — not in `:root`.
+- **A named resource is verified on four levels** (`docs/design/ui-system.md` §3.6.3): its name
+  resolves, its value matches its owner, its stated provenance is true, and the facet you use is the
+  facet the owner defines. **A `// mirrors X` comment is a claim to verify, not documentation.**
+  Prefer exporting the value across the wasm boundary (`open_share()`, `door_depth()`,
+  `Editor::density_score()`); if a mirror is genuinely unavoidable, register it in
+  `web/src/coreParity.test.mjs`, which parses the value out of the Rust source and fails on
+  divergence.
 - **No bloat** (`.claude/rules/no-bloat.md`): search for an existing symbol before adding a new one;
   delete superseded code in the same change.
+
+## Verifying a change in the browser
+
+Non-negotiable, because each of these cost real time (`docs/design/ui-system.md` §3.6.1):
+
+```bash
+scripts/verify-preflight.sh <port> <identifier-from-your-change> [module-path]
+scripts/pixdiff.py before.png after.png [diff.png]   # "nothing changed" is a measurement
+```
+
+- **Bind your dev server to its own port.** Never reuse 5173 — parallel worktrees hold it, and a
+  `vite --strictPort` from another branch answers normally while serving someone else's code.
+- **Reload is not `goto`.** After a crash (WebGL especially) navigating to the same URL+hash does not
+  reload; force `location.reload()`.
+- **Grep the served module for an identifier, never comment text** — esbuild strips comments in dev.
+- **Verify through the app's own module graph**, not a hand-rolled `import()` of the same file — a
+  second, uninitialised copy of the wasm module throws and looks exactly like a broken export.
 
 ## Gotchas
 
@@ -102,7 +135,8 @@ Working: 2D editor + CAD drafting layer (draw/modify/trim/extend/fillet/hatch/la
 DWG/DXF import with plate extraction + keep-outs, autonomous test-fit on irregular plates,
 circulation scoring, 2D↔3D viewer incl. Enscape-like render tier, live material bank (₹),
 AI drivers (Local/Cerebras/Claude) + Claude soft-goal evaluator, exports (CSV/PNG/DXF/PDF/IFC/OBJ),
-.dsource save/open, plan library + compare + version history (IndexedDB). Rust: 50 tests.
+.dsource save/open, plan library + compare + version history (IndexedDB).
+**Tests: Rust 135, JS 24** (`cargo test -p ds-core`; `node src/**/*.test.mjs` from `web/`).
 Parked: multiplayer (designed in `docs/design/multiplayer.md`; a presence milestone was built and
 reverted — recover from commits `3a923ea` + `706c7cf` when resumed). Next: cloud plan sync.
 See `research/08-open-questions.md`.

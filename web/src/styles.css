@@ -2824,7 +2824,9 @@ button {
    once as component-scoped properties rather than pushed into :root. */
 .catplan {
   --catplan-ink: #1e2329;
-  --catplan-sub: #7a828c;
+  /* RULED: secondary text is --muted (no new ramp step). This one is an EYEBROW,
+     and the app already has a token for exactly that role — every other eyebrow
+     in this stylesheet uses it — so it takes --eyebrow rather than --muted. */
   --catplan-faint: var(--faint); /* #9aa2ad — already on the ramp */
   --catplan-tint: #eef0f3;
   --catplan-tint-2: #e6e9ee;
@@ -2835,7 +2837,7 @@ button {
   font-weight: 700;
   letter-spacing: 0.09em;
   text-transform: uppercase;
-  color: var(--catplan-sub);
+  color: var(--eyebrow);
   margin: 2px 0 6px;
 }
 .catplan-group {
@@ -2970,8 +2972,9 @@ button {
                              improvement; it is a separate, visible-by-design
                              decision, not a side effect of moving declarations
                              out of a style attribute. */
-  --selcard-sub: #7a828c; /* sits BETWEEN --muted and --faint; snapping either
-                             way visibly changes the subtitle, so it stays */
+  /* RULED: secondary text is --muted. #7a828c sat between --muted and --faint
+     and was left un-snapped pending a decision; the decision is --muted, so the
+     subtitle collapses onto the ramp and the off-ramp property is gone. */
   --selcard-tint: #eef0f3; /* neutral chip/thumb tint */
   --selcard-tint-2: #e6e9ee; /* empty-thumb tint (one step darker) */
   --selcard-review-ink: #a06a12; /* darker than --review for text on the tint */
@@ -3052,7 +3055,7 @@ button {
 }
 .selcard-sub {
   font-size: 11.5px;
-  color: var(--selcard-sub);
+  color: var(--muted);
   margin-top: 2px;
   white-space: nowrap;
   overflow: hidden;
