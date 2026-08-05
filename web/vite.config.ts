@@ -1,4 +1,5 @@
 import { defineConfig, loadEnv, type Plugin } from 'vite'
+import { execSync } from 'node:child_process'
 import react from '@vitejs/plugin-react'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import path from 'node:path'
@@ -265,6 +266,45 @@ function readJson(req: IncomingMessage): Promise<Record<string, unknown>> {
   })
 }
 
+
+/**
+ * BUILD PROVENANCE — stamp the served page with the tree it came from.
+ *
+ * A scripted browser check that has not proven WHICH tree it is talking to is
+ * measuring an unknown. This is not hypothetical: three verification passes in
+ * the plan-grammar campaign were run against :5173, which a different git
+ * worktree was serving, and they reported deleted CSS tokens as still live.
+ * Same failure class as trusting a reader over the artifact — the instrument
+ * was pointed at the wrong thing and said so only if asked.
+ *
+ * The ROOT is the load-bearing field, not the commit: the worktree mix-up had a
+ * plausible commit and the wrong directory. Emitted as meta tags so a plain
+ * `curl` can check them without executing the app.
+ */
+function buildProvenance(): Plugin {
+  const run = (cmd: string) => {
+    try {
+      return execSync(cmd, { cwd: process.cwd(), stdio: ['ignore', 'pipe', 'ignore'] })
+        .toString()
+        .trim()
+    } catch {
+      return ''
+    }
+  }
+  const commit = run('git rev-parse HEAD') || 'unknown'
+  const root = run('git rev-parse --show-toplevel') || process.cwd()
+  return {
+    name: 'build-provenance',
+    transformIndexHtml(html) {
+      return html.replace(
+        '</head>',
+        `  <meta name="build-commit" content="${commit}" />\n` +
+          `    <meta name="build-root" content="${root}" />\n  </head>`,
+      )
+    },
+  }
+}
+
 export default defineConfig(({ mode }) => {
   // Let the LLM_* / ANTHROPIC_* config live in a gitignored web/.env.local as
   // well as the shell env. Command-line env wins over .env files.
@@ -273,7 +313,14 @@ export default defineConfig(({ mode }) => {
     if (env[k] && !process.env[k]) process.env[k] = env[k]
   }
   return {
-    plugins: [react(), agentProxy(), claudeProxy(), plansStore(), dwgConvertPlugin()],
+    plugins: [
+      react(),
+      buildProvenance(),
+      agentProxy(),
+      claudeProxy(),
+      plansStore(),
+      dwgConvertPlugin(),
+    ],
     server: {
       port: 5173,
       proxy: {

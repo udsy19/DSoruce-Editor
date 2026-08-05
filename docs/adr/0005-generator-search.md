@@ -512,6 +512,22 @@ Each was learned from a live mistake in this campaign.
    destroyed. **A confident rationale attached to a value is not evidence the
    value belongs; it is what stops anyone asking.**
 
+   **Ownership, recorded because it changes who the rider is aimed at:** the
+   clamp-order comment was not the author's flourish — the REVIEWER mandated it.
+   A comment was ordered to protect the ordering of an operand that should not
+   have existed. So the general form is not "watch out for authors defending
+   their code":
+
+   > **A careful justification is not evidence that the thing justified should
+   > exist. Rigour about the relationship between terms proves nothing about the
+   > terms.**
+
+   Both artifacts — the author's docstring and the reviewer's mandated comment —
+   were locally rigorous and globally wrong, and the second was produced by the
+   very process meant to catch the first. Review that reasons *within* a
+   construct cannot see that the construct is unnecessary. Ask what a term is
+   for before asking whether it is handled correctly.
+
    Detection rule that follows: for a ratio-defined system, assert the
    ABSOLUTE contract somewhere a uniform error cannot satisfy — here, a gate
    rule that `strokePx` may not reference DPR at all.
@@ -530,6 +546,7 @@ Audited across the campaign:
 | **`strokePx` must not re-apply DPR** | **`bench/style-gate.mjs` DPR-contract rule** | **now exists** |
 | **no style literal in the plan render path** | **`bench/style-gate.mjs` (4 files guarded)** | **exists** |
 | **`ACCENT_AMBER` must equal `--accent-amber`** | **`bench/style-gate.mjs` MIRRORS check** | **now exists** |
+| **a browser check must prove WHICH TREE it measures** | **`bench/assert-build.mjs` + build-provenance meta tags** | **now exists** |
 
 The fourth instance of the family will come. When it does, add it here rather
 than treating it as new.
