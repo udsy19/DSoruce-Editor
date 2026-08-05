@@ -49,9 +49,39 @@ const ENCODINGS = [
  * stamp (Face 12: a gate teaches the behaviour that passes it).
  */
 const DECLARATIONS = [
-  { file: 'web/src/styles.css', re: /^\s*--accent-amber(-rgb)?:/ },
+  { file: 'web/src/styles.css', re: /^\s*--accent-amber(-rgb|-soft|-hover)?:/ },
   { file: 'web/src/editor/planStyle.ts', re: /^export const ACCENT_AMBER =/ },
 ]
+
+/**
+ * Ruling R5: amber has TWO sanctioned meanings, and each has a name.
+ *
+ *   --accent-amber / ACCENT_AMBER          AI action (generation acts + verdicts)
+ *   --accent-selection / SELECTION_ACCENT  live selection (select/hover/active/pick)
+ *
+ * ONE VALUE: the selection family REFERENCES the amber declaration rather than
+ * restating it, so `--accent-selection: var(--accent-amber)` is legal here while
+ * `--accent-selection: #E8A13C` is not. That is the difference between a second
+ * NAME and a second SOURCE, and it is the whole point of the structure.
+ */
+const REFERENCING_DECLARATIONS = [
+  { file: 'web/src/styles.css', re: /^\s*--accent-selection[a-z-]*:\s*var\(--accent-amber/ },
+  { file: 'web/src/editor/planStyle.ts', re: /^export const SELECTION_ACCENT(_HEX)? =/ },
+]
+
+/** A bare token identifier inside a quoted CSS string is literal text, not a
+ *  colour. Checked for BOTH names — the defect is about stringification, not
+ *  about which token was stringified. */
+function checkStringified(ident, code, rel, i) {
+  const at = code.indexOf(ident)
+  if (at <= 0) return
+  if (/\$\{\s*$/.test(code.slice(0, at))) return // `${IDENT}` is interpolation — correct
+  const before = code.slice(0, at)
+  const odd = (q) => (before.split(q).length - 1) % 2 === 1
+  if (odd("'") || odd('"') || odd('`')) {
+    stringIdentifiers.push({ rel, line: i + 1, text: code.trim().slice(0, 78) })
+  }
+}
 
 const walk = (dir, out = []) => {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -89,7 +119,9 @@ for (const file of walk(path.join(ROOT, 'web/src'))) {
     for (const { name, re } of ENCODINGS) {
       re.lastIndex = 0
       if (re.test(code)) {
-        const declared = DECLARATIONS.some((d) => d.file === rel && d.re.test(code))
+        const declared =
+          DECLARATIONS.some((d) => d.file === rel && d.re.test(code)) ||
+          REFERENCING_DECLARATIONS.some((d) => d.file === rel && d.re.test(code))
         if (!declared) strayValues.push({ rel, line: i + 1, enc: name, text: code.trim().slice(0, 78) })
       }
     }
@@ -116,17 +148,12 @@ for (const file of walk(path.join(ROOT, 'web/src'))) {
     // between them as a string and flags it. That was this check's own first
     // version -- anchoring to text that travels with the property rather than to
     // the property, i.e. the exact error it exists to catch, one level up.
-    const idx = code.indexOf('ACCENT_AMBER')
+    for (const ident of ['ACCENT_AMBER', 'SELECTION_ACCENT']) checkStringified(ident, code, rel, i)
+    const idx = -1
     // `${ACCENT_AMBER}` inside a template literal is INTERPOLATION — the value
     // reaches the CSS. That is the fix for this defect, so flagging it would
     // punish the correction and leave the broken form as the only way to pass.
-    if (idx > 0 && !/\$\{\s*$/.test(code.slice(0, idx))) {
-      const before = code.slice(0, idx)
-      const odd = (q) => (before.split(q).length - 1) % 2 === 1
-      if (odd("'") || odd('"') || odd('`')) {
-        stringIdentifiers.push({ rel, line: i + 1, text: code.trim().slice(0, 78) })
-      }
-    }
+    void idx
   })
 }
 

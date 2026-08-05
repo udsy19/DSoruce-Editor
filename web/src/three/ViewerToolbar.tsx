@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import type { ViewerMode, Viewer3D } from './Viewer3D'
 import { THEMES, THEME_ORDER, type ThemeId } from './theme'
-import { ACCENT_AMBER } from '../editor/planStyle'
+import { SELECTION_ACCENT } from '../editor/planStyle'
 
 /** Camera framing presets offered by the upgraded viewer engine. */
 export type ViewPreset = 'persp' | 'top'
@@ -159,7 +159,7 @@ const seg = (active: boolean, disabled: boolean): CSSProperties => ({
   borderRadius: 6,
   cursor: disabled ? 'default' : 'pointer',
   color: active ? '#1b1d21' : '#5c626c',
-  background: active ? ACCENT_AMBER : 'transparent',
+  background: active ? SELECTION_ACCENT : 'transparent',
   boxShadow: active ? '0 1px 3px rgba(0,0,0,0.14)' : 'none',
   opacity: disabled ? 0.35 : 1,
 })
@@ -170,7 +170,7 @@ const renderSeg = (active: boolean): CSSProperties => ({
   ...seg(active, false),
   ...(active
     ? {
-        background: `linear-gradient(120deg, ${ACCENT_AMBER} 0%, #F3C778 100%)`,
+        background: `linear-gradient(120deg, ${SELECTION_ACCENT} 0%, #F3C778 100%)`,
         boxShadow: '0 1px 4px rgba(var(--accent-amber-rgb), 0.45)',
       }
     : {}),
@@ -234,7 +234,7 @@ function SunSlider({
         value={value}
         data-testid={testid}
         onInput={(e) => onInput(Number(e.currentTarget.value))}
-        style={{ display: 'block', width: '100%', margin: 0, accentColor: ACCENT_AMBER }}
+        style={{ display: 'block', width: '100%', margin: 0, accentColor: SELECTION_ACCENT }}
       />
     </label>
   )
@@ -257,7 +257,7 @@ function ThemeRow({ id, active, onSelect }: { id: ThemeId; active: boolean; onSe
         gap: 10,
         width: '100%',
         padding: '7px 8px',
-        border: active ? `1px solid ${ACCENT_AMBER}` : '1px solid transparent',
+        border: active ? `1px solid ${SELECTION_ACCENT}` : '1px solid transparent',
         borderRadius: 7,
         background: active ? 'rgba(var(--accent-amber-rgb), 0.10)' : 'transparent',
         cursor: 'pointer',

@@ -49,14 +49,14 @@ import type {
 import { entityGrips } from './render'
 // Intersection primitives for trim/extend/fillet (segment/circle math).
 import { segSegIntersect, segCircleIntersect } from './snap'
-import { ACCENT_AMBER } from '../editor/planStyle'
+import { SELECTION_ACCENT } from '../editor/planStyle'
 
 // ---------------------------------------------------------------------------
 // Shared selection state (crosses tool boundaries; the contract stays untouched).
 // ---------------------------------------------------------------------------
 export const selection = { ids: new Set<number>() }
 
-const ACCENT = ACCENT_AMBER
+const ACCENT = SELECTION_ACCENT
 const SELECT_TOL_PX = 6
 const GRIP_TOL_PX = 6
 const BOX_THRESH_PX = 4

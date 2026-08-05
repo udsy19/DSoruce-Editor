@@ -23,7 +23,7 @@ import type { Pt, Segment } from './testfit'
 import type { RoomMarker, RoomType } from './markers'
 import type { Backdrop } from './rasterImport'
 import type { PlaceSpec } from '../types/cad'
-import { ACCENT_AMBER, hexToRgba } from '../editor/planStyle'
+import { SELECTION_ACCENT, hexToRgba } from '../editor/planStyle'
 
 // ---- palette ----
 
@@ -35,9 +35,9 @@ export const FURNITURE_LINE = '#5c6670'
 export const FURNITURE_DETAIL = '#9aa2ad'
 // Selection = warm amber accent; hover = a lighter amber wash. Kept distinct
 // from the blue used for product-bound items so the two never read the same.
-export const ACCENT = ACCENT_AMBER
-export const ACCENT_HALO = hexToRgba(ACCENT_AMBER, 0.28)
-export const HOVER = hexToRgba(ACCENT_AMBER, 0.55)
+export const ACCENT = SELECTION_ACCENT
+export const ACCENT_HALO = hexToRgba(SELECTION_ACCENT, 0.28)
+export const HOVER = hexToRgba(SELECTION_ACCENT, 0.55)
 // Bound ("specified"/re-imagined) furniture — solid data-blue so a decided item
 // reads distinctly from both unbound gray linework and the amber selection.
 export const SPECIFIED = '#2d5bd6'
@@ -55,10 +55,10 @@ export const DUP_OFFSET = 0.3 // meters — nudge for a duplicated item
 export const HANDLE_PX = 3 // half-size of selection corner handles, screen px
 export const UNDO_CAP = 50 // max snapshots kept
 const PLACE_SNAP = 0.05 // meters — placement-ghost grid snap
-export const PLACE_FILL = hexToRgba(ACCENT_AMBER, 0.1) // ghost footprint wash
+export const PLACE_FILL = hexToRgba(SELECTION_ACCENT, 0.1) // ghost footprint wash
 export const SNAP_PX = 12 // screen-px radius for the area tool's adaptive wall snap
 export const AREA_MASK = 'rgba(20,24,33,0.42)' // dims everything OUTSIDE the selected area
-export const AREA_FILL = hexToRgba(ACCENT_AMBER, 0.08) // faint wash inside the selected area
+export const AREA_FILL = hexToRgba(SELECTION_ACCENT, 0.08) // faint wash inside the selected area
 export const AREA_VERTEX_PX = 4 // half-size of an area-polygon vertex handle, screen px
 export const AREA_CLOSE_PX = 10 // click within this of the first vertex closes the ring
 export const MARKER_R_PX = 11 // marker pin radius, screen px

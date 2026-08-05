@@ -64,14 +64,32 @@ cd web && pnpm dev               # frontend only (uses existing wasm bindings)
 - **Units are meters** in the core; the frontend owns pixels-per-meter scale.
 - **Typography carries meaning:** all numeric/dimension data uses **IBM Plex Mono**; UI uses
   **Space Grotesk**. A single warm-amber accent (`#E8A13C`) sits on deliberately cool content colors.
-- **The amber accent means "AI action", and only that.** Amber (`--accent-amber`, or
-  `ACCENT_AMBER` on canvas) marks *the act of generating* — the sparkle FAB, Regenerate,
-  autonomous test-fit. Choosing among already-generated options is **navigation** and stays
-  `--accent` blue, including candidate-card selection. When adding a control, ask which of the two
-  it is; do not reach for amber because a control feels important.
-  Never hardcode either colour: `#E8A13C` was once written at 21 sites plus 14 more expanded to
-  `rgba(232, 161, 60, …)`, which no search for the hex could find. `bench/style-gate.mjs` enforces
-  this, including that `ACCENT_AMBER` and `--accent-amber` stay equal.
+- **The amber accent has EXACTLY TWO meanings (Ruling R5), and nothing else may be amber.**
+  1. **AI action** — `--accent-amber` / `ACCENT_AMBER`: the acts and verdicts of generation
+     (sparkle FAB, Regenerate, Test-fit, Autonomous test-fit, the AI verdict badge).
+  2. **Live selection** — `--accent-selection` / `SELECTION_ACCENT`: selection, hover, active,
+     pick (CAD selection, 3D highlight, import hover, viewer active states, tool toggles,
+     the minimap "you are here" puck, plan-library and candidate-card selection).
+
+  **One value, two names.** The selection family *references* the amber declaration
+  (`--accent-selection: var(--accent-amber)`) rather than restating it, so amber has a single
+  owner and a rebrand touches one line. Two names exist because the two meanings are
+  independent, not because the colours differ — reading `SELECTION_ACCENT` at a call site tells
+  you *why* that mark is amber.
+
+  **Paper invariant:** amber never appears in deliverable output, in any encoding. Both meanings
+  are chrome, and chrome vanishes on paper; the sheet belongs to the qbiq palette.
+
+  Choosing among already-generated options is **navigation**, not an AI action — but it *is*
+  selection, so card selection is selection-amber while the AI badge on the same card is
+  action-amber. When adding a control, ask which of the three it is.
+
+  Never hardcode the value in any encoding: `#E8A13C`, `#e8a13c`, `rgba(232, 161, 60, …)` and
+  `0xe8a13c` are all the same colour and all banned outside the declaration. Campaign 4 searched
+  only the first and reported the tree clean while 11 sites in the other three encodings were
+  live. `bench/accent-univalence.mjs` enforces this by VALUE; `bench/style-gate.mjs` pins
+  `ACCENT_AMBER` equal to `--accent-amber`.
+
 - **No bloat** (`.claude/rules/no-bloat.md`): search for an existing symbol before adding a new one;
   delete superseded code in the same change.
 

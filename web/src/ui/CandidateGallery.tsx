@@ -91,7 +91,7 @@ export function CandidateGallery({
   )
 }
 
-const ACCENT = 'var(--accent-amber)'
+const ACCENT = 'var(--accent-selection)'
 const LETTER = (i: number) => String.fromCharCode(65 + (i % 26))
 
 const S: Record<string, CSSProperties> = {
@@ -155,7 +155,11 @@ const S: Record<string, CSSProperties> = {
     fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
     fontSize: 9.5,
     fontWeight: 600,
-    color: ACCENT,
+    // AI ACTION, not selection (R5): this carries the evaluator's verdict. Text
+    // and ground come from the SAME family — ui-fixes found the previous state
+    // rendered blue text on an amber ground, because the tint was a live rgba
+    // while the text used a dead var() fallback.
+    color: 'var(--accent-amber)',
     background: 'rgba(var(--accent-amber-rgb), 0.12)',
     borderRadius: 3,
     padding: '0 4px',

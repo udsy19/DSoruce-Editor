@@ -36,6 +36,22 @@
   --accent-amber-rgb: 232, 161, 60;
   /* Tinted wash for amber-accented surfaces (selected rows, active chips). */
   --accent-amber-soft: #fdf3e3;
+
+  /* SELECTION accent — the SECOND sanctioned meaning of amber (Ruling R5).
+     Amber means exactly two things: an AI ACTION (--accent-amber) and LIVE
+     SELECTION (this) — selection, hover, active, pick. Nothing else.
+
+     ONE VALUE, TWO NAMES: this references --accent-amber rather than restating
+     it, so the value has a single owner and a rebrand touches one line. The two
+     names exist because the two meanings are independent: if selection ever
+     stops being amber, only this line moves.
+
+     PAPER INVARIANT: selection is CHROME by the ladder taxonomy, and chrome
+     vanishes on paper. Amber must never appear in deliverable output in any
+     encoding — export-parity asserts it. */
+  --accent-selection: var(--accent-amber);
+  --accent-selection-rgb: var(--accent-amber-rgb);
+  --accent-selection-soft: var(--accent-amber-soft);
   --accent-amber-hover: #d68f2c;
 
   /* ---- semantic ---- */
@@ -542,7 +558,7 @@ button {
 }
 .dyn-field.active {
   border-color: var(--accent);
-  background: rgba(var(--accent-amber-rgb), 0.1);
+  background: rgba(var(--accent-selection-rgb), 0.1);
 }
 .dyn-field .dyn-label {
   font: 600 9px var(--font-ui, 'Space Grotesk', sans-serif);
@@ -3135,8 +3151,8 @@ kbd {
   border-color: var(--accent-ring);
 }
 .space-tool.on {
-  background: #e8a13c;
-  border-color: #e8a13c;
+  background: var(--accent-selection);
+  border-color: var(--accent-selection);
   color: #1a1d21;
 }
 .space-tool.ghost {
@@ -3197,9 +3213,9 @@ kbd {
   align-items: center;
   gap: 7px;
   padding: 8px 12px;
-  border: 1px solid #e8a13c;
+  border: 1px solid var(--review);
   border-radius: var(--r-md);
-  background: color-mix(in srgb, #e8a13c 12%, var(--surface));
+  background: var(--review-soft);
   color: #8a5a1c;
   font-size: 12.5px;
   font-weight: 500;
@@ -3225,7 +3241,7 @@ kbd {
   height: 26px;
   padding: 0 4px;
   border-radius: 999px;
-  background: #e8a13c;
+  background: var(--accent-selection);
   color: #1a1d21;
   font-family: var(--font-mono, 'IBM Plex Mono', monospace);
   font-size: 11px;
@@ -4321,10 +4337,10 @@ kbd {
 .space-plate-draft {
   margin: 10px 0 14px;
   padding: 10px 12px;
-  border: 1px solid rgba(var(--accent-amber-rgb), 0.45);
+  border: 1px solid rgba(var(--accent-selection-rgb), 0.45);
   border-left: 3px solid var(--accent);
   border-radius: 6px;
-  background: rgba(var(--accent-amber-rgb), 0.08);
+  background: rgba(var(--accent-selection-rgb), 0.08);
   font-size: 13px;
   line-height: 1.5;
   color: var(--ink, #1a1d21);
@@ -4333,14 +4349,14 @@ kbd {
   display: inline-block;
   margin-left: 8px;
   padding: 3px 10px;
-  border: 1px solid rgba(var(--accent-amber-rgb), 0.7);
+  border: 1px solid rgba(var(--accent-selection-rgb), 0.7);
   border-radius: 5px;
   background: #fff;
   font: inherit;
   font-size: 12px;
   cursor: pointer;
 }
-.space-plate-confirm:hover { background: rgba(var(--accent-amber-rgb), 0.14); }
+.space-plate-confirm:hover { background: rgba(var(--accent-selection-rgb), 0.14); }
 /* An approximate figure reads as provisional, not as a measurement. */
 .space-metric-value[data-approx='true'] { opacity: 0.82; font-style: italic; }
 

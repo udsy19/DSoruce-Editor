@@ -389,7 +389,7 @@ each budget would optimise the metric we measured at the expense of the one we
 just discovered we do not. The measurement is cheap and the machinery exists;
 that is the next step, not a blind reduction.
 
-## The rules family — one failure mode, fourteen faces
+## The rules family — one failure mode, sixteen faces
 
 > **Four faces of one error: something read as evidence outside the conditions
 > that made it evidence.**
@@ -655,6 +655,47 @@ Each was learned from a live mistake in this campaign.
     that passes when the property is broken is worse than no check: it
     certifies the bug**, and it does so with the authority of a green run.
 
+15. **A sensor keyed to a VOCABULARY is blind to synonyms** (three-branch merge)
+    — key it to the thing itself, not to the words the thing is usually written
+    in.
+    *From:* Campaign 4 reported "one source per colour, app-wide" and the style
+    gate agreed. Both searched for `#E8A13C`. The tree simultaneously held
+    **7 lowercase `#e8a13c` sites** and — the exhibit — **4 `0xe8a13c` sites in
+    `three/`**, a numeric literal with no `#` at all, which no hex-shaped regex
+    and no token-name check could ever match. The claim was true *within the
+    vocabulary it searched*, which is the most dangerous way for a claim to be
+    true.
+
+    The generalisation is not about colour. **Any sensor that matches a
+    REPRESENTATION certifies only that representation.** Ask what else the thing
+    could be spelled as before trusting a green run: a colour has four
+    encodings, a path has relative and absolute forms, a number has units.
+
+    Sensor: `bench/accent-univalence.mjs` matches the VALUE across every
+    encoding, and its fixture carries one case per encoding so the blindness
+    cannot silently return.
+
+16. **Sensors are code, and are not exempt from the faces they enforce**
+    (three-branch merge).
+    *From:* `accent-univalence.mjs`, written to catch exactly this family, hit
+    two of the ledger's own faces during its first hour:
+    - It matched `['a', ACCENT_AMBER, 'b']` as "an identifier inside a string" —
+      that is the *gap between* two strings. Anchored to text that travels with
+      the property rather than to the property: **Face 14, inside the check
+      written to catch Face-14 problems.**
+    - It flagged `${ACCENT_AMBER}`, the correct interpolated form. That would
+      have punished the fix and left the broken form as the only way to pass:
+      **Face 12**, in a check whose entire purpose is enforcement hygiene.
+    - It flagged its own explanatory comment, because block-comment state was
+      not tracked across lines.
+
+    Writing a gate does not confer immunity from the failure modes the gate
+    exists to catch — if anything it concentrates them, because a gate is
+    reasoned about in the abstract while the code it judges is concrete. **Test
+    a new sensor against a fixture that includes the CORRECT form**, not only
+    against violations: a check that cannot distinguish the fix from the defect
+    is worse than absent.
+
 **And a standing requirement that falls out of the same discipline: every
 trigger needs a SENSOR — and a check that cannot run is not a sensor.** A
 Playwright-driven acceptance script in a repo without Playwright is a wish with
@@ -677,6 +718,8 @@ Audited across the campaign:
 | **a THIRD canvas space appears (normalize, stop exempting)** | **`bench/style-gate.mjs` PENDING/EXEMPT list** | **declared** |
 | **the asserted palette is copied into a second file** | **`bench/style-gate.mjs` palette-uniqueness check (panels AND sheet)** | **now exists** |
 | **canvas and exported sheet drift apart** | **`bench/export-parity.mjs`** | **now exists** |
+| **amber escapes its two declared meanings, in any encoding** | **`bench/accent-univalence.mjs`** | **now exists** |
+| **amber reaches deliverable output** | **`bench/export-parity.mjs` paper invariant** | **now exists (2 deferred)** |
 
 The fourth instance of the family will come. When it does, add it here rather
 than treating it as new.
