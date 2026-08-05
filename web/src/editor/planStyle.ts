@@ -125,8 +125,6 @@ export const C = {
   gridMajor: 'rgba(23,26,30,0.075)',
   axis: 'rgba(45,91,214,0.18)',
   wall: '#2b313a', // interior partitions — medium
-  wallExt: '#1b1f25', // exterior/structural — darkest, but crisp (not a fat marker)
-  wallGen: '#525a65', // generated partitions — lightest ink in the hierarchy
   // Matches DrawingCanvas FURNITURE_LINE so generated + imported plans read alike.
   furniture: '#565e69',
   // Secondary furniture detail (keyboard, armrests, backrest ticks) — a mid gray
@@ -228,9 +226,43 @@ export const DECISION_DOT: Record<string, string> = {
 // Element styles, per profile
 // ---------------------------------------------------------------------------
 
+/**
+ * How an element's interior is painted.
+ *
+ * A UNION rather than an optional colour, because the campaign needs three wall
+ * grammars from one renderer: qbiq's unfilled double line (`none`), a solid
+ * grey wall (`solid`), and Rayon's diagonal hatch (`hatch`). 2a' found that
+ * `fill?: string` could express only one of them, so drawWall had no fill step
+ * at all — the table's VOCABULARY was too small, not its design wrong.
+ *
+ * The acceptance condition this buys: switching wall treatment between the
+ * three is now a change to THIS FILE ONLY. If a later grammar needs a fourth
+ * kind, that is a second gap and worth a real look at ElementStyle; one
+ * widening is a schema growing into its job.
+ */
+export type FillStyle =
+  | { kind: 'none' }
+  | { kind: 'solid'; color: string }
+  | {
+      kind: 'hatch'
+      color: string
+      /** Applied to `color`, so the same ink serves outline and hatch. */
+      alpha: number
+      /** 45 = down-right. */
+      angleDeg: number
+      /**
+       * Absolute screen px, or a fraction of the element's own thickness.
+       * Spec `rayon.hatch_spacing`: "start at 1/3 of wall thickness".
+       */
+      spacing: { px: number } | { ofThickness: number }
+      /** Ladder tier for the hatch strokes — kept below the outlines so the
+       *  texture never competes with the element's edge. */
+      tier: Tier
+    }
+
 export interface ElementStyle {
   stroke?: string
-  fill?: string
+  fill?: FillStyle
   tier?: Tier
   dash?: number[]
   /** Draw order. Higher paints later. */
@@ -254,12 +286,39 @@ export interface PlanStyle {
   furniture: ElementStyle
   furnitureDetail: ElementStyle
   column: ElementStyle
-  hatch: ElementStyle
   labelPrimary: { color: string; sizePx: number; weight: number; upper: boolean }
   labelSecondary: { color: string; sizePx: number; weight: number; upper: boolean }
 }
 
-export const INK = '#1a1d21'
+export /**
+ * Rayon's wall treatment (spec `target.wall_form`). Fine ~45 degree diagonal
+ * hatch between the two faces, at the hatch tier so it sits under the outlines.
+ * Spacing starts at the spec's 1/3-of-thickness; PROVISIONAL, tuned against
+ * reference imagery, and changing it is a one-line edit here.
+ *
+ * Switch a profile to `{ kind: 'none' }` to get qbiq's unfilled double line
+ * back, or `{ kind: 'solid', color }` for a Laiout-style grey wall. That is the
+ * whole point of the union.
+ */
+const RAYON_WALL_HATCH: FillStyle = {
+  kind: 'hatch',
+  color: '#171a1e',
+  alpha: 0.34,
+  angleDeg: 45,
+  spacing: { ofThickness: 1 / 3 },
+  tier: 'furniture',
+}
+
+/** Zone-core poche: fixed screen density, so it reads the same at any zoom. */
+export const CORE_POCHE: Omit<Extract<FillStyle, { kind: 'hatch' }>, 'color'> = {
+  kind: 'hatch',
+  alpha: 0.34,
+  angleDeg: 45,
+  spacing: { px: 6 },
+  tier: 'furniture',
+}
+
+const INK = '#1a1d21'
 export const WHITE = '#ffffff'
 /** Pure black. The reference's linework is true black, not our UI ink. */
 export const BLACK = '#000000'
@@ -278,14 +337,13 @@ const PAPER: PlanStyle = {
   gridOpacity: 0,
   gridMinor: { stroke: 'rgba(23,26,30,0.035)', tier: 'furniture', z: 0 },
   gridMajor: { stroke: 'rgba(23,26,30,0.075)', tier: 'furniture', z: 0 },
-  wallCut: { stroke: BLACK, tier: 'wall', z: 40 },
-  wallInterior: { stroke: BLACK, tier: 'wall', z: 40 },
+  wallCut: { stroke: BLACK, fill: RAYON_WALL_HATCH, tier: 'wall', z: 40 },
+  wallInterior: { stroke: BLACK, fill: RAYON_WALL_HATCH, tier: 'wall', z: 40 },
   opening: { stroke: WHITE, tier: 'openingPunch', z: 45 },
   roomEnclosure: { stroke: BLACK, tier: 'roomEnclosure', z: 30 },
   furniture: { stroke: '#565e69', tier: 'furniture', z: 20 },
   furnitureDetail: { stroke: '#9aa1ab', tier: 'furniture', z: 20 },
-  column: { stroke: BLACK, fill: COLUMN_FILL, tier: 'column', z: 35 },
-  hatch: { stroke: 'rgba(23,26,30,0.28)', tier: 'detail', z: 25 },
+  column: { stroke: BLACK, fill: { kind: 'solid', color: COLUMN_FILL }, tier: 'column', z: 35 },
   // Reference: 4.35 pt on an A4-landscape page ≈ 6 px at our typical scale.
   labelPrimary: { color: INK, sizePx: 6, weight: 500, upper: true },
   labelSecondary: { color: '#5f6771', sizePx: 5, weight: 400, upper: true },

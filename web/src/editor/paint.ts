@@ -13,8 +13,9 @@ import { fmtMeters } from '../cad/dimEdit'
 import type { DocComponent, DocState, DocWall, DocZone } from '../types/doc'
 import {
   planStyle, strokePx, C, DECISION_DOT, ZONE,
-  WHITE, BLACK, THUMB_FILL, THUMB_OTHER, hexToRgba,
+  WHITE, BLACK, THUMB_FILL, THUMB_OTHER, hexToRgba, CORE_POCHE,
 } from './planStyle'
+import type { FillStyle } from './planStyle'
 import type { Metrics, ZoneStat } from '../types/metrics'
 
 /** A point in screen or world space (the function names say which). */
@@ -156,6 +157,7 @@ export function drawGlazing(v: PaintView, a: Pt, b: Pt) {
  * content rather than competing with a black slab.
  */
 export function drawWall(v: PaintView, w: DocWall, exterior: boolean) {
+  const ctx = v.ctx
   const style = planStyle(v.presentation ? 'paper' : 'editor')
   const el = exterior ? style.wallCut : style.wallInterior
   const width = strokePx(el.tier ?? 'wall', v.scale)
@@ -175,6 +177,29 @@ export function drawWall(v: PaintView, w: DocWall, exterior: boolean) {
   const b1 = { x: w.b.x + nx, y: w.b.y + ny }
   const a2 = { x: w.a.x - nx, y: w.a.y - ny }
   const b2 = { x: w.b.x - nx, y: w.b.y - ny }
+
+  // Fill the thickness polygon per the table, THEN stroke the faces, so the
+  // outlines stay crisp on top of whatever texture the profile asked for.
+  // Switching this wall between unfilled / solid / hatched is a planStyle edit;
+  // nothing here needs to know which one it is.
+  const q = [a1, b1, b2, a2].map((pt) => v.toScreen(pt.x, pt.y))
+  fillWith(
+    v,
+    el.fill,
+    () => {
+      ctx.moveTo(q[0].x, q[0].y)
+      for (let i = 1; i < q.length; i++) ctx.lineTo(q[i].x, q[i].y)
+      ctx.closePath()
+    },
+    {
+      minX: Math.min(...q.map((pt) => pt.x)),
+      minY: Math.min(...q.map((pt) => pt.y)),
+      maxX: Math.max(...q.map((pt) => pt.x)),
+      maxY: Math.max(...q.map((pt) => pt.y)),
+    },
+    Math.max(w.thickness, 0.1) * v.scale,
+  )
+
   drawSegment(v, a1, b1, width, color)
   drawSegment(v, a2, b2, width, color)
   // End caps close the wall so it reads as a solid element rather than two
@@ -198,24 +223,6 @@ export function punchOpening(v: PaintView, a: Pt, b: Pt, thickness: number) {
   drawSegment(v, a, b, width, style.opening.stroke ?? WHITE)
 }
 
-export function wallStyle(
-  v: PaintView,
-  w: DocWall,
-  exteriorIds: Set<number>,
-): { color: string; width: number } {
-  const t = w.thickness * v.scale
-  if (w.generated ?? false) {
-    // Lightest tier: room partitions the generator drew.
-    return { color: C.wallGen, width: clampN(t * 0.85, 1.3, 3.2) }
-  }
-  if (exteriorIds.has(w.id)) {
-    // Heaviest tier — but capped tight so the boundary reads as a crisp
-    // architectural line, not the fat black marker it was before.
-    return { color: C.wallExt, width: clampN(t, 2.4, 5) }
-  }
-  // Medium tier: interior/user walls.
-  return { color: C.wall, width: clampN(t, 1.7, 3.8) }
-}
 
 // ---- zones ----
 
@@ -227,27 +234,63 @@ export function wallStyle(
  * own ink over its pale fill. `tracePath` re-lays the fill path (we begin it)
  * so the hatch is clipped to Rect AND Poly cores identically.
  */
-function drawPoche(
-  ctx: CanvasRenderingContext2D,
+/**
+ * THE one fill step. Paints an element's interior per its {@link FillStyle} —
+ * `none`, `solid`, or a diagonal `hatch` — clipped to `tracePath`.
+ *
+ * This is 2a''s architecture change, and it is deliberately ONE function shared
+ * by walls and zone cores rather than a wall-specific special case. It began as
+ * `drawPoche`, which already drew a 45 degree hatch but with its colour,
+ * spacing, alpha and angle hardcoded; generalising it was cheaper than adding a
+ * second hatch and is what the no-bloat rule asks for.
+ *
+ * `referencePx` is the element's own thickness in screen px, for fills whose
+ * spacing is expressed as a fraction of it (a wall's hatch tracks its width; a
+ * zone core's does not).
+ */
+function fillWith(
+  v: PaintView,
+  fill: FillStyle | undefined,
   tracePath: () => void,
   bb: { minX: number; minY: number; maxX: number; maxY: number },
-  lineColor: string,
+  referencePx: number,
   evenOdd = false,
 ) {
+  if (!fill || fill.kind === 'none') return
+  const ctx = v.ctx
   ctx.save()
   ctx.beginPath()
   tracePath()
   ctx.clip(evenOdd ? 'evenodd' : 'nonzero')
-  ctx.strokeStyle = hexToRgba(lineColor, 0.34)
-  ctx.lineWidth = 0.6
-  const step = 6 // px between hatch lines (screen space; fixed density, not zoom-scaled)
-  const span = bb.maxY - bb.minY
+
+  if (fill.kind === 'solid') {
+    ctx.fillStyle = fill.color
+    ctx.fillRect(bb.minX, bb.minY, bb.maxX - bb.minX, bb.maxY - bb.minY)
+    ctx.restore()
+    return
+  }
+
+  const step = Math.max(
+    1.5, // below this the hatch reads as a grey smear, not a texture
+    'px' in fill.spacing ? fill.spacing.px : referencePx * fill.spacing.ofThickness,
+  )
+  ctx.strokeStyle = hexToRgba(fill.color, fill.alpha)
+  ctx.lineWidth = strokePx(fill.tier, v.scale)
+  const rad = (fill.angleDeg * Math.PI) / 180
+  const dx = Math.cos(rad)
+  const dy = Math.sin(rad)
+  // Sweep the line family along the perpendicular so any angle is covered.
+  const w = bb.maxX - bb.minX
+  const h = bb.maxY - bb.minY
+  const diag = Math.hypot(w, h)
+  const cx = (bb.minX + bb.maxX) / 2
+  const cy = (bb.minY + bb.maxY) / 2
   ctx.beginPath()
-  // Parallel 45° lines (slope +1): start far enough left that down-right
-  // diagonals cover the whole clip rect.
-  for (let x = bb.minX - span; x <= bb.maxX; x += step) {
-    ctx.moveTo(x, bb.minY)
-    ctx.lineTo(x + span, bb.maxY)
+  for (let o = -diag / 2; o <= diag / 2; o += step) {
+    const px = cx - dy * o
+    const py = cy + dx * o
+    ctx.moveTo(px - (dx * diag) / 2, py - (dy * diag) / 2)
+    ctx.lineTo(px + (dx * diag) / 2, py + (dy * diag) / 2)
   }
   ctx.stroke()
   ctx.restore()
@@ -316,15 +359,16 @@ export function drawZones(
           bmaxX = Math.max(bmaxX, q.x)
           bmaxY = Math.max(bmaxY, q.y)
         }
-        drawPoche(
-          ctx,
+        fillWith(
+          v,
+                    { ...CORE_POCHE, color: pal.line },
           () => {
             ctx.moveTo(sp[0].x, sp[0].y)
             for (let i = 1; i < sp.length; i++) ctx.lineTo(sp[i].x, sp[i].y)
             ctx.closePath()
           },
           { minX: bminX, minY: bminY, maxX: bmaxX, maxY: bmaxY },
-          pal.line,
+          0,
         )
       }
       // Area-weighted centroid (world), then screen, for the room tag.
@@ -360,14 +404,15 @@ export function drawZones(
       ctx.rect(io.x, io.y, s.in_w * v.scale, s.in_h * v.scale)
       ctx.fill('evenodd')
       if (z.zone_type === 'Core') {
-        drawPoche(
-          ctx,
+        fillWith(
+          v,
+                    { ...CORE_POCHE, color: pal.line },
           () => {
             ctx.rect(o.x, o.y, s.w * v.scale, s.h * v.scale)
             ctx.rect(io.x, io.y, s.in_w * v.scale, s.in_h * v.scale)
           },
           { minX: o.x, minY: o.y, maxX: o.x + s.w * v.scale, maxY: o.y + s.h * v.scale },
-          pal.line,
+          0,
           true,
         )
       }
@@ -383,11 +428,12 @@ export function drawZones(
       ctx.lineWidth = 1
       ctx.strokeRect(p.x + 0.5, p.y + 0.5, w - 1, h - 1)
       if (z.zone_type === 'Core') {
-        drawPoche(
-          ctx,
+        fillWith(
+          v,
+                    { ...CORE_POCHE, color: pal.line },
           () => ctx.rect(p.x, p.y, w, h),
           { minX: p.x, minY: p.y, maxX: p.x + w, maxY: p.y + h },
-          pal.line,
+          0,
         )
       }
 

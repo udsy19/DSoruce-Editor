@@ -1574,7 +1574,7 @@ export class EditorCanvas {
       pxPerM: this.scale,
       selected: this.cad.selected,
       hiddenLayers: this.cad.store.hiddenLayers,
-      colors: { wall: C.wall, ink: C.label, accent: C.accent, dim: '#2d5bd6', faint: C.rulerText },
+      colors: { wall: C.wall, ink: C.label, accent: C.accent, dim: C.accent, faint: C.rulerText },
     })
 
     // Live per-segment dimension chips (Rayon helper-dimensions) above linework.
