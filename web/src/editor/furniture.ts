@@ -1,3 +1,4 @@
+import { strokePx, detailLevel } from './planStyle'
 // Top-view CAD furniture line-symbols for the 2D generative canvas.
 //
 // Each symbol is drawn in LOCAL coordinates centered at (0,0) spanning
@@ -5,8 +6,9 @@
 // rotate. Symbols are thin single-weight line-work (no heavy fills) so they
 // read like a Rayon/Revit/Laiout plan rather than solid blocks.
 //
-// Level-of-detail scales with on-screen size: below MIN_DETAIL px on either
-// axis a component is just a crisp rounded rect (too small for legible detail).
+// Level-of-detail is CONTINUOUS (see planStyle `LOD`): a symbol crossfades from
+// a chip to full detail across a size band, rather than snapping at one
+// threshold where every symbol in the plan popped at the same instant.
 
 export interface FurnitureOpts {
   category: string
@@ -32,10 +34,6 @@ export interface FurnitureOpts {
   selected: boolean
 }
 
-// Below this on-screen size (px) a symbol degrades to a filled rounded rect —
-// low enough that overview-zoom desks still show a worktop + chair, not a pill.
-const MIN_DETAIL = 11
-
 // Categories that keep their symbol at any size: FallCeiling is a grid over a
 // large footprint; Door/Window footprints are thin slabs (~0.15 m deep) whose
 // symbols (swing arc / glazing lines) must always draw.
@@ -44,10 +42,11 @@ const ALWAYS_DETAIL = new Set(['FallCeiling', 'Door', 'Window'])
 export function drawFurnitureSymbol(ctx: CanvasRenderingContext2D, o: FurnitureOpts): void {
   const { cx, cy, w, h, rotation } = o
   const line = o.selected ? o.accent : o.stroke
-  // Confident single-weight linework (was 1.15) — the biggest lever on the
-  // "faint / robotic" read. Selected bumps another notch.
-  const lw = o.selected ? 1.8 : 1.35
-  const small = Math.min(w, h) < MIN_DETAIL
+  // The ladder's base tier. These were 1.35 / 1.8 hand-set, which put furniture
+  // ABOVE the wall tier (0.8) — the hierarchy inverted, the densest mark on the
+  // page also the heaviest. Selection steps one tier, not off the ladder.
+  const lw = o.selected ? strokePx('detail', 0) : strokePx('furniture', 0)
+  const detail = detailLevel(Math.min(w, h))
 
   ctx.save()
   ctx.translate(cx, cy)
@@ -58,14 +57,23 @@ export function drawFurnitureSymbol(ctx: CanvasRenderingContext2D, o: FurnitureO
   ctx.lineJoin = 'round'
   ctx.lineCap = 'round'
 
-  if (small && !ALWAYS_DETAIL.has(o.category)) {
-    // Too small to read as a real symbol — a FILLED rounded rect (a solid chip
-    // reads as furniture; a hollow outline read as faint clutter at overview zoom).
+  const always = ALWAYS_DETAIL.has(o.category)
+  // CROSSFADE. Below the band it is a chip; above it, a symbol; between, both
+  // are drawn with complementary alpha so no frame ever jumps. Symbols cross the
+  // band at different zooms because they differ in size, which is what stops the
+  // whole canvas changing at once.
+  if (!always && detail < 1) {
     const r = Math.min(3, Math.min(w, h) * 0.2)
+    ctx.save()
+    ctx.globalAlpha = 1 - detail
     if (o.fill) fillRoundRect(ctx, -w / 2, -h / 2, w, h, r, o.fill)
     strokeRoundRect(ctx, -w / 2, -h / 2, w, h, r, line, lw)
     ctx.restore()
-    return
+    if (detail <= 0.001) {
+      ctx.restore()
+      return
+    }
+    ctx.globalAlpha = detail
   }
 
   switch (o.category) {
@@ -358,7 +366,7 @@ function drawFallCeiling(
   strokeRoundRect(ctx, L, T, w, h, 2, line, lw)
   // grid: aim for ~one line every ~20px, clamped so tiny tiles stay clean
   ctx.strokeStyle = selected ? line : detail
-  ctx.lineWidth = 0.8
+  ctx.lineWidth = strokePx('furniture', 0)
   const cols = clampInt(Math.round(w / 20), 1, 8)
   const rows = clampInt(Math.round(h / 20), 1, 8)
   ctx.beginPath()

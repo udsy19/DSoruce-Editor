@@ -86,6 +86,50 @@ const MAX_STROKE_PX = 6
  * They still live here, so "no magic width in a renderer" holds for both kinds.
  * If you are adding a width, the question is which of the two it is.
  */
+/**
+ * LEVEL OF DETAIL — continuous, not snapped.
+ *
+ * The old rule was a single threshold: below 11 px a symbol became a chip, at
+ * 11 px it became a full desk. One pixel of zoom changed the drawing, and every
+ * symbol in the plan changed at the SAME instant because they cross the
+ * threshold together — a visible pop across the whole canvas.
+ *
+ * These are RAMPS. Between `min` and `full` a mark crossfades, so zooming is
+ * continuous and symbols cross at different moments because they differ in
+ * size. Nothing in the plan ever changes state all at once.
+ *
+ * `hatch*` is where 2a''s finding lands: at 39 px/m a 100 mm partition is ~4 px
+ * wide, and a hatch at 1/3-of-thickness spacing inside 4 px is not a texture,
+ * it is a smear. Rather than a hard cutoff (which would pop the same way), the
+ * hatch fades out as the wall gets thin and the wall reads as a plain double
+ * line — which is qbiq's grammar, so the degraded state is a correct drawing
+ * rather than a broken one.
+ */
+export const LOD = {
+  /** Symbol detail, by the mark's smaller on-screen dimension (CSS px). */
+  symbolMinPx: 7,
+  symbolFullPx: 17,
+  /** Wall hatch, by the wall's on-screen thickness (CSS px). */
+  hatchMinPx: 5,
+  hatchFullPx: 13,
+} as const
+
+/** Hermite ramp — 0 below `edge0`, 1 above `edge1`, C1-continuous between. */
+export function smoothstep(edge0: number, edge1: number, x: number): number {
+  const t = Math.min(1, Math.max(0, (x - edge0) / (edge1 - edge0)))
+  return t * t * (3 - 2 * t)
+}
+
+/** How much symbol detail a mark of this on-screen size earns, 0..1. */
+export function detailLevel(minPx: number): number {
+  return smoothstep(LOD.symbolMinPx, LOD.symbolFullPx, minPx)
+}
+
+/** How much hatch a wall of this on-screen thickness earns, 0..1. */
+export function hatchLevel(thicknessPx: number): number {
+  return smoothstep(LOD.hatchMinPx, LOD.hatchFullPx, thicknessPx)
+}
+
 export const CHROME = {
   /** Hairline borders on affordances (tag pills, thumbnails, ruler ticks). */
   hairline: 1,

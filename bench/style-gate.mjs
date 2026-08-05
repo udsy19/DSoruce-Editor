@@ -30,6 +30,7 @@ const GUARDED = [
   ['web/src/import/PlacePalette.tsx', RULES_ALL],
   ['web/src/ui/LibraryPanel.tsx', RULES_ALL],
   ['web/src/three/Minimap.tsx', ['hex', 'rgba']],
+  ['web/src/editor/furniture.ts', RULES_ALL],
 ]
 
 // Values that MUST exist in both the TS table and the stylesheet, because
@@ -48,7 +49,6 @@ const PENDING = [
   // exception worth listing. At that point normalize -- make the space explicit
   // at the boundary and convert -- rather than exempting again.
   ['web/src/three/Minimap.tsx', 'EXEMPT (lineWidth) — draws in device px by construction, not CSS px'],
-  ['web/src/editor/furniture.ts', 'Phase 2c — LOD rework touches every lineWidth here anyway'],
 ]
 /** The table itself and the stylesheet are where literals legitimately live. */
 const HEX = /#[0-9a-fA-F]{3,8}\b/g
@@ -58,9 +58,15 @@ const HEX = /#[0-9a-fA-F]{3,8}\b/g
 // point. Require the first argument to be a digit.
 const RGBA = /\brgba?\(\s*\d/g
 // A width must come from the table: a ladder tier (strokePx) for marks in the
-// drawing, or a named CHROME width for editing affordances. Anything else is a
-// magic number.
-const LINEWIDTH = /lineWidth\s*=\s*(?!.*(strokePx|CHROME\.|widthPx))/g
+// drawing, or a named CHROME width for editing affordances.
+//
+// The rule targets a MAGIC NUMBER specifically -- an assignment whose right side
+// STARTS with a numeric literal (`= 1.35`, `= 2 * dpr`). An assignment from an
+// identifier (`= lw`, `= lw * 0.7`) is a width already derived from the table
+// upstream, and flagging it only teaches people to inline a variable to get
+// past the gate. Naming the value is the behaviour we want; the rule should not
+// punish it.
+const LINEWIDTH = /lineWidth\s*=\s*[0-9.]+/g
 
 let violations = 0
 for (const [rel, rules] of GUARDED) {

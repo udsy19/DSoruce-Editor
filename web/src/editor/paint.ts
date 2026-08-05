@@ -13,7 +13,7 @@ import { fmtMeters } from '../cad/dimEdit'
 import type { DocComponent, DocState, DocWall, DocZone } from '../types/doc'
 import {
   planStyle, strokePx, C, DECISION_DOT, ZONE,
-  WHITE, BLACK, THUMB_FILL, THUMB_OTHER, hexToRgba, CORE_POCHE, CHROME,
+  WHITE, BLACK, THUMB_FILL, THUMB_OTHER, hexToRgba, CORE_POCHE, CHROME, hatchLevel, detailLevel,
 } from './planStyle'
 import type { FillStyle } from './planStyle'
 import type { Metrics, ZoneStat } from '../types/metrics'
@@ -274,7 +274,12 @@ function fillWith(
     1.5, // below this the hatch reads as a grey smear, not a texture
     'px' in fill.spacing ? fill.spacing.px : referencePx * fill.spacing.ofThickness,
   )
-  ctx.strokeStyle = hexToRgba(fill.color, fill.alpha)
+  // 2a' finding, landed continuously: a hatch inside a 4 px wall is a smear,
+  // not a texture. Fade it with thickness instead of cutting it off, so the
+  // wall degrades into a plain double line — qbiq's grammar — with no pop.
+  const level = hatchLevel(referencePx)
+  if (level <= 0.001) { ctx.restore(); return }
+  ctx.strokeStyle = hexToRgba(fill.color, fill.alpha * level)
   ctx.lineWidth = strokePx(fill.tier, v.scale)
   const rad = (fill.angleDeg * Math.PI) / 180
   const dx = Math.cos(rad)
