@@ -90,6 +90,25 @@ pub fn open_share() -> f64 {
     layout::OPEN_SHARE
 }
 
+/// Depth of a door/window leaf across its wall (m) — the committed footprint;
+/// the swing arc is drawn by the 2D symbol, not stored.
+///
+/// **Exported for the same reason as [`open_share`]:** `cad/archTools.ts` had its
+/// own `LEAF_DEPTH = 0.15`, so a hand-drawn door and a generated door were one
+/// object with two authored depths. Cheap to unify now, weird later.
+#[wasm_bindgen]
+pub fn door_depth() -> f64 {
+    layout::DOOR_D
+}
+
+/// Standard office single-leaf door width (m) — 900×2100. Exported alongside
+/// [`door_depth`]: `cad/archTools.ts` had `DOOR_DEFAULT = 0.9` for exactly the
+/// same object.
+#[wasm_bindgen]
+pub fn door_width() -> f64 {
+    layout::DOOR_W
+}
+
 /// Per-zone floor areas (m², clipped to the plate polygon) with the oriented
 /// desk-field's plate-spanning Workspace zone **de-overlapped**, plus the index
 /// of that spanning Workspace when present.
@@ -671,6 +690,22 @@ impl Editor {
     pub fn circulation(&self) -> Result<JsValue, JsValue> {
         let score = circulation::evaluate(&self.doc, &circulation::CirculationConfig::new());
         serde_wasm_bindgen::to_value(&score).map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
+    /// The scoring engine's density verdict for this document, 0..100 — 100
+    /// across the professional 8–12 m²/person band, tapering to 0 at ≤4.5
+    /// (crammed) and ≥20 (sparse).
+    ///
+    /// **Exported because the frontend was deciding "too dense" on its own.**
+    /// `ai/engine.ts` compared `area_per_workstation` against a hand-typed
+    /// 6.0 m² whose comment said "planning norm (see layout.rs)" — a citation to
+    /// a constant that has never existed there. It was also the wrong quantity:
+    /// the scorer judges m² per SEAT (desks + meeting capacity), not per desk.
+    /// So the AI preview warned the user off layouts the engine was perfectly
+    /// happy with, in the engine's name. Whether a plan is professionally dense
+    /// is one question with one answer; this is it.
+    pub fn density_score(&self) -> f64 {
+        layout::density_of_doc(&self.doc)
     }
 
     // ----- Undo primitive: lossless Document snapshot/restore (Conflict §5).

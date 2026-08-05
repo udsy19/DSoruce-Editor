@@ -227,6 +227,14 @@ The qbiq-style flow: Project → Upload → Program → Generate → Editor → 
     adjacency/critique; the deterministic solver does geometry) is viable as a hybrid — build after the
     core is perfected. Pure-LLM geometric placement is unreliable (misalignment/overlaps, even GPT-5).
 
+- [ ] **Say when the brief wasn't met — briefed seats vs placed seats in `program_fit`.**
+  Surfaced by slice 6b's own measurement: brief a 14-seat boardroom, the room's table physically
+  seats 12, the plan reports 12, and **nothing tells the user the brief wasn't met.** The clamp's
+  direction is right (never seat more than fits), but silent under-delivery is the same genus as
+  every bug this overhaul killed — the app knowing something the user doesn't. `program_fit` already
+  exists to surface shortfalls (rooms requested vs placed); a briefed-seats vs placed-seats line
+  belongs in it, and in the Generate step's fit readout. Workflow item, not a symbology one.
+
 ## Track A′ — UI/UX overhaul (`docs/design/ux-audit.md`, `docs/design/ui-system.md`)
 Audit + design system from a full naive-user walkthrough on the real DWG. Shipping in slices.
 
@@ -369,6 +377,30 @@ Audit + design system from a full naive-user walkthrough on the real DWG. Shippi
     owner); Program summary reads `ROOM_DEFS.seats` (the brief); takeoff and 3D render no occupancy.
     `stats.ts` `zonePax` is a **deliberately different metric** — Pax == Workstations, enclosed-room
     capacity intentionally excluded so Pax can't disagree with Workstations — and is left alone.
+  - [x] **Slice 6c — the mirrors that weren't mirrors.** From the values-not-names sweep:
+    - **`MIN_AREA_PER_WS = 6.0 // planning norm (see layout.rs)` was a false citation.** No such
+      constant has ever existed in `layout.rs`, and it was the wrong quantity besides: the scorer
+      judges m² per **seat** (desks + meeting capacity) on a 4.5/8/12/20 ramp, not m² per desk. So the
+      AI consequence preview warned users off layouts the engine liked, **in the engine's name**.
+      Fixed at the ownership level, not the comment level: `layout::density_of` now carries the whole
+      verdict (extracted from `score`, so the scorer and every consumer read one opinion), exported as
+      `Editor::density_score()`, and `ai/engine.ts` reports the core's rating instead of holding a
+      second threshold.
+    - **Corridor range `0.9–3.0` stated five times** — two executable clamps (`refine.ts`,
+      `designer.ts`) and three prose copies in the schemas a model reads. A model told one range while
+      a clamp enforces another gets silently rewritten: a lie with no error message. Not core-owned
+      (it's AI-input policy, not geometry) → one `CORRIDOR_M` in `llmSchema.ts`, both clamps import
+      it, all three descriptions interpolate `CORRIDOR_RANGE_TEXT`.
+    - **`DOOR_D` / `DOOR_W` exposed** (`door_depth()`, `door_width()`); `archTools.ts`'s own
+      `LEAF_DEPTH = 0.15` / `DOOR_DEFAULT = 0.9` deleted. A hand-drawn door and a generated door are
+      one object; they had two authored sets of dimensions.
+    - **`web/src/coreParity.test.mjs`** — the drift guard for mirrors that are genuinely unavoidable
+      (a canvas frame can't await wasm per glyph; a tool schema must be literal). Parses `SEAT_PITCH_M`
+      / `HEAD_SEAT_MIN_M` out of `model.rs` and the `SpaceKind` enum out of `layout.rs`, and fails on
+      divergence. Proven in both directions (perturbed the Rust value → red; restored → green).
+    - Rule written into `ui-system.md` §3.6.2: **a provenance comment is a claim to verify, not
+      documentation.** Name-grep finds honest copies, value-grep finds anonymous ones, only reading
+      finds a false citation.
   - [ ] Unguarded project delete · [ ] destructive Import warning · [ ] unit drift ·
         [ ] Program `disabledReason` · [ ] stale raster-import line (Track E).
 - [ ] Slice 5 — typography/tokens.

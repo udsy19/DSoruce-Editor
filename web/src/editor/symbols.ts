@@ -117,9 +117,13 @@ export function lod(sizePx: number, band: { exit: number; enter: number }): numb
 // World-space constants — real dimensions, in metres
 // ---------------------------------------------------------------------------
 
-/** Centre-to-centre spacing of seated people. Mirrors `model::SEAT_PITCH_M`. */
+/** Centre-to-centre spacing of seated people. Mirrors `model::SEAT_PITCH_M` —
+ *  an UNAVOIDABLE mirror (a canvas frame can't await a wasm call per glyph) and
+ *  therefore a GUARDED one: `src/coreParity.test.mjs` parses the value out of
+ *  `model.rs` and fails on divergence. Do not edit one side alone. */
 const SEAT_PITCH_M = 0.65
-/** A table end narrower than this seats nobody across it. Mirrors the core. */
+/** A table end narrower than this seats nobody across it. Mirrors
+ *  `model::HEAD_SEAT_MIN_M`; same guard. */
 const HEAD_SEAT_MIN_M = 0.8
 /** Chair footprint. */
 const SEAT_M = 0.5

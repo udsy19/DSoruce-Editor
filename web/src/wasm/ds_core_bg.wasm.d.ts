@@ -2,6 +2,8 @@
 /* eslint-disable */
 export const memory: WebAssembly.Memory;
 export const __wbg_editor_free: (a: number, b: number) => void;
+export const door_depth: () => number;
+export const door_width: () => number;
 export const editor_add_anchor: (a: number, b: number, c: number, d: number, e: number) => void;
 export const editor_add_component: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => number;
 export const editor_add_entry: (a: number, b: number, c: number) => void;
@@ -17,6 +19,7 @@ export const editor_clear_selection: (a: number) => void;
 export const editor_delete_component: (a: number, b: number) => void;
 export const editor_delete_selected: (a: number) => void;
 export const editor_delete_zone: (a: number, b: number) => [number, number];
+export const editor_density_score: (a: number) => number;
 export const editor_from_snapshot: (a: any) => [number, number, number];
 export const editor_generate: (a: number, b: any, c: bigint, d: number) => [number, number, number];
 export const editor_get_cad_json: (a: number) => [number, number];

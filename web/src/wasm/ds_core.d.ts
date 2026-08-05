@@ -78,6 +78,21 @@ export class Editor {
      */
     delete_zone(id: number): void;
     /**
+     * The scoring engine's density verdict for this document, 0..100 — 100
+     * across the professional 8–12 m²/person band, tapering to 0 at ≤4.5
+     * (crammed) and ≥20 (sparse).
+     *
+     * **Exported because the frontend was deciding "too dense" on its own.**
+     * `ai/engine.ts` compared `area_per_workstation` against a hand-typed
+     * 6.0 m² whose comment said "planning norm (see layout.rs)" — a citation to
+     * a constant that has never existed there. It was also the wrong quantity:
+     * the scorer judges m² per SEAT (desks + meeting capacity), not per desk.
+     * So the AI preview warned the user off layouts the engine was perfectly
+     * happy with, in the engine's name. Whether a plan is professionally dense
+     * is one question with one answer; this is it.
+     */
+    density_score(): number;
+    /**
      * Construct a fresh `Editor` from a `snapshot` (scratch-clone for previews).
      */
     static from_snapshot(snap: any): Editor;
@@ -223,6 +238,23 @@ export class Editor {
 }
 
 /**
+ * Depth of a door/window leaf across its wall (m) — the committed footprint;
+ * the swing arc is drawn by the 2D symbol, not stored.
+ *
+ * **Exported for the same reason as [`open_share`]:** `cad/archTools.ts` had its
+ * own `LEAF_DEPTH = 0.15`, so a hand-drawn door and a generated door were one
+ * object with two authored depths. Cheap to unify now, weird later.
+ */
+export function door_depth(): number;
+
+/**
+ * Standard office single-leaf door width (m) — 900×2100. Exported alongside
+ * [`door_depth`]: `cad/archTools.ts` had `DOOR_DEFAULT = 0.9` for exactly the
+ * same object.
+ */
+export function door_width(): number;
+
+/**
  * The open-plan share of headcount seated at open workstations.
  *
  * **Exported because the frontend was keeping its own copies and one had already
@@ -240,6 +272,8 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly __wbg_editor_free: (a: number, b: number) => void;
+    readonly door_depth: () => number;
+    readonly door_width: () => number;
     readonly editor_add_anchor: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly editor_add_component: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => number;
     readonly editor_add_entry: (a: number, b: number, c: number) => void;
@@ -255,6 +289,7 @@ export interface InitOutput {
     readonly editor_delete_component: (a: number, b: number) => void;
     readonly editor_delete_selected: (a: number) => void;
     readonly editor_delete_zone: (a: number, b: number) => [number, number];
+    readonly editor_density_score: (a: number) => number;
     readonly editor_from_snapshot: (a: any) => [number, number, number];
     readonly editor_generate: (a: number, b: any, c: bigint, d: number) => [number, number, number];
     readonly editor_get_cad_json: (a: number) => [number, number];

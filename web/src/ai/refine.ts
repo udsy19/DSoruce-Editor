@@ -13,7 +13,7 @@
 // fixtures (no live API) — see refine.test.mjs.
 
 import type { LayoutScore, Program, ZoneStat } from '../editor/EditorCanvas'
-import { ADJUST_PROGRAM_TOOL } from './llmSchema'
+import { ADJUST_PROGRAM_TOOL, CORRIDOR_M } from './llmSchema'
 import { openaiToolsToAnthropic, parseClaudeContent, type ClaudeContentBlock } from './claudeDriver'
 
 /** A validated, clamped program adjustment Claude proposes. Every field is
@@ -60,7 +60,7 @@ export function clampProgramDelta(raw: Record<string, unknown> | null | undefine
   const meetings = asInt(raw.meeting_rooms)
   if (Number.isFinite(meetings)) out.meeting_rooms = clamp(meetings, 0, 40)
   const corridor = asNum(raw.target_corridor_m)
-  if (Number.isFinite(corridor)) out.target_corridor_m = clamp(corridor, 0.9, 3.0)
+  if (Number.isFinite(corridor)) out.target_corridor_m = clamp(corridor, CORRIDOR_M.min, CORRIDOR_M.max)
   const cols = asInt(raw.cluster_cols)
   if (Number.isFinite(cols)) out.cluster_cols = clamp(cols, 2, 8)
   const adj = asNum(raw.adjacency_emphasis)

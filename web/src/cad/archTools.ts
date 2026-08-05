@@ -10,6 +10,7 @@
 
 import type { CadTool, ToolCtx, Vec2, SnapResult } from './model'
 import { CAD_COLOR } from './model'
+import { door_depth, door_width } from '../wasm/ds_core'
 
 // ---- local geometry helpers (world = meters, no Y-flip) ----
 const dist = (p: Vec2, q: Vec2): number => Math.hypot(p.x - q.x, p.y - q.y)
@@ -50,10 +51,13 @@ function arcPts(center: Vec2, radius: number, a0: number, a1: number, steps = 24
 // 'f' toggles the flip applied to the NEXT placed door.
 const DOOR_MIN = 0.6
 const DOOR_MAX = 1.2
-const DOOR_DEFAULT = 0.9
-/** Committed door/window footprint depth (leaf/glazing slab, m) — the swing
- *  arc is drawn by the 2D symbol, not the footprint. */
-const LEAF_DEPTH = 0.15
+/** Door/window leaf size — asked of the CORE at placement time, never declared
+ *  here. A door drawn by hand and a door the generator places are the same
+ *  object; `layout::DOOR_D` / `DOOR_W` own its dimensions (this file used to
+ *  keep its own 0.15 / 0.9 beside them). Read at commit, by which point wasm is
+ *  long initialised — the CAD layer cannot run before the editor does. */
+const leafDepth = (): number => door_depth()
+const doorDefault = (): number => door_width()
 
 function doorTool(): CadTool {
   let at: Vec2 | null = null
@@ -62,9 +66,9 @@ function doorTool(): CadTool {
 
   /** leaf width from the current cursor, clamped; default when barely moved */
   function liveWidth(): number {
-    if (!at || !cursor) return DOOR_DEFAULT
+    if (!at || !cursor) return doorDefault()
     const d = dist(at, cursor)
-    return d < 0.05 ? DOOR_DEFAULT : clamp(d, DOOR_MIN, DOOR_MAX)
+    return d < 0.05 ? doorDefault() : clamp(d, DOOR_MIN, DOOR_MAX)
   }
   function liveAngle(): number {
     if (!at || !cursor) return 0
@@ -92,7 +96,7 @@ function doorTool(): CadTool {
         // clockwise in the Y-down plan — same convention as `angle`). Flip is
         // approximated by a half-turn, which mirrors the swing across the wall.
         const c = along(at, angle, width / 2)
-        ctx.addComponent('Door', c.x, c.y, width, LEAF_DEPTH, nextFlip ? angle + Math.PI : angle)
+        ctx.addComponent('Door', c.x, c.y, width, leafDepth(), nextFlip ? angle + Math.PI : angle)
         at = null
         cursor = null
         ctx.requestRender()
@@ -180,7 +184,7 @@ function windowTool(): CadTool {
         const width = liveWidth()
         const angle = liveAngle()
         const c = along(at, angle, width / 2)
-        ctx.addComponent('Window', c.x, c.y, width, LEAF_DEPTH, angle)
+        ctx.addComponent('Window', c.x, c.y, width, leafDepth(), angle)
         at = null
         cursor = null
         ctx.requestRender()

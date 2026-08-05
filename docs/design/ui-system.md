@@ -366,6 +366,33 @@ Two rules, learned the hard way while verifying these slices.
    - Grep the served module for an **identifier, never comment text** — esbuild strips comments in
      dev, so a comment grep returns 0 against perfectly current code and sends you chasing a phantom.
 
+### 3.6.2 A provenance comment is a claim to verify, not documentation
+
+`// mirrors X`, `// see layout.rs`, `// per the core` — a comment asserting where a value came from is
+an **unchecked claim**, and it reads as sourced, which makes it worse than silence. `ai/engine.ts`
+carried `MIN_AREA_PER_WS = 6.0 // m² — planning norm (see layout.rs)` for months. There has never
+been a 6.0 m²/workstation constant in `layout.rs`; the scorer's actual density opinion is a ramp
+through 4.5 / 8 / 12 / 20, over m² per **seat**, not per desk. So the AI preview warned users away
+from layouts the engine was perfectly happy with — **in the engine's name**.
+
+Three rules, in order of preference:
+
+1. **Don't mirror.** If the core owns the value, export it across the wasm boundary and read it.
+   `open_share()`, `door_depth()`, `door_width()`, `Editor::density_score()` all exist because a TS
+   copy had already drifted or was about to.
+2. **If you must mirror, guard it.** A mirror is acceptable only when it is genuinely unavoidable —
+   a canvas frame can't await a wasm call per glyph; a tool schema must be a literal for the model to
+   read. Then it gets a row in `web/src/coreParity.test.mjs`, which parses the value out of the Rust
+   source and fails on divergence. Prove the guard fails: perturb the Rust value, watch it go red,
+   restore it.
+3. **A value with no owner is a policy — name it that.** The corridor range a model may propose
+   (0.9–3.0 m) isn't geometry the core owns; it's a rule about what an AI is allowed to ask for. One
+   TS constant, and the prose the model reads is **interpolated from it**, never retyped. Three
+   retyped copies of a range, with a clamp that disagrees, is a lie with no error message.
+
+Searching for a shared *name* finds honest copies. Searching for a shared *value* finds anonymous
+ones. Only reading finds a false citation — so when a comment says where a number came from, go look.
+
 ### 3.7 Acceptance test for the whole spec
 
 A zoom sweep at 8 / 20 / 45 / 110 / 300 px/m on the same plan, in both canvases, at DPR 1 and 2, in

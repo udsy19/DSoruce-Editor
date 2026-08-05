@@ -159,7 +159,8 @@ export type ToolId = string // 'select' | 'wall' | 'place:<Category>'
 /** The core's room-type vocabulary (mirrors Rust `layout::SpaceKind`). A
  *  `RoomReq.kind` names one of these by string; the Program builder's richer
  *  vocabulary (Executive/Large/Medium office, XL conference, …) maps onto these
- *  at different footprints (see `program/spec.ts`). */
+ *  at different footprints (see `program/spec.ts`). Guarded against the Rust
+ *  enum by `src/coreParity.test.mjs`. */
 export type SpaceKind =
   | 'Meeting'
   | 'Cabin'

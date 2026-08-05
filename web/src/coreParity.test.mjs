@@ -1,0 +1,110 @@
+// Every value the TypeScript side deliberately MIRRORS from the Rust core, and
+// a check that it still matches — by parsing the Rust source, so the test goes
+// red on divergence instead of a comment quietly becoming false.
+// Run from web/:  node src/coreParity.test.mjs
+//
+// WHY THIS EXISTS
+// ---------------
+// The single most expensive class of bug in this codebase is one fact with two
+// owners. `OPEN_SHARE` was declared in Rust and twice in TS; one copy said 0.85
+// and the other 0.90 with a comment claiming it mirrored Rust, so the same
+// headcount produced a different building depending on which screen you entered
+// through. Door depth was 0.15 in the generator and 0.15 in the drafting tool,
+// authored independently. Those are now read across the wasm boundary and are
+// gone from here.
+//
+// What remains is the residue: values TS genuinely cannot ask the core for at
+// the moment it needs them — a canvas renderer that must draw before it can
+// await anything, and a tool schema that has to be a literal for the model to
+// read. A mirror is acceptable when it is UNAVOIDABLE and GUARDED. It is not
+// acceptable when it is merely convenient, and a comment that says "mirrors X"
+// is a CLAIM TO VERIFY, not documentation — `ai/engine.ts` carried
+// `MIN_AREA_PER_WS = 6.0 // planning norm (see layout.rs)` for months against a
+// constant that never existed in layout.rs, and warned users in the engine's
+// name about a threshold the engine did not hold.
+//
+// ADDING A MIRROR? Register it here in the same change. A mirror with no row in
+// this file is how all of the above started.
+
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { dirname, join } from 'node:path'
+
+const here = dirname(fileURLToPath(import.meta.url))
+const repo = join(here, '..', '..')
+const rust = (f) => readFileSync(join(repo, 'crates', 'ds-core', 'src', f), 'utf8')
+const ts = (f) => readFileSync(join(here, f), 'utf8')
+
+let failures = 0
+const check = (name, want, got) => {
+  const ok = JSON.stringify(want) === JSON.stringify(got)
+  if (!ok) {
+    failures++
+    console.error(`  ✗ ${name}\n      rust: ${JSON.stringify(want)}\n      ts:   ${JSON.stringify(got)}`)
+  } else {
+    console.log(`  ✓ ${name} = ${JSON.stringify(got)}`)
+  }
+}
+
+/** Value of a `const NAME: f64 = <num>;` in a Rust source. Throws if absent —
+ *  a renamed or deleted constant must fail loudly, not silently pass. */
+function rustConst(src, file, name) {
+  const m = src.match(new RegExp(`const\\s+${name}\\s*:\\s*f64\\s*=\\s*([0-9.]+)\\s*;`))
+  if (!m) throw new Error(`${file}: no const ${name} — it was renamed or removed; update its mirror`)
+  return Number(m[1])
+}
+
+/** Value of a `const NAME = <num>` in a TS source (the mirror side). */
+function tsConst(src, file, name) {
+  const m = src.match(new RegExp(`const\\s+${name}\\s*=\\s*([0-9.]+)`))
+  if (!m) throw new Error(`${file}: no const ${name}`)
+  return Number(m[1])
+}
+
+console.log('core parity — TS mirrors of Rust values')
+
+// --- 1. Seat geometry: model.rs ←→ editor/symbols.ts -------------------------
+// UNAVOIDABLE: `drawSymbol` runs inside a canvas frame. It cannot await a wasm
+// call per glyph, and the seat COUNT it draws already comes from the model
+// (`Component.seats`) — these two only place the dots the count implies, so the
+// count and the placement must use the same pitch or the glyph shows N seats
+// spread at the wrong spacing.
+{
+  const m = rust('model.rs')
+  const s = ts('editor/symbols.ts')
+  check('SEAT_PITCH_M', rustConst(m, 'model.rs', 'SEAT_PITCH_M'), tsConst(s, 'symbols.ts', 'SEAT_PITCH_M'))
+  check('HEAD_SEAT_MIN_M', rustConst(m, 'model.rs', 'HEAD_SEAT_MIN_M'), tsConst(s, 'symbols.ts', 'HEAD_SEAT_MIN_M'))
+}
+
+// --- 2. SpaceKind: layout.rs ←→ the TS union + the AI tool enum ---------------
+// UNAVOIDABLE for the schema: the room kinds a model may propose have to be
+// literals inside the JSON schema it reads. A kind present in one list and not
+// the other is silent — `clampDesignSpec` drops an unknown kind and the room the
+// designer asked for just never appears.
+{
+  const body = rust('layout.rs').match(/pub enum SpaceKind \{([\s\S]*?)\n\}/)
+  if (!body) throw new Error('layout.rs: could not find `pub enum SpaceKind`')
+  const variants = body[1]
+    .split('\n')
+    .map((l) => l.replace(/\/\/.*$/, '').trim())
+    .filter((l) => /^[A-Z][A-Za-z0-9]*,$/.test(l))
+    .map((l) => l.slice(0, -1))
+
+  const arr = ts('ai/designer.ts').match(/const SPACE_KINDS: readonly SpaceKind\[\] = \[([\s\S]*?)\]/)
+  if (!arr) throw new Error('designer.ts: could not find SPACE_KINDS')
+  const kinds = [...arr[1].matchAll(/'([A-Za-z0-9]+)'/g)].map((x) => x[1])
+  check('SPACE_KINDS (ai/designer.ts)', variants, kinds)
+
+  // Stop at the first line that isn't a `| 'Member'` continuation — the next
+  // declaration follows immediately, with no blank line to anchor on.
+  const union = ts('editor/EditorCanvas.ts').match(/export type SpaceKind =((?:\s*\|\s*'[A-Za-z0-9]+')+)/)
+  if (!union) throw new Error('EditorCanvas.ts: could not find the SpaceKind union')
+  const members = [...union[1].matchAll(/'([A-Za-z0-9]+)'/g)].map((x) => x[1])
+  check('SpaceKind union (editor/EditorCanvas.ts)', variants, members)
+}
+
+if (failures > 0) {
+  console.error(`\n${failures} mirror(s) have drifted from the core. Fix the TS side, or delete the mirror and read the value across the wasm boundary.`)
+  process.exit(1)
+}
+console.log('core parity: all mirrors match')
