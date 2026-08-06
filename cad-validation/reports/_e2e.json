@@ -6,7 +6,7 @@
     "walls": 35,
     "keepouts": 0,
     "entries": 5,
-    "generateMs": 79,
+    "generateMs": 78,
     "generated": {
       "capacity": 100,
       "adjacency": 78.54492695824602,
@@ -16,7 +16,8 @@
       "daylight": 35.95505617977528,
       "entry_adjacency": 100,
       "total": 86.9256190394741,
-      "placed_desks": 178
+      "placed_desks": 178,
+      "feasible": true
     },
     "componentCount": 211,
     "desksPlaced": 178,
@@ -36,7 +37,8 @@
       "daylight": 35.95505617977528,
       "entry_adjacency": 100,
       "total": 86.9256190394741,
-      "placed_desks": 178
+      "placed_desks": 178,
+      "feasible": true
     }
   },
   {
@@ -56,7 +58,8 @@
       "daylight": 100,
       "entry_adjacency": 100,
       "total": 47.564347399156524,
-      "placed_desks": 6
+      "placed_desks": 6,
+      "feasible": true
     },
     "componentCount": 6,
     "desksPlaced": 6,
@@ -76,7 +79,8 @@
       "daylight": 100,
       "entry_adjacency": 100,
       "total": 47.564347399156524,
-      "placed_desks": 6
+      "placed_desks": 6,
+      "feasible": true
     }
   },
   {
@@ -96,7 +100,8 @@
       "daylight": 100,
       "entry_adjacency": 100,
       "total": 44.7214358320091,
-      "placed_desks": 5
+      "placed_desks": 5,
+      "feasible": true
     },
     "componentCount": 5,
     "desksPlaced": 5,
@@ -116,7 +121,8 @@
       "daylight": 100,
       "entry_adjacency": 100,
       "total": 44.7214358320091,
-      "placed_desks": 5
+      "placed_desks": 5,
+      "feasible": true
     }
   },
   {
@@ -126,7 +132,7 @@
     "walls": 16,
     "keepouts": 0,
     "entries": 6,
-    "generateMs": 1,
+    "generateMs": 2,
     "generated": {
       "capacity": 60,
       "adjacency": 92.72727272727275,
@@ -136,7 +142,8 @@
       "daylight": 100,
       "entry_adjacency": 100,
       "total": 72.24672057908485,
-      "placed_desks": 12
+      "placed_desks": 12,
+      "feasible": true
     },
     "componentCount": 12,
     "desksPlaced": 12,
@@ -156,7 +163,8 @@
       "daylight": 100,
       "entry_adjacency": 100,
       "total": 72.24672057908485,
-      "placed_desks": 12
+      "placed_desks": 12,
+      "feasible": true
     }
   },
   {
@@ -166,7 +174,7 @@
     "walls": 45,
     "keepouts": 0,
     "entries": 2,
-    "generateMs": 454,
+    "generateMs": 451,
     "generated": {
       "capacity": 100,
       "adjacency": 86.90463997288265,
@@ -176,7 +184,8 @@
       "daylight": 31.84796854521625,
       "entry_adjacency": 100,
       "total": 91.36049489749301,
-      "placed_desks": 763
+      "placed_desks": 763,
+      "feasible": true
     },
     "componentCount": 972,
     "desksPlaced": 763,
@@ -196,7 +205,8 @@
       "daylight": 31.84796854521625,
       "entry_adjacency": 100,
       "total": 91.36049489749301,
-      "placed_desks": 763
+      "placed_desks": 763,
+      "feasible": true
     }
   },
   {
@@ -216,7 +226,8 @@
       "daylight": 100,
       "entry_adjacency": 100,
       "total": 39.8125340876308,
-      "placed_desks": 0
+      "placed_desks": 0,
+      "feasible": true
     },
     "componentCount": 0,
     "desksPlaced": 0,
@@ -236,7 +247,8 @@
       "daylight": 100,
       "entry_adjacency": 100,
       "total": 39.8125340876308,
-      "placed_desks": 0
+      "placed_desks": 0,
+      "feasible": true
     }
   },
   {
@@ -246,7 +258,7 @@
     "walls": 11,
     "keepouts": 12,
     "entries": 10,
-    "generateMs": 889,
+    "generateMs": 623,
     "generated": {
       "capacity": 100,
       "adjacency": 84.0077522528515,
@@ -256,7 +268,8 @@
       "daylight": 6.255506607929515,
       "entry_adjacency": 100,
       "total": 90.51452437443652,
-      "placed_desks": 1135
+      "placed_desks": 1135,
+      "feasible": true
     },
     "componentCount": 1395,
     "desksPlaced": 1135,
@@ -276,7 +289,8 @@
       "daylight": 6.255506607929515,
       "entry_adjacency": 100,
       "total": 90.51452437443652,
-      "placed_desks": 1135
+      "placed_desks": 1135,
+      "feasible": true
     }
   },
   {
@@ -286,7 +300,7 @@
     "walls": 14,
     "keepouts": 12,
     "entries": 28,
-    "generateMs": 709,
+    "generateMs": 706,
     "generated": {
       "capacity": 100,
       "adjacency": 79.1448566241029,
@@ -296,7 +310,8 @@
       "daylight": 11.948676824378508,
       "entry_adjacency": 100,
       "total": 89.63697022113303,
-      "placed_desks": 1247
+      "placed_desks": 1247,
+      "feasible": true
     },
     "componentCount": 1521,
     "desksPlaced": 1247,
@@ -316,7 +331,8 @@
       "daylight": 11.948676824378508,
       "entry_adjacency": 100,
       "total": 89.63697022113303,
-      "placed_desks": 1247
+      "placed_desks": 1247,
+      "feasible": true
     }
   },
   {
@@ -336,7 +352,8 @@
       "daylight": 20.76923076923077,
       "entry_adjacency": 100,
       "total": 82.22749246833774,
-      "placed_desks": 130
+      "placed_desks": 130,
+      "feasible": true
     },
     "componentCount": 157,
     "desksPlaced": 130,
@@ -356,7 +373,8 @@
       "daylight": 20.76923076923077,
       "entry_adjacency": 100,
       "total": 82.22749246833774,
-      "placed_desks": 130
+      "placed_desks": 130,
+      "feasible": true
     }
   },
   {
@@ -376,7 +394,8 @@
       "daylight": 100,
       "entry_adjacency": 100,
       "total": 72.34786954513086,
-      "placed_desks": 12
+      "placed_desks": 12,
+      "feasible": true
     },
     "componentCount": 14,
     "desksPlaced": 12,
@@ -396,7 +415,8 @@
       "daylight": 100,
       "entry_adjacency": 100,
       "total": 72.34786954513086,
-      "placed_desks": 12
+      "placed_desks": 12,
+      "feasible": true
     }
   },
   {
@@ -416,7 +436,8 @@
       "daylight": 100,
       "entry_adjacency": 100,
       "total": 43.232552418741044,
-      "placed_desks": 1
+      "placed_desks": 1,
+      "feasible": true
     },
     "componentCount": 1,
     "desksPlaced": 1,
@@ -436,7 +457,8 @@
       "daylight": 100,
       "entry_adjacency": 100,
       "total": 43.232552418741044,
-      "placed_desks": 1
+      "placed_desks": 1,
+      "feasible": true
     }
   },
   {
@@ -446,7 +468,7 @@
     "walls": 35,
     "keepouts": 0,
     "entries": 5,
-    "generateMs": 57,
+    "generateMs": 56,
     "generated": {
       "capacity": 100,
       "adjacency": 78.54492695824602,
@@ -456,7 +478,8 @@
       "daylight": 35.95505617977528,
       "entry_adjacency": 100,
       "total": 86.9256190394741,
-      "placed_desks": 178
+      "placed_desks": 178,
+      "feasible": true
     },
     "componentCount": 211,
     "desksPlaced": 178,
@@ -476,7 +499,8 @@
       "daylight": 35.95505617977528,
       "entry_adjacency": 100,
       "total": 86.9256190394741,
-      "placed_desks": 178
+      "placed_desks": 178,
+      "feasible": true
     }
   },
   {
@@ -486,7 +510,7 @@
     "walls": 11,
     "keepouts": 0,
     "entries": 5,
-    "generateMs": 22,
+    "generateMs": 21,
     "generated": {
       "capacity": 100,
       "adjacency": 88.1742790400198,
@@ -496,7 +520,8 @@
       "daylight": 33.333333333333336,
       "entry_adjacency": 100,
       "total": 89.02210367623393,
-      "placed_desks": 99
+      "placed_desks": 99,
+      "feasible": true
     },
     "componentCount": 131,
     "desksPlaced": 99,
@@ -516,7 +541,8 @@
       "daylight": 33.333333333333336,
       "entry_adjacency": 100,
       "total": 89.02210367623393,
-      "placed_desks": 99
+      "placed_desks": 99,
+      "feasible": true
     }
   },
   {
@@ -526,7 +552,7 @@
     "walls": 12,
     "keepouts": 12,
     "entries": 23,
-    "generateMs": 119,
+    "generateMs": 117,
     "generated": {
       "capacity": 100,
       "adjacency": 76.31752172787907,
@@ -536,7 +562,8 @@
       "daylight": 11.36,
       "entry_adjacency": 100,
       "total": 83.15548299325746,
-      "placed_desks": 625
+      "placed_desks": 625,
+      "feasible": true
     },
     "componentCount": 658,
     "desksPlaced": 625,
@@ -556,7 +583,8 @@
       "daylight": 11.36,
       "entry_adjacency": 100,
       "total": 83.15548299325746,
-      "placed_desks": 625
+      "placed_desks": 625,
+      "feasible": true
     }
   },
   {
@@ -576,7 +604,8 @@
       "daylight": 100,
       "entry_adjacency": 100,
       "total": 42.38202835917471,
-      "placed_desks": 0
+      "placed_desks": 0,
+      "feasible": true
     },
     "componentCount": 0,
     "desksPlaced": 0,
@@ -596,7 +625,8 @@
       "daylight": 100,
       "entry_adjacency": 100,
       "total": 42.38202835917471,
-      "placed_desks": 0
+      "placed_desks": 0,
+      "feasible": true
     }
   },
   {
@@ -616,7 +646,8 @@
       "daylight": 100,
       "entry_adjacency": 100,
       "total": 41.7585350087814,
-      "placed_desks": 0
+      "placed_desks": 0,
+      "feasible": true
     },
     "componentCount": 0,
     "desksPlaced": 0,
@@ -636,7 +667,8 @@
       "daylight": 100,
       "entry_adjacency": 100,
       "total": 41.7585350087814,
-      "placed_desks": 0
+      "placed_desks": 0,
+      "feasible": true
     }
   },
   {
@@ -656,7 +688,8 @@
       "daylight": 65.21739130434783,
       "entry_adjacency": 100,
       "total": 84.76280007751447,
-      "placed_desks": 46
+      "placed_desks": 46,
+      "feasible": true
     },
     "componentCount": 49,
     "desksPlaced": 46,
@@ -676,7 +709,8 @@
       "daylight": 65.21739130434783,
       "entry_adjacency": 100,
       "total": 84.76280007751447,
-      "placed_desks": 46
+      "placed_desks": 46,
+      "feasible": true
     }
   },
   {
@@ -696,7 +730,8 @@
       "daylight": 100,
       "entry_adjacency": 100,
       "total": 38.53632015300411,
-      "placed_desks": 2
+      "placed_desks": 2,
+      "feasible": true
     },
     "componentCount": 2,
     "desksPlaced": 2,
@@ -716,7 +751,8 @@
       "daylight": 100,
       "entry_adjacency": 100,
       "total": 38.53632015300411,
-      "placed_desks": 2
+      "placed_desks": 2,
+      "feasible": true
     }
   },
   {
@@ -736,7 +772,8 @@
       "daylight": 72.5,
       "entry_adjacency": 100,
       "total": 90.53597336707205,
-      "placed_desks": 40
+      "placed_desks": 40,
+      "feasible": true
     },
     "componentCount": 68,
     "desksPlaced": 40,
@@ -756,7 +793,8 @@
       "daylight": 72.5,
       "entry_adjacency": 100,
       "total": 90.53597336707205,
-      "placed_desks": 40
+      "placed_desks": 40,
+      "feasible": true
     }
   },
   {
@@ -766,7 +804,7 @@
     "walls": 11,
     "keepouts": 0,
     "entries": 1,
-    "generateMs": 2,
+    "generateMs": 3,
     "generated": {
       "capacity": 100,
       "adjacency": 100,
@@ -776,7 +814,8 @@
       "daylight": 100,
       "entry_adjacency": 100,
       "total": 87.76968635459014,
-      "placed_desks": 23
+      "placed_desks": 23,
+      "feasible": true
     },
     "componentCount": 23,
     "desksPlaced": 23,
@@ -796,7 +835,8 @@
       "daylight": 100,
       "entry_adjacency": 100,
       "total": 87.76968635459014,
-      "placed_desks": 23
+      "placed_desks": 23,
+      "feasible": true
     }
   },
   {
@@ -806,7 +846,7 @@
     "walls": 10,
     "keepouts": 0,
     "entries": 2,
-    "generateMs": 3,
+    "generateMs": 4,
     "generated": {
       "capacity": 80,
       "adjacency": 100,
@@ -816,7 +856,8 @@
       "daylight": 100,
       "entry_adjacency": 100,
       "total": 83.42279600732888,
-      "placed_desks": 16
+      "placed_desks": 16,
+      "feasible": true
     },
     "componentCount": 20,
     "desksPlaced": 16,
@@ -836,7 +877,8 @@
       "daylight": 100,
       "entry_adjacency": 100,
       "total": 83.42279600732888,
-      "placed_desks": 16
+      "placed_desks": 16,
+      "feasible": true
     }
   },
   {
@@ -846,7 +888,7 @@
     "walls": 34,
     "keepouts": 0,
     "entries": 10,
-    "generateMs": 17,
+    "generateMs": 25,
     "generated": {
       "capacity": 100,
       "adjacency": 78.9625,
@@ -856,7 +898,8 @@
       "daylight": 79.36507936507937,
       "entry_adjacency": 100,
       "total": 87.42053519479828,
-      "placed_desks": 63
+      "placed_desks": 63,
+      "feasible": true
     },
     "componentCount": 82,
     "desksPlaced": 63,
@@ -876,7 +919,8 @@
       "daylight": 79.36507936507937,
       "entry_adjacency": 100,
       "total": 87.42053519479828,
-      "placed_desks": 63
+      "placed_desks": 63,
+      "feasible": true
     }
   },
   {
@@ -892,7 +936,7 @@
     "walls": 4,
     "keepouts": 0,
     "entries": 1,
-    "generateMs": 23,
+    "generateMs": 24,
     "generated": {
       "capacity": 100,
       "adjacency": 84.29313210118443,
@@ -902,7 +946,8 @@
       "daylight": 46.017699115044245,
       "entry_adjacency": 100,
       "total": 91.49606910924737,
-      "placed_desks": 113
+      "placed_desks": 113,
+      "feasible": true
     },
     "componentCount": 167,
     "desksPlaced": 113,
@@ -922,7 +967,8 @@
       "daylight": 46.017699115044245,
       "entry_adjacency": 100,
       "total": 91.49606910924737,
-      "placed_desks": 113
+      "placed_desks": 113,
+      "feasible": true
     }
   },
   {
@@ -932,7 +978,7 @@
     "walls": 34,
     "keepouts": 3,
     "entries": 1,
-    "generateMs": 35,
+    "generateMs": 34,
     "generated": {
       "capacity": 100,
       "adjacency": 84.89722199681484,
@@ -942,7 +988,8 @@
       "daylight": 55.76923076923077,
       "entry_adjacency": 100,
       "total": 88.8035110883087,
-      "placed_desks": 104
+      "placed_desks": 104,
+      "feasible": true
     },
     "componentCount": 139,
     "desksPlaced": 104,
@@ -962,7 +1009,8 @@
       "daylight": 55.76923076923077,
       "entry_adjacency": 100,
       "total": 88.8035110883087,
-      "placed_desks": 104
+      "placed_desks": 104,
+      "feasible": true
     }
   }
 ]
