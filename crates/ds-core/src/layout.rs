@@ -690,6 +690,14 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
         }
     }
 
+    // Seat every generated desk. Last, so it sees the final desk set (including
+    // the cross-region top-up pass) and so desk placement above is untouched.
+    seat_desk_chairs(doc, plate.as_deref(), &iwalls, clear);
+
     // Fill each zone's component_ids by point-in-zone on component centers.
     doc.reassign_components();
+
+    // Model the facade's glazing module. Runs AFTER zones and components so the
+    // ids they were allocated (the workbook's Room IDs) never move.
+    glaze_facade(doc);
 }

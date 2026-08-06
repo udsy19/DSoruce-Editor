@@ -278,8 +278,13 @@ fn generated_rooms_are_enclosed_with_glass_front_and_door() {
         assert_room_enclosed(&doc, x, y, w, h, "rect plate");
     }
     // Every generated wall belongs to a room perimeter — none float free —
-    // and the user's 4 boundary walls are untouched.
-    assert_eq!(doc.walls.iter().filter(|w| !w.generated).count(), 4);
+    // and the user's 4 boundary walls survive as the 12 segments `glaze_facade`
+    // cut them into: 4 facade runs, each pier/band/pier.
+    assert_eq!(
+        doc.walls.iter().filter(|w| !w.generated).count(),
+        12,
+        "4 facade runs, each cut into pier/band/pier"
+    );
     // Rooms stay REACHABLE: with partitions in and doors whitelisted the
     // walkable floor is still (nearly) one connected region.
     let circ = circulation::evaluate(&doc, &CirculationConfig::default());
@@ -333,10 +338,14 @@ fn regenerate_replaces_generated_walls_and_keeps_user_walls() {
             "user wall {id} was dropped by regenerate"
         );
     }
+    // The user's walls survive as the pier/band/pier segments `glaze_facade` cut
+    // them into — 3 per run, never more however many times we regenerate (the
+    // pass is idempotent: an already-glazed band is skipped, and a 0.6 m pier is
+    // far below MIN_GLAZED_RUN).
     assert_eq!(
         doc.walls.iter().filter(|w| !w.generated).count(),
-        user_ids.len(),
-        "no extra non-generated walls appear"
+        3 * user_ids.len(),
+        "no extra non-generated walls appear beyond the facade's pier/band/pier cut"
     );
 }
 
@@ -520,7 +529,18 @@ fn every_component_is_bucketed_into_a_zone() {
         .find(|z| z.zone_type == ZoneType::Workspace)
         .expect("a workspace zone");
     let desks = doc.components.iter().filter(|c| c.category == "Desk").count();
-    assert_eq!(ws.component_ids.len(), desks, "all desks in workspace");
+    // Count the DESKS bucketed into the zone, not every component in it — each
+    // desk now carries a real task Chair, which is bucketed there too.
+    let ws_desks = ws
+        .component_ids
+        .iter()
+        .filter(|&&cid| {
+            doc.components
+                .iter()
+                .any(|c| c.id == cid && c.category == "Desk")
+        })
+        .count();
+    assert_eq!(ws_desks, desks, "all desks in workspace");
 }
 
 #[test]
@@ -621,9 +641,11 @@ fn keep_confirmed_freezes_components_and_packs_around_them() {
             "frozen desk moved"
         );
         assert_eq!(kept.decision, DecisionState::Confirmed);
-        // No other component overlaps this frozen footprint.
+        // No other component overlaps this frozen footprint — except the task
+        // chair `seat_desk_chairs` seats AT it, which tucks under the worktop by
+        // design (same exemption as `assert_no_overlaps`).
         for c in &doc.components {
-            if c.id == *id {
+            if c.id == *id || c.category == "Chair" {
                 continue;
             }
             let overlaps = (c.x - x).abs() < (c.w + program.desk_w) / 2.0
@@ -1255,6 +1277,19 @@ fn footprints_overlap(a: &crate::model::Component, b: &crate::model::Component) 
 fn assert_no_overlaps(doc: &Document, ctx: &str) {
     for i in 0..doc.components.len() {
         for j in (i + 1)..doc.components.len() {
+            // ONE deliberate exemption: a `Chair` tucks under its worktop, which
+            // is what "seated at the desk" MEANS (see `seat_desk_chairs`, and the
+            // desk glyph, which tucks its chair the same way). Deliberately
+            // narrow: chair<->chair and worksurface<->worksurface stay strict,
+            // and `assert_chairs_are_seated` asserts each chair tucks under at
+            // MOST one worksurface, so this cannot hide a chair sprawled across
+            // two desks.
+            let (a, b) = (&doc.components[i], &doc.components[j]);
+            if (a.category == "Chair" && is_worksurface(b))
+                || (b.category == "Chair" && is_worksurface(a))
+            {
+                continue;
+            }
             assert!(
                 !footprints_overlap(&doc.components[i], &doc.components[j]),
                 "{ctx}: {} overlaps {}",
@@ -3853,16 +3888,16 @@ fn golden_generate_output_is_frozen() {
     cases.push(("explicit_rooms/l_plate/seed3".to_string(), l_room(), prog_rooms, 3));
 
     const EXPECTED: [&str; 10] = [
-        "default/rect20x14/seed1 = c39 w44 z11 desks21 total87876523 #233279b6828661d2",
-        "default/rect20x14/seed2 = c43 w44 z11 desks25 total89274625 #784343e04018b57c",
-        "default/rect20x14/seed3 = c38 w44 z11 desks20 total86967629 #04ca66c6faba93f5",
-        "default/real_plate/seed1 = c122 w107 z40 desks88 total92930827 #155bdf888b1d5060",
-        "default/real_plate/seed2 = c122 w107 z35 desks88 total92401469 #fda42af842bbcc0c",
-        "default/real_plate/seed3 = c122 w107 z40 desks88 total92934414 #da8cbf154bc1e22e",
-        "no_support/rect20x14/seed1 = c30 w14 z4 desks26 total92565832 #6dd8cac6eee770c9",
-        "no_support/real_plate/seed2 = c92 w53 z38 desks88 total95848844 #9e1e591af3c93473",
-        "explicit_rooms/real_plate/seed1 = c105 w77 z26 desks88 total90772681 #a5b9cd98a888d956",
-        "explicit_rooms/l_plate/seed3 = c31 w21 z10 desks24 total89503554 #0d560c3ab7b6c47c",
+        "default/rect20x14/seed1 = c72 w52 z11 desks21 total87876523 #9810d3ae324aadc0",
+        "default/rect20x14/seed2 = c80 w52 z11 desks25 total89274625 #c75576a35520672f",
+        "default/rect20x14/seed3 = c70 w52 z11 desks20 total86967629 #886837f74a830148",
+        "default/real_plate/seed1 = c222 w155 z40 desks88 total92930827 #337098d31e7b06e2",
+        "default/real_plate/seed2 = c222 w155 z35 desks88 total92401469 #ea4649826bf50f25",
+        "default/real_plate/seed3 = c222 w155 z40 desks88 total92934414 #02a199ddbd42fe35",
+        "no_support/rect20x14/seed1 = c68 w22 z4 desks26 total92565832 #e247ac328db99873",
+        "no_support/real_plate/seed2 = c192 w101 z38 desks88 total95848844 #34fb84018f156b0a",
+        "explicit_rooms/real_plate/seed1 = c209 w125 z26 desks88 total90772681 #db378ce13f4399b8",
+        "explicit_rooms/l_plate/seed3 = c63 w33 z10 desks24 total89503554 #6b55646ca7102d9d",
     ];
     assert_eq!(cases.len(), EXPECTED.len(), "case list and expectations must line up");
 
@@ -3930,3 +3965,383 @@ fn golden_generate_output_is_frozen() {
             );
         }
     }
+
+    /// The seating pass, across the three packing regimes (single rectangular
+    /// region, multi-wing decomposition, and the real irregular plate that drives
+    /// the oriented field) and several seeds.
+    ///
+    /// Also pins the accounting: a chair must never inflate the workstation count
+    /// or a zone's headcount — a workstation is a desk *and* its chair seating ONE
+    /// person, so `metrics().workstations` and `quantity` headcount stay
+    /// desk-driven (see `quantity::headcount`).
+    #[test]
+    fn every_generated_desk_gets_exactly_one_task_chair() {
+        let mut program = Program::default();
+        program.desks = 60;
+        for (name, mk) in [
+            ("rect", (|| room(24.0, 16.0)) as fn() -> Document),
+            ("l-plate", l_room as fn() -> Document),
+            ("real-plate", real_plate_doc as fn() -> Document),
+        ] {
+            for seed in [1u64, 3, 7] {
+                let mut doc = mk();
+                generate(&mut doc, &program, seed, false);
+                let poly = poly_of(&doc);
+                let ctx = format!("{name} seed {seed}");
+                let desks = doc.components.iter().filter(|c| c.category == "Desk").count();
+                assert!(desks > 0, "{ctx}: no desks placed, test is vacuous");
+                assert_chairs_are_seated(&doc, &poly, &ctx);
+                assert_no_overlaps(&doc, &ctx);
+
+                // Accounting: chairs must not become workstations, and a zone that
+                // holds desks reports its DESKS as headcount, not desks + chairs.
+                let q = crate::quantity::quantities(&doc);
+                for r in &q.rooms {
+                    let z = doc.zones.iter().find(|z| z.id == r.room_id).unwrap();
+                    let zone_desks = z
+                        .component_ids
+                        .iter()
+                        .filter(|&&cid| {
+                            doc.components
+                                .iter()
+                                .any(|c| c.id == cid && c.category == "Desk" && !c.reference)
+                        })
+                        .count() as u32;
+                    if zone_desks > 0 {
+                        assert_eq!(
+                            r.headcount, zone_desks,
+                            "{ctx}: zone {} headcount must be its desk count, not desks + chairs",
+                            r.room_id
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    /// D4 — the workbook must not contradict its own images. Every meeting /
+    /// team / boardroom / collaboration table is seated with REAL `Chair`
+    /// components, so the seats the plan and the room thumbnails draw are the
+    /// seats the Furniture Inventory bills and the seats `Headcount` counts.
+    ///
+    /// (Before this, `furniture.ts::drawTable` ringed every table with ~8 chairs
+    /// pitched in SCREEN pixels — a glyph nothing could bill. ~50 chairs were
+    /// drawn in the workbook's own thumbnails and billed nowhere in it.)
+    #[test]
+    fn every_meeting_table_is_seated_and_every_seat_is_a_billable_component() {
+        let mut program = Program::default();
+        program.meeting_rooms = 3;
+        program.meeting_w = 5.0;
+        program.meeting_h = 4.0;
+        for seed in [1u64, 3, 7] {
+            let mut doc = room(30.0, 20.0);
+            generate(&mut doc, &program, seed, false);
+            let ctx = format!("seed {seed}");
+            let q = crate::quantity::quantities(&doc);
+
+            let mut seated_rooms = 0;
+            for z in &doc.zones {
+                if z.zone_type != ZoneType::Meeting && z.zone_type != ZoneType::Collaboration {
+                    continue;
+                }
+                let of = |cat: &str| {
+                    z.component_ids
+                        .iter()
+                        .filter(|&&cid| {
+                            doc.components.iter().any(|c| c.id == cid && c.category == cat)
+                        })
+                        .count()
+                };
+                let (tables, chairs) = (of("Table"), of("Chair"));
+                if tables == 0 {
+                    continue; // a room too small for a table is honestly unseated
+                }
+                seated_rooms += 1;
+                assert!(
+                    chairs >= 4,
+                    "{ctx}: '{}' draws a table but bills only {chairs} chairs",
+                    z.label
+                );
+                // What is billed is what is counted: with no desks in the room,
+                // `quantity::headcount` is exactly its seats.
+                let r = q.rooms.iter().find(|r| r.room_id == z.id).unwrap();
+                assert_eq!(
+                    r.headcount as usize, chairs,
+                    "{ctx}: '{}' bills {chairs} chairs but reports headcount {}",
+                    z.label, r.headcount
+                );
+            }
+            assert!(seated_rooms >= 3, "{ctx}: only {seated_rooms} seated tables — test is vacuous");
+
+            // Every chair tucks under at most one worksurface and no two chairs
+            // collide (a forced perimeter seat would break this).
+            assert_chairs_are_seated(&doc, &poly_of(&doc), &ctx);
+            assert_no_overlaps(&doc, &ctx);
+        }
+    }
+
+    /// Regenerating must not accumulate seats: the chair pass is idempotent, and
+    /// a Confirmed (frozen) desk keeps exactly one chair across runs.
+    #[test]
+    fn regenerate_does_not_accumulate_chairs() {
+        let mut program = Program::default();
+        program.desks = 40;
+        let mut doc = room(20.0, 14.0);
+        generate(&mut doc, &program, 5, false);
+        let first = doc.components.iter().filter(|c| c.category == "Chair").count();
+        assert!(first > 0);
+
+        generate(&mut doc, &program, 5, false);
+        assert_eq!(
+            doc.components.iter().filter(|c| c.category == "Chair").count(),
+            first,
+            "a clean regenerate must re-seat, not stack, chairs"
+        );
+
+        // Freeze every desk + chair, regenerate: each frozen desk keeps exactly ONE
+        // chair — `seat_desk_chairs` must recognise the seat that survived the
+        // freeze and not add a second. (The room program legitimately differs on a
+        // keep_confirmed run, so total chair COUNT is not the invariant; "one seat
+        // per desk" is, and `assert_chairs_are_seated` checks it in both
+        // directions.)
+        for c in doc.components.iter_mut() {
+            if c.category == "Desk" || c.category == "Chair" {
+                c.decision = DecisionState::Confirmed;
+            }
+        }
+        generate(&mut doc, &program, 5, true);
+        let poly = poly_of(&doc);
+        assert_chairs_are_seated(&doc, &poly, "keep_confirmed regenerate");
+        assert_no_overlaps(&doc, "keep_confirmed regenerate");
+    }
+
+    /// D8 — headcount must be a function of the furniture, not of zone emission
+    /// order. Three cabins with byte-identical furniture used to report 1, 0 and
+    /// 0 because `zone_index_at` took the LAST containing zone, so the
+    /// plate-spanning Workspace field silently swallowed the furniture of every
+    /// room it happened to enclose.
+    #[test]
+    fn rooms_with_identical_furniture_report_identical_headcount() {
+        let mut program = Program::default();
+        program.headcount = Some(60);
+        program.meeting_rooms = 3;
+        for seed in [3u64, 7, 11] {
+            let mut doc = room(40.0, 24.0);
+            generate(&mut doc, &program, seed, false);
+            let ctx = format!("seed {seed}");
+            let q = crate::quantity::quantities(&doc);
+
+            // An enclosed room owns the furniture standing inside it — never the
+            // big field drawn around it. (`Circulation` is the deliberate
+            // exception: it loses to any specific zone containing the point.)
+            for z in &doc.zones {
+                let ZoneShape::Rect { x, y, w, h } = z.shape else { continue };
+                if z.zone_type == ZoneType::Workspace || z.zone_type == ZoneType::Circulation {
+                    continue; // the spanning field / corridor legitimately enclose rooms
+                }
+                for c in &doc.components {
+                    if (c.x - x).abs() > w / 2.0 || (c.y - y).abs() > h / 2.0 {
+                        continue;
+                    }
+                    assert!(
+                        z.component_ids.contains(&c.id),
+                        "{ctx}: {} stands inside '{}' but was bucketed elsewhere",
+                        c.label,
+                        z.label
+                    );
+                }
+            }
+
+            // Same furniture in, same headcount out.
+            let sig = |z: &Zone| {
+                let mut v: Vec<String> = z
+                    .component_ids
+                    .iter()
+                    .filter_map(|&cid| doc.components.iter().find(|c| c.id == cid))
+                    .filter(|c| !c.reference && c.category != "Door")
+                    .map(|c| format!("{} {:.2}x{:.2}", c.category, c.w, c.h))
+                    .collect();
+                v.sort();
+                v
+            };
+            // Key: zone type + the furniture multiset — the two things the
+            // Inventory row shows next to `Headcount`.
+            let mut seen: std::collections::HashMap<String, (u32, String)> =
+                std::collections::HashMap::new();
+            let mut compared = 0;
+            for z in &doc.zones {
+                let s = sig(z);
+                if s.is_empty() {
+                    continue;
+                }
+                let key = format!("{:?}|{}", z.zone_type, s.join(", "));
+                let hc = q.rooms.iter().find(|r| r.room_id == z.id).unwrap().headcount;
+                match seen.get(&key) {
+                    Some((prev, prev_label)) => {
+                        compared += 1;
+                        assert_eq!(
+                            hc, *prev,
+                            "{ctx}: '{}' and '{prev_label}' hold identical furniture ({key}) \
+                             but report headcounts {hc} and {prev}",
+                            z.label
+                        );
+                    }
+                    None => {
+                        seen.insert(key, (hc, z.label.clone()));
+                    }
+                }
+            }
+            assert!(compared > 0, "{ctx}: no two rooms shared furniture — test is vacuous");
+        }
+    }
+
+    /// D5 — the plan graphic and the takeoff must tell the same story about the
+    /// facade. `glaze_facade` models the office facade module in the GEOMETRY
+    /// (pier · glazed band · pier), so the classification the plan colours from
+    /// and the quantities the workbook bills are the same classification.
+    #[test]
+    fn the_facade_is_glazed_and_the_plan_and_takeoff_agree_on_it() {
+        let program = Program::default();
+        for (name, mk) in [
+            ("rect", (|| room(30.0, 20.0)) as fn() -> Document),
+            ("l-plate", l_room as fn() -> Document),
+            ("real-plate", real_plate_doc as fn() -> Document),
+        ] {
+            let mut doc = mk();
+            generate(&mut doc, &program, 3, false);
+            let q = crate::quantity::quantities(&doc);
+            let win = q
+                .walls
+                .iter()
+                .find(|w| w.wall_type == crate::quantity::WallType::PerimeterWindows)
+                .unwrap()
+                .length_m;
+            let solid = q
+                .walls
+                .iter()
+                .find(|w| w.wall_type == crate::quantity::WallType::PerimeterWall)
+                .unwrap()
+                .length_m;
+            assert!(win > 0.0, "{name}: the facade bills 0 m of perimeter windows");
+            assert!(
+                win > solid,
+                "{name}: an office facade is mostly glass — got {win:.2} m glazed vs {solid:.2} m solid"
+            );
+
+            // The plan renderer colours from `classify_walls`; the workbook bills
+            // from `quantities`. Both must measure the same metres of glazing.
+            let drawn: f64 = crate::quantity::classify_walls(&doc)
+                .iter()
+                .filter(|c| c.plan_key == "perimeter_windows")
+                .map(|c| c.length_m)
+                .sum();
+            assert!(
+                (drawn - win).abs() < 1e-9,
+                "{name}: the plan draws {drawn:.4} m of perimeter windows, the takeoff bills {win:.4} m"
+            );
+
+            // Re-cutting is idempotent: regenerating must not shave another pier
+            // off the band (that would creep the facade solid over time).
+            generate(&mut doc, &program, 3, false);
+            let again = crate::quantity::quantities(&doc)
+                .walls
+                .iter()
+                .find(|w| w.wall_type == crate::quantity::WallType::PerimeterWindows)
+                .unwrap()
+                .length_m;
+            assert!(
+                (again - win).abs() < 1e-9,
+                "{name}: regenerate moved the glazed run {win:.4} -> {again:.4} m"
+            );
+        }
+    }
+
+    /// **Every generated desk carries its task chair.** A takeoff that bills 63
+    /// desks and 9 chairs is simply wrong for an office fit-out — chairs flow into
+    /// `Furniture Inventory`, its Summary, the Inventory sheet's "Furniture
+    /// Elements" string and the cost model — and a 3D still of an unseated desk
+    /// run is the visible half of the same bug. Asserted as a strict 1:1 matching
+    /// (each desk claims its OWN chair, so N desks sharing one seat cannot pass),
+    /// with the chair adjacent to its desk, no chair colliding with another, and
+    /// every seat inside the plate.
+    fn assert_chairs_are_seated(doc: &Document, poly: &[Point], ctx: &str) {
+        let desks: Vec<&crate::model::Component> = doc
+            .components
+            .iter()
+            .filter(|c| c.category == "Desk" && !c.reference)
+            .collect();
+        let chairs: Vec<&crate::model::Component> =
+            doc.components.iter().filter(|c| c.category == "Chair").collect();
+        assert!(
+            chairs.len() >= desks.len(),
+            "{ctx}: {} desks but only {} chairs",
+            desks.len(),
+            chairs.len()
+        );
+
+        // Strict matching: each desk consumes a distinct adjacent chair.
+        let mut used = vec![false; chairs.len()];
+        for d in &desks {
+            // Centre-to-centre reach of a seated chair: half the desk depth, plus
+            // the projection, less the chair's own half depth — plus one module
+            // for the coordinate snap (and, on the oriented packer, its rotation).
+            let reach = d.h / 2.0 + CHAIR_PROJECT + MODULE;
+            let pick = (0..chairs.len())
+                .filter(|&k| !used[k])
+                .filter(|&k| {
+                    let c = chairs[k];
+                    (c.x - d.x).hypot(c.y - d.y) <= reach + 1e-6
+                })
+                .min_by(|&a, &b| {
+                    let da = (chairs[a].x - d.x).hypot(chairs[a].y - d.y);
+                    let db = (chairs[b].x - d.x).hypot(chairs[b].y - d.y);
+                    da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
+                });
+            let k = pick.unwrap_or_else(|| {
+                panic!("{ctx}: {} has no task chair within {reach:.2} m", d.label)
+            });
+            used[k] = true;
+        }
+
+        // ...and no desk is DOUBLE-seated. Every chair sitting within reach of any
+        // desk must be one of the matched seats, so a second pass (or a
+        // `keep_confirmed` regenerate over already-seated desks) cannot quietly
+        // stack a spare chair at a workstation. Room seating lives behind
+        // partitions, well beyond `reach` of any desk, so it is not counted here.
+        let near_a_desk = chairs
+            .iter()
+            .filter(|c| {
+                desks
+                    .iter()
+                    .any(|d| (c.x - d.x).hypot(c.y - d.y) <= d.h / 2.0 + CHAIR_PROJECT + MODULE + 1e-6)
+            })
+            .count();
+        assert_eq!(
+            near_a_desk,
+            desks.len(),
+            "{ctx}: {} chairs sit at {} desks — a desk is double-seated",
+            near_a_desk,
+            desks.len()
+        );
+
+        // Seats never collide with each other, and never escape the plate.
+        for i in 0..chairs.len() {
+            assert!(
+                footprint_in_plate(chairs[i], poly),
+                "{ctx}: {} escapes the plate",
+                chairs[i].label
+            );
+            for j in (i + 1)..chairs.len() {
+                assert!(
+                    !footprints_overlap(chairs[i], chairs[j]),
+                    "{ctx}: {} overlaps {}",
+                    chairs[i].label,
+                    chairs[j].label
+                );
+            }
+        }
+    }
+
+fn is_worksurface(c: &crate::model::Component) -> bool {
+    c.category == "Desk" || c.category == "Table"
+}

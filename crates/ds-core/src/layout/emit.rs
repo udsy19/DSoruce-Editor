@@ -283,6 +283,21 @@ pub(crate) fn furnish_room(doc: &mut Document, cx: f64, cy: f64, w: f64, h: f64,
             let th = (h - 2.0 * PARTITION_T - 2.0 * TABLE_CLEAR).max(0.8).min(h - 2.0 * PARTITION_T - 0.2);
             if tw > 0.3 && th > 0.3 {
                 push_component(doc, "Table", cx, cy, tw, th, 0.0);
+                // REAL chair components, seated all round. Seats stay inside the
+                // partitions' INNER faces (the walls are centerline-inset by half
+                // their thickness, so the inner face sits PARTITION_T in from the
+                // room rect). These are billable objects, which is the point: the
+                // plan, the thumbnails and the Furniture Inventory all count the
+                // same chairs.
+                seat_around_table(
+                    doc, cx, cy, tw, th,
+                    (
+                        cx - w / 2.0 + PARTITION_T,
+                        cy - h / 2.0 + PARTITION_T,
+                        cx + w / 2.0 - PARTITION_T,
+                        cy + h / 2.0 - PARTITION_T,
+                    ),
+                );
                 // THE BRIEF WINS. The table is sized to the ROOM, so its
                 // perimeter can seat more than the room was asked for — a
                 // "6 person" team room fitted a table seating 8, and that 8 then
@@ -290,8 +305,10 @@ pub(crate) fn furnish_room(doc: &mut Document, cx: f64, cy: f64, w: f64, h: f64,
                 // density. Clamp the object's occupancy to what was briefed
                 // (never above what physically fits) so the drawing, the tag and
                 // the brief are the same number.
+                // `last_mut()` no longer finds the table — seat_around_table has
+                // pushed chairs after it — so clamp the last TABLE explicitly.
                 if briefed_seats > 0 {
-                    if let Some(t) = doc.components.last_mut() {
+                    if let Some(t) = doc.components.iter_mut().rev().find(|c| c.category == "Table") {
                         t.seats = t.seats.min(briefed_seats);
                     }
                 }
@@ -545,3 +562,77 @@ pub(crate) fn seat_desk_chairs(
     }
 }
 
+/// Solid return (m) at each end of a modelled facade wall, which the glazed
+/// curtain-wall band stops short of. 600 mm is the module the plan renderer's
+/// own fallback already draws (`web/src/export/wallTypes.ts::CORNER_RETURN`), so
+/// the drawn facade and the billed facade are one convention, not two.
+pub(crate) const FACADE_PIER: f64 = 0.6;
+/// Below this run length (m) a facade wall is all pier — there is no room for a
+/// window band between two returns.
+pub(crate) const MIN_GLAZED_RUN: f64 = 2.0 * FACADE_PIER + 0.5;
+
+/// Model the perimeter facade as what an office facade actually is: a **glazed
+/// band between solid corner piers**.
+///
+/// Each architectural wall the quantity classifier calls `PerimeterWall` is split
+/// into three collinear segments — `FACADE_PIER` solid, the glazed band, then
+/// `FACADE_PIER` solid — with `glazing: true` on the band only. Runs shorter than
+/// `MIN_GLAZED_RUN` stay wholly solid.
+///
+/// **Why in the geometry and not in a classifier rule.** Everything downstream
+/// reads the document: `quantity::classify_wall` bills the band as
+/// `Perimeter windows` (rule 2) and the piers as `Perimeter wall`, the plan
+/// renderer colours them from that same classification, the 3D viewer builds
+/// glass there, and `cost.rs` prices it. One edit to the model therefore makes
+/// the takeoff and the plan graphic tell the same story by construction — they
+/// cannot drift, because there is only one fact.
+///
+/// **Idempotent**, so regenerating never re-splits: an already-glazed band is
+/// skipped by the `!glazing` guard and a `FACADE_PIER` return is far below
+/// `MIN_GLAZED_RUN`. Deterministic — document order, no RNG. Only walls the
+/// classifier ALREADY calls `PerimeterWall` are touched, so core/keep-out walls,
+/// interior partitions and every generated wall are left alone, and a document
+/// whose walls do not close into a plate (no traced polygon) is left alone
+/// entirely rather than guessed at.
+pub(crate) fn glaze_facade(doc: &mut Document) {
+    let Some(plate) = doc.plate_polygon() else { return };
+    // Re-cut a wall in place (it keeps its id as the first pier) and append the
+    // band + far pier. Collecting first keeps the borrow checker happy and makes
+    // the pass independent of the order things are pushed.
+    let mut extra: Vec<Wall> = Vec::new();
+    for i in 0..doc.walls.len() {
+        let w = &doc.walls[i];
+        if w.generated || w.glazing {
+            continue;
+        }
+        let len = w.length();
+        if len < MIN_GLAZED_RUN {
+            continue;
+        }
+        if crate::quantity::classify_wall(w, &doc.keepouts, Some(&plate))
+            != crate::quantity::WallType::PerimeterWall
+        {
+            continue;
+        }
+        let (a, b, thickness, height_m) = (w.a, w.b, w.thickness, w.height_m);
+        let (ux, uy) = ((b.x - a.x) / len, (b.y - a.y) / len);
+        let at = |t: f64| Point::new(a.x + ux * t, a.y + uy * t);
+        let (p0, p1) = (at(FACADE_PIER), at(len - FACADE_PIER));
+        let seg = |a: Point, b: Point, glazing: bool| Wall {
+            id: 0, // assigned below, once `doc` is free to allocate
+            a,
+            b,
+            thickness,
+            generated: false,
+            glazing,
+            height_m,
+        };
+        extra.push(seg(p0, p1, true));
+        extra.push(seg(p1, b, false));
+        doc.walls[i].b = p0; // the original wall becomes the near pier
+    }
+    for mut w in extra {
+        w.id = doc.alloc_id();
+        doc.walls.push(w);
+    }
+}
