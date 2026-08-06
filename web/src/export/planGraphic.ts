@@ -25,7 +25,7 @@ import type { CirculationScore } from '../types/metrics'
 import { drawSymbol } from '../editor/symbols'
 import { zoneArea, zoneCenter } from '../util/zoneGeom'
 import { renderPrintCanvas } from './pdf'
-import { labelLeader, placeNear, zoneBoxOnSheet, type OccBox } from './sheetSet'
+import { componentBox, labelLeader, placeNear, zoneBoxOnSheet, type OccBox } from './sheetSet'
 import { roomDisplayNames } from './roomNaming'
 import { CIRCULATION_RGBA, PLAN_PALETTE, WALL_TYPE_HEX } from './qbiqPalette'
 import { classifyWalls, type WallSpan } from './wallTypes'
@@ -142,16 +142,6 @@ function pathZone(ctx: CanvasRenderingContext2D, z: DocZone, X: (m: number) => n
   } else {
     ctx.rect(X(s.x - s.w / 2), Y(s.y - s.h / 2), s.w * k, s.h * k)
   }
-}
-
-/** A component's axis-aligned footprint in CANVAS pixels — the ink a furniture
- *  symbol occupies, in the box shape `placeNear` de-collides against. */
-function componentBox(c: DocComponent, X: (m: number) => number, Y: (m: number) => number, k: number): OccBox {
-  const cos = Math.abs(Math.cos(c.rotation))
-  const sin = Math.abs(Math.sin(c.rotation))
-  const w = (c.w * cos + c.h * sin) * k
-  const h = (c.w * sin + c.h * cos) * k
-  return { x: X(c.x) - w / 2, y: Y(c.y) - h / 2, w, h }
 }
 
 function wallBounds(state: DocState) {
@@ -310,7 +300,7 @@ export function renderPlanCanvas(
   const occ: OccBox[] = []
   for (const c of state.components) {
     if (c.category === 'Door') continue
-    occ.push(componentBox(c, X, Y, k))
+    occ.push(componentBox(c, (mx, my) => ({ x: X(mx), y: Y(my) }), k))
   }
   //    A label that ends up OFF its room gets a leader back to it (shared with
   //    the drawing set: `labelLeader`). Three identical phone booths whose

@@ -391,7 +391,29 @@ export interface OccBox {
   y: number
   w: number
   h: number
+  /**
+   * Cost multiplier when a placement has to sit on this box, default 1.
+   *
+   * Occupancy is not one kind of thing. Type-on-type is UNREADABLE — two room
+   * names over each other cannot be recovered by the reader, and SG3 gates it.
+   * Type-on-furniture is merely untidy: the name still reads and the symbol is
+   * still mostly visible. So when a crowded region leaves no free candidate,
+   * the least-cost placement must prefer a desk to another label. Weighting the
+   * fallback is what expresses that ORDER; a bare occupancy list cannot, because
+   * it says only "taken", never "taken by what".
+   *
+   * This does NOT weaken avoidance: the zero-overlap fast path still refuses
+   * every occupied box whatever its weight, so wherever there is room a label
+   * still steps aside for furniture (which is E7's whole point).
+   */
+  weight?: number
 }
+
+/** Furniture is soft occupancy — see {@link OccBox.weight}. Small enough that a
+ *  label will cross a whole desk before it clips a single character of another
+ *  label, and non-zero so that among otherwise equal spots it still prefers the
+ *  clear one. */
+export const FURNITURE_WEIGHT = 0.02
 
 /** THE overlap predicate for annotation boxes — one definition, so two sheets
  *  can never disagree about whether two annotations collide. */
@@ -480,7 +502,7 @@ function overlapArea(box: OccBox, occ: OccBox[]): number {
   for (const b of occ) {
     const w = Math.min(box.x + box.w, b.x + b.w) - Math.max(box.x, b.x)
     const h = Math.min(box.y + box.h, b.y + b.h) - Math.max(box.y, b.y)
-    if (w > 0 && h > 0) a += w * h
+    if (w > 0 && h > 0) a += w * h * (b.weight ?? 1)
   }
   return a
 }
@@ -585,11 +607,25 @@ export function tryPlaceNear(
   w: number,
   h: number,
   bounds?: OccBox | null,
+  /**
+   * Second-pass reach: ignore SOFT occupancy (furniture, {@link OccBox.weight}
+   * below 1) and refuse only hard boxes — other type.
+   *
+   * The caller runs this pass only after the strict one has failed everywhere,
+   * and it is what keeps E7 from trading one defect for a worse one. Strict
+   * placement refuses furniture too, so seeding the desks makes it fail on a
+   * dense plan and drop to the narrow always-yields placer, which is where two
+   * room names end up on top of each other. Here the label stays in the WIDE,
+   * leader-backed ring set — it may cross a desk, but it never lands on another
+   * label, and `labelLeader` still ties it to the room it names.
+   */
+  allowSoft = false,
 ): { x: number; y: number } | null {
+  const blocks = (b: OccBox) => (allowSoft ? (b.weight ?? 1) >= 1 : true)
   for (const [ox, oy] of [...placeCandidates(w, h), ...extendedCandidates(w, h)]) {
     const box: OccBox = { x: cx + ox - w / 2, y: cy + oy - h / 2, w, h }
     if (!boxInside(box, bounds)) continue
-    if (!occ.some((b) => boxesOverlap(box, b))) {
+    if (!occ.some((b) => blocks(b) && boxesOverlap(box, b))) {
       occ.push(box)
       return { x: cx + ox, y: cy + oy }
     }
@@ -745,6 +781,28 @@ export function labelLeader(
 }
 
 /** A zone's footprint in the same top-down coords a label is placed in. */
+/**
+ * A component's axis-aligned footprint in SHEET units — the ink a furniture
+ * symbol occupies, in the box shape `placeNear` de-collides against.
+ *
+ * Lives here, beside `placeNear`/`zoneBoxOnSheet`, because this module owns the
+ * de-collision vocabulary and `planGraphic` already imports from it; the reverse
+ * import would be a cycle. It was local to `planGraphic` while only the workbook
+ * seeded occupancy — both plan producers need it now (E7).
+ */
+export function componentBox(
+  c: DocComponent,
+  map: (x: number, y: number) => { x: number; y: number },
+  k: number,
+): OccBox {
+  const cos = Math.abs(Math.cos(c.rotation))
+  const sin = Math.abs(Math.sin(c.rotation))
+  const w = (c.w * cos + c.h * sin) * k
+  const h = (c.w * sin + c.h * cos) * k
+  const p = map(c.x, c.y)
+  return { x: p.x - w / 2, y: p.y - h / 2, w, h }
+}
+
 export function zoneBoxOnSheet(
   shape: DocZone['shape'],
   map: (x: number, y: number) => { x: number; y: number },
@@ -803,14 +861,31 @@ function roomLabels(
     let form = forms[0]
     let box = { w: 0, h: 0 }
     let pos: { x: number; y: number } | null = null
-    for (const f of forms) {
-      box = { w: Math.max(f.width, areaW) + 4, h: 26 + (f.lines.length - 1) * 11 }
-      pos = tryPlaceNear(occ, pt.x, pt.y + 4, box.w, box.h, bounds)
-      if (pos) {
+    // The ladder, in priority order. Two things are being traded off and they
+    // are NOT equally severe, so the rungs are ordered by what survives:
+    //   1. the full name, clear of everything;
+    //   2. the full name crossing FURNITURE (soft occupancy, wide leader-backed
+    //      rings) — untidy, still readable, still recoverable;
+    //   3. a shorter/wrapped/ABBREVIATED form, clear of everything;
+    //   4. the narrow always-yields placer, full name, may collide.
+    //
+    // Rung 2 sits above rung 3 deliberately. An abbreviation is not the room's
+    // name: the sheet and the model stop naming the same set of rooms, which is
+    // exactly what happened when seeding furniture (E7) pushed four seeded-A.02
+    // names — COLLAB, STORAGE, PRINT POINT 1, CABIN 3 — off their full form and
+    // onto an abbreviation, drawn 0x. A name over a desk can be read; a name
+    // that was never written cannot.
+    const place = (f: (typeof forms)[number], soft: boolean) => {
+      const b = { w: Math.max(f.width, areaW) + 4, h: 26 + (f.lines.length - 1) * 11 }
+      const at = tryPlaceNear(occ, pt.x, pt.y + 4, b.w, b.h, bounds, soft)
+      if (at) {
         form = f
-        break
+        box = b
       }
+      return at
     }
+    pos = place(forms[0], false) ?? place(forms[0], true)
+    for (let i = 1; i < forms.length && !pos; i++) pos = place(forms[i], false)
     if (!pos) {
       box = { w: Math.max(form.width, areaW) + 4, h: 26 + (form.lines.length - 1) * 11 }
       pos = placeNear(occ, pt.x, pt.y + 4, box.w, box.h, bounds)
@@ -1019,6 +1094,18 @@ function constructionSheet(state: DocState, opts: DrawingSetOpts, no: string): C
   // word.
   // ---------------------------------------------------------------------
   const occ: OccBox[] = []
+  // E7, the sheet half. `occ` is SEEDED WITH THE FURNITURE FOOTPRINTS, not just
+  // with the type already placed. Every label pass below knocks a white halo out
+  // of what it lands on, so a name parked over a desk erases the symbol the
+  // Furniture Inventory bills — the workbook's own defect (planGraphic, E7),
+  // which this producer inherited because it started its occupancy list empty.
+  // Labels now step aside for furniture exactly as they already step aside for
+  // each other: DISPLACED, never dropped or shrunk, so the "every room labelled
+  // exactly once" invariant still holds and the symbols stay visible.
+  for (const c of state.components) {
+    if (c.category === 'Door') continue
+    occ.push({ ...componentBox(c, map, k), weight: FURNITURE_WEIGHT })
+  }
   const plate = plateBox(b)
   const inkPasses = planInk()
   const ink: InkSink = (d) => inkPasses.type.push(d)
