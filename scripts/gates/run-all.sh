@@ -31,6 +31,32 @@ cd "$REPO"
 
 OUT="${OUT_DIR:-$REPO/out}"
 
+# The app G10 drives. Defaulting to a fixed port and never checking WHICH TREE
+# answers is the worktree false-green this repo already has a script for
+# (scripts/verify-preflight.sh). Measured here: the board's producer step drove
+# ANOTHER worktree's dev server, G10 reported every artifact "not rewritten by
+# this run", and the nine it graded were whatever happened to be on disk.
+# Override with GATE_BASE; the assertion below refuses to grade a foreign tree.
+GATE_BASE="${GATE_BASE:-http://localhost:5173}"
+_gate_port="${GATE_BASE##*:}"
+if command -v lsof >/dev/null 2>&1; then
+  _gate_pid="$(lsof -ti:"$_gate_port" 2>/dev/null | head -1)"
+  if [ -n "$_gate_pid" ]; then
+    _gate_cwd="$(lsof -a -p "$_gate_pid" -d cwd -Fn 2>/dev/null | grep '^n' | cut -c2-)"
+    case "$_gate_cwd" in
+      "$REPO"|"$REPO"/*) : ;;
+      *)
+        echo "PRE-FLIGHT FAIL: $GATE_BASE is served by a DIFFERENT worktree."
+        echo "      listening cwd : $_gate_cwd"
+        echo "      this checkout : $REPO"
+        echo "  G10 would drive that app, and every gate would grade its output."
+        echo "  Start a server for THIS tree, then: GATE_BASE=http://localhost:<port> bash $0"
+        exit 2
+        ;;
+    esac
+  fi
+fi
+
 declare -a IDS=(G1 G2 G3 G4 G5 G6 G7 G8 G9 G10 G11 G12)
 declare -a CMDS=(
   "python3 $HERE/g1-sheet-structure.py"
@@ -42,7 +68,7 @@ declare -a CMDS=(
   "python3 $HERE/g7-video.py"
   "node $HERE/g8-web-viewer.mjs"
   "python3 $HERE/g9-roundtrip.py"
-  "node $HERE/g10-one-action.mjs"
+  "node $HERE/g10-one-action.mjs --base $GATE_BASE"
   "python3 $HERE/g11-furniture-agreement.py"
   "node $HERE/sheets/run-all.mjs --no-produce --as-gate G12 SG1 SG2 SG3 SG4 SG6"
 )

@@ -269,6 +269,42 @@ ink is a failure in its own right. Until then the floor is a real check with a
 stated blind spot, not a proof of legibility.
 
 
+## The tooling layer: a success message is not evidence that anything changed
+
+**The surface: an edit script reporting its own result.** A script applies a
+string replacement and prints "applied". Python's `str.replace` returns the
+original string when the pattern does not match, and the print runs regardless —
+so the report is produced by the thing being reported on, with nothing
+independent confirming the write landed.
+
+**The worked case.** `implySeats: false` was added to `pdf.ts` and the script
+said so. The anchor used twelve-space indentation where the file has ten; the
+replace silently no-opped; the line was never in the tree. A commit then
+described the change as landed. **The identical pattern repeated on the first
+retry**, printing success while `grep` showed zero occurrences — which is how it
+was finally caught. Two rounds, and the only reason it surfaced at all is that a
+reviewer read the tree instead of the report.
+
+No board caught it: `out/plan.png` comes from a renderer that HAD the fix, so the
+graded artifact was clean while the ungraded PDF deliverable double-drew seating.
+
+**Why it is the unified form.** The check's input is the script's own stdout,
+produced by the process under test, with no positive evidence the file changed.
+It is `gate trusting its subject's metadata`, one layer down — the subject here
+being the tooling rather than an artifact.
+
+**The falsification, and it is free.** Assert the anchor exists BEFORE replacing,
+and re-read the file AFTER writing:
+
+    assert old in s, 'anchor not found — refusing to report success'
+    s = s.replace(old, new, 1); open(p,'w').write(s)
+    assert new_marker in open(p).read(), 'write did not take'
+
+A script that cannot fail loudly will report success quietly. The same applies to
+any generated report: if the producer also writes the verdict, the verdict is a
+claim, not a measurement.
+
+
 ## Reporting convention: scope every negative claim
 
 An Orchestrator aggregates agent reports, and **an unscoped negative aggregates into a global one.**
