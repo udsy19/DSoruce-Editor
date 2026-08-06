@@ -1,0 +1,100 @@
+{
+  "file": "BUSNSS-Offcs-Trdtnl_AF.dwg",
+  "src": "/Users/udsy/Downloads/BUSNSS-Offcs-Trdtnl_AF.dwg",
+  "bytes": 2079326,
+  "stages": {
+    "convert": {
+      "ok": true,
+      "ms": 578,
+      "dxfBytes": 2615447,
+      "via": "dwgread-json"
+    },
+    "parse": {
+      "ok": true,
+      "ms": 72,
+      "units": "m",
+      "bounds": [
+        -2.44984203469392,
+        -2.8339396361977633,
+        2.198530211693089,
+        1.5220286533046137
+      ],
+      "spanM": [
+        4.648372246387009,
+        4.355968289502377
+      ],
+      "layers": 18,
+      "entities": 12604,
+      "furniture": 0,
+      "byCat": {
+        "other": 337,
+        "furniture": 5010,
+        "door": 15,
+        "annotation": 7242
+      },
+      "byKind": {
+        "polyline": 12604
+      },
+      "degenerate": 0,
+      "nonFinite": 0,
+      "huge": 0
+    },
+    "heal": {
+      "ok": true,
+      "ms": 0,
+      "entitiesBefore": 12604,
+      "entitiesAfter": 12604,
+      "added": 0
+    },
+    "plate": {
+      "ok": false,
+      "ms": 0,
+      "reason": "derivePlate returned null"
+    },
+    "normalize": {
+      "ok": true,
+      "ms": 0,
+      "total": 0,
+      "byCategory": {},
+      "unnamed": 0,
+      "zeroSize": 0,
+      "samples": []
+    }
+  },
+  "errors": [
+    {
+      "stage": "plate",
+      "message": "No plate derived — App.tsx shows \"No wall geometry found in this drawing to derive a floor plate from.\""
+    }
+  ],
+  "warnings": [],
+  "dxfFacts": {
+    "insunitsCode": 1,
+    "insunitsLabel": "in",
+    "extmin": [
+      null,
+      null
+    ],
+    "extmax": [
+      null,
+      null
+    ],
+    "entityCounts": {
+      "SECTION": 4,
+      "ENDSEC": 4,
+      "TABLE": 1,
+      "LAYER": 18,
+      "ENDTAB": 1,
+      "BLOCK": 49,
+      "ENDBLK": 49,
+      "LWPOLYLINE": 1425,
+      "LINE": 15710,
+      "ARC": 1783,
+      "CIRCLE": 448,
+      "INSERT": 169,
+      "TEXT": 28,
+      "EOF": 1
+    }
+  },
+  "totalMs": 662
+}

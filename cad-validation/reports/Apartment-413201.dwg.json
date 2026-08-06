@@ -1,0 +1,157 @@
+{
+  "file": "Apartment-413201.dwg",
+  "src": "/Users/udsy/Downloads/Apartment-413201.dwg",
+  "bytes": 91047,
+  "stages": {
+    "convert": {
+      "ok": true,
+      "ms": 18,
+      "dxfBytes": 460793,
+      "via": "dwg2dxf"
+    },
+    "parse": {
+      "ok": true,
+      "ms": 13,
+      "units": "m",
+      "bounds": [
+        2930.159749807426,
+        1891.234245252561,
+        2957.999749807424,
+        1905.274245252561
+      ],
+      "spanM": [
+        27.839999999997872,
+        14.039999999999964
+      ],
+      "layers": 15,
+      "entities": 1687,
+      "furniture": 0,
+      "byCat": {
+        "other": 1218,
+        "dimension": 4,
+        "wall": 292,
+        "furniture": 133,
+        "door": 40
+      },
+      "byKind": {
+        "polyline": 1687
+      },
+      "degenerate": 0,
+      "nonFinite": 0,
+      "huge": 0
+    },
+    "heal": {
+      "ok": true,
+      "ms": 0,
+      "entitiesBefore": 1687,
+      "entitiesAfter": 1713,
+      "added": 26
+    },
+    "plate": {
+      "ok": true,
+      "ms": 5,
+      "method": "hull",
+      "vertices": 68,
+      "reportedAreaM2": 113.28125000046566,
+      "independentAreaM2": 113.28125,
+      "areaAgrees": true,
+      "reportedCoverage": 1,
+      "independentCoverage": null,
+      "coverageAgrees": null,
+      "offset": {
+        "x": 2929.284749807426,
+        "y": 1890.359245252561
+      },
+      "provenance": {
+        "method": "partition-envelope",
+        "phantomFraction": 0.0344615768387507,
+        "orthogonality": 0.5238884226894712,
+        "closingEdgeM": 6.254998001598403,
+        "selfIntersections": 14,
+        "confidence": "low",
+        "reason": "No closed building shell was found, so this boundary was inferred from the partitions and furniture — the boundary crosses itself 14×. Confirm or adjust it."
+      },
+      "ringSpanM": [
+        27.75,
+        14
+      ]
+    },
+    "keepouts": {
+      "ok": true,
+      "ms": 0,
+      "count": 0
+    },
+    "entries": {
+      "ok": true,
+      "ms": 0,
+      "count": 16
+    },
+    "interiorWalls": {
+      "ok": true,
+      "ms": 0,
+      "count": 43
+    },
+    "normalize": {
+      "ok": true,
+      "ms": 0,
+      "total": 0,
+      "byCategory": {},
+      "unnamed": 0,
+      "zeroSize": 0,
+      "samples": []
+    }
+  },
+  "errors": [],
+  "warnings": [],
+  "dxfFacts": {
+    "insunitsCode": null,
+    "insunitsLabel": null,
+    "extmin": [
+      null,
+      null
+    ],
+    "extmax": [
+      null,
+      null
+    ],
+    "entityCounts": {
+      "SECTION": 7,
+      "ENDSEC": 7,
+      "CLASS": 21,
+      "TABLE": 9,
+      "VPORT": 1,
+      "ENDTAB": 9,
+      "LTYPE": 5,
+      "LAYER": 15,
+      "STYLE": 1,
+      "APPID": 14,
+      "DIMSTYLE": 2,
+      "BLOCK_RECORD": 14,
+      "BLOCK": 14,
+      "ENDBLK": 14,
+      "SOLID": 1,
+      "CIRCLE": 147,
+      "LWPOLYLINE": 285,
+      "LINE": 865,
+      "ARC": 305,
+      "INSERT": 38,
+      "ATTDEF": 4,
+      "DICTIONARY": 34,
+      "ACDBDICTIONARYWDFLT": 1,
+      "ACDBPLACEHOLDER": 1,
+      "MLINESTYLE": 1,
+      "LAYOUT": 3,
+      "DICTIONARYVAR": 11,
+      "TABLESTYLE": 1,
+      "MATERIAL": 3,
+      "VISUALSTYLE": 24,
+      "SCALE": 17,
+      "MLEADERSTYLE": 1,
+      "XRECORD": 8,
+      "ACDBSECTIONVIEWSTYLE": 1,
+      "ACDBDETAILVIEWSTYLE": 1,
+      "EOF": 1
+    }
+  },
+  "totalMs": 40
+}

@@ -1,0 +1,968 @@
+[
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AG.dwg",
+    "via": "dwg2dxf",
+    "plateAreaM2": 1551.5,
+    "walls": 35,
+    "keepouts": 0,
+    "entries": 5,
+    "generateMs": 79,
+    "generated": {
+      "capacity": 100,
+      "adjacency": 78.54492695824602,
+      "circulation": 83.21601858692382,
+      "density": 100,
+      "program_fit": 60,
+      "daylight": 35.95505617977528,
+      "entry_adjacency": 100,
+      "total": 86.9256190394741,
+      "placed_desks": 178
+    },
+    "componentCount": 211,
+    "desksPlaced": 178,
+    "roomsPlaced": null,
+    "circulation": {
+      "score": 87.44917822693907,
+      "minWidth": 0.3,
+      "connected": null
+    },
+    "layoutScore": 86.9256190394741,
+    "layoutRaw": {
+      "capacity": 100,
+      "adjacency": 78.54492695824602,
+      "circulation": 83.21601858692382,
+      "density": 100,
+      "program_fit": 60,
+      "daylight": 35.95505617977528,
+      "entry_adjacency": 100,
+      "total": 86.9256190394741,
+      "placed_desks": 178
+    }
+  },
+  {
+    "file": "Apartment-1.dwg",
+    "via": "dwgread-json",
+    "plateAreaM2": 169.7,
+    "walls": 102,
+    "keepouts": 0,
+    "entries": 33,
+    "generateMs": 6,
+    "generated": {
+      "capacity": 30,
+      "adjacency": 100,
+      "circulation": 66.30886751595133,
+      "density": 0,
+      "program_fit": 0,
+      "daylight": 100,
+      "entry_adjacency": 100,
+      "total": 47.564347399156524,
+      "placed_desks": 6
+    },
+    "componentCount": 6,
+    "desksPlaced": 6,
+    "roomsPlaced": null,
+    "circulation": {
+      "score": 71.00170671259896,
+      "minWidth": 0.3,
+      "connected": null
+    },
+    "layoutScore": 47.564347399156524,
+    "layoutRaw": {
+      "capacity": 30,
+      "adjacency": 100,
+      "circulation": 66.30886751595133,
+      "density": 0,
+      "program_fit": 0,
+      "daylight": 100,
+      "entry_adjacency": 100,
+      "total": 47.564347399156524,
+      "placed_desks": 6
+    }
+  },
+  {
+    "file": "Apartment-413201.dwg",
+    "via": "dwg2dxf",
+    "plateAreaM2": 113.3,
+    "walls": 68,
+    "keepouts": 0,
+    "entries": 16,
+    "generateMs": 3,
+    "generated": {
+      "capacity": 25,
+      "adjacency": 84.15841584158422,
+      "circulation": 72.33615932037634,
+      "density": 0,
+      "program_fit": 0,
+      "daylight": 100,
+      "entry_adjacency": 100,
+      "total": 44.7214358320091,
+      "placed_desks": 5
+    },
+    "componentCount": 5,
+    "desksPlaced": 5,
+    "roomsPlaced": null,
+    "circulation": {
+      "score": 77.77683978728295,
+      "minWidth": 0.3,
+      "connected": null
+    },
+    "layoutScore": 44.7214358320091,
+    "layoutRaw": {
+      "capacity": 25,
+      "adjacency": 84.15841584158422,
+      "circulation": 72.33615932037634,
+      "density": 0,
+      "program_fit": 0,
+      "daylight": 100,
+      "entry_adjacency": 100,
+      "total": 44.7214358320091,
+      "placed_desks": 5
+    }
+  },
+  {
+    "file": "Apto.1404202.dwg",
+    "via": "dwg2dxf",
+    "plateAreaM2": 93.5,
+    "walls": 16,
+    "keepouts": 0,
+    "entries": 6,
+    "generateMs": 1,
+    "generated": {
+      "capacity": 60,
+      "adjacency": 92.72727272727275,
+      "circulation": 73.42386916921771,
+      "density": 93.97321428571429,
+      "program_fit": 0,
+      "daylight": 100,
+      "entry_adjacency": 100,
+      "total": 72.24672057908485,
+      "placed_desks": 12
+    },
+    "componentCount": 12,
+    "desksPlaced": 12,
+    "roomsPlaced": null,
+    "circulation": {
+      "score": 80.25338762770535,
+      "minWidth": 0.8999999999999999,
+      "connected": null
+    },
+    "layoutScore": 72.24672057908485,
+    "layoutRaw": {
+      "capacity": 60,
+      "adjacency": 92.72727272727275,
+      "circulation": 73.42386916921771,
+      "density": 93.97321428571429,
+      "program_fit": 0,
+      "daylight": 100,
+      "entry_adjacency": 100,
+      "total": 72.24672057908485,
+      "placed_desks": 12
+    }
+  },
+  {
+    "file": "BUSNSS-Offcs_AN.dwg",
+    "via": "dwg2dxf",
+    "plateAreaM2": 6816.8,
+    "walls": 45,
+    "keepouts": 0,
+    "entries": 2,
+    "generateMs": 454,
+    "generated": {
+      "capacity": 100,
+      "adjacency": 86.90463997288265,
+      "circulation": 82.63706982061714,
+      "density": 100,
+      "program_fit": 100,
+      "daylight": 31.84796854521625,
+      "entry_adjacency": 100,
+      "total": 91.36049489749301,
+      "placed_desks": 763
+    },
+    "componentCount": 972,
+    "desksPlaced": 763,
+    "roomsPlaced": null,
+    "circulation": {
+      "score": 86.83372872086697,
+      "minWidth": 0.3,
+      "connected": null
+    },
+    "layoutScore": 91.36049489749301,
+    "layoutRaw": {
+      "capacity": 100,
+      "adjacency": 86.90463997288265,
+      "circulation": 82.63706982061714,
+      "density": 100,
+      "program_fit": 100,
+      "daylight": 31.84796854521625,
+      "entry_adjacency": 100,
+      "total": 91.36049489749301,
+      "placed_desks": 763
+    }
+  },
+  {
+    "file": "BUSNSS-Offcs-CwSp_AA.dwg",
+    "via": "dwg2dxf",
+    "plateAreaM2": 6.9,
+    "walls": 4,
+    "keepouts": 0,
+    "entries": 1,
+    "generateMs": 0,
+    "generated": {
+      "capacity": 0,
+      "adjacency": 100,
+      "circulation": 71.10016362062788,
+      "density": 0,
+      "program_fit": 0,
+      "daylight": 100,
+      "entry_adjacency": 100,
+      "total": 39.8125340876308,
+      "placed_desks": 0
+    },
+    "componentCount": 0,
+    "desksPlaced": 0,
+    "roomsPlaced": null,
+    "circulation": {
+      "score": 78.0786264637509,
+      "minWidth": 1.5,
+      "connected": null
+    },
+    "layoutScore": 39.8125340876308,
+    "layoutRaw": {
+      "capacity": 0,
+      "adjacency": 100,
+      "circulation": 71.10016362062788,
+      "density": 0,
+      "program_fit": 0,
+      "daylight": 100,
+      "entry_adjacency": 100,
+      "total": 39.8125340876308,
+      "placed_desks": 0
+    }
+  },
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AA.dwg",
+    "via": "dwg2dxf",
+    "plateAreaM2": 10094.4,
+    "walls": 11,
+    "keepouts": 12,
+    "entries": 10,
+    "generateMs": 889,
+    "generated": {
+      "capacity": 100,
+      "adjacency": 84.0077522528515,
+      "circulation": 86.01241387342824,
+      "density": 100,
+      "program_fit": 100,
+      "daylight": 6.255506607929515,
+      "entry_adjacency": 100,
+      "total": 90.51452437443652,
+      "placed_desks": 1135
+    },
+    "componentCount": 1395,
+    "desksPlaced": 1135,
+    "roomsPlaced": null,
+    "circulation": {
+      "score": 89.19263727627612,
+      "minWidth": 0.3,
+      "connected": null
+    },
+    "layoutScore": 90.51452437443652,
+    "layoutRaw": {
+      "capacity": 100,
+      "adjacency": 84.0077522528515,
+      "circulation": 86.01241387342824,
+      "density": 100,
+      "program_fit": 100,
+      "daylight": 6.255506607929515,
+      "entry_adjacency": 100,
+      "total": 90.51452437443652,
+      "placed_desks": 1135
+    }
+  },
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AB.dwg",
+    "via": "dwg2dxf",
+    "plateAreaM2": 10879.7,
+    "walls": 14,
+    "keepouts": 12,
+    "entries": 28,
+    "generateMs": 709,
+    "generated": {
+      "capacity": 100,
+      "adjacency": 79.1448566241029,
+      "circulation": 85.64027177143019,
+      "density": 100,
+      "program_fit": 97.27891156462584,
+      "daylight": 11.948676824378508,
+      "entry_adjacency": 100,
+      "total": 89.63697022113303,
+      "placed_desks": 1247
+    },
+    "componentCount": 1521,
+    "desksPlaced": 1247,
+    "roomsPlaced": null,
+    "circulation": {
+      "score": 88.77887390950036,
+      "minWidth": 0.3,
+      "connected": null
+    },
+    "layoutScore": 89.63697022113303,
+    "layoutRaw": {
+      "capacity": 100,
+      "adjacency": 79.1448566241029,
+      "circulation": 85.64027177143019,
+      "density": 100,
+      "program_fit": 97.27891156462584,
+      "daylight": 11.948676824378508,
+      "entry_adjacency": 100,
+      "total": 89.63697022113303,
+      "placed_desks": 1247
+    }
+  },
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AC.dwg",
+    "via": "dwgread-json",
+    "plateAreaM2": 1141,
+    "walls": 26,
+    "keepouts": 3,
+    "entries": 11,
+    "generateMs": 32,
+    "generated": {
+      "capacity": 100,
+      "adjacency": 58.518635466348506,
+      "circulation": 82.05654265442955,
+      "density": 100,
+      "program_fit": 54.166666666666664,
+      "daylight": 20.76923076923077,
+      "entry_adjacency": 100,
+      "total": 82.22749246833774,
+      "placed_desks": 130
+    },
+    "componentCount": 157,
+    "desksPlaced": 130,
+    "roomsPlaced": null,
+    "circulation": {
+      "score": 86.4544382123051,
+      "minWidth": 0.3,
+      "connected": null
+    },
+    "layoutScore": 82.22749246833774,
+    "layoutRaw": {
+      "capacity": 100,
+      "adjacency": 58.518635466348506,
+      "circulation": 82.05654265442955,
+      "density": 100,
+      "program_fit": 54.166666666666664,
+      "daylight": 20.76923076923077,
+      "entry_adjacency": 100,
+      "total": 82.22749246833774,
+      "placed_desks": 130
+    }
+  },
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AE.dwg",
+    "via": "dwg2dxf",
+    "plateAreaM2": 106.9,
+    "walls": 7,
+    "keepouts": 0,
+    "entries": 10,
+    "generateMs": 2,
+    "generated": {
+      "capacity": 60,
+      "adjacency": 100,
+      "circulation": 76.5078690547234,
+      "density": 75.1190476190476,
+      "program_fit": 16.666666666666668,
+      "daylight": 100,
+      "entry_adjacency": 100,
+      "total": 72.34786954513086,
+      "placed_desks": 12
+    },
+    "componentCount": 14,
+    "desksPlaced": 12,
+    "roomsPlaced": null,
+    "circulation": {
+      "score": 82.46638468655868,
+      "minWidth": 0.8999999999999999,
+      "connected": null
+    },
+    "layoutScore": 72.34786954513086,
+    "layoutRaw": {
+      "capacity": 60,
+      "adjacency": 100,
+      "circulation": 76.5078690547234,
+      "density": 75.1190476190476,
+      "program_fit": 16.666666666666668,
+      "daylight": 100,
+      "entry_adjacency": 100,
+      "total": 72.34786954513086,
+      "placed_desks": 12
+    }
+  },
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AF.dwg",
+    "via": "dwgread-json",
+    "plateAreaM2": 28.9,
+    "walls": 8,
+    "keepouts": 0,
+    "entries": 3,
+    "generateMs": 0,
+    "generated": {
+      "capacity": 5,
+      "adjacency": 100,
+      "circulation": 80.51625160995704,
+      "density": 0,
+      "program_fit": 0,
+      "daylight": 100,
+      "entry_adjacency": 100,
+      "total": 43.232552418741044,
+      "placed_desks": 1
+    },
+    "componentCount": 1,
+    "desksPlaced": 1,
+    "roomsPlaced": null,
+    "circulation": {
+      "score": 85.83466745362519,
+      "minWidth": 1.2,
+      "connected": null
+    },
+    "layoutScore": 43.232552418741044,
+    "layoutRaw": {
+      "capacity": 5,
+      "adjacency": 100,
+      "circulation": 80.51625160995704,
+      "density": 0,
+      "program_fit": 0,
+      "daylight": 100,
+      "entry_adjacency": 100,
+      "total": 43.232552418741044,
+      "placed_desks": 1
+    }
+  },
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AG (1).dwg",
+    "via": "dwg2dxf",
+    "plateAreaM2": 1551.5,
+    "walls": 35,
+    "keepouts": 0,
+    "entries": 5,
+    "generateMs": 57,
+    "generated": {
+      "capacity": 100,
+      "adjacency": 78.54492695824602,
+      "circulation": 83.21601858692382,
+      "density": 100,
+      "program_fit": 60,
+      "daylight": 35.95505617977528,
+      "entry_adjacency": 100,
+      "total": 86.9256190394741,
+      "placed_desks": 178
+    },
+    "componentCount": 211,
+    "desksPlaced": 178,
+    "roomsPlaced": null,
+    "circulation": {
+      "score": 87.44917822693907,
+      "minWidth": 0.3,
+      "connected": null
+    },
+    "layoutScore": 86.9256190394741,
+    "layoutRaw": {
+      "capacity": 100,
+      "adjacency": 78.54492695824602,
+      "circulation": 83.21601858692382,
+      "density": 100,
+      "program_fit": 60,
+      "daylight": 35.95505617977528,
+      "entry_adjacency": 100,
+      "total": 86.9256190394741,
+      "placed_desks": 178
+    }
+  },
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AH.dwg",
+    "via": "dwg2dxf",
+    "plateAreaM2": 885.4,
+    "walls": 11,
+    "keepouts": 0,
+    "entries": 5,
+    "generateMs": 22,
+    "generated": {
+      "capacity": 100,
+      "adjacency": 88.1742790400198,
+      "circulation": 80.10000774724031,
+      "density": 100,
+      "program_fit": 75,
+      "daylight": 33.333333333333336,
+      "entry_adjacency": 100,
+      "total": 89.02210367623393,
+      "placed_desks": 99
+    },
+    "componentCount": 131,
+    "desksPlaced": 99,
+    "roomsPlaced": null,
+    "circulation": {
+      "score": 84.70055377785796,
+      "minWidth": 0.3,
+      "connected": null
+    },
+    "layoutScore": 89.02210367623393,
+    "layoutRaw": {
+      "capacity": 100,
+      "adjacency": 88.1742790400198,
+      "circulation": 80.10000774724031,
+      "density": 100,
+      "program_fit": 75,
+      "daylight": 33.333333333333336,
+      "entry_adjacency": 100,
+      "total": 89.02210367623393,
+      "placed_desks": 99
+    }
+  },
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AI.dwg",
+    "via": "dwg2dxf",
+    "plateAreaM2": 5252.6,
+    "walls": 12,
+    "keepouts": 12,
+    "entries": 23,
+    "generateMs": 119,
+    "generated": {
+      "capacity": 100,
+      "adjacency": 76.31752172787907,
+      "circulation": 88.25273341776513,
+      "density": 100,
+      "program_fit": 18.91891891891892,
+      "daylight": 11.36,
+      "entry_adjacency": 100,
+      "total": 83.15548299325746,
+      "placed_desks": 625
+    },
+    "componentCount": 658,
+    "desksPlaced": 625,
+    "roomsPlaced": null,
+    "circulation": {
+      "score": 90.93328683028429,
+      "minWidth": 0.3,
+      "connected": null
+    },
+    "layoutScore": 83.15548299325746,
+    "layoutRaw": {
+      "capacity": 100,
+      "adjacency": 76.31752172787907,
+      "circulation": 88.25273341776513,
+      "density": 100,
+      "program_fit": 18.91891891891892,
+      "daylight": 11.36,
+      "entry_adjacency": 100,
+      "total": 83.15548299325746,
+      "placed_desks": 625
+    }
+  },
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AL.dwg",
+    "via": "dwg2dxf",
+    "plateAreaM2": 21.5,
+    "walls": 32,
+    "keepouts": 0,
+    "entries": 1,
+    "generateMs": 0,
+    "generated": {
+      "capacity": 0,
+      "adjacency": 100,
+      "circulation": 83.43373612403866,
+      "density": 0,
+      "program_fit": 0,
+      "daylight": 100,
+      "entry_adjacency": 100,
+      "total": 42.38202835917471,
+      "placed_desks": 0
+    },
+    "componentCount": 0,
+    "desksPlaced": 0,
+    "roomsPlaced": null,
+    "circulation": {
+      "score": 87.69291911850695,
+      "minWidth": 1.7999999999999998,
+      "connected": null
+    },
+    "layoutScore": 42.38202835917471,
+    "layoutRaw": {
+      "capacity": 0,
+      "adjacency": 100,
+      "circulation": 83.43373612403866,
+      "density": 0,
+      "program_fit": 0,
+      "daylight": 100,
+      "entry_adjacency": 100,
+      "total": 42.38202835917471,
+      "placed_desks": 0
+    }
+  },
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AM.dwg",
+    "via": "dwg2dxf",
+    "plateAreaM2": 20.1,
+    "walls": 8,
+    "keepouts": 0,
+    "entries": 5,
+    "generateMs": 1,
+    "generated": {
+      "capacity": 0,
+      "adjacency": 100,
+      "circulation": 80.44096804215076,
+      "density": 0,
+      "program_fit": 0,
+      "daylight": 100,
+      "entry_adjacency": 100,
+      "total": 41.7585350087814,
+      "placed_desks": 0
+    },
+    "componentCount": 0,
+    "desksPlaced": 0,
+    "roomsPlaced": null,
+    "circulation": {
+      "score": 85.58155765255277,
+      "minWidth": 2.1,
+      "connected": null
+    },
+    "layoutScore": 41.7585350087814,
+    "layoutRaw": {
+      "capacity": 0,
+      "adjacency": 100,
+      "circulation": 80.44096804215076,
+      "density": 0,
+      "program_fit": 0,
+      "daylight": 100,
+      "entry_adjacency": 100,
+      "total": 41.7585350087814,
+      "placed_desks": 0
+    }
+  },
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AN.dwg",
+    "via": "dwg2dxf",
+    "plateAreaM2": 390.1,
+    "walls": 20,
+    "keepouts": 0,
+    "entries": 23,
+    "generateMs": 6,
+    "generated": {
+      "capacity": 100,
+      "adjacency": 75.93749999999999,
+      "circulation": 81.06796211119998,
+      "density": 100,
+      "program_fit": 30,
+      "daylight": 65.21739130434783,
+      "entry_adjacency": 100,
+      "total": 84.76280007751447,
+      "placed_desks": 46
+    },
+    "componentCount": 49,
+    "desksPlaced": 46,
+    "roomsPlaced": null,
+    "circulation": {
+      "score": 86.08428626484816,
+      "minWidth": 0.8999999999999999,
+      "connected": null
+    },
+    "layoutScore": 84.76280007751447,
+    "layoutRaw": {
+      "capacity": 100,
+      "adjacency": 75.93749999999999,
+      "circulation": 81.06796211119998,
+      "density": 100,
+      "program_fit": 30,
+      "daylight": 65.21739130434783,
+      "entry_adjacency": 100,
+      "total": 84.76280007751447,
+      "placed_desks": 46
+    }
+  },
+  {
+    "file": "call-center-offices.dwg",
+    "via": "dwg2dxf",
+    "plateAreaM2": 62.9,
+    "walls": 11,
+    "keepouts": 0,
+    "entries": 1,
+    "generateMs": 1,
+    "generated": {
+      "capacity": 10,
+      "adjacency": 68.00000000000004,
+      "circulation": 76.57433673441973,
+      "density": 0,
+      "program_fit": 0,
+      "daylight": 100,
+      "entry_adjacency": 100,
+      "total": 38.53632015300411,
+      "placed_desks": 2
+    },
+    "componentCount": 2,
+    "desksPlaced": 2,
+    "roomsPlaced": null,
+    "circulation": {
+      "score": 82.42643793736451,
+      "minWidth": 0.6,
+      "connected": null
+    },
+    "layoutScore": 38.53632015300411,
+    "layoutRaw": {
+      "capacity": 10,
+      "adjacency": 68.00000000000004,
+      "circulation": 76.57433673441973,
+      "density": 0,
+      "program_fit": 0,
+      "daylight": 100,
+      "entry_adjacency": 100,
+      "total": 38.53632015300411,
+      "placed_desks": 2
+    }
+  },
+  {
+    "file": "fast-food-Restaurant.dwg",
+    "via": "dwg2dxf",
+    "plateAreaM2": 457,
+    "walls": 23,
+    "keepouts": 0,
+    "entries": 9,
+    "generateMs": 11,
+    "generated": {
+      "capacity": 100,
+      "adjacency": 78.59395351755762,
+      "circulation": 77.1975093478998,
+      "density": 100,
+      "program_fit": 100,
+      "daylight": 72.5,
+      "entry_adjacency": 100,
+      "total": 90.53597336707205,
+      "placed_desks": 40
+    },
+    "componentCount": 68,
+    "desksPlaced": 40,
+    "roomsPlaced": null,
+    "circulation": {
+      "score": 82.67110200799729,
+      "minWidth": 0.3,
+      "connected": null
+    },
+    "layoutScore": 90.53597336707205,
+    "layoutRaw": {
+      "capacity": 100,
+      "adjacency": 78.59395351755762,
+      "circulation": 77.1975093478998,
+      "density": 100,
+      "program_fit": 100,
+      "daylight": 72.5,
+      "entry_adjacency": 100,
+      "total": 90.53597336707205,
+      "placed_desks": 40
+    }
+  },
+  {
+    "file": "Small-apto..dwg",
+    "via": "dwg2dxf",
+    "plateAreaM2": 195.1,
+    "walls": 11,
+    "keepouts": 0,
+    "entries": 1,
+    "generateMs": 2,
+    "generated": {
+      "capacity": 100,
+      "adjacency": 100,
+      "circulation": 81.2944945020327,
+      "density": 100,
+      "program_fit": 0,
+      "daylight": 100,
+      "entry_adjacency": 100,
+      "total": 87.76968635459014,
+      "placed_desks": 23
+    },
+    "componentCount": 23,
+    "desksPlaced": 23,
+    "roomsPlaced": null,
+    "circulation": {
+      "score": 86.52756619317572,
+      "minWidth": 0.8999999999999999,
+      "connected": null
+    },
+    "layoutScore": 87.76968635459014,
+    "layoutRaw": {
+      "capacity": 100,
+      "adjacency": 100,
+      "circulation": 81.2944945020327,
+      "density": 100,
+      "program_fit": 0,
+      "daylight": 100,
+      "entry_adjacency": 100,
+      "total": 87.76968635459014,
+      "placed_desks": 23
+    }
+  },
+  {
+    "file": "Two-story-house-410202.dwg",
+    "via": "dwg2dxf",
+    "plateAreaM2": 178,
+    "walls": 10,
+    "keepouts": 0,
+    "entries": 2,
+    "generateMs": 3,
+    "generated": {
+      "capacity": 80,
+      "adjacency": 100,
+      "circulation": 77.00084940660726,
+      "density": 100,
+      "program_fit": 28.571428571428573,
+      "daylight": 100,
+      "entry_adjacency": 100,
+      "total": 83.42279600732888,
+      "placed_desks": 16
+    },
+    "componentCount": 20,
+    "desksPlaced": 16,
+    "roomsPlaced": null,
+    "circulation": {
+      "score": 83.10919502128328,
+      "minWidth": 0.8999999999999999,
+      "connected": null
+    },
+    "layoutScore": 83.42279600732888,
+    "layoutRaw": {
+      "capacity": 80,
+      "adjacency": 100,
+      "circulation": 77.00084940660726,
+      "density": 100,
+      "program_fit": 28.571428571428573,
+      "daylight": 100,
+      "entry_adjacency": 100,
+      "total": 83.42279600732888,
+      "placed_desks": 16
+    }
+  },
+  {
+    "file": "Hospital-equipment.zip/MOBILIARIO HOSPITAL.dwg",
+    "via": "dwg2dxf",
+    "plateAreaM2": 575.4,
+    "walls": 34,
+    "keepouts": 0,
+    "entries": 10,
+    "generateMs": 17,
+    "generated": {
+      "capacity": 100,
+      "adjacency": 78.9625,
+      "circulation": 77.04614129730997,
+      "density": 100,
+      "program_fit": 58.8235294117647,
+      "daylight": 79.36507936507937,
+      "entry_adjacency": 100,
+      "total": 87.42053519479828,
+      "placed_desks": 63
+    },
+    "componentCount": 82,
+    "desksPlaced": 63,
+    "roomsPlaced": null,
+    "circulation": {
+      "score": 82.46709836475723,
+      "minWidth": 0.3,
+      "connected": null
+    },
+    "layoutScore": 87.42053519479828,
+    "layoutRaw": {
+      "capacity": 100,
+      "adjacency": 78.9625,
+      "circulation": 77.04614129730997,
+      "density": 100,
+      "program_fit": 58.8235294117647,
+      "daylight": 79.36507936507937,
+      "entry_adjacency": 100,
+      "total": 87.42053519479828,
+      "placed_desks": 63
+    }
+  },
+  {
+    "file": "Office-furniture-blocks.zip/cad33.dwg",
+    "via": "dwg2dxf",
+    "stage": "plate",
+    "error": "no plate"
+  },
+  {
+    "file": "Various-furniture-blocks.zip/muebles varios.dwg",
+    "via": "dwg2dxf",
+    "plateAreaM2": 1253,
+    "walls": 4,
+    "keepouts": 0,
+    "entries": 1,
+    "generateMs": 23,
+    "generated": {
+      "capacity": 100,
+      "adjacency": 84.29313210118443,
+      "circulation": 82.54308622043105,
+      "density": 100,
+      "program_fit": 100,
+      "daylight": 46.017699115044245,
+      "entry_adjacency": 100,
+      "total": 91.49606910924737,
+      "placed_desks": 113
+    },
+    "componentCount": 167,
+    "desksPlaced": 113,
+    "roomsPlaced": null,
+    "circulation": {
+      "score": 86.30583215695621,
+      "minWidth": 0.3,
+      "connected": null
+    },
+    "layoutScore": 91.49606910924737,
+    "layoutRaw": {
+      "capacity": 100,
+      "adjacency": 84.29313210118443,
+      "circulation": 82.54308622043105,
+      "density": 100,
+      "program_fit": 100,
+      "daylight": 46.017699115044245,
+      "entry_adjacency": 100,
+      "total": 91.49606910924737,
+      "placed_desks": 113
+    }
+  },
+  {
+    "file": "samples/furniture-plan.dwg (repo fixture — control)",
+    "via": "dwg2dxf",
+    "plateAreaM2": 930.1,
+    "walls": 34,
+    "keepouts": 3,
+    "entries": 1,
+    "generateMs": 35,
+    "generated": {
+      "capacity": 100,
+      "adjacency": 84.89722199681484,
+      "circulation": 77.18522947258381,
+      "density": 100,
+      "program_fit": 75,
+      "daylight": 55.76923076923077,
+      "entry_adjacency": 100,
+      "total": 88.8035110883087,
+      "placed_desks": 104
+    },
+    "componentCount": 139,
+    "desksPlaced": 104,
+    "roomsPlaced": null,
+    "circulation": {
+      "score": 82.15503525443992,
+      "minWidth": 0.3,
+      "connected": null
+    },
+    "layoutScore": 88.8035110883087,
+    "layoutRaw": {
+      "capacity": 100,
+      "adjacency": 84.89722199681484,
+      "circulation": 77.18522947258381,
+      "density": 100,
+      "program_fit": 75,
+      "daylight": 55.76923076923077,
+      "entry_adjacency": 100,
+      "total": 88.8035110883087,
+      "placed_desks": 104
+    }
+  }
+]

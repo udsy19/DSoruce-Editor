@@ -1,0 +1,377 @@
+[
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AG.dwg",
+    "units": "m",
+    "unitsSource": "door-anchor",
+    "spanM": [
+      104.60667254567718,
+      71.75594836735448
+    ],
+    "doorSamples": 9,
+    "doorFrac": 0.4444444444444444,
+    "wallSamples": 191,
+    "wallFrac": 0.5916230366492147,
+    "plateM2": 1551.4712784900405,
+    "verdict": "PHYSICAL"
+  },
+  {
+    "file": "Apartment-1.dwg",
+    "units": "m",
+    "unitsSource": "door-anchor",
+    "spanM": [
+      37.74901866237633,
+      21.16130352005439
+    ],
+    "doorSamples": 61,
+    "doorFrac": 0.21311475409836064,
+    "wallSamples": 272,
+    "wallFrac": 0.7132352941176471,
+    "plateM2": 169.65625,
+    "verdict": "PHYSICAL"
+  },
+  {
+    "file": "Apartment-413201.dwg",
+    "units": "m",
+    "unitsSource": "door-anchor",
+    "spanM": [
+      27.839999999997872,
+      14.039999999999964
+    ],
+    "doorSamples": 16,
+    "doorFrac": 1,
+    "wallSamples": 150,
+    "wallFrac": 0.7266666666666667,
+    "plateM2": 113.28125000046566,
+    "verdict": "PHYSICAL"
+  },
+  {
+    "file": "Apto.1404202.dwg",
+    "units": "m",
+    "unitsSource": "door-anchor",
+    "spanM": [
+      30.199999999954343,
+      12.500000000005912
+    ],
+    "doorSamples": 22,
+    "doorFrac": 1,
+    "wallSamples": 158,
+    "wallFrac": 0.8354430379746836,
+    "plateM2": 93.46875,
+    "verdict": "PHYSICAL"
+  },
+  {
+    "file": "BUSNSS-Offcs_AN.dwg",
+    "units": "m",
+    "unitsSource": "wall-anchor",
+    "spanM": [
+      646.728855948319,
+      256.97766148153187
+    ],
+    "doorSamples": 0,
+    "doorFrac": null,
+    "wallSamples": 14,
+    "wallFrac": 0.7857142857142857,
+    "plateM2": 6816.765973941634,
+    "verdict": "PHYSICAL"
+  },
+  {
+    "file": "BUSNSS-Offcs-CwSp_AA.dwg",
+    "units": "in",
+    "unitsSource": "header",
+    "spanM": [
+      4.935914587802245,
+      1.8028819304283523
+    ],
+    "doorSamples": 0,
+    "doorFrac": null,
+    "wallSamples": 845,
+    "wallFrac": 0.7041420118343196,
+    "plateM2": 6.9375,
+    "verdict": "PHYSICAL"
+  },
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AA.dwg",
+    "units": "m",
+    "unitsSource": "door-anchor",
+    "spanM": [
+      125.36684729747218,
+      114.44185847701469
+    ],
+    "doorSamples": 50,
+    "doorFrac": 1,
+    "wallSamples": 491,
+    "wallFrac": 0.25865580448065173,
+    "plateM2": 10094.402673551645,
+    "verdict": "PHYSICAL"
+  },
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AB.dwg",
+    "units": "m",
+    "unitsSource": "door-anchor",
+    "spanM": [
+      134.50164088767312,
+      99.75924051142837
+    ],
+    "doorSamples": 198,
+    "doorFrac": 0.20202020202020202,
+    "wallSamples": 338,
+    "wallFrac": 0.3994082840236686,
+    "plateM2": 10879.698619113367,
+    "verdict": "NOT PHYSICAL"
+  },
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AC.dwg",
+    "units": "ft",
+    "unitsSource": "wall-anchor",
+    "spanM": [
+      68.92239019799425,
+      37.29741306568078
+    ],
+    "doorSamples": 7,
+    "doorFrac": 0,
+    "wallSamples": 234,
+    "wallFrac": 0.5769230769230769,
+    "plateM2": 1140.963111676232,
+    "verdict": "PHYSICAL"
+  },
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AE.dwg",
+    "units": "ft",
+    "unitsSource": "wall-anchor",
+    "spanM": [
+      15.240000000000009,
+      24.709017560856957
+    ],
+    "doorSamples": 0,
+    "doorFrac": null,
+    "wallSamples": 140,
+    "wallFrac": 0.4357142857142857,
+    "plateM2": 106.93750000000003,
+    "verdict": "NOT PHYSICAL"
+  },
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AF.dwg",
+    "units": "dm",
+    "unitsSource": "wall-anchor",
+    "spanM": [
+      14.052347973791383,
+      9.32525258545397
+    ],
+    "doorSamples": 686,
+    "doorFrac": 0,
+    "wallSamples": 437,
+    "wallFrac": 0.5743707093821511,
+    "plateM2": 28.87500000000001,
+    "verdict": "PHYSICAL"
+  },
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AG (1).dwg",
+    "units": "m",
+    "unitsSource": "door-anchor",
+    "spanM": [
+      104.60667254567718,
+      71.75594836735448
+    ],
+    "doorSamples": 9,
+    "doorFrac": 0.4444444444444444,
+    "wallSamples": 191,
+    "wallFrac": 0.5916230366492147,
+    "plateM2": 1551.4712784900405,
+    "verdict": "PHYSICAL"
+  },
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AH.dwg",
+    "units": "ft",
+    "unitsSource": "door-anchor",
+    "spanM": [
+      51.804021855775616,
+      26.58564689472232
+    ],
+    "doorSamples": 15,
+    "doorFrac": 0.2,
+    "wallSamples": 383,
+    "wallFrac": 0.38642297650130547,
+    "plateM2": 885.3693422750596,
+    "verdict": "NOT PHYSICAL"
+  },
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AI.dwg",
+    "units": "m",
+    "unitsSource": "door-anchor",
+    "spanM": [
+      98.66739073564857,
+      65.36166737998032
+    ],
+    "doorSamples": 111,
+    "doorFrac": 0.44144144144144143,
+    "wallSamples": 318,
+    "wallFrac": 0.44339622641509435,
+    "plateM2": 5252.647870383195,
+    "verdict": "NOT PHYSICAL"
+  },
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AL.dwg",
+    "units": "in",
+    "unitsSource": "header",
+    "spanM": [
+      53.93920248326121,
+      6.459710374091076
+    ],
+    "doorSamples": 0,
+    "doorFrac": null,
+    "wallSamples": 0,
+    "wallFrac": null,
+    "plateM2": 21.481912772760783,
+    "verdict": "NO EVIDENCE"
+  },
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AM.dwg",
+    "units": "dm",
+    "unitsSource": "wall-anchor",
+    "spanM": [
+      18.69189871895303,
+      8.060784330905111
+    ],
+    "doorSamples": 0,
+    "doorFrac": null,
+    "wallSamples": 446,
+    "wallFrac": 0.5246636771300448,
+    "plateM2": 20.148018669330582,
+    "verdict": "PHYSICAL"
+  },
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AN.dwg",
+    "units": "m",
+    "unitsSource": "door-anchor",
+    "spanM": [
+      28.40000000000009,
+      62.64792290018451
+    ],
+    "doorSamples": 119,
+    "doorFrac": 0.18487394957983194,
+    "wallSamples": 119,
+    "wallFrac": 0.8907563025210085,
+    "plateM2": 390.1250000000009,
+    "verdict": "PHYSICAL"
+  },
+  {
+    "file": "call-center-offices.dwg",
+    "units": "ft",
+    "unitsSource": "wall-anchor",
+    "spanM": [
+      33.85410051300872,
+      3.261360000000001
+    ],
+    "doorSamples": 0,
+    "doorFrac": null,
+    "wallSamples": 19,
+    "wallFrac": 1,
+    "plateM2": 62.922827433846436,
+    "verdict": "PHYSICAL"
+  },
+  {
+    "file": "fast-food-Restaurant.dwg",
+    "units": "m",
+    "unitsSource": "header",
+    "spanM": [
+      49.853477554615154,
+      21.690000000000083
+    ],
+    "doorSamples": 6,
+    "doorFrac": 1,
+    "wallSamples": 149,
+    "wallFrac": 0.8389261744966443,
+    "plateM2": 457.03125,
+    "verdict": "PHYSICAL"
+  },
+  {
+    "file": "Small-apto..dwg",
+    "units": "m",
+    "unitsSource": "wall-anchor",
+    "spanM": [
+      18.059898987355155,
+      18.059898987412907
+    ],
+    "doorSamples": 0,
+    "doorFrac": null,
+    "wallSamples": 105,
+    "wallFrac": 0.6571428571428571,
+    "plateM2": 195.125,
+    "verdict": "PHYSICAL"
+  },
+  {
+    "file": "Two-story-house-410202.dwg",
+    "units": "m",
+    "unitsSource": "wall-anchor",
+    "spanM": [
+      28.6553038479546,
+      15.413258342772167
+    ],
+    "doorSamples": 0,
+    "doorFrac": null,
+    "wallSamples": 84,
+    "wallFrac": 0.5714285714285714,
+    "plateM2": 178.03125,
+    "verdict": "PHYSICAL"
+  },
+  {
+    "file": "Hospital-equipment.zip/MOBILIARIO HOSPITAL.dwg",
+    "units": "m",
+    "unitsSource": "header",
+    "spanM": [
+      45.614400699409316,
+      28.133429381886785
+    ],
+    "doorSamples": 0,
+    "doorFrac": null,
+    "wallSamples": 165,
+    "wallFrac": 0.593939393939394,
+    "plateM2": 575.3749999999982,
+    "verdict": "PHYSICAL"
+  },
+  {
+    "file": "Office-furniture-blocks.zip/cad33.dwg",
+    "units": "mm",
+    "unitsSource": "extent-anchor",
+    "spanM": [
+      3.829556972794113,
+      0.01715287475761862
+    ],
+    "doorSamples": 0,
+    "doorFrac": null,
+    "wallSamples": 0,
+    "wallFrac": null,
+    "plateM2": null,
+    "verdict": "NO EVIDENCE"
+  },
+  {
+    "file": "Various-furniture-blocks.zip/muebles varios.dwg",
+    "units": "m",
+    "unitsSource": "wall-anchor",
+    "spanM": [
+      68.00704775472073,
+      28.286315714266806
+    ],
+    "doorSamples": 0,
+    "doorFrac": null,
+    "wallSamples": 100,
+    "wallFrac": 0.16,
+    "plateM2": 1253.0000000000073,
+    "verdict": "NOT PHYSICAL"
+  },
+  {
+    "file": "samples/furniture-plan.dwg (repo fixture — control)",
+    "units": "in",
+    "unitsSource": "header",
+    "spanM": [
+      37.971038107043114,
+      42.417072273113945
+    ],
+    "doorSamples": 21,
+    "doorFrac": 1,
+    "wallSamples": 592,
+    "wallFrac": 0.5101351351351351,
+    "plateM2": 930.0625000001164,
+    "verdict": "PHYSICAL"
+  }
+]

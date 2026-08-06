@@ -1,0 +1,712 @@
+[
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AG.dwg",
+    "insunits": 1,
+    "insunitsLabel": "in",
+    "importerUnit": "in",
+    "headerExtents": {
+      "w": 19.17,
+      "h": 23.8
+    },
+    "geomExtentsSrcUnits": {
+      "w": 4190.94,
+      "h": 9275.07,
+      "verts": 26391
+    },
+    "dimMedian": null,
+    "candidates": {
+      "in": 235.59,
+      "ft": 2827.04,
+      "mm": 9.28,
+      "cm": 92.75,
+      "m": 9275.07,
+      "dm": 927.51,
+      "yd": 8481.12
+    },
+    "plausibleUnits": [
+      "in",
+      "mm",
+      "cm"
+    ],
+    "importerLongSideM": 235.59,
+    "importerPlausible": true
+  },
+  {
+    "file": "Apartment-1.dwg",
+    "insunits": 4,
+    "insunitsLabel": "mm",
+    "importerUnit": "mm",
+    "headerExtents": {
+      "w": 40.32,
+      "h": 25.78
+    },
+    "geomExtentsSrcUnits": null,
+    "dimMedian": null
+  },
+  {
+    "file": "Apartment-413201.dwg",
+    "insunits": 4,
+    "insunitsLabel": "mm",
+    "importerUnit": "mm",
+    "headerExtents": {
+      "w": 27.98,
+      "h": 14.1
+    },
+    "geomExtentsSrcUnits": {
+      "w": 2958,
+      "h": 1905.27,
+      "verts": 2298
+    },
+    "dimMedian": null,
+    "candidates": {
+      "in": 75.13,
+      "ft": 901.6,
+      "mm": 2.96,
+      "cm": 29.58,
+      "m": 2958,
+      "dm": 295.8,
+      "yd": 2704.79
+    },
+    "plausibleUnits": [
+      "in",
+      "cm",
+      "dm"
+    ],
+    "importerLongSideM": 2.96,
+    "importerPlausible": false
+  },
+  {
+    "file": "Apto.1404202.dwg",
+    "insunits": 4,
+    "insunitsLabel": "mm",
+    "importerUnit": "mm",
+    "headerExtents": {
+      "w": 30.43,
+      "h": 12.69
+    },
+    "geomExtentsSrcUnits": {
+      "w": 2865.44,
+      "h": 2156.6,
+      "verts": 335
+    },
+    "dimMedian": null,
+    "candidates": {
+      "in": 72.78,
+      "ft": 873.38,
+      "mm": 2.87,
+      "cm": 28.65,
+      "m": 2865.44,
+      "dm": 286.54,
+      "yd": 2620.15
+    },
+    "plausibleUnits": [
+      "in",
+      "cm",
+      "dm"
+    ],
+    "importerLongSideM": 2.87,
+    "importerPlausible": false
+  },
+  {
+    "file": "BUSNSS-Offcs_AN.dwg",
+    "insunits": 1,
+    "insunitsLabel": "in",
+    "importerUnit": "in",
+    "headerExtents": {
+      "w": 466.54,
+      "h": 47.01
+    },
+    "geomExtentsSrcUnits": {
+      "w": 1012.13,
+      "h": 347.17,
+      "verts": 25615
+    },
+    "dimMedian": null,
+    "candidates": {
+      "in": 25.71,
+      "ft": 308.5,
+      "mm": 1.01,
+      "cm": 10.12,
+      "m": 1012.13,
+      "dm": 101.21,
+      "yd": 925.49
+    },
+    "plausibleUnits": [
+      "in",
+      "ft",
+      "cm",
+      "dm"
+    ],
+    "importerLongSideM": 25.71,
+    "importerPlausible": true
+  },
+  {
+    "file": "BUSNSS-Offcs-CwSp_AA.dwg",
+    "insunits": 1,
+    "insunitsLabel": "in",
+    "importerUnit": "in",
+    "headerExtents": {
+      "w": 197.89,
+      "h": 72.71
+    },
+    "geomExtentsSrcUnits": {
+      "w": 52913.33,
+      "h": 1072.95,
+      "verts": 8663
+    },
+    "dimMedian": null,
+    "candidates": {
+      "in": 1344,
+      "ft": 16127.98,
+      "mm": 52.91,
+      "cm": 529.13,
+      "m": 52913.33,
+      "dm": 5291.33,
+      "yd": 48383.95
+    },
+    "plausibleUnits": [
+      "mm"
+    ],
+    "importerLongSideM": 1344,
+    "importerPlausible": false
+  },
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AA.dwg",
+    "insunits": 1,
+    "insunitsLabel": "in",
+    "importerUnit": "in",
+    "headerExtents": {
+      "w": 125.38,
+      "h": 115.49
+    },
+    "geomExtentsSrcUnits": {
+      "w": 1164.09,
+      "h": 1274.73,
+      "verts": 3421
+    },
+    "dimMedian": null,
+    "candidates": {
+      "in": 32.38,
+      "ft": 388.54,
+      "mm": 1.27,
+      "cm": 12.75,
+      "m": 1274.73,
+      "dm": 127.47,
+      "yd": 1165.62
+    },
+    "plausibleUnits": [
+      "in",
+      "ft",
+      "cm",
+      "dm"
+    ],
+    "importerLongSideM": 32.38,
+    "importerPlausible": true
+  },
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AB.dwg",
+    "insunits": 1,
+    "insunitsLabel": "in",
+    "importerUnit": "in",
+    "headerExtents": {
+      "w": 134.51,
+      "h": 96.37
+    },
+    "geomExtentsSrcUnits": {
+      "w": 1031.89,
+      "h": 897.59,
+      "verts": 59942
+    },
+    "dimMedian": null,
+    "candidates": {
+      "in": 26.21,
+      "ft": 314.52,
+      "mm": 1.03,
+      "cm": 10.32,
+      "m": 1031.89,
+      "dm": 103.19,
+      "yd": 943.56
+    },
+    "plausibleUnits": [
+      "in",
+      "ft",
+      "cm",
+      "dm"
+    ],
+    "importerLongSideM": 26.21,
+    "importerPlausible": true
+  },
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AC.dwg",
+    "error": "convert failed: Command failed: dwg2dxf -o /var/folders/m8/w_4jf2z54834ck071hw71p280000gn/T/cadval-u-51280-8.dxf /Users/udsy/Downloads/B"
+  },
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AE.dwg",
+    "insunits": 1,
+    "insunitsLabel": "in",
+    "importerUnit": "in",
+    "headerExtents": {
+      "w": 50,
+      "h": 30.79
+    },
+    "geomExtentsSrcUnits": {
+      "w": 393.91,
+      "h": 352.65,
+      "verts": 6019
+    },
+    "dimMedian": null,
+    "candidates": {
+      "in": 10.01,
+      "ft": 120.06,
+      "mm": 0.39,
+      "cm": 3.94,
+      "m": 393.91,
+      "dm": 39.39,
+      "yd": 360.19
+    },
+    "plausibleUnits": [
+      "in",
+      "ft",
+      "cm",
+      "m",
+      "dm",
+      "yd"
+    ],
+    "importerLongSideM": 10.01,
+    "importerPlausible": true
+  },
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AF.dwg",
+    "error": "convert failed: Command failed: dwg2dxf -o /var/folders/m8/w_4jf2z54834ck071hw71p280000gn/T/cadval-u-51280-10.dxf /Users/udsy/Downloads/"
+  },
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AG (1).dwg",
+    "insunits": 1,
+    "insunitsLabel": "in",
+    "importerUnit": "in",
+    "headerExtents": {
+      "w": 19.17,
+      "h": 23.8
+    },
+    "geomExtentsSrcUnits": {
+      "w": 4190.94,
+      "h": 9275.07,
+      "verts": 26391
+    },
+    "dimMedian": null,
+    "candidates": {
+      "in": 235.59,
+      "ft": 2827.04,
+      "mm": 9.28,
+      "cm": 92.75,
+      "m": 9275.07,
+      "dm": 927.51,
+      "yd": 8481.12
+    },
+    "plausibleUnits": [
+      "in",
+      "mm",
+      "cm"
+    ],
+    "importerLongSideM": 235.59,
+    "importerPlausible": true
+  },
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AH.dwg",
+    "insunits": 1,
+    "insunitsLabel": "in",
+    "importerUnit": "in",
+    "headerExtents": {
+      "w": 69.83,
+      "h": 87.22
+    },
+    "geomExtentsSrcUnits": {
+      "w": 3754.05,
+      "h": 2710.76,
+      "verts": 7442
+    },
+    "dimMedian": null,
+    "candidates": {
+      "in": 95.35,
+      "ft": 1144.23,
+      "mm": 3.75,
+      "cm": 37.54,
+      "m": 3754.05,
+      "dm": 375.41,
+      "yd": 3432.7
+    },
+    "plausibleUnits": [
+      "in",
+      "mm",
+      "cm",
+      "dm"
+    ],
+    "importerLongSideM": 95.35,
+    "importerPlausible": true
+  },
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AI.dwg",
+    "insunits": 1,
+    "insunitsLabel": "in",
+    "importerUnit": "in",
+    "headerExtents": {
+      "w": 98.67,
+      "h": 60.89
+    },
+    "geomExtentsSrcUnits": {
+      "w": 2506.38,
+      "h": 2455.79,
+      "verts": 14705
+    },
+    "dimMedian": null,
+    "candidates": {
+      "in": 63.66,
+      "ft": 763.95,
+      "mm": 2.51,
+      "cm": 25.06,
+      "m": 2506.38,
+      "dm": 250.64,
+      "yd": 2291.84
+    },
+    "plausibleUnits": [
+      "in",
+      "cm",
+      "dm"
+    ],
+    "importerLongSideM": 63.66,
+    "importerPlausible": true
+  },
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AL.dwg",
+    "insunits": 1,
+    "insunitsLabel": "in",
+    "importerUnit": "in",
+    "headerExtents": {
+      "w": 305.62,
+      "h": 210.11
+    },
+    "geomExtentsSrcUnits": {
+      "w": 2123.59,
+      "h": 254.32,
+      "verts": 44517
+    },
+    "dimMedian": null,
+    "candidates": {
+      "in": 53.94,
+      "ft": 647.27,
+      "mm": 2.12,
+      "cm": 21.24,
+      "m": 2123.59,
+      "dm": 212.36,
+      "yd": 1941.81
+    },
+    "plausibleUnits": [
+      "in",
+      "cm",
+      "dm"
+    ],
+    "importerLongSideM": 53.94,
+    "importerPlausible": true
+  },
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AM.dwg",
+    "insunits": 1,
+    "insunitsLabel": "in",
+    "importerUnit": "in",
+    "headerExtents": {
+      "w": 95.45,
+      "h": 25.84
+    },
+    "geomExtentsSrcUnits": {
+      "w": 466.33,
+      "h": 90.42,
+      "verts": 15543
+    },
+    "dimMedian": null,
+    "candidates": {
+      "in": 11.84,
+      "ft": 142.14,
+      "mm": 0.47,
+      "cm": 4.66,
+      "m": 466.33,
+      "dm": 46.63,
+      "yd": 426.41
+    },
+    "plausibleUnits": [
+      "in",
+      "ft",
+      "cm",
+      "m",
+      "dm",
+      "yd"
+    ],
+    "importerLongSideM": 11.84,
+    "importerPlausible": true
+  },
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AN.dwg",
+    "insunits": 1,
+    "insunitsLabel": "in",
+    "importerUnit": "in",
+    "headerExtents": {
+      "w": 28.4,
+      "h": 21.77
+    },
+    "geomExtentsSrcUnits": {
+      "w": 68.41,
+      "h": 90.42,
+      "verts": 4159
+    },
+    "dimMedian": null,
+    "candidates": {
+      "in": 2.3,
+      "ft": 27.56,
+      "mm": 0.09,
+      "cm": 0.9,
+      "m": 90.42,
+      "dm": 9.04,
+      "yd": 82.68
+    },
+    "plausibleUnits": [
+      "ft",
+      "m",
+      "dm",
+      "yd"
+    ],
+    "importerLongSideM": 2.3,
+    "importerPlausible": false
+  },
+  {
+    "file": "call-center-offices.dwg",
+    "insunits": 1,
+    "insunitsLabel": "in",
+    "importerUnit": "in",
+    "headerExtents": {
+      "w": 19.07,
+      "h": 10.7
+    },
+    "geomExtentsSrcUnits": {
+      "w": 113.6,
+      "h": 70.41,
+      "verts": 1314
+    },
+    "dimMedian": null,
+    "candidates": {
+      "in": 2.89,
+      "ft": 34.63,
+      "mm": 0.11,
+      "cm": 1.14,
+      "m": 113.6,
+      "dm": 11.36,
+      "yd": 103.88
+    },
+    "plausibleUnits": [
+      "ft",
+      "m",
+      "dm",
+      "yd"
+    ],
+    "importerLongSideM": 2.89,
+    "importerPlausible": false
+  },
+  {
+    "file": "fast-food-Restaurant.dwg",
+    "insunits": 6,
+    "insunitsLabel": "m",
+    "importerUnit": "m",
+    "headerExtents": {
+      "w": 49.87,
+      "h": 21.7
+    },
+    "geomExtentsSrcUnits": {
+      "w": 446.73,
+      "h": 341.32,
+      "verts": 12195
+    },
+    "dimMedian": null,
+    "candidates": {
+      "in": 11.35,
+      "ft": 136.16,
+      "mm": 0.45,
+      "cm": 4.47,
+      "m": 446.73,
+      "dm": 44.67,
+      "yd": 408.49
+    },
+    "plausibleUnits": [
+      "in",
+      "ft",
+      "cm",
+      "m",
+      "dm",
+      "yd"
+    ],
+    "importerLongSideM": 446.73,
+    "importerPlausible": true
+  },
+  {
+    "file": "Small-apto..dwg",
+    "insunits": 4,
+    "insunitsLabel": "mm",
+    "importerUnit": "mm",
+    "headerExtents": {
+      "w": 18.06,
+      "h": 18.06
+    },
+    "geomExtentsSrcUnits": {
+      "w": 3153.01,
+      "h": 1828.81,
+      "verts": 159
+    },
+    "dimMedian": null,
+    "candidates": {
+      "in": 80.09,
+      "ft": 961.04,
+      "mm": 3.15,
+      "cm": 31.53,
+      "m": 3153.01,
+      "dm": 315.3,
+      "yd": 2883.11
+    },
+    "plausibleUnits": [
+      "in",
+      "mm",
+      "cm",
+      "dm"
+    ],
+    "importerLongSideM": 3.15,
+    "importerPlausible": true
+  },
+  {
+    "file": "Two-story-house-410202.dwg",
+    "insunits": 1,
+    "insunitsLabel": "in",
+    "importerUnit": "in",
+    "headerExtents": {
+      "w": 28.68,
+      "h": 15.46
+    },
+    "geomExtentsSrcUnits": {
+      "w": 3876.55,
+      "h": 1440.4,
+      "verts": 764
+    },
+    "dimMedian": null,
+    "candidates": {
+      "in": 98.46,
+      "ft": 1181.57,
+      "mm": 3.88,
+      "cm": 38.77,
+      "m": 3876.55,
+      "dm": 387.66,
+      "yd": 3544.72
+    },
+    "plausibleUnits": [
+      "in",
+      "mm",
+      "cm",
+      "dm"
+    ],
+    "importerLongSideM": 98.46,
+    "importerPlausible": true
+  },
+  {
+    "file": "Hospital-equipment.zip/MOBILIARIO HOSPITAL.dwg",
+    "insunits": 6,
+    "insunitsLabel": "m",
+    "importerUnit": "m",
+    "headerExtents": {
+      "w": 45.64,
+      "h": 28.15
+    },
+    "geomExtentsSrcUnits": {
+      "w": 7454.67,
+      "h": 3186.13,
+      "verts": 25498
+    },
+    "dimMedian": null,
+    "candidates": {
+      "in": 189.35,
+      "ft": 2272.18,
+      "mm": 7.45,
+      "cm": 74.55,
+      "m": 7454.67,
+      "dm": 745.47,
+      "yd": 6816.55
+    },
+    "plausibleUnits": [
+      "in",
+      "mm",
+      "cm"
+    ],
+    "importerLongSideM": 7454.67,
+    "importerPlausible": false
+  },
+  {
+    "file": "Office-furniture-blocks.zip/cad33.dwg",
+    "insunits": 6,
+    "insunitsLabel": "m",
+    "importerUnit": "m",
+    "headerExtents": {
+      "w": 17.2,
+      "h": 17.15
+    },
+    "geomExtentsSrcUnits": {
+      "w": 4123.32,
+      "h": 2102.81,
+      "verts": 17101
+    },
+    "dimMedian": null,
+    "candidates": {
+      "in": 104.73,
+      "ft": 1256.79,
+      "mm": 4.12,
+      "cm": 41.23,
+      "m": 4123.32,
+      "dm": 412.33,
+      "yd": 3770.37
+    },
+    "plausibleUnits": [
+      "in",
+      "mm",
+      "cm",
+      "dm"
+    ],
+    "importerLongSideM": 4123.32,
+    "importerPlausible": false
+  },
+  {
+    "file": "Various-furniture-blocks.zip/muebles varios.dwg",
+    "insunits": 4,
+    "insunitsLabel": "mm",
+    "importerUnit": "mm",
+    "headerExtents": {
+      "w": 68.01,
+      "h": 28.29
+    },
+    "geomExtentsSrcUnits": {
+      "w": 271.68,
+      "h": 194.18,
+      "verts": 7125
+    },
+    "dimMedian": null,
+    "candidates": {
+      "in": 6.9,
+      "ft": 82.81,
+      "mm": 0.27,
+      "cm": 2.72,
+      "m": 271.68,
+      "dm": 27.17,
+      "yd": 248.43
+    },
+    "plausibleUnits": [
+      "in",
+      "ft",
+      "m",
+      "dm",
+      "yd"
+    ],
+    "importerLongSideM": 0.27,
+    "importerPlausible": false
+  }
+]

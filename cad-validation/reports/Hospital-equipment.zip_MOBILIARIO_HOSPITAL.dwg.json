@@ -1,0 +1,229 @@
+{
+  "file": "Hospital-equipment.zip/MOBILIARIO HOSPITAL.dwg",
+  "src": "/Users/udsy/.superset/worktrees/DSource-Editor/testing-edge-variations/cad-validation/raw/MOBILIARIO HOSPITAL.dwg",
+  "bytes": 683236,
+  "stages": {
+    "convert": {
+      "ok": true,
+      "ms": 103,
+      "dxfBytes": 3937009,
+      "via": "dwg2dxf"
+    },
+    "parse": {
+      "ok": true,
+      "ms": 59,
+      "units": "m",
+      "bounds": [
+        248.958464660937,
+        -135.5038557799141,
+        294.5728653603463,
+        -107.3704263980273
+      ],
+      "spanM": [
+        45.614400699409316,
+        28.133429381886785
+      ],
+      "layers": 19,
+      "entities": 14166,
+      "furniture": 19,
+      "byCat": {
+        "wall": 205,
+        "furniture": 10727,
+        "annotation": 2684,
+        "other": 550
+      },
+      "byKind": {
+        "polyline": 14129,
+        "text": 37
+      },
+      "degenerate": 0,
+      "nonFinite": 0,
+      "huge": 0
+    },
+    "heal": {
+      "ok": true,
+      "ms": 1,
+      "entitiesBefore": 14166,
+      "entitiesAfter": 14169,
+      "added": 3
+    },
+    "plate": {
+      "ok": true,
+      "ms": 130,
+      "method": "hull",
+      "vertices": 34,
+      "reportedAreaM2": 575.3749999999982,
+      "independentAreaM2": 575.3749999999994,
+      "areaAgrees": true,
+      "reportedCoverage": 1,
+      "independentCoverage": 1,
+      "coverageAgrees": true,
+      "offset": {
+        "x": 250.7855915551336,
+        "y": -132.4253178605308
+      },
+      "provenance": {
+        "method": "partition-envelope",
+        "phantomFraction": 0.33438792947171797,
+        "orthogonality": 0.830357627440349,
+        "closingEdgeM": 4,
+        "selfIntersections": 0,
+        "confidence": "low",
+        "reason": "No closed building shell was found, so this boundary was inferred from the partitions and furniture — 33% of it was bridged across gaps rather than traced. Confirm or adjust it."
+      },
+      "ringSpanM": [
+        40.74999999999997,
+        22
+      ]
+    },
+    "keepouts": {
+      "ok": true,
+      "ms": 1,
+      "count": 0
+    },
+    "entries": {
+      "ok": true,
+      "ms": 0,
+      "count": 10
+    },
+    "interiorWalls": {
+      "ok": true,
+      "ms": 0,
+      "count": 111
+    },
+    "normalize": {
+      "ok": true,
+      "ms": 0,
+      "total": 19,
+      "byCategory": {
+        "Door": 10,
+        "Furniture": 9
+      },
+      "unnamed": 0,
+      "zeroSize": 0,
+      "samples": [
+        {
+          "raw": "gkgk",
+          "name": "Gkgk",
+          "category": "Door",
+          "w": 0.8,
+          "h": 0.87
+        },
+        {
+          "raw": "gkgk",
+          "name": "Gkgk",
+          "category": "Door",
+          "w": 0.8,
+          "h": 0.87
+        },
+        {
+          "raw": "gkgk",
+          "name": "Gkgk",
+          "category": "Door",
+          "w": 0.8,
+          "h": 0.87
+        },
+        {
+          "raw": "gkgk",
+          "name": "Gkgk",
+          "category": "Door",
+          "w": 0.85,
+          "h": 0.924
+        },
+        {
+          "raw": "gkgk",
+          "name": "Gkgk",
+          "category": "Door",
+          "w": 0.85,
+          "h": 0.924
+        },
+        {
+          "raw": "gkgk",
+          "name": "Gkgk",
+          "category": "Door",
+          "w": 0.85,
+          "h": 0.924
+        },
+        {
+          "raw": "PTA-I",
+          "name": "PTA I",
+          "category": "Furniture",
+          "w": 0.651,
+          "h": 0.699
+        },
+        {
+          "raw": "PTA-I",
+          "name": "PTA I",
+          "category": "Furniture",
+          "w": 0.651,
+          "h": 0.699
+        }
+      ]
+    }
+  },
+  "errors": [],
+  "warnings": [],
+  "dxfFacts": {
+    "insunitsCode": null,
+    "insunitsLabel": null,
+    "extmin": [
+      null,
+      null
+    ],
+    "extmax": [
+      null,
+      null
+    ],
+    "entityCounts": {
+      "SECTION": 7,
+      "ENDSEC": 7,
+      "CLASS": 16,
+      "TABLE": 9,
+      "VPORT": 1,
+      "ENDTAB": 9,
+      "LTYPE": 7,
+      "LAYER": 19,
+      "STYLE": 6,
+      "APPID": 21,
+      "DIMSTYLE": 4,
+      "BLOCK_RECORD": 68,
+      "BLOCK": 68,
+      "ENDBLK": 68,
+      "LWPOLYLINE": 367,
+      "CIRCLE": 282,
+      "ARC": 4070,
+      "LINE": 9879,
+      "INSERT": 137,
+      "MTEXT": 59,
+      "POINT": 123,
+      "HATCH": 13,
+      "SPLINE": 207,
+      "TEXT": 21,
+      "DIMENSION": 41,
+      "POLYLINE": 5,
+      "VERTEX": 23,
+      "SEQEND": 5,
+      "ELLIPSE": 68,
+      "VIEWPORT": 2,
+      "DICTIONARY": 85,
+      "ACDBDICTIONARYWDFLT": 1,
+      "ACDBPLACEHOLDER": 1,
+      "MLINESTYLE": 1,
+      "LAYOUT": 2,
+      "DICTIONARYVAR": 13,
+      "TABLESTYLE": 1,
+      "MATERIAL": 3,
+      "VISUALSTYLE": 26,
+      "SCALE": 33,
+      "MLEADERSTYLE": 1,
+      "XRECORD": 34,
+      "SORTENTSTABLE": 2,
+      "PLOTSETTINGS": 2,
+      "DIMASSOC": 38,
+      "ACDBSECTIONVIEWSTYLE": 1,
+      "ACDBDETAILVIEWSTYLE": 1,
+      "EOF": 1
+    }
+  },
+  "totalMs": 315
+}

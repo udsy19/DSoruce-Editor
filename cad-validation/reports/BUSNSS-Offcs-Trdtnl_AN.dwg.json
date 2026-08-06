@@ -1,0 +1,222 @@
+{
+  "file": "BUSNSS-Offcs-Trdtnl_AN.dwg",
+  "src": "/Users/udsy/Downloads/BUSNSS-Offcs-Trdtnl_AN.dwg",
+  "bytes": 344000,
+  "stages": {
+    "convert": {
+      "ok": true,
+      "ms": 31,
+      "dxfBytes": 954999,
+      "via": "dwg2dxf"
+    },
+    "parse": {
+      "ok": true,
+      "ms": 10,
+      "units": "m",
+      "bounds": [
+        40.00544736491544,
+        27.77066331815743,
+        68.40544736491553,
+        90.41858621834194
+      ],
+      "spanM": [
+        28.40000000000009,
+        62.64792290018451
+      ],
+      "layers": 11,
+      "entities": 2617,
+      "furniture": 35,
+      "byCat": {
+        "wall": 268,
+        "furniture": 1488,
+        "door": 415,
+        "annotation": 445,
+        "other": 1
+      },
+      "byKind": {
+        "polyline": 2615,
+        "text": 2
+      },
+      "degenerate": 0,
+      "nonFinite": 0,
+      "huge": 0
+    },
+    "heal": {
+      "ok": true,
+      "ms": 0,
+      "entitiesBefore": 2617,
+      "entitiesAfter": 2651,
+      "added": 34
+    },
+    "plate": {
+      "ok": true,
+      "ms": 7,
+      "method": "hull",
+      "vertices": 20,
+      "reportedAreaM2": 390.1250000000009,
+      "independentAreaM2": 390.1250000000001,
+      "areaAgrees": true,
+      "reportedCoverage": 1,
+      "independentCoverage": 1,
+      "coverageAgrees": true,
+      "offset": {
+        "x": 39.13044736491544,
+        "y": 27.63370860415328
+      },
+      "provenance": {
+        "method": "partition-envelope",
+        "phantomFraction": 0.30047078958930507,
+        "orthogonality": 0.7439913689931918,
+        "closingEdgeM": 2.2638462845343543,
+        "selfIntersections": 0,
+        "confidence": "low",
+        "reason": "No closed building shell was found, so this boundary was inferred from the partitions and furniture — 30% of it was bridged across gaps rather than traced. Confirm or adjust it."
+      },
+      "ringSpanM": [
+        28.25,
+        19.750000000000004
+      ]
+    },
+    "keepouts": {
+      "ok": true,
+      "ms": 3,
+      "count": 0
+    },
+    "entries": {
+      "ok": true,
+      "ms": 0,
+      "count": 23
+    },
+    "interiorWalls": {
+      "ok": true,
+      "ms": 1,
+      "count": 66
+    },
+    "normalize": {
+      "ok": true,
+      "ms": 0,
+      "total": 35,
+      "byCategory": {
+        "Door": 14,
+        "Furniture": 21
+      },
+      "unnamed": 0,
+      "zeroSize": 0,
+      "samples": [
+        {
+          "raw": "Porta - doors 90",
+          "name": "Porta Doors 90",
+          "category": "Door",
+          "w": 0.922,
+          "h": 0.816
+        },
+        {
+          "raw": "Porta - doors 90",
+          "name": "Porta Doors 90",
+          "category": "Door",
+          "w": 0.922,
+          "h": 0.816
+        },
+        {
+          "raw": "Porta - doors 90",
+          "name": "Porta Doors 90",
+          "category": "Door",
+          "w": 0.816,
+          "h": 0.922
+        },
+        {
+          "raw": "Porta - doors 90",
+          "name": "Porta Doors 90",
+          "category": "Door",
+          "w": 0.922,
+          "h": 0.816
+        },
+        {
+          "raw": "Porta - doors 90",
+          "name": "Porta Doors 90",
+          "category": "Door",
+          "w": 0.922,
+          "h": 0.816
+        },
+        {
+          "raw": "Porta - doors 90",
+          "name": "Porta Doors 90",
+          "category": "Door",
+          "w": 0.816,
+          "h": 0.922
+        },
+        {
+          "raw": "Porta - doors 90",
+          "name": "Porta Doors 90",
+          "category": "Door",
+          "w": 0.922,
+          "h": 0.816
+        },
+        {
+          "raw": "Porta - doors 90",
+          "name": "Porta Doors 90",
+          "category": "Door",
+          "w": 0.922,
+          "h": 0.816
+        }
+      ]
+    }
+  },
+  "errors": [],
+  "warnings": [],
+  "dxfFacts": {
+    "insunitsCode": null,
+    "insunitsLabel": null,
+    "extmin": [
+      null,
+      null
+    ],
+    "extmax": [
+      null,
+      null
+    ],
+    "entityCounts": {
+      "SECTION": 7,
+      "ENDSEC": 7,
+      "CLASS": 19,
+      "TABLE": 9,
+      "VPORT": 1,
+      "ENDTAB": 9,
+      "LTYPE": 4,
+      "LAYER": 11,
+      "STYLE": 3,
+      "APPID": 17,
+      "DIMSTYLE": 1,
+      "BLOCK_RECORD": 6,
+      "BLOCK": 6,
+      "ENDBLK": 6,
+      "LINE": 1421,
+      "ARC": 737,
+      "CIRCLE": 46,
+      "INSERT": 39,
+      "LWPOLYLINE": 154,
+      "MLINE": 29,
+      "TEXT": 1,
+      "MTEXT": 1,
+      "VIEWPORT": 2,
+      "DICTIONARY": 68,
+      "ACDBDICTIONARYWDFLT": 1,
+      "ACDBPLACEHOLDER": 1,
+      "MLINESTYLE": 1,
+      "LAYOUT": 2,
+      "DICTIONARYVAR": 14,
+      "TABLESTYLE": 1,
+      "MATERIAL": 3,
+      "VISUALSTYLE": 25,
+      "SCALE": 33,
+      "MLEADERSTYLE": 1,
+      "XRECORD": 60,
+      "ACDBSECTIONVIEWSTYLE": 2,
+      "ACDBDETAILVIEWSTYLE": 2,
+      "SORTENTSTABLE": 4,
+      "CELLSTYLEMAP": 1,
+      "EOF": 1
+    }
+  },
+  "totalMs": 57
+}

@@ -1,0 +1,225 @@
+{
+  "file": "BUSNSS-Offcs-Trdtnl_AB.dwg",
+  "src": "/Users/udsy/Downloads/BUSNSS-Offcs-Trdtnl_AB.dwg",
+  "bytes": 2699857,
+  "stages": {
+    "convert": {
+      "ok": true,
+      "ms": 245,
+      "dxfBytes": 9824114,
+      "via": "dwg2dxf"
+    },
+    "parse": {
+      "ok": true,
+      "ms": 189,
+      "units": "in",
+      "bounds": [
+        0.7931716577903793,
+        -0.23725261904439532,
+        4.2095133363372765,
+        2.296632089945885
+      ],
+      "spanM": [
+        3.416341678546897,
+        2.5338847089902803
+      ],
+      "layers": 27,
+      "entities": 50394,
+      "furniture": 28,
+      "byCat": {
+        "wall": 1758,
+        "annotation": 16232,
+        "furniture": 24512,
+        "door": 5592,
+        "other": 2300
+      },
+      "byKind": {
+        "polyline": 50190,
+        "text": 204
+      },
+      "degenerate": 0,
+      "nonFinite": 0,
+      "huge": 0
+    },
+    "heal": {
+      "ok": true,
+      "ms": 2,
+      "entitiesBefore": 50394,
+      "entitiesAfter": 50396,
+      "added": 2
+    },
+    "plate": {
+      "ok": true,
+      "ms": 20,
+      "method": "hull",
+      "vertices": 6,
+      "reportedAreaM2": 6.281250000000001,
+      "independentAreaM2": 6.28125,
+      "areaAgrees": true,
+      "reportedCoverage": 1,
+      "independentCoverage": 0.8928571428571429,
+      "coverageAgrees": false,
+      "offset": {
+        "x": -0.08182834220962065,
+        "y": -1.3459423628625096
+      },
+      "provenance": {
+        "method": "grid-contour",
+        "phantomFraction": 0.023114958437473774,
+        "orthogonality": 0.4622991687494755,
+        "closingEdgeM": 2.5124689052802225,
+        "selfIntersections": 0,
+        "confidence": "high",
+        "reason": ""
+      },
+      "ringSpanM": [
+        3.25,
+        2.5
+      ]
+    },
+    "keepouts": {
+      "ok": true,
+      "ms": 2,
+      "count": 0
+    },
+    "entries": {
+      "ok": true,
+      "ms": 3,
+      "count": 4
+    },
+    "interiorWalls": {
+      "ok": true,
+      "ms": 4,
+      "count": 7
+    },
+    "normalize": {
+      "ok": true,
+      "ms": 0,
+      "total": 28,
+      "byCategory": {
+        "Furniture": 28
+      },
+      "unnamed": 0,
+      "zeroSize": 0,
+      "samples": [
+        {
+          "raw": "inod-02",
+          "name": "Inod 02",
+          "category": "Furniture",
+          "w": 0.018,
+          "h": 0.019
+        },
+        {
+          "raw": "si-002",
+          "name": "Si",
+          "category": "Furniture",
+          "w": 0.043,
+          "h": 0.023
+        },
+        {
+          "raw": "Pareja",
+          "name": "Pareja",
+          "category": "Furniture",
+          "w": 0.02,
+          "h": 0.042
+        },
+        {
+          "raw": "SILLA-2",
+          "name": "SILLA 2",
+          "category": "Furniture",
+          "w": 0.017,
+          "h": 0.017
+        },
+        {
+          "raw": "SILLA-2",
+          "name": "SILLA 2",
+          "category": "Furniture",
+          "w": 0.017,
+          "h": 0.017
+        },
+        {
+          "raw": "SILLA-2",
+          "name": "SILLA 2",
+          "category": "Furniture",
+          "w": 0.017,
+          "h": 0.017
+        },
+        {
+          "raw": "SILLA-2",
+          "name": "SILLA 2",
+          "category": "Furniture",
+          "w": 0.017,
+          "h": 0.017
+        },
+        {
+          "raw": "SILLA-2",
+          "name": "SILLA 2",
+          "category": "Furniture",
+          "w": 0.017,
+          "h": 0.017
+        }
+      ]
+    }
+  },
+  "errors": [],
+  "warnings": [],
+  "dxfFacts": {
+    "insunitsCode": null,
+    "insunitsLabel": null,
+    "extmin": [
+      null,
+      null
+    ],
+    "extmax": [
+      null,
+      null
+    ],
+    "entityCounts": {
+      "SECTION": 7,
+      "ENDSEC": 7,
+      "CLASS": 21,
+      "TABLE": 9,
+      "VPORT": 1,
+      "ENDTAB": 9,
+      "LTYPE": 5,
+      "LAYER": 27,
+      "STYLE": 5,
+      "APPID": 18,
+      "BLOCK_RECORD": 19,
+      "BLOCK": 16,
+      "LINE": 20995,
+      "ENDBLK": 16,
+      "ARC": 1726,
+      "HATCH": 235,
+      "CIRCLE": 7690,
+      "LWPOLYLINE": 2605,
+      "POLYLINE": 6,
+      "VERTEX": 115,
+      "SEQEND": 6,
+      "INSERT": 241,
+      "TEXT": 195,
+      "POINT": 77,
+      "ELLIPSE": 216,
+      "MTEXT": 9,
+      "VIEWPORT": 6,
+      "DICTIONARY": 98,
+      "ACDBDICTIONARYWDFLT": 1,
+      "ACDBPLACEHOLDER": 2,
+      "MLINESTYLE": 1,
+      "LAYOUT": 2,
+      "DICTIONARYVAR": 14,
+      "TABLESTYLE": 1,
+      "MATERIAL": 3,
+      "VISUALSTYLE": 25,
+      "SCALE": 36,
+      "MLEADERSTYLE": 1,
+      "XRECORD": 70,
+      "ACDBSECTIONVIEWSTYLE": 2,
+      "ACDBDETAILVIEWSTYLE": 2,
+      "SORTENTSTABLE": 15,
+      "CELLSTYLEMAP": 1,
+      "EOF": 1
+    }
+  },
+  "totalMs": 549
+}

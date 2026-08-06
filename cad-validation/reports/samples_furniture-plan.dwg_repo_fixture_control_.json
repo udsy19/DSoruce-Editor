@@ -1,0 +1,239 @@
+{
+  "file": "samples/furniture-plan.dwg (repo fixture — control)",
+  "src": "/Users/udsy/.superset/worktrees/DSource-Editor/testing-edge-variations/samples/furniture-plan.dwg",
+  "bytes": 2728667,
+  "stages": {
+    "convert": {
+      "ok": true,
+      "ms": 434,
+      "dxfBytes": 15554939,
+      "via": "dwg2dxf"
+    },
+    "parse": {
+      "ok": true,
+      "ms": 175,
+      "units": "in",
+      "bounds": [
+        1192.439303260132,
+        1024.2236470917856,
+        1230.4103413671749,
+        1066.6407193648995
+      ],
+      "spanM": [
+        37.97103810704289,
+        42.417072273113945
+      ],
+      "layers": 43,
+      "entities": 1013,
+      "furniture": 533,
+      "byCat": {
+        "wall": 746,
+        "other": 176,
+        "glazing": 30,
+        "fixture": 2,
+        "door": 16,
+        "casework": 6,
+        "annotation": 37
+      },
+      "byKind": {
+        "polyline": 975,
+        "text": 38
+      },
+      "degenerate": 0,
+      "nonFinite": 0,
+      "huge": 0
+    },
+    "heal": {
+      "ok": true,
+      "ms": 3,
+      "entitiesBefore": 1013,
+      "entitiesAfter": 1109,
+      "added": 96
+    },
+    "plate": {
+      "ok": true,
+      "ms": 231,
+      "method": "hull",
+      "vertices": 34,
+      "reportedAreaM2": 930.0625,
+      "independentAreaM2": 930.0625,
+      "areaAgrees": true,
+      "reportedCoverage": 1,
+      "independentCoverage": 0.9849906191369606,
+      "coverageAgrees": true,
+      "offset": {
+        "x": 1191.564303260132,
+        "y": 1023.3486470917856
+      },
+      "provenance": {
+        "method": "partition-envelope",
+        "phantomFraction": 0.5000299069112321,
+        "orthogonality": 0.7020506839323779,
+        "closingEdgeM": 6.768493185340442,
+        "selfIntersections": 0,
+        "confidence": "low",
+        "reason": "No closed building shell was found, so this boundary was inferred from the partitions and furniture — 50% of it was bridged across gaps rather than traced. Confirm or adjust it."
+      },
+      "ringSpanM": [
+        37.75,
+        42.25
+      ]
+    },
+    "keepouts": {
+      "ok": true,
+      "ms": 1,
+      "count": 3
+    },
+    "entries": {
+      "ok": true,
+      "ms": 0,
+      "count": 1
+    },
+    "interiorWalls": {
+      "ok": true,
+      "ms": 3,
+      "count": 322
+    },
+    "normalize": {
+      "ok": true,
+      "ms": 1,
+      "total": 533,
+      "byCategory": {
+        "Window": 227,
+        "Door": 17,
+        "Desk": 78,
+        "Chair": 120,
+        "Table": 21,
+        "Furniture": 70
+      },
+      "unnamed": 0,
+      "zeroSize": 3,
+      "samples": [
+        {
+          "raw": "System Panel - Glazed-935260-Level 06 - Furniture",
+          "name": "System Panel Glazed",
+          "category": "Window",
+          "w": 0.025,
+          "h": 1.496
+        },
+        {
+          "raw": "System Panel - Glazed-935260-Level 06 - Furniture",
+          "name": "System Panel Glazed",
+          "category": "Window",
+          "w": 0.025,
+          "h": 1.496
+        },
+        {
+          "raw": "System Panel - Glazed-935260-Level 06 - Furniture",
+          "name": "System Panel Glazed",
+          "category": "Window",
+          "w": 0.025,
+          "h": 1.496
+        },
+        {
+          "raw": "System Panel - Glazed-935260-Level 06 - Furniture",
+          "name": "System Panel Glazed",
+          "category": "Window",
+          "w": 0.025,
+          "h": 1.496
+        },
+        {
+          "raw": "System Panel - Glazed-935260-Level 06 - Furniture",
+          "name": "System Panel Glazed",
+          "category": "Window",
+          "w": 0.025,
+          "h": 1.496
+        },
+        {
+          "raw": "System Panel - Glazed-935260-Level 06 - Furniture",
+          "name": "System Panel Glazed",
+          "category": "Window",
+          "w": 0.025,
+          "h": 1.496
+        },
+        {
+          "raw": "System Panel - Glazed-935260-Level 06 - Furniture",
+          "name": "System Panel Glazed",
+          "category": "Window",
+          "w": 0.025,
+          "h": 1.496
+        },
+        {
+          "raw": "System Panel - Glazed-935260-Level 06 - Furniture",
+          "name": "System Panel Glazed",
+          "category": "Window",
+          "w": 0.025,
+          "h": 1.496
+        }
+      ]
+    }
+  },
+  "errors": [],
+  "warnings": [
+    {
+      "stage": "normalize",
+      "message": "3 furniture blocks have a degenerate (≤1cm) bbox"
+    }
+  ],
+  "dxfFacts": {
+    "insunitsCode": null,
+    "insunitsLabel": null,
+    "extmin": [
+      null,
+      null
+    ],
+    "extmax": [
+      null,
+      null
+    ],
+    "entityCounts": {
+      "SECTION": 7,
+      "ENDSEC": 7,
+      "CLASS": 15,
+      "TABLE": 9,
+      "VPORT": 1,
+      "ENDTAB": 9,
+      "LTYPE": 8,
+      "LAYER": 43,
+      "STYLE": 13,
+      "APPID": 3,
+      "DIMSTYLE": 3,
+      "BLOCK_RECORD": 378,
+      "BLOCK": 378,
+      "ENDBLK": 378,
+      "ELLIPSE": 1239,
+      "LINE": 9045,
+      "ARC": 4687,
+      "LWPOLYLINE": 151,
+      "CIRCLE": 14,
+      "HATCH": 561,
+      "MTEXT": 75,
+      "INSERT": 664,
+      "SPLINE": 3577,
+      "IMAGE": 2,
+      "DIMENSION": 6,
+      "VIEWPORT": 2,
+      "DICTIONARY": 20,
+      "ACDBDICTIONARYWDFLT": 1,
+      "ACDBPLACEHOLDER": 1,
+      "MATERIAL": 3,
+      "XRECORD": 23,
+      "VISUALSTYLE": 24,
+      "SCALE": 17,
+      "MLINESTYLE": 1,
+      "TABLESTYLE": 1,
+      "MLEADERSTYLE": 1,
+      "ACDBSECTIONVIEWSTYLE": 1,
+      "ACDBDETAILVIEWSTYLE": 1,
+      "LAYOUT": 3,
+      "RASTERVARIABLES": 1,
+      "IMAGEDEF": 2,
+      "IMAGEDEF_REACTOR": 2,
+      "SORTENTSTABLE": 1,
+      "SUN": 1,
+      "DICTIONARYVAR": 5,
+      "EOF": 1
+    }
+  },
+  "totalMs": 982
+}
