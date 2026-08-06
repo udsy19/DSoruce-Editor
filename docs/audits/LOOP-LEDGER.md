@@ -496,3 +496,31 @@ git add -A && git commit -F <message>      # the gate re-runs and must be green
 Queue position on resume: **R3 = C1** (shared KPI module), then C2, C3, D1–D3,
 E1 verification/E2, F2–F4. R1 (commit gate) and R2 (perf) are done — R2 needs
 only the commit.
+
+## C1 — shared KPI module · **DONE**
+
+`report.ts` held the only derivation of density / daylight / privacy /
+efficiency, and the on-screen card was going to need the same numbers. Two
+derivations of one number drift, and the reader cannot tell which is lying.
+
+Extracted **unchanged** into `web/src/export/kpis.ts`: `ReportMeta`,
+`AlternativeInput`, `SpaceMix`, `AltKpis`, `ReportModel`, `DAYLIGHT_RADIUS_M`,
+`OPEN_ZONE_TYPES`, `LEGEND_ORDER`, `ZONE_LABEL`, `computeAltKpis` and its
+helpers. `report.ts` imports and **re-exports** the public types, so every
+existing importer (`App.tsx`, `GenerateStep.tsx`) is untouched.
+
+**Acceptance test — the same instrument as R2, different artifact**, as ruled:
+
+```
+bytes: before=1580  after=1580
+REPORT MODEL BYTE-IDENTICAL ✓  md5 2d956b4a3f2f6ac7edc2e42fb91e7f1a  KPI_ROWS 57
+```
+
+57 KPI fields across 3 alternatives plus winners and the radar, non-vacuity
+asserted. Instrument kept at `docs/evidence/circulation-audit/C1-kpi-digest.mjs`.
+
+**Two guards followed their constants**, which is the whole job of a parity
+guard: `coreParity` now reads `DAYLIGHT_RADIUS_M` from `kpis.ts`, and
+`legendParity` reads `LEGEND_ORDER` from `kpis.ts`. The guard that did NOT follow
+`OPEN_SHARE` crashed for two months while listed as passing — this is that lesson
+applied before the fact rather than after.

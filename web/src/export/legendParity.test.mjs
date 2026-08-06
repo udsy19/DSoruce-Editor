@@ -54,9 +54,11 @@ assert.ok(
 )
 
 // --- surface 3: the per-alternative page (report.ts LEGEND_ORDER) -----------
-const report = fs.readFileSync(path.join(here, 'report.ts'), 'utf8')
+// LEGEND_ORDER moved report.ts -> kpis.ts with the C1 extraction. Read it where
+// it lives; a guard that keeps reading the old address is the OPEN_SHARE defect.
+const report = fs.readFileSync(path.join(here, 'kpis.ts'), 'utf8')
 const m = /const LEGEND_ORDER: ZoneType\[\] = \[([^\]]*)\]/.exec(report)
-assert.ok(m, 'LEGEND_ORDER not found in report.ts')
+assert.ok(m, 'LEGEND_ORDER not found in kpis.ts — did it move again?')
 const order = [...m[1].matchAll(/'([A-Za-z]+)'/g)].map((x) => x[1])
 for (const g of GROUND) {
   assert.ok(!order.includes(g),

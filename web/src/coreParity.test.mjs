@@ -111,11 +111,14 @@ console.log('core parity — TS mirrors of Rust values')
 // unpinned mirror; this closes it.
 {
   const sc = rust('layout/score.rs')
-  const rp = ts('export/report.ts')
+  // Moved report.ts -> kpis.ts by the C1 extraction. Following the constant is
+  // the whole job of a parity guard: the one that DIDN'T follow OPEN_SHARE
+  // crashed for two months while listed as passing.
+  const rp = ts('export/kpis.ts')
   check(
-    'DAYLIGHT_REACH_M (score.rs) ←→ DAYLIGHT_RADIUS_M (report.ts)',
+    'DAYLIGHT_REACH_M (score.rs) ←→ DAYLIGHT_RADIUS_M (kpis.ts)',
     rustConst(sc, 'layout/score.rs', 'DAYLIGHT_REACH_M'),
-    tsConst(rp, 'export/report.ts', 'DAYLIGHT_RADIUS_M'),
+    tsConst(rp, 'export/kpis.ts', 'DAYLIGHT_RADIUS_M'),
   )
 }
 
