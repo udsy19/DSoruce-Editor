@@ -374,3 +374,34 @@ without re-deriving anything.
 
 **Suite state at stop:** Rust 169/169 (perf test intermittent, 3/4); all node
 tests green by exit code; typecheck 0; style gate 0; accent univalence 0.
+
+---
+
+# RELAUNCH — queue 2
+
+## R1 — commit-gate mechanization · **DONE**
+
+Twice in loop 1 a commit landed on a red signal (red style gate; red Rust suite).
+Same cause both times: the verification was a pipeline ending in `grep "test
+result"` or `&& echo OK`, and the **deciding act was a human reading a line**.
+Both self-caught, and "I will read more carefully" is a promise from the faculty
+that just failed.
+
+`scripts/verify-all.sh` — every step's exit code captured, scoreboard derived
+from the codes, non-zero exit if any step is red. `.githooks/pre-commit` refuses
+the commit on that code (`git config core.hooksPath .githooks`). Rust suite runs
+only when the change touches `crates/` (`--full` forces it), so the gate is
+affordable on every commit.
+
+Carries its own lying step, `VERIFY_SELFTEST=1` → `VSELF`, exiting 1 while
+printing "everything is fine" — the GSELF pattern this repo already uses for the
+gate board. A battery that cannot detect its own false green is not a battery.
+
+| falsification | result |
+|---|---|
+| `VERIFY_SELFTEST=1` | **VERIFY FAIL — 1 of 38 red**, names `VSELF` |
+| real red (a renderer reads `ZONE.Circulation.fill`) + `git commit` | **COMMIT REFUSED**, nothing landed |
+| clean tree | **VERIFY OK — 37/37**, commit proceeds |
+
+Third promotion of a vigilance failure into harness this workstream, after the
+empty-file assertion and the build-identity probe.

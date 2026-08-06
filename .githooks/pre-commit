@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Refuses a commit whose verification battery is not green.
+#
+# The battery decides by EXIT CODE, not by a summary line a human reads — see
+# scripts/verify-all.sh for why that distinction is load-bearing here.
+#
+# Install:  git config core.hooksPath .githooks
+# Bypass:   git commit --no-verify   (leaves a trace in the reflog; use it
+#           deliberately, e.g. committing a known-red state ON PURPOSE with the
+#           redness recorded in the message)
+set -uo pipefail
+repo="$(git rev-parse --show-toplevel)"
+if ! bash "$repo/scripts/verify-all.sh"; then
+  echo
+  echo "COMMIT REFUSED — the verification battery is red (above)."
+  echo "Fix it, or commit deliberately with --no-verify and say so in the message."
+  exit 1
+fi
