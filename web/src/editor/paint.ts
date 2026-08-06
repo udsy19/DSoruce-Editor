@@ -345,6 +345,22 @@ export function drawZones(
       : v.presentation
         ? lighten(pal.fill, 0.4)
         : pal.fill
+    // `fillWith`'s last argument is the REFERENCE SIZE its LOD ramp fades the
+    // hatch against (`hatchLevel` = smoothstep 5..13 px). It exists because a
+    // hatch inside a 4 px wall is a smear, so a thin wall degrades to a plain
+    // double line instead of popping.
+    //
+    // All three zone sites passed 0. `smoothstep(5, 13, 0)` is 0, so `fillWith`
+    // returned before drawing anything — which means the Unassigned hatch never
+    // rendered at any alpha, AND **the Core poché has never rendered either**:
+    // declared, documented, wired, and dead. It was invisible because the thing
+    // it was hiding behind is a legitimate feature working correctly on the
+    // input it was given.
+    //
+    // A zone has no thickness, so its reference size is its smaller on-screen
+    // dimension: a large room shows its texture, a sliver fades it out, which is
+    // the ramp's intent applied to the right quantity.
+    //
     // TEXTURE over the fill, computed once for all three shape branches: the
     // Core's poché, or the editor-only hatch that marks unassigned floor. Both
     // are the same operation on the same three call sites, so they share one
@@ -406,7 +422,7 @@ export function drawZones(
             ctx.closePath()
           },
           { minX: bminX, minY: bminY, maxX: bmaxX, maxY: bmaxY },
-          0,
+          Math.min(bmaxX - bminX, bmaxY - bminY),
         )
       }
       // Shoelace, for AREA only. The label anchor is the pole of
@@ -445,7 +461,7 @@ export function drawZones(
             ctx.rect(io.x, io.y, s.in_w * v.scale, s.in_h * v.scale)
           },
           { minX: o.x, minY: o.y, maxX: o.x + s.w * v.scale, maxY: o.y + s.h * v.scale },
-          0,
+          Math.min(s.w, s.h) * v.scale,
           true,
         )
       }
@@ -475,7 +491,7 @@ export function drawZones(
                     texture,
           () => ctx.rect(p.x, p.y, w, h),
           { minX: p.x, minY: p.y, maxX: p.x + w, maxY: p.y + h },
-          0,
+          Math.min(w, h),
         )
       }
 

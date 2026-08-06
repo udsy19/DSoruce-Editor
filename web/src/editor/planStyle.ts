@@ -547,18 +547,32 @@ const RAYON_WALL_HATCH: FillStyle = {
 }
 
 /**
- * UNASSIGNED hatch — the editor-only "wasted floor, fix me" flag.
+ * UNASSIGNED hatch — the editor-only "wasted floor" mark, SECONDARY to the
+ * dashed outline.
  *
  * Uses the existing `hatch` kind of {@link FillStyle}. That union was widened
  * once, for wall grammars, with a note that a FOURTH kind would be a schema
  * finding rather than a patch; this needs no fourth kind, which is the union
  * doing its job.
  *
- * **Deliberately quiet.** At 3.5% ink on a 9 px pitch it reads as a texture over
- * paper, not as a fill: the point is that unassigned floor is still GROUND —
- * the same white a corridor sits on — carrying a mark that says *nobody uses
- * this*. If it ever reads as a colour, it has become a third program category
- * and the whole figure/ground rule is back where it started.
+ * **The division of labour, and why it is this way round.** The pockets this
+ * marks are RIBBONS — inradii of 0.53–1.1 m on the reference plate, so 19–40 px
+ * wide at overview zoom, where a fixed 9 px pitch fits two to four strokes
+ * across them. A ribbon is nearly all edge, so the edge is the semantically
+ * correct carrier and {@link PlanStyle.unassignedOutline} is primary: it says
+ * *flagged* at any zoom. The hatch is the zoom-scale CONFIRMER — its pitch is
+ * fixed in screen px, so stroke count per pocket grows as you zoom in, and at
+ * working zoom the texture says *wasted floor* where at overview it only
+ * whispers. That is progressive disclosure by construction, not a compromise.
+ *
+ * **Ink target is a RELATION, not a fitted number.** The rule: clearly
+ * subordinate to program fill, clearly above ground. Program fill measures
+ * 33/255 against the same ground, so the hatch targets **half of that, 14–18/255**,
+ * verified by pixel census (see `bench/` and the audit's evidence set). The
+ * first value shipped, α 0.035, measured ≤7/255 — indistinguishable from ground,
+ * which is why this is expressed as a band against a measured reference instead
+ * of an opacity somebody eyeballed. Changing the band is a re-registration;
+ * changing α to HIT the band is just meeting it.
  *
  * **Editor only.** `paper` renders this as nothing at all: on a sheet it is
  * indistinguishable from circulation, because no competitor publishes a
@@ -569,7 +583,7 @@ const RAYON_WALL_HATCH: FillStyle = {
 export const UNASSIGNED_HATCH: FillStyle = {
   kind: 'hatch',
   color: '#5c626c',
-  alpha: 0.035,
+  alpha: 0.1, // measured: stroke delta 16/255 — mid-band (target 14-18)
   angleDeg: 45,
   spacing: { px: 9 },
   tier: 'furniture',
