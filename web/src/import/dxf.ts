@@ -197,36 +197,55 @@ function decideUnits(
   // satisfies several candidates resolves the same way every run.
   const order = [header.label, ...Object.keys(UNIT_SCALE).filter((u) => u !== header.label)]
 
-  // Anchors strongest first. Each is a physical constant the drawing cannot
-  // argue with; the extent is last because it depends on how much sheet
-  // furniture travelled with the plan.
-  const anchors: [number | null, number, number, UnitsSource][] = [
-    [modalWithin(evidence.doorRadii), DOOR_LEAF_MIN_M, DOOR_LEAF_MAX_M, 'door-anchor'],
+  // Each anchor is a physical constant the drawing cannot argue with, weighted
+  // by how hard it is to fool. A door swing is unambiguous; a wall gap can be
+  // mimicked by hatch spacing; an extent depends on how much sheet furniture
+  // travelled with the plan.
+  const anchors: [number | null, number, number, UnitsSource, number][] = [
+    [modalWithin(evidence.doorRadii), DOOR_LEAF_MIN_M, DOOR_LEAF_MAX_M, 'door-anchor', 3],
     [
       modalWallThickness(evidence.wallSegments),
       WALL_THICKNESS_MIN_M,
       WALL_THICKNESS_MAX_M,
       'wall-anchor',
+      2,
     ],
-    [evidence.extent, BUILDING_MIN_M, BUILDING_MAX_M, 'extent-anchor'],
+    [evidence.extent, BUILDING_MIN_M, BUILDING_MAX_M, 'extent-anchor', 1],
   ]
 
-  for (const [measured, lo, hi, source] of anchors) {
-    if (measured == null || !(measured > 0)) continue
-    const fits = order.filter((u) => inBand(measured, UNIT_SCALE[u], lo, hi))
-    // No unit satisfies this anchor — the measurement is not what we assumed
-    // (hinge arcs rather than door leaves, hatch ticks rather than wall faces).
-    // Fall through to a weaker anchor rather than trust it.
-    if (fits.length === 0) continue
-    const label = fits[0]
-    return {
-      scale: UNIT_SCALE[label],
-      label,
-      source: label === header.label ? 'header' : source,
+  // Consensus, not first-match. Taking the strongest available anchor alone
+  // means one misread measurement decides the whole drawing — and measurements
+  // DO get misread: door layers carry hinge details and leaf rectangles, wall
+  // layers carry hatch. Scoring every candidate unit against every anchor lets
+  // a unit that satisfies doors AND walls AND extent beat one that satisfies
+  // only the strongest, which is the difference between "this reading is
+  // possible" and "this reading is consistent".
+  let bestLabel: string | null = null
+  let bestScore = 0
+  let bestSource: UnitsSource = 'header-unverified'
+  for (const unit of order) {
+    let score = 0
+    let strongest: UnitsSource | null = null
+    for (const [measured, lo, hi, source, weight] of anchors) {
+      if (measured == null || !(measured > 0)) continue
+      if (!inBand(measured, UNIT_SCALE[unit], lo, hi)) continue
+      score += weight
+      if (strongest === null) strongest = source
+    }
+    // `order` puts the header first, so a strict > keeps the header on ties.
+    if (score > bestScore) {
+      bestScore = score
+      bestLabel = unit
+      bestSource = strongest ?? 'header-unverified'
     }
   }
 
-  return { ...header, source: 'header-unverified' }
+  if (bestLabel == null) return { ...header, source: 'header-unverified' }
+  return {
+    scale: UNIT_SCALE[bestLabel],
+    label: bestLabel,
+    source: bestLabel === header.label ? 'header' : bestSource,
+  }
 }
 
 interface ScaleEvidence {
@@ -267,11 +286,11 @@ function scaleEntity(e: DrawEntity, s: number): void {
  * radius the building actually has, which reading `e.radius` off the raw entity
  * never would.
  */
-function circleRadiusThrough(
+function circleThrough(
   a: [number, number],
   b: [number, number],
   c: [number, number],
-): number | null {
+): { cx: number; cy: number; r: number } | null {
   const ax = a[0]
   const ay = a[1]
   const bx = b[0]
@@ -286,7 +305,30 @@ function circleRadiusThrough(
   const ux = (a2 * (by - cy) + b2 * (cy - ay) + c2 * (ay - by)) / d
   const uy = (a2 * (cx - bx) + b2 * (ax - cx) + c2 * (bx - ax)) / d
   const r = Math.hypot(ax - ux, ay - uy)
-  return Number.isFinite(r) && r > 0 ? r : null
+  return Number.isFinite(r) && r > 0 ? { cx: ux, cy: uy, r } : null
+}
+
+/**
+ * The radius of a polyline that really is a circular arc, else null.
+ *
+ * Fitting a circle through three points of *any* polyline always succeeds — a
+ * door-layer rectangle, an L-shaped jamb and a leaf outline all yield a number,
+ * and feeding those to the scale anchor drowns the real swings in noise. So the
+ * fit is verified against every vertex: a tessellated arc has all of them on
+ * the circle, and nothing else does.
+ *
+ * Closed polylines are rejected outright — a door swing is an open arc; a
+ * closed one is a leaf, a knob or a column.
+ */
+function arcLikeRadius(pts: [number, number][], closed?: boolean): number | null {
+  if (closed || pts.length < 5) return null
+  const fit = circleThrough(pts[0], pts[pts.length >> 1], pts[pts.length - 1])
+  if (!fit) return null
+  const tol = fit.r * 0.02
+  for (const [x, y] of pts) {
+    if (Math.abs(Math.hypot(x - fit.cx, y - fit.cy) - fit.r) > tol) return null
+  }
+  return fit.r
 }
 
 function scaleEvidence(entities: DrawEntity[], furniture: FurnitureItem[]): ScaleEvidence {
@@ -296,12 +338,8 @@ function scaleEvidence(entities: DrawEntity[], furniture: FurnitureItem[]): Scal
   const ys: number[] = []
 
   const note = (e: DrawEntity) => {
-    if (e.category === 'door' && e.pts && e.pts.length >= 3) {
-      const r = circleRadiusThrough(
-        e.pts[0],
-        e.pts[e.pts.length >> 1],
-        e.pts[e.pts.length - 1],
-      )
+    if (e.category === 'door' && e.pts) {
+      const r = arcLikeRadius(e.pts, e.closed)
       if (r != null) doorRadii.push(r)
     }
     if (e.pts) {
