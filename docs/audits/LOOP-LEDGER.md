@@ -247,3 +247,50 @@ rather than passing, which is the good failure mode, but it would have been read
 as "gate broken" not "gate says no". Scoped locally.
 
 **Phase 2 complete: 2.1–2.8 all landed.**
+
+## ⚠ PARKED BLOCKER — `generate` performance regression from the classifier
+
+**Not a HALT** (no invariant moved, no registered value needs changing), but a
+live defect I introduced and did not detect until B6's verification.
+
+`layout::tests::real_building_plate_spreads_the_program` asserts a 300 ms
+debug-build budget for `generate`, with one retry. Measured:
+
+| tree | full parallel suite |
+|---|---|
+| pre-workstream `425232c` | **157 passed, 0 failed** |
+| HEAD | **168 passed, 1 failed** — "seed 3: generate took 336 ms (debug budget 300)" |
+
+Passes in isolation, fails consistently under the parallel suite — a thin margin,
+12% over. Attribution is not inferred: the baseline was run in the same worktree
+under the same conditions and is green.
+
+**Mechanism.** `conform::classify_residual_zones` builds a `WalkClassifier` on
+every `generate`: a 0.15 m occupancy grid over the padded wall bbox (`≈10⁵` cells
+on this plate), a chamfer distance transform, a BFS, then a point-in-polygon
+sweep per pocket. That is new work `generate` did not previously do.
+
+**Why I did not just fix it.** The obvious lever is the grid cell size, which
+comes from `CirculationConfig::new()` (0.15 m). Coarsening it would change
+`wide_frac` for every pocket and therefore verdicts — including the two
+pre-registered outcomes (847 stays Circulation, 848 flips). Cell size is not in
+§2's registered list, but changing it moves registered results, so it is a
+re-registration question, not a free optimisation.
+
+**Recommended ruling / fix, in preference order:**
+1. **Verdict-preserving optimisation.** Profile `walkable_grid`'s zone stamping
+   (per-zone bbox iteration calling `shape.contains` per cell) — likely the hot
+   loop, and reducible without touching resolution. Preferred: no re-registration.
+2. Compute the classifier lazily per residual region rather than one global grid,
+   if connectivity can be answered on a reduced mask without changing answers.
+3. Only if 1 and 2 fail: a ruling on classifier grid resolution, with the full
+   validation round re-run (three plate families + the two binding outcomes).
+
+**Explicitly NOT done:** raising `BUDGET_MS`. Relaxing a budget to accommodate a
+real slowdown is the move this programme forbids.
+
+**Second discipline miss, same shape as B2's.** The B6 verification chained
+`cargo test … | grep "test result"` and I read the line without checking it said
+`ok`. It said FAILED, and the commit went in anyway. Both misses this loop have
+the same cause: **reading a summary line instead of an exit code.** Every
+verification step in the remainder of this loop checks `$?`.
