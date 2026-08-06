@@ -1066,8 +1066,23 @@ export function renderThumb(st: DocState, w = 200, h = 140): string {
   const X = (m: number) => m * k + ox
   const Y = (m: number) => m * k + oy
 
-  // Zone tints (rect + ring), same pastels as the main canvas.
+  // Zone tints (rect + ring), same pastels as the main canvas — and the same
+  // FIGURE/GROUND RULE. A thumbnail is a plan at 180 px: if ground is filled
+  // here it is filled in the one view a user compares alternatives in.
+  //
+  // Measured on the Phase 0 candidate cards: 1 226 px of the Circulation fill
+  // per card, flooding the perimeter and the whole upper-left wing so the plan
+  // read as "grey blob with a blue desk field". The card is the FIRST thing
+  // anyone sees, and it was the one surface still contradicting the rule.
+  // (The hex is deliberately NOT written here — `bench/style-gate.mjs` bans the
+  // palette by VALUE, comments included, and it is right to.)
+  //
+  // Reads the paper profile deliberately: a card is a miniature sheet, not a
+  // working surface, so it gets no editor affordances (no ground tint, no
+  // hatch) — ground is simply the paper.
+  const thumbGround = planStyle('paper').groundZones
   for (const z of st.zones ?? []) {
+    if (thumbGround.includes(z.zone_type)) continue
     const pal = ZONE[z.zone_type] ?? ZONE.Core
     ctx.fillStyle = pal.fill
     const s = z.shape

@@ -104,3 +104,38 @@ a program-zone control proving suppression does not over-reach.
 one guard, each exposed only by running the sabotage. This is the second time
 this cycle that an instrument, not the subject, was the finding. The brief's
 "sabotage every enabling transform" is what produced all three.
+
+## B2 — 2.3 `renderThumb` ground rule · **DONE**
+
+Candidate cards were the last surface still contradicting figure/ground, and the
+first thing anyone sees.
+
+Colour census of the live card thumbnails (build-identity probe first, then
+`drawImage` + histogram of the actual data-URLs — the same method that measured
+the defect in Phase 0):
+
+| | `#d8d8d8` (Circulation fill) |
+|---|---|
+| Phase 0 | **1 226 px** per card |
+| now | **0 px**, all three cards |
+
+Top colours now: `#ffffff` 21 048 · `#d9e7f4` Workspace · `#d1f1d5` Core ·
+`#6e9af0` desks · `#f6dadf` ClosedOffice — every one a program mark.
+
+Reads the **paper** profile deliberately: a card is a miniature sheet, not a
+working surface, so it takes no editor affordances (no ground tint, no hatch).
+
+Guard: `fillRenders.test.mjs` asserts `renderThumb` consults `groundZones` at
+all. Node has no 2D context, so the pixel proof is the census above rather than
+a unit assertion — stated rather than papered over.
+
+Evidence: `B2-after-candidate-gallery.png`, `B2-thumb-A-zoom.png`.
+
+**Discipline miss, self-caught and recorded.** The first B2 commit went in with
+the style gate RED. My verification line chained `node bench/style-gate.mjs &&
+echo OK`, the echo did not print, and I read past it. The gate was correct: I had
+written the Circulation hex into comments in `paint.ts` and `fillRenders.test.mjs`,
+and the palette is banned by VALUE — comments included, per the amber ruling.
+Amended, gate green. The lesson is the one already in this file about success
+messages: **a verification step that can silently not-run is not a verification
+step.** Check exit codes explicitly, never by the presence of a chained echo.

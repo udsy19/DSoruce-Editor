@@ -223,6 +223,23 @@ const prog = P.drawZones(view(recordingCtx().ctx),
   null, statsFor(), new Set())
 assert.equal(prog.length, 1, 'a program zone lost its resting tag — suppression over-reached')
 
+// ---------------------------------------------------------------------------
+// THUMBNAILS obey the ground rule too — the card is the first thing anyone sees.
+// ---------------------------------------------------------------------------
+// `renderThumb` needs a real 2D context, which node has not got. What CAN be
+// checked here without pixels is the decision: does the thumbnail consult the
+// ground list at all? The pixel proof is the colour census in the evidence set
+// (docs/evidence/circulation-audit/), which is the method that measured the
+// 1 226 px Circulation-fill flood in the first place.
+{
+  const src = fs.readFileSync(path.join(here, 'paint.ts'), 'utf8')
+  const body = src.slice(src.indexOf('export function renderThumb'))
+  assert.ok(
+    /groundZones/.test(body.slice(0, 2500)),
+    'renderThumb no longer consults groundZones — the candidate cards will flood ground again',
+  )
+}
+
 console.log(
   `PASS fillRenders: ${checked} declared fills valid; ${pathChecked} exercised through ` +
   `drawZones and proven to emit marks; ground silent at rest and named on selection ` +
