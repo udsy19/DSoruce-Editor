@@ -146,6 +146,45 @@ function hasNeutralCore(img, cx, cy, r) {
 const MIN_SCORE = 0.85
 
 /**
+ * Fraction of the glyph's own square that is PURE white (255,255,255).
+ *
+ * `drawTagGlyph` opens with `p.box(cx-r, cy-r, 2r, 2r, { fill: true, gray: 1 })`
+ * — every tag is knocked out of the drawing onto a pure-white backdrop before
+ * anything is stroked. So the area a real tag occupies is white EXCEPT its own
+ * outline and centred glyph run, and whatever was underneath is gone.
+ */
+function backdropFrac(img, cx, cy, r) {
+  let white = 0
+  let total = 0
+  for (let y = Math.round(cy - r); y <= Math.round(cy + r); y++) {
+    for (let x = Math.round(cx - r); x <= Math.round(cx + r); x++) {
+      if (x < 0 || y < 0 || x >= img.w || y >= img.h) continue
+      const i = (y * img.w + x) * 3
+      total++
+      if (img.data[i] === 255 && img.data[i + 1] === 255 && img.data[i + 2] === 255) white++
+    }
+  }
+  return total ? white / total : 0
+}
+
+/**
+ * A tag must SIT ON its knockout. This is the third construction fact, and it is
+ * here because the outline score alone is not specific enough: dense INK-coloured
+ * linework in the plan (mullion runs, desk/chair glyph clusters) can put a mask
+ * pixel within +-1 px of 85% of a small ring's sample points BY COINCIDENCE, and
+ * it did — two Door false positives inside the plate on dwg/A02, which read as
+ * "schedule tags outside their panel" because a plate is not a panel.
+ *
+ * This is a specificity ADDITION, never a relaxation: it can only reject
+ * detections, never admit one. Measured over all 195 real tags on A.02 across
+ * all three packs the backdrop runs 0.593..0.751; both false positives measured
+ * EXACTLY 0.000 (their squares are solid linework). The cut sits at 0.25 — an
+ * order of magnitude clear of both sides, so it is not calibrated to squeak
+ * either past. A tag with no knockout under it is not a tag.
+ */
+const MIN_BACKDROP = 0.25
+
+/**
  * Every opening tag on a sheet raster.
  * @returns [{ kind:'Door'|'Window', scale:'plan'|'schedule', cx, cy, r, score, glyphInk }]
  *          cx/cy/r in PIXELS.
@@ -184,8 +223,10 @@ export function findTags(img, ptToPx) {
       const kept = []
       for (const hgt of hits) {
         if (kept.some((k) => Math.hypot(k.cx - hgt.cx, k.cy - hgt.cy) < r)) continue
+        const backdrop = backdropFrac(img, hgt.cx, hgt.cy, r)
+        if (backdrop < MIN_BACKDROP) continue
         const glyphInk = hasNeutralCore(img, hgt.cx, hgt.cy, r)
-        kept.push({ ...hgt, kind, scale, r, glyphInk })
+        kept.push({ ...hgt, kind, scale, r, glyphInk, backdrop })
       }
       out.push(...kept)
     }
