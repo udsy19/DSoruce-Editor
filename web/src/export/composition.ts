@@ -1,4 +1,4 @@
-import type { DocState } from '../editor/EditorCanvas'
+import type { DocState } from '../types/doc'
 import type { Pt } from '../util/clip'
 import { zoneBBox } from '../util/zoneGeom'
 import { pointInPolygon } from '../three/materialTheme'

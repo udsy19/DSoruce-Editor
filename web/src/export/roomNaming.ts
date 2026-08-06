@@ -28,7 +28,7 @@
 //   for (const form of roomLabelForms(name.toUpperCase(), 7.5, measure)) { … }
 // ---------------------------------------------------------------------------
 
-import type { DocState } from '../editor/EditorCanvas'
+import type { DocState } from '../types/doc'
 
 // ---------------------------------------------------------------------------
 // 1. Display names — deterministic ordinals over duplicate room names

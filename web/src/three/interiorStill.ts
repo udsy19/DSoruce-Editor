@@ -4,7 +4,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
 import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js'
-import type { DocState } from '../editor/EditorCanvas'
+import type { DocState } from '../types/doc'
 import { pointInZoneShape } from '../util/zoneGeom'
 import { CEILING_HEIGHT } from './Viewer3D'
 import {

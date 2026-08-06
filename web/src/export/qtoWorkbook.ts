@@ -24,7 +24,7 @@
 // Layout mirrors `docs/reference/qbiq/spec/workbook-spec.json`. Deviations from
 // the reference are marked `DEVIATION:` and explained where they occur.
 
-import type { DocState, DocZone } from '../editor/EditorCanvas'
+import type { DocState, DocZone } from '../types/doc'
 import { zoneArea } from '../util/zoneGeom'
 import { FINISH_SPEC, finishTypeFor, roomTypeLabel } from './finishSchedule'
 import { CIRCULATION_ROOM_ID, planRoomList, type PlanRoom } from './planGraphic'

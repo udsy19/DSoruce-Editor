@@ -13,7 +13,7 @@
 // the design in a browser". Both remain, neither duplicates the other.
 
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js'
-import type { DocState } from '../editor/EditorCanvas'
+import type { DocState } from '../types/doc'
 import { buildInteriorScene, type InteriorSceneOpts } from '../three/materialTheme'
 import { triggerDownload } from './png'
 

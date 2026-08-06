@@ -18,7 +18,7 @@
 // per-type length totals, so never take wall quantities from this module.
 // Pure, deterministic, no DOM.
 
-import type { DocState, DocWall, DocZone } from '../editor/EditorCanvas'
+import type { DocState, DocWall, DocZone } from '../types/doc'
 import { zoneBBox } from '../util/zoneGeom'
 import type { WallType } from './qbiqPalette'
 

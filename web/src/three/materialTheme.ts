@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
-import type { DocState, DocComponent, DocZone } from '../editor/EditorCanvas'
+import type { DocComponent, DocState, DocZone } from '../types/doc'
 import { MATERIALS } from '../export/qbiqPalette'
 import { FINISH_SPEC, finishTypeFor, type FinishKey } from '../export/finishSchedule'
 import { classifyWalls, type WallSpan, type WallType } from '../export/wallTypes'

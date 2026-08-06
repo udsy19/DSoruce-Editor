@@ -1,4 +1,4 @@
-import type { DocState } from '../editor/EditorCanvas'
+import type { DocState } from '../types/doc'
 import { canvasToPngBytes } from './planGraphic'
 import type { WallSpan } from './wallTypes'
 import { buildInteriorScene, type InteriorRoom, type InteriorScene } from '../three/materialTheme'

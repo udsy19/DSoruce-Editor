@@ -7,7 +7,8 @@
 // (One definition, two readers — a TS bundle and a plain Node script — which is
 // why it is JSON rather than a constant in either.)
 
-import type { EditorCanvas, Program } from './EditorCanvas'
+import type { EditorCanvas } from './EditorCanvas'
+import type { Program } from '../types/program'
 import spec from './samplePlan.json'
 
 export const SAMPLE_PLAN = spec

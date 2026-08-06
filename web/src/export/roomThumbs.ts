@@ -12,8 +12,8 @@
 //
 // Deterministic (G4/G5 both diff bytes): no `Date`, no `Math.random`.
 
-import type { DocComponent, DocState, DocZone } from '../editor/EditorCanvas'
-import { drawFurnitureSymbol } from '../editor/furniture'
+import type { DocComponent, DocState, DocZone } from '../types/doc'
+import { drawSymbol } from '../editor/symbols'
 import { pointInZoneShape, zoneBBox } from '../util/zoneGeom'
 import { ZONE_META } from '../editor/stats'
 import { FINISH_SPEC, finishTypeFor, type FinishKey } from './finishSchedule'
@@ -219,36 +219,54 @@ export async function renderRoomThumbnail(
   for (const c of comps) {
     ctx.save()
     ctx.translate(1.5 * scale, 1.8 * scale)
-    drawFurnitureSymbol(ctx, {
-      category: c.category,
-      cx: X(c.x),
-      cy: Y(c.y),
-      w: c.w * k,
-      h: c.h * k,
-      rotation: c.rotation,
-      mirror: c.mirror,
-      stroke: 'rgba(28, 33, 38, 0.16)',
-      detail: 'rgba(28, 33, 38, 0.10)',
-      fill: 'rgba(28, 33, 38, 0.13)',
-      accent: 'rgba(28, 33, 38, 0.16)',
-      selected: false,
-    })
+    drawSymbol(
+      ctx,
+      {
+        category: c.category,
+        cx: X(c.x),
+        cy: Y(c.y),
+        w: c.w,
+        h: c.h,
+        rotation: c.rotation,
+        mirror: c.mirror,
+        selected: false,
+        // R6: deliverable surface — real Chair components are drawn
+        // beside this glyph, so it must not imply seating.
+        implySeats: false,
+      },
+      {
+        stroke: 'rgba(28, 33, 38, 0.16)',
+        detail: 'rgba(28, 33, 38, 0.10)',
+        fill: 'rgba(28, 33, 38, 0.13)',
+        accent: 'rgba(28, 33, 38, 0.16)',
+      },
+      { pxPerM: k, dpr: 1 },
+    )
     ctx.restore()
-    drawFurnitureSymbol(ctx, {
-      category: c.category,
-      cx: X(c.x),
-      cy: Y(c.y),
-      w: c.w * k,
-      h: c.h * k,
-      rotation: c.rotation,
-      mirror: c.mirror,
-      stroke: '#1c2126',
-      detail: '#7c848e',
-      fill: '#ffffff',
-      seat: lighten(meta.line, 0.55),
-      accent: '#1c2126',
-      selected: false,
-    })
+    drawSymbol(
+      ctx,
+      {
+        category: c.category,
+        cx: X(c.x),
+        cy: Y(c.y),
+        w: c.w,
+        h: c.h,
+        rotation: c.rotation,
+        mirror: c.mirror,
+        selected: false,
+        // R6: deliverable surface — real Chair components are drawn
+        // beside this glyph, so it must not imply seating.
+        implySeats: false,
+      },
+      {
+        stroke: '#1c2126',
+        detail: '#7c848e',
+        fill: '#ffffff',
+        seat: lighten(meta.line, 0.55),
+        accent: '#1c2126',
+      },
+      { pxPerM: k, dpr: 1 },
+    )
   }
 
   // --- walls in their type colour -------------------------------------------

@@ -336,6 +336,20 @@ export class Editor {
         return takeFromExternrefTable0(ret[0]);
     }
     /**
+     * Wall run length + elevational area per wall type, door count/width per
+     * door type, and per-room area/headcount — all derived from geometry.
+     * Shape: `{ sqfPerM2, wallHeightM, floorAreaM2, walls[], doors[],
+     * doorCount, doorTotalWidthM, rooms[] }`. See `quantity::Quantities`.
+     * @returns {any}
+     */
+    quantities() {
+        const ret = wasm.editor_quantities(this.__wbg_ptr);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
      * Rename a zone's label (e.g. to match a reclassified type).
      * @param {number} id
      * @param {string} label
@@ -488,6 +502,19 @@ export class Editor {
         wasm.editor_set_wall(this.__wbg_ptr, id, ax, ay, bx, by);
     }
     /**
+     * Set a wall's height in meters. Anything `>= 0` and below the full storey
+     * height ([`model::FULL_WALL_HEIGHT_M`]) makes it a **partial-height screen**
+     * and moves its run into the takeoff's `Half Drywall` category; pass a
+     * negative value (or the full height) to clear the override back to full
+     * height. No-op if the id is unknown. This is the only writer of
+     * `Wall::height_m` — the generator has no partial-height primitive.
+     * @param {number} id
+     * @param {number} height_m
+     */
+    set_wall_height(id, height_m) {
+        wasm.editor_set_wall_height(this.__wbg_ptr, id, height_m);
+    }
+    /**
      * Reclassify zone `id` to `zone_type` (one of the serde `ZoneType` tags,
      * e.g. "Workspace"). Distinct from the component-level `set_decision`.
      * @param {number} id
@@ -536,6 +563,21 @@ export class Editor {
      */
     state() {
         const ret = wasm.editor_state(this.__wbg_ptr);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
+     * Per-wall classification for the **plan renderer**:
+     * `[{ id, wallType, planKey, lengthM }, ...]` in document order, where
+     * `planKey` is a `qbiqPalette.ts` `WallType` (`"drywall"`, `"glass"`, …).
+     * The renderer must colour from THIS rather than re-deriving types in TS —
+     * that is what keeps the coloured plan and the billed workbook in agreement.
+     * @returns {any}
+     */
+    wall_types() {
+        const ret = wasm.editor_wall_types(this.__wbg_ptr);
         if (ret[2]) {
             throw takeFromExternrefTable0(ret[1]);
         }

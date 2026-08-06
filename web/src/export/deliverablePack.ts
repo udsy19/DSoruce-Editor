@@ -20,7 +20,7 @@
 // encodes it itself through WebCodecs (`export/mp4.ts`). Same frames, same
 // camera, same scene — only the encoder differs.
 
-import type { DocState } from '../editor/EditorCanvas'
+import type { DocState } from '../types/doc'
 import { buildQtoPack, type QtoRenderOptions, type Quantities } from './qtoWorkbook'
 import { renderRoomPack, roomRenderGroundTruth, type RoomRender } from './roomRenders'
 import { renderWalkthrough } from './walkthrough'

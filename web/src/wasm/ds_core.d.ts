@@ -142,6 +142,13 @@ export class Editor {
      */
     qto_schedule(): any;
     /**
+     * Wall run length + elevational area per wall type, door count/width per
+     * door type, and per-room area/headcount — all derived from geometry.
+     * Shape: `{ sqfPerM2, wallHeightM, floorAreaM2, walls[], doors[],
+     * doorCount, doorTotalWidthM, rooms[] }`. See `quantity::Quantities`.
+     */
+    quantities(): any;
+    /**
      * Rename a zone's label (e.g. to match a reclassified type).
      */
     rename_zone(id: number, label: string): void;
@@ -218,6 +225,15 @@ export class Editor {
      */
     set_wall(id: number, ax: number, ay: number, bx: number, by: number): void;
     /**
+     * Set a wall's height in meters. Anything `>= 0` and below the full storey
+     * height ([`model::FULL_WALL_HEIGHT_M`]) makes it a **partial-height screen**
+     * and moves its run into the takeoff's `Half Drywall` category; pass a
+     * negative value (or the full height) to clear the override back to full
+     * height. No-op if the id is unknown. This is the only writer of
+     * `Wall::height_m` — the generator has no partial-height primitive.
+     */
+    set_wall_height(id: number, height_m: number): void;
+    /**
      * Reclassify zone `id` to `zone_type` (one of the serde `ZoneType` tags,
      * e.g. "Workspace"). Distinct from the component-level `set_decision`.
      */
@@ -236,6 +252,14 @@ export class Editor {
      * Whole document, for rendering. Returned as a plain JS object.
      */
     state(): any;
+    /**
+     * Per-wall classification for the **plan renderer**:
+     * `[{ id, wallType, planKey, lengthM }, ...]` in document order, where
+     * `planKey` is a `qbiqPalette.ts` `WallType` (`"drywall"`, `"glass"`, …).
+     * The renderer must colour from THIS rather than re-deriving types in TS —
+     * that is what keeps the coloured plan and the billed workbook in agreement.
+     */
+    wall_types(): any;
     /**
      * The most-specific zone id containing world point `(x, y)`, or undefined.
      */
@@ -316,6 +340,7 @@ export interface InitOutput {
     readonly editor_new: () => number;
     readonly editor_plate: (a: number) => [number, number, number];
     readonly editor_qto_schedule: (a: number) => [number, number, number];
+    readonly editor_quantities: (a: number) => [number, number, number];
     readonly editor_rename_zone: (a: number, b: number, c: number, d: number) => [number, number];
     readonly editor_resize_zone: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number];
     readonly editor_restore: (a: number, b: any) => [number, number];
@@ -329,10 +354,12 @@ export interface InitOutput {
     readonly editor_set_component_size: (a: number, b: number, c: number, d: number) => void;
     readonly editor_set_decision: (a: number, b: number, c: number, d: number) => void;
     readonly editor_set_wall: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
+    readonly editor_set_wall_height: (a: number, b: number, c: number) => void;
     readonly editor_set_zone_type: (a: number, b: number, c: number, d: number) => [number, number];
     readonly editor_snapshot: (a: number) => [number, number, number];
     readonly editor_split_zone: (a: number, b: number, c: number, d: number, e: number) => [number, number, number];
     readonly editor_state: (a: number) => [number, number, number];
+    readonly editor_wall_types: (a: number) => [number, number, number];
     readonly editor_zone_at: (a: number, b: number, c: number) => number;
     readonly editor_zone_stats: (a: number) => [number, number, number];
     readonly editor_zones: (a: number) => [number, number, number];

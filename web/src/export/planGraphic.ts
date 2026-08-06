@@ -20,8 +20,9 @@
 // DETERMINISM IS GATED (G4 renders twice and diffs the bytes): no `Date`, no
 // `Math.random`, no iteration over unordered collections, fixed font metrics.
 
-import type { CirculationScore, DocComponent, DocState, DocZone } from '../editor/EditorCanvas'
-import { drawFurnitureSymbol } from '../editor/furniture'
+import type { DocComponent, DocState, DocZone } from '../types/doc'
+import type { CirculationScore } from '../types/metrics'
+import { drawSymbol } from '../editor/symbols'
 import { zoneArea, zoneCenter } from '../util/zoneGeom'
 import { renderPrintCanvas } from './pdf'
 import { labelLeader, placeNear, zoneBoxOnSheet, type OccBox } from './sheetSet'
@@ -264,19 +265,28 @@ export function renderPlanCanvas(
   // 5. Doors — the same CAD symbol the editor draws, inked in door-swing orange.
   for (const c of state.components) {
     if (c.category !== 'Door') continue
-    drawFurnitureSymbol(ctx, {
-      category: 'Door',
-      cx: X(c.x),
-      cy: Y(c.y),
-      w: c.w * k,
-      h: c.h * k,
-      rotation: c.rotation,
-      mirror: c.mirror,
-      stroke: WALL_TYPE_HEX.door_swing,
-      detail: WALL_TYPE_HEX.door_swing,
-      accent: WALL_TYPE_HEX.door_swing,
-      selected: false,
-    })
+    drawSymbol(
+      ctx,
+      {
+        category: 'Door',
+        cx: X(c.x),
+        cy: Y(c.y),
+        w: c.w,
+        h: c.h,
+        rotation: c.rotation,
+        mirror: c.mirror,
+        selected: false,
+        // R6: deliverable surface — real Chair components are drawn
+        // beside this glyph, so it must not imply seating.
+        implySeats: false,
+      },
+      {
+        stroke: WALL_TYPE_HEX.door_swing,
+        detail: WALL_TYPE_HEX.door_swing,
+        accent: WALL_TYPE_HEX.door_swing,
+      },
+      { pxPerM: k, dpr: 1 },
+    )
   }
 
   // 6. Room ID labels — bold, centred, knocked out of the linework with a white
