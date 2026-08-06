@@ -61,6 +61,7 @@ function metersPerUnit(insunits: unknown): { scale: number; label: string } {
 export type UnitsSource =
   | 'header'
   | 'door-anchor'
+  | 'furniture-anchor'
   | 'wall-anchor'
   | 'extent-anchor'
   | 'header-unverified'
@@ -80,6 +81,19 @@ const DOOR_LEAF_MAX_M = 1.3
  */
 const WALL_THICKNESS_MIN_M = 0.05
 const WALL_THICKNESS_MAX_M = 0.6
+
+/**
+ * A placed block in a floor plan is a human-scale object: a chair is 0.4–0.7 m
+ * across, a desk 1.2–1.8 m, a table 0.8–2.4 m, a bed ~2 m, a door leaf ~0.9 m.
+ * Almost nothing a person uses has a longest side outside 0.3–4 m.
+ *
+ * This band is a statement about furniture, not a measurement of this corpus —
+ * the distinction `.claude/rules/gate-independence.md` insists on. It is the
+ * anchor that settles drawings with no door swings at all, where the wall band
+ * (a factor of 12 wide) can be satisfied at more than one scale by coincidence.
+ */
+const FURNITURE_MIN_M = 0.3
+const FURNITURE_MAX_M = 4.0
 
 /**
  * A building's long side. Weakest anchor, used only when neither doors nor wall
@@ -158,8 +172,9 @@ function wallPairGaps(segments: [number, number, number, number][]): number[] {
  * anchor that is true by construction over one the file asserts about itself:
  *
  *   1. door-swing arc radii must land in the legal leaf-width band;
- *   2. gaps between parallel wall lines must be wall-assembly thicknesses;
- *   3. the drawing's long side must be a building.
+ *   2. placed blocks must be human-scale objects;
+ *   3. gaps between parallel wall lines must be wall-assembly thicknesses;
+ *   4. the drawing's long side must be a building.
  *
  * Each is a POPULATION, and each candidate unit is scored by what fraction of
  * each population it makes physical (see below). The header is scored first, so
@@ -194,6 +209,7 @@ function decideUnits(
   const wallGaps = wallPairGaps(evidence.wallSegments)
   const populations: [number[], number, number, UnitsSource, number][] = [
     [evidence.doorRadii, DOOR_LEAF_MIN_M, DOOR_LEAF_MAX_M, 'door-anchor', 3],
+    [evidence.furnitureSizes, FURNITURE_MIN_M, FURNITURE_MAX_M, 'furniture-anchor', 2],
     [wallGaps, WALL_THICKNESS_MIN_M, WALL_THICKNESS_MAX_M, 'wall-anchor', 2],
     [evidence.extent > 0 ? [evidence.extent] : [], BUILDING_MIN_M, BUILDING_MAX_M, 'extent-anchor', 1],
   ]
@@ -242,6 +258,8 @@ interface ScaleEvidence {
   doorRadii: number[]
   /** Wall-category segments as [x0, y0, x1, y1], source units. */
   wallSegments: [number, number, number, number][]
+  /** Longest side of each placed block's footprint, source units. */
+  furnitureSizes: number[]
   extent: number
 }
 
@@ -385,6 +403,7 @@ function arcLikeRadius(pts: [number, number][], closed?: boolean): number | null
 function scaleEvidence(entities: DrawEntity[], furniture: FurnitureItem[]): ScaleEvidence {
   const doorRadii: number[] = []
   const wallSegments: [number, number, number, number][] = []
+  const furnitureSizes: number[] = []
   const xs: number[] = []
   const ys: number[] = []
 
@@ -428,7 +447,15 @@ function scaleEvidence(entities: DrawEntity[], furniture: FurnitureItem[]): Scal
     return hi - lo
   }
 
-  return { doorRadii, wallSegments, extent: Math.max(span(xs), span(ys)) }
+  for (const f of furniture) {
+    const w = f.bbox[2] - f.bbox[0]
+    const h = f.bbox[3] - f.bbox[1]
+    if (w > 0 && h > 0 && Number.isFinite(w) && Number.isFinite(h)) {
+      furnitureSizes.push(Math.max(w, h))
+    }
+  }
+
+  return { doorRadii, wallSegments, furnitureSizes, extent: Math.max(span(xs), span(ys)) }
 }
 
 // ---------------------------------------------------------------------------

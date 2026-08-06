@@ -207,7 +207,68 @@ function metricPlanDxf(insunitsGroup) {
 }
 
 // ---------------------------------------------------------------------------
-// 6. Scale CONFIDENCE — the importer must know when it does not know.
+// 6. The FURNITURE anchor settles drawings with no doors.
+//
+//    The wall band spans a factor of 12 (0.05-0.60 m), so on a drawing with no
+//    door swings it can be satisfied at more than one unit by coincidence and
+//    the header then wins the tie. BUSNSS-Offcs-CwSp_AA.dwg did exactly that:
+//    70% of its 845 wall gaps read as wall-thickness at INCHES, which made a
+//    coworking floor 4.9 x 1.8 m. Its 105 placed blocks are the tiebreak —
+//    0% of them are human-scale at inches, 100% at metres.
+// ---------------------------------------------------------------------------
+{
+  // A 30 x 18 m room in METRES, no doors at all, furnished with a realistic MIX
+  // of block sizes. The header lies (inches); only the furniture can refute it.
+  //
+  // The mix is load-bearing, and an earlier single-size version of this fixture
+  // proved why: ten uniform 1.4-unit desks in a 30 x 18-unit room is genuinely
+  // consistent with BOTH feet (a 9.1 x 5.5 m room of 0.43 m stools) and metres,
+  // and no anchor can separate them — the input really is ambiguous. A real
+  // plan is not: at feet the 0.55 chairs become 0.17 m, below anything a person
+  // sits on, so only metres makes the whole population human-scale.
+  const BLOCKS = [
+    ['CHAIR', 0.55, 0.55],
+    ['DESK', 1.6, 0.8],
+    ['TABLE', 2.4, 1.1],
+  ]
+  const ents = [
+    '0', 'SECTION', '2', 'HEADER', '9', '$INSUNITS', '70', '1', '0', 'ENDSEC',
+    '0', 'SECTION', '2', 'BLOCKS',
+  ]
+  for (const [name, w, h] of BLOCKS) {
+    ents.push(
+      '0', 'BLOCK', '8', '0', '2', name, '10', '0', '20', '0',
+      '0', 'LWPOLYLINE', '8', 'FURNITURE', '90', '4', '70', '1',
+      '10', '0', '20', '0', '10', String(w), '20', '0',
+      '10', String(w), '20', String(h), '10', '0', '20', String(h),
+      '0', 'ENDBLK',
+    )
+  }
+  ents.push('0', 'ENDSEC', '0', 'SECTION', '2', 'ENTITIES')
+  const corners = [[0, 0], [30, 0], [30, 18], [0, 18]]
+  for (let i = 0; i < 4; i++) {
+    const [ax, ay] = corners[i]
+    const [bx, by] = corners[(i + 1) % 4]
+    ents.push('0', 'LINE', '8', 'WALL', '10', String(ax), '20', String(ay), '11', String(bx), '21', String(by))
+  }
+  for (let i = 0; i < 12; i++) {
+    const [name] = BLOCKS[i % BLOCKS.length]
+    ents.push('0', 'INSERT', '8', 'FURNITURE', '2', name, '10', String(2 + i * 2), '20', '4')
+  }
+  ents.push('0', 'ENDSEC', '0', 'EOF')
+
+  const d = parseDrawing(ents.join('\n'))
+  ok(d.units === 'm', `no doors + human-scale furniture -> metres, not the declared inches (got '${d.units}')`)
+  ok(
+    d.unitsSource === 'furniture-anchor',
+    `the override is attributed to the furniture anchor (got '${d.unitsSource}')`,
+  )
+  const w = d.bounds[2] - d.bounds[0]
+  ok(Math.abs(w - 30) < 0.01, `room reads 30 m wide, not 0.76 m (got ${w.toFixed(4)})`)
+}
+
+// ---------------------------------------------------------------------------
+// 7. Scale CONFIDENCE — the importer must know when it does not know.
 //
 //    Picking the best-supported unit is not the same as picking the right one.
 //    A drawing can trace a perfect boundary at 30x the true size, place

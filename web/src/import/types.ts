@@ -73,7 +73,8 @@ export interface Drawing {
   /**
    * How `units` was decided. `$INSUNITS` is metadata the file asserts about
    * itself and is often wrong, so the importer confirms it against the geometry
-   * (door-swing radii, then overall extent) and records which anchor settled it.
+   * — door-swing radii, placed-block footprints, wall-pair gaps, overall extent
+   * — and records which anchor settled it.
    *
    * `'header-unverified'` means the drawing offered no physical anchor and the
    * header was taken on trust — the one value that must never be presented to
@@ -81,7 +82,13 @@ export interface Drawing {
    * downstream is denominated in it. Optional so a hand-built `Drawing` (tests,
    * raster import) need not supply it.
    */
-  unitsSource?: 'header' | 'door-anchor' | 'wall-anchor' | 'extent-anchor' | 'header-unverified'
+  unitsSource?:
+    | 'header'
+    | 'door-anchor'
+    | 'furniture-anchor'
+    | 'wall-anchor'
+    | 'extent-anchor'
+    | 'header-unverified'
   /**
    * How far the chosen scale can be trusted, graded by re-measuring the
    * FINISHED geometry: what fraction of the door swings are legal doors, and
