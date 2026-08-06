@@ -81,7 +81,7 @@ export interface Drawing {
    * downstream is denominated in it. Optional so a hand-built `Drawing` (tests,
    * raster import) need not supply it.
    */
-  unitsSource?: 'header' | 'door-anchor' | 'extent-anchor' | 'header-unverified'
+  unitsSource?: 'header' | 'door-anchor' | 'wall-anchor' | 'extent-anchor' | 'header-unverified'
   /** [minX, minY, maxX, maxY] meters, from the actual geometry (not the sheet). */
   bounds: [number, number, number, number]
   layers: string[]

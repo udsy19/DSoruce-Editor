@@ -58,7 +58,12 @@ function metersPerUnit(insunits: unknown): { scale: number; label: string } {
  * physical anchor and we took the header on trust — the one state that must
  * never be reported to the user as a certainty.
  */
-export type UnitsSource = 'header' | 'door-anchor' | 'extent-anchor' | 'header-unverified'
+export type UnitsSource =
+  | 'header'
+  | 'door-anchor'
+  | 'wall-anchor'
+  | 'extent-anchor'
+  | 'header-unverified'
 
 /**
  * A door swing arc's radius IS the door leaf width, and that is 0.75–1.10 m in
@@ -69,12 +74,74 @@ const DOOR_LEAF_MIN_M = 0.65
 const DOOR_LEAF_MAX_M = 1.3
 
 /**
- * A building's long side, used only when there are no doors to measure. The
- * band is deliberately generous: this anchor exists to catch a drawing that is
- * off by a factor of 25–1000, not to fine-tune a plausible one.
+ * A wall is two parallel lines a wall-assembly's thickness apart. Partitions
+ * run 75–150 mm, structural and party walls 200–400 mm; the band is widened at
+ * both ends for furring, cavity walls and drafting slop.
+ */
+const WALL_THICKNESS_MIN_M = 0.05
+const WALL_THICKNESS_MAX_M = 0.6
+
+/**
+ * A building's long side. Weakest anchor, used only when neither doors nor wall
+ * pairs are measurable — a drawing's extent depends on how much sheet furniture
+ * travelled with it, so it can only catch gross errors, not adjudicate close
+ * calls.
  */
 const BUILDING_MIN_M = 3
 const BUILDING_MAX_M = 1000
+
+/**
+ * Modal perpendicular gap between parallel, overlapping wall lines — i.e. the
+ * drawing's typical wall thickness, in SOURCE units.
+ *
+ * This is the anchor that settles the drawings the door anchor cannot. Several
+ * corpus files declare inches and carry 100–1800 wall segments inside a "3.4 m"
+ * extent: the extent alone cannot refute that (3.4 m clears the building floor)
+ * but a building whose walls are 2.5 mm thick is not a building.
+ *
+ * Cost is bounded by sampling the longest segments — wall faces are long, and
+ * pairing the longest few hundred finds the assembly thickness without going
+ * quadratic over every hatch tick in the drawing.
+ */
+function modalWallThickness(segments: [number, number, number, number][]): number | null {
+  const MAX_SAMPLE = 300
+  const longest = segments
+    .map((s) => ({ s, len: Math.hypot(s[2] - s[0], s[3] - s[1]) }))
+    .filter((e) => e.len > 0)
+    .sort((a, b) => b.len - a.len)
+    .slice(0, MAX_SAMPLE)
+
+  const gaps: number[] = []
+  for (let i = 0; i < longest.length; i++) {
+    const [ax0, ay0, ax1, ay1] = longest[i].s
+    const alen = longest[i].len
+    const ux = (ax1 - ax0) / alen
+    const uy = (ay1 - ay0) / alen
+    for (let j = i + 1; j < longest.length; j++) {
+      const [bx0, by0, bx1, by1] = longest[j].s
+      const blen = longest[j].len
+      const vx = (bx1 - bx0) / blen
+      const vy = (by1 - by0) / blen
+      // Parallel within ~2°: |cross| small.
+      if (Math.abs(ux * vy - uy * vx) > 0.035) continue
+      // Perpendicular offset of b's start from a's infinite line.
+      const gap = Math.abs((bx0 - ax0) * -uy + (by0 - ay0) * ux)
+      if (gap <= 0) continue
+      // They must overlap along the shared direction, else they are two
+      // different walls that merely happen to be parallel.
+      const t0 = (bx0 - ax0) * ux + (by0 - ay0) * uy
+      const t1 = (bx1 - ax0) * ux + (by1 - ay0) * uy
+      const lo = Math.min(t0, t1)
+      const hi = Math.max(t0, t1)
+      if (hi < alen * 0.25 || lo > alen * 0.75) continue
+      // A wall's two faces are close relative to its length; anything much
+      // further apart is the opposite side of a room, not the same wall.
+      if (gap > alen * 0.5) continue
+      gaps.push(gap)
+    }
+  }
+  return modalWithin(gaps, 0.1)
+}
 
 /**
  * Modal value within a ±5 % relative bin — the most-repeated radius, which on a
@@ -110,7 +177,9 @@ function modalWithin(values: number[], rel = 0.05): number | null {
  * anchor that is true by construction over one the file asserts about itself:
  *
  *   1. the modal door-swing arc radius must land in the legal leaf-width band;
- *   2. failing that, the drawing's long side must be a building.
+ *   2. failing that, the modal gap between parallel wall lines must be a wall
+ *      assembly's thickness;
+ *   3. failing that, the drawing's long side must be a building.
  *
  * If the header's unit satisfies the anchor we keep it — a correct header is
  * the common case and must not be second-guessed. Only when it fails do we take
@@ -119,8 +188,7 @@ function modalWithin(values: number[], rel = 0.05): number | null {
  */
 function decideUnits(
   insunits: unknown,
-  doorRadii: number[],
-  extentSourceUnits: number,
+  evidence: ScaleEvidence,
 ): { scale: number; label: string; source: UnitsSource } {
   const header = metersPerUnit(insunits)
 
@@ -129,36 +197,59 @@ function decideUnits(
   // satisfies several candidates resolves the same way every run.
   const order = [header.label, ...Object.keys(UNIT_SCALE).filter((u) => u !== header.label)]
 
-  const door = modalWithin(doorRadii)
-  if (door != null && door > 0) {
-    const fits = order.filter((u) => inBand(door, UNIT_SCALE[u], DOOR_LEAF_MIN_M, DOOR_LEAF_MAX_M))
-    if (fits.length > 0) {
-      const label = fits[0]
-      return {
-        scale: UNIT_SCALE[label],
-        label,
-        source: label === header.label ? 'header' : 'door-anchor',
-      }
-    }
-    // Doors exist but match no unit — they are hinge/hardware detail arcs, not
-    // leaves. Fall through rather than trust them.
-  }
+  // Anchors strongest first. Each is a physical constant the drawing cannot
+  // argue with; the extent is last because it depends on how much sheet
+  // furniture travelled with the plan.
+  const anchors: [number | null, number, number, UnitsSource][] = [
+    [modalWithin(evidence.doorRadii), DOOR_LEAF_MIN_M, DOOR_LEAF_MAX_M, 'door-anchor'],
+    [
+      modalWallThickness(evidence.wallSegments),
+      WALL_THICKNESS_MIN_M,
+      WALL_THICKNESS_MAX_M,
+      'wall-anchor',
+    ],
+    [evidence.extent, BUILDING_MIN_M, BUILDING_MAX_M, 'extent-anchor'],
+  ]
 
-  if (extentSourceUnits > 0) {
-    const fits = order.filter((u) =>
-      inBand(extentSourceUnits, UNIT_SCALE[u], BUILDING_MIN_M, BUILDING_MAX_M),
-    )
-    if (fits.length > 0) {
-      const label = fits[0]
-      return {
-        scale: UNIT_SCALE[label],
-        label,
-        source: label === header.label ? 'header' : 'extent-anchor',
-      }
+  for (const [measured, lo, hi, source] of anchors) {
+    if (measured == null || !(measured > 0)) continue
+    const fits = order.filter((u) => inBand(measured, UNIT_SCALE[u], lo, hi))
+    // No unit satisfies this anchor — the measurement is not what we assumed
+    // (hinge arcs rather than door leaves, hatch ticks rather than wall faces).
+    // Fall through to a weaker anchor rather than trust it.
+    if (fits.length === 0) continue
+    const label = fits[0]
+    return {
+      scale: UNIT_SCALE[label],
+      label,
+      source: label === header.label ? 'header' : source,
     }
   }
 
   return { ...header, source: 'header-unverified' }
+}
+
+interface ScaleEvidence {
+  doorRadii: number[]
+  /** Wall-category segments as [x0, y0, x1, y1], source units. */
+  wallSegments: [number, number, number, number][]
+  extent: number
+}
+
+/** Multiply one entity's geometry by `s`, in place. Angles are unaffected. */
+function scaleEntity(e: DrawEntity, s: number): void {
+  if (e.pts) {
+    for (const p of e.pts) {
+      p[0] *= s
+      p[1] *= s
+    }
+  }
+  if (e.cx != null) e.cx *= s
+  if (e.cy != null) e.cy *= s
+  if (e.r != null) e.r *= s
+  if (e.tx != null) e.tx *= s
+  if (e.ty != null) e.ty *= s
+  if (e.h != null) e.h *= s
 }
 
 /**
@@ -166,27 +257,74 @@ function decideUnits(
  * scale is chosen. Reads top-level entities and block definitions alike, since
  * on most real plans the door swing lives inside a block.
  */
-function scaleEvidence(
-  rawEntities: RawEntity[],
-  blocks: Record<string, RawBlock>,
-): { doorRadii: number[]; extent: number } {
+/**
+ * Radius of the circle through three points, or null if they are collinear.
+ *
+ * Door swings arrive here as tessellated polylines — `flatten` turns every ARC
+ * into one — so the radius has to be recovered from the curve rather than read
+ * off a field. Recovering it geometrically is also what makes the measurement
+ * world-space-correct: a swing inside a block scaled by its INSERT yields the
+ * radius the building actually has, which reading `e.radius` off the raw entity
+ * never would.
+ */
+function circleRadiusThrough(
+  a: [number, number],
+  b: [number, number],
+  c: [number, number],
+): number | null {
+  const ax = a[0]
+  const ay = a[1]
+  const bx = b[0]
+  const by = b[1]
+  const cx = c[0]
+  const cy = c[1]
+  const d = 2 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by))
+  if (Math.abs(d) < 1e-12) return null // collinear: a straight polyline, not an arc
+  const a2 = ax * ax + ay * ay
+  const b2 = bx * bx + by * by
+  const c2 = cx * cx + cy * cy
+  const ux = (a2 * (by - cy) + b2 * (cy - ay) + c2 * (ay - by)) / d
+  const uy = (a2 * (cx - bx) + b2 * (ax - cx) + c2 * (bx - ax)) / d
+  const r = Math.hypot(ax - ux, ay - uy)
+  return Number.isFinite(r) && r > 0 ? r : null
+}
+
+function scaleEvidence(entities: DrawEntity[], furniture: FurnitureItem[]): ScaleEvidence {
   const doorRadii: number[] = []
+  const wallSegments: [number, number, number, number][] = []
   const xs: number[] = []
   const ys: number[] = []
 
-  const note = (e: RawEntity) => {
-    if (e.type === 'ARC' && typeof e.radius === 'number' && e.radius > 0) {
-      if (categoryFor(e.layer ?? '') === 'door') doorRadii.push(e.radius)
+  const note = (e: DrawEntity) => {
+    if (e.category === 'door' && e.pts && e.pts.length >= 3) {
+      const r = circleRadiusThrough(
+        e.pts[0],
+        e.pts[e.pts.length >> 1],
+        e.pts[e.pts.length - 1],
+      )
+      if (r != null) doorRadii.push(r)
     }
-    for (const v of e.vertices ?? []) {
-      if (!Number.isFinite(v.x) || !Number.isFinite(v.y)) continue
-      xs.push(v.x)
-      ys.push(v.y)
+    if (e.pts) {
+      if (e.category === 'wall') {
+        for (let i = 0; i + 1 < e.pts.length; i++) {
+          const [ax, ay] = e.pts[i]
+          const [bx, by] = e.pts[i + 1]
+          wallSegments.push([ax, ay, bx, by])
+        }
+      }
+      for (const [x, y] of e.pts) {
+        if (!Number.isFinite(x) || !Number.isFinite(y)) continue
+        xs.push(x)
+        ys.push(y)
+      }
     }
   }
 
-  for (const e of rawEntities) note(e)
-  for (const b of Object.values(blocks)) for (const e of b.entities ?? []) note(e)
+  for (const e of entities) note(e)
+  // Door and window blocks are placed as furniture items; their swings are the
+  // best anchor a plan offers and must not be skipped just because the importer
+  // classed the INSERT as an item rather than shell linework.
+  for (const f of furniture) for (const e of f.entities) note(e)
 
   // Robust extent: the 2nd–98th percentile span, NOT min→max. Real exports
   // routinely carry a stray xref copy or a stranded vertex kilometres from the
@@ -201,7 +339,7 @@ function scaleEvidence(
     return hi - lo
   }
 
-  return { doorRadii, extent: Math.max(span(xs), span(ys)) }
+  return { doorRadii, wallSegments, extent: Math.max(span(xs), span(ys)) }
 }
 
 // ---------------------------------------------------------------------------
@@ -764,16 +902,16 @@ export function parseDrawing(dxfText: string): Drawing {
   const blocks = dxf.blocks ?? {}
   const rawEntities = dxf.entities ?? []
 
-  // Scale is decided from the geometry, with $INSUNITS as the candidate — see
-  // decideUnits(). This must happen before anything is flattened, because the
-  // root matrix carries the unit→meters scale into every transform.
-  const evidence = scaleEvidence(rawEntities, blocks)
-  const { scale, label, source: unitsSource } = decideUnits(
-    dxf.header?.$INSUNITS,
-    evidence.doorRadii,
-    evidence.extent,
-  )
-  const root: Mat = [scale, 0, 0, scale, 0, 0] // world inches/mm → meters
+  // Flatten in SOURCE UNITS (root = identity), decide the scale from the
+  // flattened result, then scale once at the end.
+  //
+  // The scale evidence must be measured in world space, not in block-local
+  // space. A block inserted at scale 100 has internal coordinates 100× smaller
+  // than the building it draws, so reading door radii and wall gaps straight
+  // out of block definitions measures the wrong thing — and on real plans most
+  // doors and walls live inside blocks. Flattening first costs one pass and
+  // makes every anchor read the geometry the user will actually see.
+  const root: Mat = IDENTITY
 
   const layers = Object.keys(dxf.tables?.layer?.layers ?? {})
   const entities: DrawEntity[] = []
@@ -826,7 +964,23 @@ export function parseDrawing(dxfText: string): Drawing {
     }
   }
 
+  // Everything above is in source units. Decide what they are from the
+  // flattened geometry, then convert to meters in one pass.
+  const { scale, label, source: unitsSource } = decideUnits(
+    dxf.header?.$INSUNITS,
+    scaleEvidence(entities, furniture),
+  )
+  if (scale !== 1) {
+    for (const e of entities) scaleEntity(e, scale)
+    for (const f of furniture) {
+      for (const e of f.entities) scaleEntity(e, scale)
+      f.bbox = [f.bbox[0] * scale, f.bbox[1] * scale, f.bbox[2] * scale, f.bbox[3] * scale]
+      f.origin = [f.origin[0] * scale, f.origin[1] * scale]
+    }
+  }
+
   // Drop mirrored/xref duplicate geometry that sits far from the main plan.
+  // Runs AFTER scaling because its threshold floor is an absolute 60 m.
   const kept = keepDominantCluster(entities, furniture)
 
   const bounds: [number, number, number, number] = [Infinity, Infinity, -Infinity, -Infinity]

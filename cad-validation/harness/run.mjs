@@ -49,6 +49,8 @@ const bundle = async (entry) => {
 }
 
 const { parseDrawing } = await bundle('dxf.ts')
+const { loadConverter } = await import(pathToFileURL(path.join(here, 'convert.mjs')).href)
+const convertDwgFile = await loadConverter(root)
 const { healWalls } = await bundle('heal.ts')
 const { derivePlate } = await bundle('plate.ts')
 const testfit = await bundle('testfit.ts')
@@ -182,39 +184,16 @@ function runOne(entry) {
   }
 
   // --- stage 1: DWG → DXF (exactly what /api/dwg does)
-  const dxfPath = path.join(os.tmpdir(), `cadval-${process.pid}-${Math.abs(hash(entry.label))}.dxf`)
-  let dxfText = null
   const t1 = Date.now()
-  try {
-    if (entry.path.toLowerCase().endsWith('.dwg')) {
-      let stderr = ''
-      try {
-        execFileSync('dwg2dxf', ['-o', dxfPath, entry.path], {
-          stdio: ['ignore', 'ignore', 'pipe'],
-          maxBuffer: 64 * 1024 * 1024,
-          timeout: 120000,
-        })
-      } catch (err) {
-        stderr = String(err.stderr || '')
-        throw new Error(`dwg2dxf failed: ${(err.message || '').slice(0, 300)} ${stderr.slice(0, 500)}`)
-      }
-      dxfText = fs.readFileSync(dxfPath, 'utf8')
-    } else {
-      dxfText = fs.readFileSync(entry.path, 'utf8')
-    }
-    rec.stages.convert = {
-      ok: true,
-      ms: Date.now() - t1,
-      dxfBytes: Buffer.byteLength(dxfText),
-    }
-  } catch (e) {
+  const conv = convertDwgFile(entry.path)
+  if (conv.error) {
     rec.stages.convert = { ok: false, ms: Date.now() - t1 }
-    rec.errors.push({ stage: 'convert', message: String(e.message || e) })
-    fs.rmSync(dxfPath, { force: true })
+    rec.errors.push({ stage: 'convert', message: conv.error })
     rec.totalMs = Date.now() - t0
     return rec
   }
-  fs.rmSync(dxfPath, { force: true })
+  const dxfText = conv.dxf
+  rec.stages.convert = { ok: true, ms: Date.now() - t1, dxfBytes: dxfText.length, via: conv.via }
 
   // independent facts from the DXF bytes
   try {
@@ -233,6 +212,7 @@ function runOne(entry) {
       ok: true,
       ms: Date.now() - t2,
       units: drawing.units,
+      unitsSource: drawing.unitsSource,
       bounds: drawing.bounds,
       spanM: bboxSpan(drawing.bounds),
       layers: drawing.layers.length,
