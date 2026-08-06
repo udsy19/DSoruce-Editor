@@ -14,6 +14,7 @@
 //   LLM_BASE_URL / LLM_API_KEY / LLM_MODEL       /api/agent upstream
 //   ANTHROPIC_API_KEY / ANTHROPIC_MODEL          /api/claude upstream
 //   DWG2DXF_BIN            LibreDWG converter    (default 'dwg2dxf')
+//   DWGREAD_BIN            LibreDWG JSON reader  (default 'dwgread'), fallback path
 //   BANK_UPSTREAM          material-bank origin  (default https://46.202.179.28.sslip.io)
 //   PLANS_DIR              plan-store directory  (default ./plans)
 
@@ -36,6 +37,7 @@ import { handlePackApi } from './packStore'
 // Shared with the dev middleware (web/src/import/dwgConvert.ts) so the two
 // /api/dwg implementations cannot drift on what a successful conversion is.
 import { describeExit, trimStderr, verifyDxf } from '../web/src/import/dwgVerify'
+import { dwgJsonToDxf } from '../web/src/import/dwgJson'
 
 const PORT = Number(process.env.PORT || 8790)
 const HOST = process.env.HOST || '127.0.0.1'
@@ -146,31 +148,79 @@ function runDwg2Dxf(dwgPath: string, dxfPath: string): Promise<void> {
   })
 }
 
+/**
+ * Fallback conversion via LibreDWG's other front end — lockstep with
+ * web/src/import/dwgConvert.ts. `dwg2dxf` cannot finish every file (segfaults
+ * on two corpus files, silently truncates a third); `dwgread -O JSON` reads all
+ * three, because the DWG reading is the same library and it is the DXF writer
+ * that fails. Re-emitted as DXF by dwgJsonToDxf so there is one importer.
+ */
+function runDwgReadJson(dwgPath: string, jsonPath: string): Promise<void> {
+  const bin = process.env.DWGREAD_BIN || 'dwgread'
+  return new Promise((resolve, reject) => {
+    const proc = spawn(bin, ['-O', 'JSON', '-o', jsonPath, dwgPath], {
+      stdio: ['ignore', 'ignore', 'pipe'],
+    })
+    let stderr = ''
+    proc.stderr.on('data', (d) => (stderr += d))
+    proc.on('error', (err) => reject(new Error(`Failed to spawn ${bin}: ${err.message}`)))
+    proc.on('close', (code, signal) => {
+      if (code === 0 && !signal) resolve()
+      else {
+        if (stderr.trim()) console.error(`[dwg] ${bin} failed:\n${stderr.trim()}`)
+        const tail = trimStderr(stderr)
+        reject(new Error(describeExit(bin, code, signal) + (tail ? ` (${tail})` : '')))
+      }
+    })
+  })
+}
+
 async function handleDwg(req: IncomingMessage, res: ServerResponse): Promise<void> {
   if (req.method !== 'POST') return sendJson(res, 405, { error: 'Use POST with raw DWG bytes' })
 
   const stamp = `${Date.now()}-${Math.random().toString(36).slice(2)}`
   const dwgPath = path.join(tmpdir(), `ds-${stamp}.dwg`)
   const dxfPath = path.join(tmpdir(), `ds-${stamp}.dxf`)
+  const jsonPath = path.join(tmpdir(), `ds-${stamp}.json`)
   try {
     const bytes = await readBytes(req)
     if (bytes.length === 0) return sendJson(res, 400, { error: 'Empty request body' })
     await fs.writeFile(dwgPath, bytes)
-    await runDwg2Dxf(dwgPath, dxfPath)
-    const dxf = await fs.readFile(dxfPath, 'utf8')
-    // The exit code said this worked; check the bytes before believing it.
-    // dwg2dxf truncates and still exits 0 (see web/src/import/dwgVerify.ts).
-    const verdict = verifyDxf(dxf)
-    if (!verdict.ok) {
+
+    // Primary path. The exit code said it worked; check the bytes before
+    // believing it — dwg2dxf truncates and still exits 0 (dwgVerify.ts).
+    let primaryFailure: string | null = null
+    try {
+      await runDwg2Dxf(dwgPath, dxfPath)
+      const dxf = await fs.readFile(dxfPath, 'utf8')
+      const verdict = verifyDxf(dxf)
+      if (verdict.ok) return sendJson(res, 200, { dxf })
+      primaryFailure = verdict.message
+    } catch (e) {
+      // A missing LibreDWG install is a server-config problem, not a bad file:
+      // surface it as-is rather than retrying a binary from the same package.
+      if ((e as { statusCode?: number }).statusCode === 503) throw e
+      primaryFailure = e instanceof Error ? e.message : String(e)
+    }
+
+    try {
+      await runDwgReadJson(dwgPath, jsonPath)
+      const dxf = dwgJsonToDxf(JSON.parse(await fs.readFile(jsonPath, 'utf8')))
+      const verdict = verifyDxf(dxf)
+      if (verdict.ok) return sendJson(res, 200, { dxf })
       return sendJson(res, 502, {
-        error: `DWG conversion did not complete: ${verdict.message}.`,
-        defect: verdict.defect,
+        error: `DWG conversion did not complete. Direct conversion: ${primaryFailure}. Fallback: ${verdict.message}.`,
+      })
+    } catch (e) {
+      const fallbackFailure = e instanceof Error ? e.message : String(e)
+      return sendJson(res, 502, {
+        error: `DWG conversion failed. Direct conversion: ${primaryFailure}. Fallback: ${fallbackFailure}.`,
       })
     }
-    sendJson(res, 200, { dxf })
   } finally {
     fs.unlink(dwgPath).catch(() => {})
     fs.unlink(dxfPath).catch(() => {})
+    fs.unlink(jsonPath).catch(() => {})
   }
 }
 
