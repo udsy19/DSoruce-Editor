@@ -618,8 +618,28 @@ what the digest additionally pins (`Zone.origin`, the wasted-floor penalty).
   measured rects in the Phase 0 audit §A). Filed there with repro evidence, not
   fixed — out of scope, and the boundary-discard defect that shared its filing
   was fixed instead (`8f06e83`) once it started costing verification time.
-- **F2 — the before/after gallery: NOT BUILT.** Phase 0 evidence and current
-  evidence both exist in `docs/evidence/circulation-audit/`, but not paired at
-  matched viewports; the 3D capture in particular came back 1200×744 against
-  Phase 0's 1600×1000. Assembling it is mechanical (re-capture five surfaces at
-  one viewport, pair them) and is the one queue item left undone.
+- **F2 — the before/after gallery: DONE.** `F2-before-after-gallery.png`, four
+  surfaces paired left/right at a normalised 1600×1000 viewport: editor canvas,
+  candidate gallery, presentation/paper, 3D. Re-captured through the full wizard
+  rather than reusing mismatched shots (the earlier 3D capture came back
+  1200×744 against Phase 0's 1600×1000, which is why pairing had been deferred).
+
+  What the pairs show, at a glance: the editor loses every CIRCULATION /
+  CORRIDOR label; the candidate cards lose the grey flood and gain the metrics
+  card with its three benchmark bars; paper is unchanged (it was already
+  correct — the point of the poché ruling); 3D floor is neutral under the
+  circulation spine.
+
+
+---
+
+# QUEUE 2 — CLOSED
+
+R1 · R2 · C1 · C2 · C3 (already satisfied) · D1 · D2 · D3 · E1 · E2 · F2 · F3 · F4.
+
+**Board state:** circulation board **9/9 automated green, C10 PENDING-HUMAN**;
+`G13 PASS (9 gates, 1 pending-human)` parses for the parent runner; verification
+battery **40/40**.
+
+**The one remaining action is not an agent's.** Run
+`docs/evidence/circulation-audit/G10-walkthrough.md` and write the verdict.
