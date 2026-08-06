@@ -261,9 +261,17 @@ debug-build budget for `generate`, with one retry. Measured:
 | pre-workstream `425232c` | **157 passed, 0 failed** |
 | HEAD | **168 passed, 1 failed** — "seed 3: generate took 336 ms (debug budget 300)" |
 
-Passes in isolation, fails consistently under the parallel suite — a thin margin,
-12% over. Attribution is not inferred: the baseline was run in the same worktree
-under the same conditions and is green.
+**CORRECTED after more runs.** I first wrote "fails consistently under the
+parallel suite" on the strength of two consecutive failures. Measured properly:
+**3 pass / 1 fail across 4 full-suite runs**, plus 3/3 in isolation. It is
+INTERMITTENT, not deterministic — a margin sitting just under the budget that
+crosses it under load. The correction matters rather than being pedantic: an
+intermittent budget failure reads as flake and gets ignored, which is the more
+corrosive failure mode.
+
+Attribution is still not inferred: the pre-workstream baseline was run in the
+same worktree under the same parallel conditions and was green 157/0, while HEAD
+produced "seed 3: generate took 336 ms (debug budget 300)" — 12% over.
 
 **Mechanism.** `conform::classify_residual_zones` builds a `WalkClassifier` on
 every `generate`: a 0.15 m occupancy grid over the padded wall bbox (`≈10⁵` cells
