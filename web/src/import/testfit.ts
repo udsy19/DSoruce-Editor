@@ -98,10 +98,50 @@ const ENTRY_MERGE_GAP = 1.5 // m — entries closer than this fuse (a double doo
 // ---- public API --------------------------------------------------------
 
 /** Derive the building's outer floor-plate polygon from a drawing's shell linework. */
-export function extractPlate(drawing: Drawing): PlateResult | null {
+/**
+ * Why no floor plate could be traced.
+ *
+ * `extractPlate` used to return a bare `null`, which forced every caller to
+ * invent a message — and the one App.tsx invented ("No wall geometry found in
+ * this drawing") was WRONG on 4 of the 6 corpus files that hit it: they had
+ * plenty of wall geometry, it was just 1000x too small to clear the area floor.
+ * A failure that cannot say which stage failed sends the user to fix the wrong
+ * thing. See cad-validation/findings/F3-no-plate-derived.md.
+ */
+export type PlateFailure =
+  /** No wall/glazing/door/casework linework at all — nothing to trace. */
+  | 'no-shell-geometry'
+  /** Linework exists but never closes into a region of 3+ points. */
+  | 'no-closed-region'
+  /** Regions were found, but every one is below the minimum plate area. */
+  | 'regions-below-minimum'
+
+export type PlateOutcome =
+  | { ok: true; plate: PlateResult }
+  | { ok: false; reason: PlateFailure }
+
+/** Plain-language, user-facing, and specific about what to try next. */
+export const PLATE_FAILURE_MESSAGE: Record<PlateFailure, string> = {
+  'no-shell-geometry':
+    'this drawing has no wall, window or door linework we can trace a building shell from — its layers may be named in a way we do not recognise, or it may be a furniture library rather than a floor plan',
+  'no-closed-region':
+    'this drawing’s wall linework never closes into a region — try “Heal gaps” to bridge small breaks, or select the area by hand',
+  'regions-below-minimum':
+    'every enclosed region in this drawing is smaller than a square metre, which usually means it was read at the wrong scale',
+}
+
+/**
+ * Trace the floor plate, or say why not.
+ *
+ * The primary; `extractPlate` is the plate-or-null view of the same single
+ * derivation, kept because most callers only need the plate.
+ */
+export function tracePlate(drawing: Drawing): PlateOutcome {
   const wallSegs = collectWallSegments(drawing)
   const shellSegs = collectShellSegments(drawing)
-  if (wallSegs.length === 0 && shellSegs.length === 0) return null
+  if (wallSegs.length === 0 && shellSegs.length === 0) {
+    return { ok: false, reason: 'no-shell-geometry' }
+  }
 
   const [bMinX, bMinY, bMaxX, bMaxY] = drawing.bounds
   const bboxArea = Math.max((bMaxX - bMinX) * (bMaxY - bMinY), 1)
@@ -119,8 +159,11 @@ export function extractPlate(drawing: Drawing): PlateResult | null {
     pinched: boolean
   }
   let best: Scored | null = null
+  /** Did any rung produce a closed ring at all, whatever its area? */
+  let sawRing = false
   const accept = (ring: Pt[] | null, method: PlateResult['method']): Scored | null => {
     if (!ring || ring.length < 3) return null
+    sawRing = true
     const area = Math.abs(signedArea(ring))
     if (area < MIN_PLATE_AREA) return null
     const coverage = ringCoverage(ring, centers)
@@ -157,8 +200,8 @@ export function extractPlate(drawing: Drawing): PlateResult | null {
   if (bigLoop && bigArea >= plausible) {
     // Simplify → despike → light simplify (despiking leaves collinear runs).
     const ring = simplify(smooth(despike(simplify(orientCCW(bigLoop), SIMPLIFY_LOOP, true))), SIMPLIFY_POST, true)
-    const ok = accept(ring, 'loop')
-    if (ok) return finishPlate({ ...ok, drawing })
+    const hit = accept(ring, 'loop')
+    if (hit) return { ok: true, plate: finishPlate({ ...hit, drawing }) }
   }
 
   // ---- adopted envelope-inference rungs (ADR 0003) -----------------------
@@ -174,10 +217,13 @@ export function extractPlate(drawing: Drawing): PlateResult | null {
     if (ring) {
       const area = Math.abs(signedArea(ring))
       if (area >= plausible) {
-        return finishPlate({
-          ring, method: 'hull', coverage: ringCoverage(ring, centers), area,
-          drawing, provenanceMethod: 'column-grid',
-        })
+        return {
+          ok: true,
+          plate: finishPlate({
+            ring, method: 'hull', coverage: ringCoverage(ring, centers), area,
+            drawing, provenanceMethod: 'column-grid',
+          }),
+        }
       }
     }
   }
@@ -192,17 +238,20 @@ export function extractPlate(drawing: Drawing): PlateResult | null {
     if (!ring) continue
     const area = Math.abs(signedArea(ring))
     if (area < plausible) continue
-    return finishPlate({
-      ring, method: 'hull', coverage: ringCoverage(ring, centers), area,
-      drawing, provenanceMethod: 'partition-envelope',
-    })
+    return {
+      ok: true,
+      plate: finishPlate({
+        ring, method: 'hull', coverage: ringCoverage(ring, centers), area,
+        drawing, provenanceMethod: 'partition-envelope',
+      }),
+    }
   }
 
   // (b) Occupancy-grid outer contour of the widened shell set (doors close the
   // flood-fill leaks) with escalating gap-closing dilation.
   for (const dilate of [GRID_DILATE, GRID_DILATE * 2, GRID_DILATE * 4]) {
-    const ok = accept(contourRing(shellSegs, dilate), 'hull')
-    if (ok) return finishPlate({ ...ok, drawing, provenanceMethod: 'grid-contour' })
+    const hit = accept(contourRing(shellSegs, dilate), 'hull')
+    if (hit) return { ok: true, plate: finishPlate({ ...hit, drawing, provenanceMethod: 'grid-contour' }) }
   }
 
   // (c) Guaranteed-coverage wrap: shell ∪ every furniture bbox outline. The
@@ -210,8 +259,8 @@ export function extractPlate(drawing: Drawing): PlateResult | null {
   if (centers.length > 0) {
     const wrapSegs = shellSegs.concat(furnitureBoxSegments(drawing))
     for (const dilate of [GRID_DILATE * 2, GRID_DILATE * 4]) {
-      const ok = accept(contourRing(wrapSegs, dilate), 'wrap')
-      if (ok) return finishPlate({ ...ok, drawing, provenanceMethod: 'grid-contour' })
+      const hit = accept(contourRing(wrapSegs, dilate), 'wrap')
+      if (hit) return { ok: true, plate: finishPlate({ ...hit, drawing, provenanceMethod: 'grid-contour' }) }
     }
   }
 
@@ -233,13 +282,26 @@ export function extractPlate(drawing: Drawing): PlateResult | null {
   // control-flow analysis cannot see — it narrows the binding to `null` here.
   // The cast restores the declared type so the fields can be read.
   const chosen = best as Scored | null
-  return chosen
-    ? finishPlate({
-        ring: chosen.ring, method: chosen.method,
-        coverage: chosen.coverage, area: chosen.area, drawing,
-        provenanceMethod: hullWon ? 'hull' : PROVENANCE_METHOD[chosen.method],
-      })
-    : null
+  if (!chosen) {
+    // `sawRing` distinguishes "the linework never closed" from "it closed, but
+    // everything it enclosed was too small" — the difference between a drafting
+    // problem and a scale problem, which need opposite fixes.
+    return { ok: false, reason: sawRing ? 'regions-below-minimum' : 'no-closed-region' }
+  }
+  return {
+    ok: true,
+    plate: finishPlate({
+      ring: chosen.ring, method: chosen.method,
+      coverage: chosen.coverage, area: chosen.area, drawing,
+      provenanceMethod: hullWon ? 'hull' : PROVENANCE_METHOD[chosen.method],
+    }),
+  }
+}
+
+/** The plate, or `null`. A view over `tracePlate` — one derivation, two shapes. */
+export function extractPlate(drawing: Drawing): PlateResult | null {
+  const outcome = tracePlate(drawing)
+  return outcome.ok ? outcome.plate : null
 }
 
 /** Fraction (0–1) of the drawing's furniture bbox centers inside the plate boundary. */

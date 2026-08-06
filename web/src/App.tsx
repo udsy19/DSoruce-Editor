@@ -60,10 +60,11 @@ import {
   extractInteriorWalls,
   pushInteriorWallsToEditor,
   pushAnchorsToEditor,
+  PLATE_FAILURE_MESSAGE,
   type PlateResult,
   type Pt,
 } from './import/testfit'
-import { derivePlate } from './import/plate'
+import { derivePlate, derivePlateOutcome } from './import/plate'
 import { baseStampAround, type BaseStamp } from './import/mergeFit'
 import {
   saveProject,
@@ -906,11 +907,18 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
     // the usable area a user saw is exactly what gets fitted). For an AREA
     // selection the plate matches the lassoed region clipped to the floor — not a
     // tight hull around whichever furniture the lasso caught.
-    const plate = derivePlate(drawing, opts?.areaPolygon, opts?.heal !== false)
-    if (!plate) {
-      setImportErr('No wall geometry found in this drawing to derive a floor plate from.')
+    const outcome = derivePlateOutcome(drawing, opts?.areaPolygon, opts?.heal !== false)
+    if (!outcome.ok) {
+      // Name the stage that failed. "No wall geometry found" was this message
+      // for a long time and was wrong on 4 of the 6 corpus files that reached
+      // it: they had wall geometry, it was just 1000x too small to clear the
+      // area floor (cad-validation/findings/F3-no-plate-derived.md).
+      setImportErr(
+        `No floor plate could be derived from this drawing — ${PLATE_FAILURE_MESSAGE[outcome.reason]}.`,
+      )
       return
     }
+    const plate = outcome.plate
     // Room markers (workflow.md §3.2): project into editor coords (plate offset
     // applied, like entries) and stash so the takeoff Room ID + AI resolve refs.
     roomMarkersRef.current = (opts?.markers ?? []).map((m) => ({

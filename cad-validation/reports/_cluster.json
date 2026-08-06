@@ -1,41 +1,60 @@
 [
   {
     "file": "BUSNSS-Offcs-Trdtnl_AG.dwg",
-    "units": "in",
+    "units": "m",
     "preSpanM": [
-      293.2,
-      86.7
+      11542.5,
+      3413.3
     ],
     "postSpanM": [
-      2.7,
-      1.8
+      104.6,
+      71.8
     ],
     "preCount": {
-      "entities": 13348,
-      "furniture": 0
+      "entities": 13240,
+      "furniture": 9
     },
     "postCount": {
-      "entities": 13246,
-      "furniture": 0
+      "entities": 13138,
+      "furniture": 9
     },
     "droppedEntities": 102,
     "droppedFurniture": 0,
-    "shrinkFactor": 108.6
+    "shrinkFactor": 110.3
   },
   {
     "file": "Apartment-1.dwg",
-    "error": "parse: Unexpected end of input: EOF group not read before end of file. Ended on code "
+    "units": "m",
+    "preSpanM": [
+      282006.1,
+      751.8
+    ],
+    "postSpanM": [
+      37.7,
+      21.2
+    ],
+    "preCount": {
+      "entities": 5717,
+      "furniture": 7
+    },
+    "postCount": {
+      "entities": 5582,
+      "furniture": 0
+    },
+    "droppedEntities": 135,
+    "droppedFurniture": 7,
+    "shrinkFactor": 7480.3
   },
   {
     "file": "Apartment-413201.dwg",
-    "units": "mm",
+    "units": "m",
     "preSpanM": [
-      0,
-      0
+      27.8,
+      14
     ],
     "postSpanM": [
-      0,
-      0
+      27.8,
+      14
     ],
     "preCount": {
       "entities": 1687,
@@ -43,29 +62,6 @@
     },
     "postCount": {
       "entities": 1687,
-      "furniture": 0
-    },
-    "droppedEntities": 0,
-    "droppedFurniture": 0,
-    "shrinkFactor": null
-  },
-  {
-    "file": "Apto.1404202.dwg",
-    "units": "mm",
-    "preSpanM": [
-      5.7,
-      0
-    ],
-    "postSpanM": [
-      5.7,
-      0
-    ],
-    "preCount": {
-      "entities": 7516,
-      "furniture": 0
-    },
-    "postCount": {
-      "entities": 7516,
       "furniture": 0
     },
     "droppedEntities": 0,
@@ -73,15 +69,38 @@
     "shrinkFactor": 1
   },
   {
-    "file": "BUSNSS-Offcs_AN.dwg",
-    "units": "in",
+    "file": "Apto.1404202.dwg",
+    "units": "m",
     "preSpanM": [
-      16.4,
-      6.5
+      5729.4,
+      12.5
     ],
     "postSpanM": [
-      16.4,
-      6.5
+      30.2,
+      12.5
+    ],
+    "preCount": {
+      "entities": 7516,
+      "furniture": 0
+    },
+    "postCount": {
+      "entities": 7451,
+      "furniture": 0
+    },
+    "droppedEntities": 65,
+    "droppedFurniture": 0,
+    "shrinkFactor": 189.7
+  },
+  {
+    "file": "BUSNSS-Offcs_AN.dwg",
+    "units": "m",
+    "preSpanM": [
+      646.7,
+      257
+    ],
+    "postSpanM": [
+      646.7,
+      257
     ],
     "preCount": {
       "entities": 12648,
@@ -97,14 +116,14 @@
   },
   {
     "file": "BUSNSS-Offcs-CwSp_AA.dwg",
-    "units": "in",
+    "units": "m",
     "preSpanM": [
-      1342.6,
-      27.3
+      52858.3,
+      1072.9
     ],
     "postSpanM": [
-      4.9,
-      1.8
+      194.3,
+      71
     ],
     "preCount": {
       "entities": 25029,
@@ -116,18 +135,18 @@
     },
     "droppedEntities": 1,
     "droppedFurniture": 0,
-    "shrinkFactor": 274
+    "shrinkFactor": 272
   },
   {
     "file": "BUSNSS-Offcs-Trdtnl_AA.dwg",
-    "units": "in",
+    "units": "m",
     "preSpanM": [
-      3.2,
-      2.9
+      125.4,
+      114.4
     ],
     "postSpanM": [
-      3.2,
-      2.9
+      125.4,
+      114.4
     ],
     "preCount": {
       "entities": 1398,
@@ -143,21 +162,21 @@
   },
   {
     "file": "BUSNSS-Offcs-Trdtnl_AB.dwg",
-    "units": "in",
+    "units": "m",
     "preSpanM": [
-      3.4,
-      2.5
+      134.5,
+      99.8
     ],
     "postSpanM": [
-      3.4,
-      2.5
+      134.5,
+      99.8
     ],
     "preCount": {
-      "entities": 50469,
+      "entities": 50394,
       "furniture": 28
     },
     "postCount": {
-      "entities": 50469,
+      "entities": 50394,
       "furniture": 28
     },
     "droppedEntities": 0,
@@ -166,25 +185,44 @@
   },
   {
     "file": "BUSNSS-Offcs-Trdtnl_AC.dwg",
-    "error": "convert"
+    "units": "ft",
+    "preSpanM": [
+      77800.9,
+      78231.2
+    ],
+    "postSpanM": [
+      68.9,
+      37.3
+    ],
+    "preCount": {
+      "entities": 99410,
+      "furniture": 0
+    },
+    "postCount": {
+      "entities": 98920,
+      "furniture": 0
+    },
+    "droppedEntities": 490,
+    "droppedFurniture": 0,
+    "shrinkFactor": 1135.4
   },
   {
     "file": "BUSNSS-Offcs-Trdtnl_AE.dwg",
-    "units": "in",
+    "units": "m",
     "preSpanM": [
-      1.3,
-      2.1
+      50,
+      81.1
     ],
     "postSpanM": [
-      1.3,
-      2.1
+      50,
+      81.1
     ],
     "preCount": {
-      "entities": 8239,
+      "entities": 8203,
       "furniture": 9
     },
     "postCount": {
-      "entities": 8239,
+      "entities": 8203,
       "furniture": 9
     },
     "droppedEntities": 0,
@@ -193,41 +231,60 @@
   },
   {
     "file": "BUSNSS-Offcs-Trdtnl_AF.dwg",
-    "error": "convert"
-  },
-  {
-    "file": "BUSNSS-Offcs-Trdtnl_AG (1).dwg",
-    "units": "in",
+    "units": "dm",
     "preSpanM": [
-      293.2,
-      86.7
+      14.1,
+      9.3
     ],
     "postSpanM": [
-      2.7,
-      1.8
+      14.1,
+      9.3
     ],
     "preCount": {
-      "entities": 13348,
+      "entities": 19394,
       "furniture": 0
     },
     "postCount": {
-      "entities": 13246,
+      "entities": 19394,
       "furniture": 0
+    },
+    "droppedEntities": 0,
+    "droppedFurniture": 0,
+    "shrinkFactor": 1
+  },
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AG (1).dwg",
+    "units": "m",
+    "preSpanM": [
+      11542.5,
+      3413.3
+    ],
+    "postSpanM": [
+      104.6,
+      71.8
+    ],
+    "preCount": {
+      "entities": 13240,
+      "furniture": 9
+    },
+    "postCount": {
+      "entities": 13138,
+      "furniture": 9
     },
     "droppedEntities": 102,
     "droppedFurniture": 0,
-    "shrinkFactor": 108.6
+    "shrinkFactor": 110.3
   },
   {
     "file": "BUSNSS-Offcs-Trdtnl_AH.dwg",
-    "units": "in",
+    "units": "m",
     "preSpanM": [
-      4.3,
-      2.2
+      170,
+      87.2
     ],
     "postSpanM": [
-      4.3,
-      2.2
+      170,
+      87.2
     ],
     "preCount": {
       "entities": 134735,
@@ -243,22 +300,22 @@
   },
   {
     "file": "BUSNSS-Offcs-Trdtnl_AI.dwg",
-    "units": "in",
+    "units": "m",
     "preSpanM": [
-      2.5,
-      1.7
+      98.7,
+      65.4
     ],
     "postSpanM": [
-      2.5,
-      1.7
+      98.7,
+      65.4
     ],
     "preCount": {
-      "entities": 12129,
-      "furniture": 0
+      "entities": 10859,
+      "furniture": 51
     },
     "postCount": {
-      "entities": 12129,
-      "furniture": 0
+      "entities": 10859,
+      "furniture": 51
     },
     "droppedEntities": 0,
     "droppedFurniture": 0,
@@ -289,14 +346,14 @@
   },
   {
     "file": "BUSNSS-Offcs-Trdtnl_AM.dwg",
-    "units": "in",
+    "units": "dm",
     "preSpanM": [
-      4.7,
-      2
+      18.7,
+      8.1
     ],
     "postSpanM": [
-      4.7,
-      2
+      18.7,
+      8.1
     ],
     "preCount": {
       "entities": 15524,
@@ -312,22 +369,22 @@
   },
   {
     "file": "BUSNSS-Offcs-Trdtnl_AN.dwg",
-    "units": "in",
+    "units": "m",
     "preSpanM": [
-      0.7,
-      1.6
+      28.4,
+      62.6
     ],
     "postSpanM": [
-      0.7,
-      1.6
+      28.4,
+      62.6
     ],
     "preCount": {
-      "entities": 3317,
-      "furniture": 21
+      "entities": 2617,
+      "furniture": 35
     },
     "postCount": {
-      "entities": 3317,
-      "furniture": 21
+      "entities": 2617,
+      "furniture": 35
     },
     "droppedEntities": 0,
     "droppedFurniture": 0,
@@ -335,22 +392,22 @@
   },
   {
     "file": "call-center-offices.dwg",
-    "units": "in",
+    "units": "m",
     "preSpanM": [
-      2.8,
-      0.3
+      111.1,
+      10.7
     ],
     "postSpanM": [
-      2.8,
-      0.3
+      111.1,
+      10.7
     ],
     "preCount": {
-      "entities": 1238,
-      "furniture": 0
+      "entities": 862,
+      "furniture": 34
     },
     "postCount": {
-      "entities": 1238,
-      "furniture": 0
+      "entities": 862,
+      "furniture": 34
     },
     "droppedEntities": 0,
     "droppedFurniture": 0,
@@ -368,12 +425,12 @@
       21.7
     ],
     "preCount": {
-      "entities": 7907,
-      "furniture": 17
+      "entities": 7281,
+      "furniture": 19
     },
     "postCount": {
-      "entities": 7907,
-      "furniture": 17
+      "entities": 7281,
+      "furniture": 19
     },
     "droppedEntities": 0,
     "droppedFurniture": 0,
@@ -381,14 +438,14 @@
   },
   {
     "file": "Small-apto..dwg",
-    "units": "mm",
+    "units": "m",
     "preSpanM": [
-      0,
-      0
+      18.1,
+      18.1
     ],
     "postSpanM": [
-      0,
-      0
+      18.1,
+      18.1
     ],
     "preCount": {
       "entities": 1888,
@@ -396,34 +453,34 @@
     },
     "postCount": {
       "entities": 1888,
-      "furniture": 0
-    },
-    "droppedEntities": 0,
-    "droppedFurniture": 0,
-    "shrinkFactor": null
-  },
-  {
-    "file": "Two-story-house-410202.dwg",
-    "units": "in",
-    "preSpanM": [
-      19.1,
-      3.2
-    ],
-    "postSpanM": [
-      19.1,
-      3.2
-    ],
-    "preCount": {
-      "entities": 2626,
-      "furniture": 0
-    },
-    "postCount": {
-      "entities": 2626,
       "furniture": 0
     },
     "droppedEntities": 0,
     "droppedFurniture": 0,
     "shrinkFactor": 1
+  },
+  {
+    "file": "Two-story-house-410202.dwg",
+    "units": "m",
+    "preSpanM": [
+      750.5,
+      125.8
+    ],
+    "postSpanM": [
+      28.7,
+      15.4
+    ],
+    "preCount": {
+      "entities": 2279,
+      "furniture": 14
+    },
+    "postCount": {
+      "entities": 1529,
+      "furniture": 14
+    },
+    "droppedEntities": 750,
+    "droppedFurniture": 0,
+    "shrinkFactor": 26.1
   },
   {
     "file": "Hospital-equipment.zip/MOBILIARIO HOSPITAL.dwg",
@@ -437,12 +494,12 @@
       28.1
     ],
     "preCount": {
-      "entities": 16233,
-      "furniture": 0
+      "entities": 14166,
+      "furniture": 19
     },
     "postCount": {
-      "entities": 16233,
-      "furniture": 0
+      "entities": 14166,
+      "furniture": 19
     },
     "droppedEntities": 0,
     "droppedFurniture": 0,
@@ -450,48 +507,71 @@
   },
   {
     "file": "Office-furniture-blocks.zip/cad33.dwg",
-    "units": "m",
+    "units": "mm",
     "preSpanM": [
-      323903.8,
-      42717.9
+      323.9,
+      42.7
     ],
     "postSpanM": [
-      17.2,
-      17.2
+      3.8,
+      0
     ],
     "preCount": {
-      "entities": 15144,
-      "furniture": 7
+      "entities": 14949,
+      "furniture": 8
     },
     "postCount": {
-      "entities": 15134,
-      "furniture": 1
+      "entities": 14949,
+      "furniture": 2
     },
-    "droppedEntities": 10,
+    "droppedEntities": 0,
     "droppedFurniture": 6,
-    "shrinkFactor": 18831.6
+    "shrinkFactor": 85.2
   },
   {
     "file": "Various-furniture-blocks.zip/muebles varios.dwg",
-    "units": "mm",
+    "units": "m",
     "preSpanM": [
-      0.1,
-      0
+      68,
+      28.3
     ],
     "postSpanM": [
-      0.1,
-      0
+      68,
+      28.3
     ],
     "preCount": {
-      "entities": 19526,
-      "furniture": 2
+      "entities": 19368,
+      "furniture": 9
     },
     "postCount": {
-      "entities": 19526,
-      "furniture": 2
+      "entities": 19368,
+      "furniture": 9
     },
     "droppedEntities": 0,
     "droppedFurniture": 0,
     "shrinkFactor": 1
+  },
+  {
+    "file": "samples/furniture-plan.dwg (repo fixture — control)",
+    "units": "in",
+    "preSpanM": [
+      2460.5,
+      1882
+    ],
+    "postSpanM": [
+      38,
+      42.4
+    ],
+    "preCount": {
+      "entities": 1454,
+      "furniture": 633
+    },
+    "postCount": {
+      "entities": 1013,
+      "furniture": 533
+    },
+    "droppedEntities": 441,
+    "droppedFurniture": 100,
+    "shrinkFactor": 58
   }
 ]
