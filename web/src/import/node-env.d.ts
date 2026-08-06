@@ -19,7 +19,9 @@ declare module 'node:child_process' {
   interface ChildProc {
     stderr: Readable
     on(event: 'error', cb: (err: Error) => void): void
-    on(event: 'close', cb: (code: number | null) => void): void
+    // `signal` is not optional detail: a child killed by SIGSEGV reports
+    // `code === null`, and reading the code alone renders that as "exited null".
+    on(event: 'close', cb: (code: number | null, signal: string | null) => void): void
   }
   export function spawn(
     command: string,

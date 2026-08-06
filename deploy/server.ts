@@ -33,6 +33,9 @@ import {
 } from './apiCore'
 import { handleShareApi, sharePageId } from './shareStore'
 import { handlePackApi } from './packStore'
+// Shared with the dev middleware (web/src/import/dwgConvert.ts) so the two
+// /api/dwg implementations cannot drift on what a successful conversion is.
+import { describeExit, trimStderr, verifyDxf } from '../web/src/import/dwgVerify'
 
 const PORT = Number(process.env.PORT || 8790)
 const HOST = process.env.HOST || '127.0.0.1'
@@ -129,10 +132,16 @@ function runDwg2Dxf(dwgPath: string, dxfPath: string): Promise<void> {
         reject(new Error(`Failed to spawn ${bin}: ${err.message}`))
       }
     })
-    proc.on('close', (code) => {
-      // dwg2dxf prints warnings to stderr but still exits 0 on success.
-      if (code === 0) resolve()
-      else reject(new Error(`${bin} exited ${code}: ${stderr.trim()}`))
+    // `close` gives (code, signal). A signalled child reports code === null,
+    // so reading the code alone turned a SIGSEGV into "dwg2dxf exited null".
+    proc.on('close', (code, signal) => {
+      if (code === 0 && !signal) resolve()
+      else {
+        const tail = trimStderr(stderr)
+        // Full stderr to the server log, a bounded tail to the caller.
+        if (stderr.trim()) console.error(`[dwg] ${bin} failed:\n${stderr.trim()}`)
+        reject(new Error(describeExit(bin, code, signal) + (tail ? ` (${tail})` : '')))
+      }
     })
   })
 }
@@ -149,6 +158,15 @@ async function handleDwg(req: IncomingMessage, res: ServerResponse): Promise<voi
     await fs.writeFile(dwgPath, bytes)
     await runDwg2Dxf(dwgPath, dxfPath)
     const dxf = await fs.readFile(dxfPath, 'utf8')
+    // The exit code said this worked; check the bytes before believing it.
+    // dwg2dxf truncates and still exits 0 (see web/src/import/dwgVerify.ts).
+    const verdict = verifyDxf(dxf)
+    if (!verdict.ok) {
+      return sendJson(res, 502, {
+        error: `DWG conversion did not complete: ${verdict.message}.`,
+        defect: verdict.defect,
+      })
+    }
     sendJson(res, 200, { dxf })
   } finally {
     fs.unlink(dwgPath).catch(() => {})

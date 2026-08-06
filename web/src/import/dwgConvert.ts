@@ -15,6 +15,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Plugin } from 'vite'
+import { describeExit, trimStderr, verifyDxf } from './dwgVerify'
 
 function readBytes(req: IncomingMessage): Promise<Buffer> {
   return new Promise((resolve, reject) => {
@@ -37,10 +38,14 @@ function runDwg2Dxf(dwgPath: string, dxfPath: string): Promise<void> {
         ),
       ),
     )
-    proc.on('close', (code) => {
-      // dwg2dxf prints warnings to stderr but still exits 0 on success.
-      if (code === 0) resolve()
-      else reject(new Error(`dwg2dxf exited ${code}: ${stderr.trim()}`))
+    // `close` gives (code, signal). A signalled child reports code === null,
+    // so reading the code alone turned a SIGSEGV into "dwg2dxf exited null".
+    proc.on('close', (code, signal) => {
+      if (code === 0 && !signal) resolve()
+      else {
+        const tail = trimStderr(stderr)
+        reject(new Error(describeExit('dwg2dxf', code, signal) + (tail ? ` (${tail})` : '')))
+      }
     })
   })
 }
@@ -76,6 +81,19 @@ export function dwgConvertPlugin(): Plugin {
           await fs.writeFile(dwgPath, bytes)
           await runDwg2Dxf(dwgPath, dxfPath)
           const dxf = await fs.readFile(dxfPath, 'utf8')
+          // The exit code said this worked; check the bytes before believing
+          // it. dwg2dxf truncates and still exits 0 (see dwgVerify.ts).
+          const verdict = verifyDxf(dxf)
+          if (!verdict.ok) {
+            res.statusCode = 502
+            res.end(
+              JSON.stringify({
+                error: `DWG conversion did not complete: ${verdict.message}.`,
+                defect: verdict.defect,
+              }),
+            )
+            return
+          }
           res.statusCode = 200
           res.end(JSON.stringify({ dxf }))
         } catch (e) {
