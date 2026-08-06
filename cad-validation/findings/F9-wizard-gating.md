@@ -43,12 +43,20 @@ precondition.
 
 ## Related smaller defects observed on the same path
 
-- **The drawing is lost on backward navigation.** Returning to Space from Generate showed the empty
-  "Drop a CAD floor plan" dropzone again, with the uploaded drawing gone — while `Next: Program`
-  remained enabled, so the user can advance from a Space step with *no file at all*.
-- **`GET /api/dwg` returns 405 into the console** on page load (`Failed to load resource: 405
-  (Method Not Allowed)`). Harmless, but it is the only error in a clean console and will mask real
-  ones.
+- ~~The drawing is lost on backward navigation.~~ **No longer reproduces via the Back button.**
+  Re-tested after the fix: upload → Next → Back shows `USABLE AREA 457 m² / COMPONENTS 19` both
+  before and after, with "Replace floor plan" rather than the empty dropzone.
+
+  The original observation stands as something I saw, but I cannot cleanly attribute the change: I
+  first hit it after jumping between steps by rewriting `location.hash`, not by pressing **Back**,
+  and the Space step's resume path was also rewritten since (it now re-derives the plate from
+  `draft.drawing`). So it was either a navigation artifact of how I was driving the page, or it was
+  fixed in passing. Recorded as unresolved-attribution rather than claimed as a fix.
+- ~~`GET /api/dwg` returns 405 into the console on page load.~~ **RETRACTED — this was my own test
+  artifact, not a defect.** The 405 came from a `fetch('/api/dwg')` I issued from the console while
+  probing the page; nothing in the app ever GETs that route (`App.tsx:364` POSTs, and that is the only
+  caller). Left in place rather than deleted: I reported it as a finding, and a finding that turns out
+  to be the instrument rather than the subject is exactly the kind of thing this report should own.
 
 ## What works and should be preserved
 
