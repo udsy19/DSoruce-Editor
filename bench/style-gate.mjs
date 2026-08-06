@@ -189,6 +189,48 @@ for (const [rel, rules] of GUARDED) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// GROUND-ZONE FILL CHECK (2.8): nothing reads a ground zone's palette fill
+// ---------------------------------------------------------------------------
+//
+// `ZONE.Circulation` and `ZONE.Unassigned` still HOLD values — a ground zone
+// falls back to them if it is ever drawn as figure (selected, hovered), and the
+// thumbnail/legend code needs the record to exist. But reaching for
+// `.fill` on either one, outside the ground logic in the style table itself, is
+// how a surface starts painting the floor again: it is exactly what
+// `renderThumb` did for the life of the candidate gallery.
+//
+// The rule is therefore narrow and specific: a `.fill` read off a GROUND entry
+// of the palette, anywhere but the table. Reading `ZONE.Workspace.fill` is fine.
+// Reading `ZONE[z.zone_type]` is fine — that is the polymorphic path every
+// renderer uses, and the ground decision happens before it.
+{
+  const TABLE = 'web/src/editor/planStyle.ts'
+  const GROUND_FILL = /ZONE\.(Circulation|Unassigned)\.fill/g
+  const walk2 = (dir, out = []) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (e.name === 'node_modules' || e.name === 'wasm' || e.name.startsWith('.')) continue
+      const p2 = path.join(dir, e.name)
+      if (e.isDirectory()) walk2(p2, out)
+      else if (/\.(ts|tsx)$/.test(e.name)) out.push(p2)
+    }
+    return out
+  }
+  for (const file of walk2(path.join(ROOT, 'web/src'))) {
+    const rel = path.relative(ROOT, file)
+    if (rel === TABLE) continue
+    const src = fs.readFileSync(file, 'utf8')
+    const hits = [...src.matchAll(GROUND_FILL)].map((m) => m[0])
+    if (hits.length) {
+      console.log(`  GROUND FILL: ${rel} reads ${[...new Set(hits)].join(', ')}`)
+      console.log('    Ground is not painted from the palette. Route through the')
+      console.log(`    groundZones logic in ${TABLE}; the entry exists only as the`)
+      console.log('    fallback for a ground zone drawn as figure (selection/hover).')
+      violations += hits.length
+    }
+  }
+}
+
 // Mirror check: a declared TS/CSS pair that disagrees is worse than two
 // literals, because it renders as one value while reading as another.
 const tableSrc = fs.readFileSync(path.join(ROOT, 'web/src/editor/planStyle.ts'), 'utf8')

@@ -221,3 +221,29 @@ program-only **and** the app and report legends must list the identical set.
 | app `legendEntries` stops excluding ground | **RED** |
 
 All three surfaces now agree: 6 program entries.
+
+## B6 — 2.8 style-gate extension · **DONE** (Phase 2 closed)
+
+New check: no file outside the style table may read `ZONE.Circulation.fill` or
+`ZONE.Unassigned.fill`.
+
+Deliberately NARROW. The entries still hold values — a ground zone falls back to
+them when drawn as figure (selection/hover) — so the ban is on reading `.fill`
+off a **ground** entry specifically. `ZONE.Workspace.fill` is fine.
+`ZONE[z.zone_type]` is fine: that is the polymorphic path every renderer uses,
+and the ground decision happens before it. A broader rule would have flagged the
+correct code and taught people to silence the gate.
+
+This is precisely what `renderThumb` did for the life of the candidate gallery
+(B2), so the gate now forbids the shape of that defect.
+
+| sabotage | result |
+|---|---|
+| a renderer reads `ZONE.Circulation.fill` | **RED** — `GROUND FILL: …paint.ts` |
+
+Own bug, caught by running it: `TABLE` was block-scoped to the earlier
+palette-copy check, so the new block threw `ReferenceError` — the gate CRASHED
+rather than passing, which is the good failure mode, but it would have been read
+as "gate broken" not "gate says no". Scoped locally.
+
+**Phase 2 complete: 2.1–2.8 all landed.**
