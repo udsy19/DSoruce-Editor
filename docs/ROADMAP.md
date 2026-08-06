@@ -979,9 +979,18 @@ Making negative space read as floor, not as "Circulation" (`docs/audits/circulat
   pockets), measured on the RDP-simplified boundary so the test describes shape and not tracing
   resolution. 847 stays Circulation (a 0.085-compactness ribbon, not the void we both called it);
   848 and 851 flip. Split 106.20/64.47 → 87.93/82.74. 169 Rust tests.
-- [ ] **Phase 2 — renderer figure/ground sweep** (2.1–2.8; 2.6 partially landed early, see audit).
-  **Unblocked** — the 847 ruling is settled and the amended classifier has landed with its
-  validation table.
+- 🔄 **Phase 2 — renderer figure/ground sweep** (2.1–2.8; 2.6 partially landed early, see audit).
+  - [x] **2.1 ground hatch + dashed outline**, editor-only, through the existing `FillStyle` hatch
+    kind. Uncovered that `fillWith`'s LOD ramp had been silently killing every ZONE texture
+    (`referencePx = 0` → `smoothstep(5,13,0)` = 0), so the Core poché had **never rendered**. Ramp
+    fixed; hatch ink re-registered as a relation (half of program's 33/255 → band 14–18, measured
+    16 at α 0.10); Core poché is editor-only per spec `wall_poche` ("NO poche anywhere in the
+    reference"). New `fillRenders.test.mjs` smoke: a declared fill must be able to draw.
+  - [x] **2.2 ground carries no name.** 24 tags → 7 at rest, ground 17 → 0. Selection exception
+    threaded through the existing highlight set. Thin corridors still show no tag — pre-existing
+    text-fit rule, an 11 px-wide strip never had a legible label.
+  - [ ] 2.3 thumbnails · 2.4 3D floors · 2.5 printPlan roomLabels · 2.6 remainder · 2.7 verify ·
+    2.8 style-gate extension
 - [ ] **Phase 3 — sheet furniture + metrics card.** Promotion of what `export/report.ts` already has.
 - [ ] **Phase 4 — gates C1–C10** as their own board folded into `run-all.sh` as G13, with its own
   lying gate (the `GSELF` pattern).
