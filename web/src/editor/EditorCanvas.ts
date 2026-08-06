@@ -25,7 +25,6 @@ import {
   drawComponent,
   drawDimChip,
   drawDimLabel,
-  drawGlazing,
   drawGrid,
   drawRoomSelection,
   drawRulers,
@@ -34,7 +33,8 @@ import {
   drawZones,
   drawZoneTags,
   wallBbox,
-  drawWall,
+  paintPlan,
+  type WallOutline,
   type PaintView,
   type ZoneTag,
 } from './paint'
@@ -1576,7 +1576,7 @@ export class EditorCanvas {
       drawGrid(this.host, w, h)
     }
     this.updatePlate(st.walls)
-    const tags = this.paintZones(st.zones)
+    if (st.zones?.length) this.updateZoneStats(st.zones)
 
     // Resolve the dynamic-input candidate once per frame (wall preview + chips +
     // widget all read it) so OSNAP/getState isn't recomputed three times.
@@ -1585,17 +1585,19 @@ export class EditorCanvas {
         ? this.dynResolve(this.mouseWorld)
         : null
 
-    for (const wall of st.walls) {
-      // Glass fronts get the triple-line convention; everything else draws in
-      // the lineweight hierarchy (exterior > interior > generated partition).
-      if (wall.glazing) {
-        drawGlazing(this.host, wall.a, wall.b)
-      } else {
-        // Phase 2a: the MEASURED wall treatment — thin double lines at the wall
-        // tier, unfilled interior. Replaces the single fat stroked centreline.
-        drawWall(this.host, wall, this.exteriorIds.has(wall.id))
-      }
-    }
+    // ONE plan sequence, shared with the capture harness (paint.ts::paintPlan):
+    // zone washes -> furniture -> the merged wall-network outline -> tags. The
+    // walls used to be drawn here, per wall, BEFORE the furniture; both the
+    // order and the per-wall boxes are what made the drawing read spidery.
+    const tags = paintPlan(this.host, st, {
+      platePoly: this.platePoly,
+      zoneStats: this.zoneStats,
+      highlight: new Set(this.selectedZoneId != null ? [this.selectedZoneId] : []),
+      exteriorIds: this.exteriorIds,
+      outlines: this.wallOutlines,
+      selection: st.selection ?? null,
+    })
+    void tags
     if (this.tool === 'wall' && this.wallStart) {
       drawSegment(
         this.host,
@@ -1605,16 +1607,7 @@ export class EditorCanvas {
         C.preview,
       )
     }
-    for (const c of st.components) drawComponent(this.host, c, c.id === st.selection)
     this.paintRoomSelection()
-    // Room tags sit ABOVE furniture (architect's sheet convention) with a soft
-    // paper halo so they stay legible over desks and linework.
-    drawZoneTags(
-      this.host,
-      tags,
-      // Hover/selection promotes a label to a pill — the only place pills appear.
-      new Set(this.selectedZoneId != null ? [this.selectedZoneId] : []),
-    )
 
     // CAD layer: entities + tool preview + snap indicator + grips.
     this.cad.render(ctx, {
@@ -1671,6 +1664,7 @@ export class EditorCanvas {
    *  (walls change rarely; `ed.plate()` re-traces + serializes on every call).
    *  Also classifies which walls lie ON the plate boundary (exterior ink). */
   private platePoly: [number, number][] | null = null
+  private wallOutlines: WallOutline[] | null = null
   private plateKey = ''
   private exteriorIds = new Set<number>()
 
@@ -1681,6 +1675,9 @@ export class EditorCanvas {
     if (key === this.plateKey) return
     this.plateKey = key
     this.platePoly = (this.ed.plate() as [number, number][] | null | undefined) ?? null
+    // The merged wall-network outline, from the core. Cached on the same wall
+    // fingerprint as the plate: it is O(edges^2) and the walls change rarely.
+    this.wallOutlines = (this.ed.wall_outlines() as WallOutline[] | null | undefined) ?? null
     // Exterior = both endpoints sit on the traced plate boundary (within 8 cm).
     this.exteriorIds.clear()
     const poly = this.platePoly

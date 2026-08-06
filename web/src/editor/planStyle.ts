@@ -184,6 +184,16 @@ export const CHROME = {
   handle: 1.5,
   /** Active selection outline — the heaviest chrome mark. */
   selection: 2,
+  /**
+   * Knockout halo behind a room tag that has nowhere clear to sit.
+   *
+   * Wider than `selection` because it is not a mark, it is an ERASER: the
+   * stroke is drawn in paper white under the glyphs so desk line-work does not
+   * run through the letterforms. It goes on only where a tag actually lands on
+   * furniture — 29 of 205 label draws across the fixture set — because paper is
+   * meant to be quiet and a halo on clear floor is just a smudge.
+   */
+  labelHalo: 3,
 } as const
 
 export function strokePx(tier: Tier, _pixelsPerMeter: number): number {

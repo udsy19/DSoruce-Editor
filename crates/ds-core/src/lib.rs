@@ -17,6 +17,7 @@ mod layout;
 mod model;
 mod qto;
 mod quantity;
+mod wallnet;
 mod zone;
 
 use document::{Anchor, Document};
@@ -732,6 +733,21 @@ impl Editor {
     /// Whole document, for rendering. Returned as a plain JS object.
     pub fn state(&self) -> Result<JsValue, JsValue> {
         serde_wasm_bindgen::to_value(&self.doc).map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
+    /// **The wall network's outline**, as strokes: `[{ a, b, wall, exterior,
+    /// glazed }]` in world meters — see `wallnet.rs`.
+    ///
+    /// The renderer used to draw each wall as its own box (two faces plus two
+    /// end caps), so every junction stacked four strokes that lie *inside* the
+    /// solid, and the plan read spidery. This is the boundary of the merged
+    /// network, computed where the geometry lives. Wall thickness, junction
+    /// mitring and cut/interior classification all leave the renderer.
+    pub fn wall_outlines(&self) -> Result<JsValue, JsValue> {
+        let ext: std::collections::HashSet<u32> =
+            self.doc.exterior_wall_ids().into_iter().collect();
+        let segs = wallnet::outline(&self.doc.walls, &|id| ext.contains(&id));
+        serde_wasm_bindgen::to_value(&segs).map_err(|e| JsValue::from_str(&e.to_string()))
     }
 
     /// Live metrics panel data. Areas are clipped to the traced floor-plate

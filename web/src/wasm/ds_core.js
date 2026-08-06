@@ -597,6 +597,24 @@ export class Editor {
         return takeFromExternrefTable0(ret[0]);
     }
     /**
+     * **The wall network's outline**, as strokes: `[{ a, b, wall, exterior,
+     * glazed }]` in world meters — see `wallnet.rs`.
+     *
+     * The renderer used to draw each wall as its own box (two faces plus two
+     * end caps), so every junction stacked four strokes that lie *inside* the
+     * solid, and the plan read spidery. This is the boundary of the merged
+     * network, computed where the geometry lives. Wall thickness, junction
+     * mitring and cut/interior classification all leave the renderer.
+     * @returns {any}
+     */
+    wall_outlines() {
+        const ret = wasm.editor_wall_outlines(this.__wbg_ptr);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
      * Per-wall classification for the **plan renderer**:
      * `[{ id, wallType, planKey, lengthM }, ...]` in document order, where
      * `planKey` is a `qbiqPalette.ts` `WallType` (`"drywall"`, `"glass"`, …).

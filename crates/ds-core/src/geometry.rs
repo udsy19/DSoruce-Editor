@@ -70,6 +70,28 @@ pub fn polygon_area(poly: &[Point]) -> f64 {
 /// ambiguous at float precision; callers that need clearance combine this with
 /// `rect_segment_dist` edge-distance checks, which is what the layout
 /// generator's slot test does.
+/// Shortest distance from `p` to a closed polygon's BOUNDARY (not its interior:
+/// a point well inside is far from the boundary). Used to decide whether a wall
+/// lies on the plate's edge.
+pub fn dist_to_polygon(p: Point, poly: &[Point]) -> f64 {
+    let mut best = f64::MAX;
+    for i in 0..poly.len() {
+        let (a, b) = (poly[i], poly[(i + 1) % poly.len()]);
+        let (dx, dy) = (b.x - a.x, b.y - a.y);
+        let len2 = dx * dx + dy * dy;
+        let t = if len2 <= f64::EPSILON {
+            0.0
+        } else {
+            (((p.x - a.x) * dx + (p.y - a.y) * dy) / len2).clamp(0.0, 1.0)
+        };
+        let d = p.dist(&Point::new(a.x + dx * t, a.y + dy * t));
+        if d < best {
+            best = d;
+        }
+    }
+    best
+}
+
 pub fn point_in_polygon(px: f64, py: f64, poly: &[Point]) -> bool {
     if poly.len() < 3 {
         return false;

@@ -369,6 +369,31 @@ impl Document {
             .map(|poly| poly.into_iter().map(|p| [p.x, p.y]).collect())
     }
 
+    /// Ids of the walls that lie ON the traced plate boundary — the CUT walls,
+    /// which take the heavier line tier.
+    ///
+    /// Moved here from `EditorCanvas.updatePlate`, which re-derived it TS-side
+    /// from a serialized plate polygon on every wall change. It is geometry and
+    /// the plate is the core's; the renderer should be told, not made to work it
+    /// out. Same rule as before: a non-generated wall whose BOTH endpoints sit
+    /// within 8 cm of the boundary.
+    pub(crate) fn exterior_wall_ids(&self) -> Vec<u32> {
+        let Some(poly) = self.plate_polygon() else { return Vec::new() };
+        if poly.len() < 3 {
+            return Vec::new();
+        }
+        const ON_BOUNDARY_M: f64 = 0.08;
+        self.walls
+            .iter()
+            .filter(|w| !w.generated)
+            .filter(|w| {
+                crate::geometry::dist_to_polygon(w.a, &poly) < ON_BOUNDARY_M
+                    && crate::geometry::dist_to_polygon(w.b, &poly) < ON_BOUNDARY_M
+            })
+            .map(|w| w.id)
+            .collect()
+    }
+
     /// The wall bounding box's area — the fallback floor figure, and an upper
     /// bound on any face inside it.
     fn bbox_area(&self) -> f64 {

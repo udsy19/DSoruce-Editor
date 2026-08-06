@@ -47,8 +47,16 @@ export interface ZoneTag {
   id: number
   name: string
   metrics: string | null
+  /** Preferred anchor (the zone's centre), screen px. */
   cx: number
   cy: number
+  /** The zone's own screen box. A tag may be placed ANYWHERE inside it — the
+   *  centre of a 536 m² open-plan field is the middle of the desk grid, which
+   *  is the worst spot on the drawing and exactly where the label used to go. */
+  bx: number
+  by: number
+  bw: number
+  bh: number
   namePx: number
   color: string
 }
@@ -71,6 +79,61 @@ const RULER = 22 // px ruler gutter (top + left)
 
 
 // ---- grid / linework ----
+
+/**
+ * **THE plan drawing sequence** — zones, furniture, wall network, tags — in the
+ * one order that produces a figure/ground reading.
+ *
+ * Lifted out of `EditorCanvas.render()` so the editor, the capture harness and
+ * any future consumer draw the SAME plan rather than three sequences that agree
+ * today. `render()` keeps everything that is not the plan: the mat, the grid,
+ * the CAD layer, rulers, previews, chips.
+ *
+ * **Order is the argument.** It used to be zones → walls → furniture, which is
+ * why the drawing read muddy: wall linework sat under the desks that cross it,
+ * and furniture was outline-only so the zone wash showed straight through every
+ * desk. The reference draws furniture as opaque white figures punched out of the
+ * wash, with the wall network stroked over the top, and that is the order here:
+ *
+ *   1. zone washes (clipped to the plate)
+ *   2. furniture — opaque fill, then outline
+ *   3. the wall network, as one merged outline rather than per-wall boxes
+ *   4. tags, above everything
+ */
+export function paintPlan(
+  v: PaintView,
+  st: DocState,
+  opts: {
+    platePoly: [number, number][] | null
+    zoneStats: Map<number, ZoneStat>
+    /** Zone ids drawn as selected/hovered — the only ones that get a pill. */
+    highlight?: Set<number>
+    /** Wall ids on the traced plate boundary; they take the heavier cut tier. */
+    exteriorIds?: Set<number>
+    /** Merged wall-network outline from the core (`Editor.wall_outlines()`).
+     *  Absent → per-wall boxes, which is the look this replaced. */
+    outlines?: WallOutline[] | null
+    selection?: number | null
+  },
+): ZoneTag[] {
+  const highlight = opts.highlight ?? new Set<number>()
+  const tags = st.zones?.length
+    ? drawZones(v, st.zones, opts.platePoly, opts.zoneStats, highlight)
+    : []
+
+  for (const c of st.components) drawComponent(v, c, c.id === opts.selection)
+
+  drawWallNetwork(v, st.walls, opts.outlines ?? null, opts.exteriorIds ?? new Set())
+
+  // Furniture boxes in SCREEN space, so a room tag can be placed where the room
+  // is actually empty rather than at its geometric centre.
+  const obstacles = st.components.map((c) => {
+    const p = v.toScreen(c.x, c.y)
+    return { x: p.x, y: p.y, w: Math.abs(c.w * v.scale), h: Math.abs(c.h * v.scale) }
+  })
+  drawZoneTags(v, tags, highlight, obstacles)
+  return tags
+}
 
 export function drawGrid(v: PaintView, w: number, h: number) {
   const ctx = v.ctx
@@ -110,7 +173,7 @@ export function drawSegment(v: PaintView, a: Pt, b: Pt, widthPx: number, color: 
 
 /** Glazed wall: the drafting triple-line convention (two frame lines with a
  *  lighter center glazing line), visually distinct from solid poché walls. */
-export function drawGlazing(v: PaintView, a: Pt, b: Pt) {
+export function drawGlazing(v: PaintView, a: Pt, b: Pt, centreOnly = false) {
   const ctx = v.ctx
   const pa = v.toScreen(a.x, a.y)
   const pb = v.toScreen(b.x, b.y)
@@ -122,14 +185,20 @@ export function drawGlazing(v: PaintView, a: Pt, b: Pt) {
   const nx = (-dy / len) * o
   const ny = (dx / len) * o
   ctx.lineCap = 'round'
-  ctx.strokeStyle = C.wall
+  // `centreOnly`: the merged network outline has already drawn both faces at
+  // the wall tier, so drawing them again would double the ink at exactly the
+  // junctions the union exists to clean up. Only the glass centre line is left.
+  if (!centreOnly) {
+    ctx.strokeStyle = C.wall
+    ctx.lineWidth = strokePx('wall', v.scale)
+    ctx.beginPath()
+    ctx.moveTo(pa.x + nx, pa.y + ny)
+    ctx.lineTo(pb.x + nx, pb.y + ny)
+    ctx.moveTo(pa.x - nx, pa.y - ny)
+    ctx.lineTo(pb.x - nx, pb.y - ny)
+    ctx.stroke()
+  }
   ctx.lineWidth = strokePx('wall', v.scale)
-  ctx.beginPath()
-  ctx.moveTo(pa.x + nx, pa.y + ny)
-  ctx.lineTo(pb.x + nx, pb.y + ny)
-  ctx.moveTo(pa.x - nx, pa.y - ny)
-  ctx.lineTo(pb.x - nx, pb.y - ny)
-  ctx.stroke()
   ctx.strokeStyle = C.glassCore // glass: light cool center line
   ctx.beginPath()
   ctx.moveTo(pa.x, pa.y)
@@ -158,6 +227,63 @@ export function drawGlazing(v: PaintView, a: Pt, b: Pt) {
  * through — which is exactly what makes furniture and zone fill read as the
  * content rather than competing with a black slab.
  */
+/** One stroke of the merged wall-network outline, from `Editor.wall_outlines()`. */
+export interface WallOutline {
+  a: [number, number]
+  b: [number, number]
+  wall: number
+  exterior: boolean
+  glazed: boolean
+}
+
+/**
+ * Stroke the wall network as ONE solid's boundary.
+ *
+ * The old loop drew each wall as its own box — two faces plus two end caps —
+ * so at every corner and T-junction four strokes landed *inside* the wall body.
+ * On the sample plate that is 155 walls × 4 strokes with nothing removing the
+ * buried ones, and it is why the plan read as a spidery mesh rather than as
+ * architecture. `wallnet.rs` computes the boundary of the union; this only
+ * strokes it.
+ *
+ * **Ruling A1 stands**: no dark poché, no fill, the interior of the wall stays
+ * white. What changed is *which lines exist*, not how they are filled — the
+ * reference's clean double line is the union outline, and we were drawing the
+ * same weight over the wrong geometry.
+ *
+ * Glazed runs keep the triple-line convention: the union gives the two faces,
+ * `drawGlazing` adds the centre line.
+ */
+export function drawWallNetwork(
+  v: PaintView,
+  walls: DocWall[],
+  outlines: WallOutline[] | null,
+  exteriorIds: Set<number>,
+) {
+  if (!outlines) {
+    // No core outline available (an older core, or a caller that has not read
+    // it): fall back to the per-wall boxes rather than drawing nothing.
+    for (const w of walls) {
+      if (w.glazing) drawGlazing(v, w.a, w.b)
+      else drawWall(v, w, exteriorIds.has(w.id))
+    }
+    return
+  }
+  const style = planStyle(v.presentation ? 'paper' : 'editor')
+  for (const s of outlines) {
+    const el = s.exterior ? style.wallCut : style.wallInterior
+    drawSegment(
+      v,
+      { x: s.a[0], y: s.a[1] },
+      { x: s.b[0], y: s.b[1] },
+      strokePx(el.tier ?? 'wall', v.scale),
+      el.stroke ?? BLACK,
+    )
+  }
+  // The glazing centre line, over the faces the union already drew.
+  for (const w of walls) if (w.glazing) drawGlazing(v, w.a, w.b, true)
+}
+
 export function drawWall(v: PaintView, w: DocWall, exterior: boolean) {
   const ctx = v.ctx
   const style = planStyle(v.presentation ? 'paper' : 'editor')
@@ -209,22 +335,6 @@ export function drawWall(v: PaintView, w: DocWall, exterior: boolean) {
   drawSegment(v, a1, a2, width, color)
   drawSegment(v, b1, b2, width, color)
 }
-
-/**
- * Punch an opening through a wall by overdrawing in WHITE — the reference's own
- * mechanism (31 white strokes per page at the 8.5× tier). Called after walls so
- * the punch lands on top; this is how a wall line breaks at a door.
- */
-export function punchOpening(v: PaintView, a: Pt, b: Pt, thickness: number) {
-  const style = planStyle(v.presentation ? 'paper' : 'editor')
-  // The punch must be at least as wide as the wall it erases.
-  const width = Math.max(
-    strokePx(style.opening.tier ?? 'openingPunch', v.scale),
-    thickness * v.scale,
-  )
-  drawSegment(v, a, b, width, style.opening.stroke ?? WHITE)
-}
-
 
 // ---- zones ----
 
@@ -468,7 +578,23 @@ export function drawZones(
       const cap = stat?.capacity ?? 0
       const metrics: string | null =
         area >= 12 ? `${fmtArea(area)} m²${cap > 0 ? ` · ${cap} pax` : ''}` : null
-      if (!suppressTag) tags.push({ id: z.id, name, metrics, cx: c.x, cy: c.y, namePx: 10, color: pal.line })
+      if (!suppressTag)
+        tags.push({
+          id: z.id,
+          name,
+          metrics,
+          cx: c.x,
+          cy: c.y,
+          // A poly zone's tag stays near its pole: the pole is already the
+          // roomiest point of an awkward shape, and letting it wander the whole
+          // bbox would put it back in the notch this replaced.
+          bx: c.x - 1,
+          by: c.y - 1,
+          bw: 2,
+          bh: 2,
+          namePx: 10,
+          color: pal.line,
+        })
     } else if (z.shape.kind === 'RectRing') {
       const s = z.shape
       const o = v.toScreen(s.x - s.w / 2, s.y - s.h / 2)
@@ -540,7 +666,20 @@ export function drawZones(
       ctx.font = '500 9.5px "Hanken Grotesk", system-ui, sans-serif'
       if (h < 34 || ctx.measureText(metrics).width > maxW) metrics = null
       const c = v.toScreen(s.x, s.y)
-      if (!suppressTag) tags.push({ id: z.id, name, metrics, cx: c.x, cy: c.y, namePx, color: pal.line })
+      if (!suppressTag)
+        tags.push({
+          id: z.id,
+          name,
+          metrics,
+          cx: c.x,
+          cy: c.y,
+          bx: p.x,
+          by: p.y,
+          bw: w,
+          bh: h,
+          namePx,
+          color: pal.line,
+        })
     }
   }
   if (clipped) ctx.restore()
@@ -631,7 +770,12 @@ function poleOfInaccessibility(
  * 3. PROFILE POLICY. `paper` names only service rooms, abbreviated, and lets
  *    the legend identify everything else — which is what the reference does.
  */
-export function drawZoneTags(v: PaintView, tags: ZoneTag[], highlight?: Set<number>) {
+export function drawZoneTags(
+  v: PaintView,
+  tags: ZoneTag[],
+  highlight?: Set<number>,
+  obstacles: Array<{ x: number; y: number; w: number; h: number }> = [],
+) {
   const ctx = v.ctx
   const style = planStyle(v.presentation ? 'paper' : 'editor')
   const policy = style.labelPolicy
@@ -647,6 +791,61 @@ export function drawZoneTags(v: PaintView, tags: ZoneTag[], highlight?: Set<numb
   const hits = (x: number, y: number, w: number, h: number) =>
     placed.some((r) => Math.abs(r.x - x) * 2 < r.w + w && Math.abs(r.y - y) * 2 < r.h + h)
 
+  const overlaps = (
+    a: { x: number; y: number; w: number; h: number },
+    b: { x: number; y: number; w: number; h: number },
+  ) => Math.abs(a.x - b.x) * 2 < a.w + b.w && Math.abs(a.y - b.y) * 2 < a.h + b.h
+
+  /**
+   * Where in its room a tag actually goes.
+   *
+   * The old answer was "the zone's centre", which for a 536 m² open-plan field
+   * is the middle of the desk grid — the label landed on the furniture in every
+   * capture. The room's centre is where you want the label only when the room is
+   * empty there.
+   *
+   * So: score a coarse grid of candidate anchors inside the zone by how far the
+   * label's box stays clear of the furniture under it, break ties toward the
+   * centre, and take the best. This is the pole of inaccessibility with the
+   * furniture counted as boundary — the same idea `poleOfInaccessibility`
+   * applies to a room's walls, applied to what is standing in the room.
+   */
+  const place = (t: ZoneTag, w: number, h: number) => {
+    // NO SPILL. A tag that does not fit inside its own room does not get to
+    // borrow the next room's floor — that is how MEETING ROOM 2's tag came to sit
+    // across the cabin beside it. It abbreviates (the next rung), or it is culled
+    // and the legend identifies the room instead.
+    const fits = (x: number, y: number) =>
+      x - w / 2 >= t.bx &&
+      x + w / 2 <= t.bx + t.bw &&
+      y - h / 2 >= t.by &&
+      y + h / 2 <= t.by + t.bh
+    const score = (x: number, y: number) => {
+      const box = { x, y, w: w + 6, h: h + 6 }
+      let hit = 0
+      for (const o of obstacles) {
+        if (o.x + o.w / 2 < t.bx || o.x - o.w / 2 > t.bx + t.bw) continue
+        if (o.y + o.h / 2 < t.by || o.y - o.h / 2 > t.by + t.bh) continue
+        if (overlaps(box, o)) hit++
+      }
+      // Clear of furniture first; among equally clear spots, nearest the centre.
+      return hit * 10000 + Math.hypot(x - t.cx, y - t.cy)
+    }
+    let best: { x: number; y: number; s: number } | null = null
+    const N = 9
+    for (let gx = 0; gx <= N; gx++) {
+      for (let gy = 0; gy <= N; gy++) {
+        const x = t.bx + (t.bw * gx) / N
+        const y = t.by + (t.bh * gy) / N
+        if (!fits(x, y)) continue
+        if (hits(x, y, w, h)) continue
+        const sc = score(x, y)
+        if (!best || sc < best.s) best = { x, y, s: sc }
+      }
+    }
+    return best
+  }
+
   for (const t of ordered) {
     const isHot = highlight?.has(t.id) ?? false
     const service = SERVICE_ROOMS.some((r) => t.name.toUpperCase().startsWith(r))
@@ -660,7 +859,9 @@ export function drawZoneTags(v: PaintView, tags: ZoneTag[], highlight?: Set<numb
       { name: abbreviate(t.name), px: Math.max(8, t.namePx - 2), metrics: null },
     ]
 
-    let chosen: { name: string; px: number; metrics: string | null; w: number; h: number } | null = null
+    let chosen:
+      | { name: string; px: number; metrics: string | null; w: number; h: number; x: number; y: number }
+      | null = null
     for (const r of rungs) {
       ctx.font = NAME_FONT(r.px)
       const nameW = ctx.measureText(r.name).width
@@ -668,13 +869,16 @@ export function drawZoneTags(v: PaintView, tags: ZoneTag[], highlight?: Set<numb
       const metW = r.metrics ? ctx.measureText(r.metrics).width : 0
       const w = Math.max(nameW, metW) + 10
       const h = r.metrics ? 30 : 16
-      if (!hits(t.cx, t.cy, w, h)) {
-        chosen = { ...r, w, h }
+      const at = place(t, w, h)
+      if (at && !hits(at.x, at.y, w, h)) {
+        chosen = { ...r, w, h, x: at.x, y: at.y }
         break
       }
     }
     if (!chosen) continue // every rung collided — the legend still identifies it
-    placed.push({ x: t.cx, y: t.cy, w: chosen.w, h: chosen.h })
+    const ax = chosen.x
+    const ay = chosen.y
+    placed.push({ x: ax, y: ay, w: chosen.w, h: chosen.h })
 
     // Pill ONLY when hot. At rest the label is text on the drawing.
     if (isHot || policy.pillAtRest) {
@@ -689,18 +893,36 @@ export function drawZoneTags(v: PaintView, tags: ZoneTag[], highlight?: Set<numb
       ctx.restore()
       ctx.strokeStyle = hexToRgba(t.color, 0.28)
       ctx.lineWidth = CHROME.hairline
-      roundRect(ctx, t.cx - chosen.w / 2 - 4, t.cy - pillH / 2, chosen.w + 8, pillH, pillH / 2)
+      roundRect(ctx, ax - chosen.w / 2 - 4, ay - pillH / 2, chosen.w + 8, pillH, pillH / 2)
       ctx.stroke()
     }
 
-    ctx.fillStyle = t.color
-    ctx.font = NAME_FONT(chosen.px)
-    ctx.fillText(chosen.name, t.cx, chosen.metrics ? t.cy - 6 : t.cy)
-    if (chosen.metrics) {
-      ctx.fillStyle = C.labelSub
-      ctx.font = MET_FONT
-      ctx.fillText(chosen.metrics, t.cx, t.cy + 7.5)
+    // HALO. Only where it earns its place: a pill already supplies a ground, and
+    // paper is meant to be quiet. Text laid straight over desk linework is not
+    // quiet, it is illegible — so the knockout goes on when the label is sitting
+    // on something and stays off when it is on clear floor.
+    const halo =
+      !isHot &&
+      !policy.pillAtRest &&
+      obstacles.some((o) =>
+        overlaps({ x: ax, y: ay, w: chosen!.w, h: chosen!.h }, o),
+      )
+    const stroked = (text: string, x: number, y: number, font: string, fill: string) => {
+      ctx.font = font
+      if (halo) {
+        ctx.save()
+        ctx.lineWidth = CHROME.labelHalo
+        ctx.lineJoin = 'round'
+        ctx.strokeStyle = C.pillFill
+        ctx.strokeText(text, x, y)
+        ctx.restore()
+      }
+      ctx.fillStyle = fill
+      ctx.fillText(text, x, y)
     }
+
+    stroked(chosen.name, ax, chosen.metrics ? ay - 6 : ay, NAME_FONT(chosen.px), t.color)
+    if (chosen.metrics) stroked(chosen.metrics, ax, ay + 7.5, MET_FONT, C.labelSub)
   }
 }
 

@@ -266,6 +266,17 @@ export class Editor {
      */
     state(): any;
     /**
+     * **The wall network's outline**, as strokes: `[{ a, b, wall, exterior,
+     * glazed }]` in world meters — see `wallnet.rs`.
+     *
+     * The renderer used to draw each wall as its own box (two faces plus two
+     * end caps), so every junction stacked four strokes that lie *inside* the
+     * solid, and the plan read spidery. This is the boundary of the merged
+     * network, computed where the geometry lives. Wall thickness, junction
+     * mitring and cut/interior classification all leave the renderer.
+     */
+    wall_outlines(): any;
+    /**
      * Per-wall classification for the **plan renderer**:
      * `[{ id, wallType, planKey, lengthM }, ...]` in document order, where
      * `planKey` is a `qbiqPalette.ts` `WallType` (`"drywall"`, `"glass"`, …).
@@ -388,6 +399,7 @@ export interface InitOutput {
     readonly editor_snapshot: (a: number) => [number, number, number];
     readonly editor_split_zone: (a: number, b: number, c: number, d: number, e: number) => [number, number, number];
     readonly editor_state: (a: number) => [number, number, number];
+    readonly editor_wall_outlines: (a: number) => [number, number, number];
     readonly editor_wall_types: (a: number) => [number, number, number];
     readonly editor_zone_at: (a: number, b: number, c: number) => number;
     readonly editor_zone_stats: (a: number) => [number, number, number];

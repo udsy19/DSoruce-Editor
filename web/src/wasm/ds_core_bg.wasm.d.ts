@@ -52,6 +52,7 @@ export const editor_set_zone_type: (a: number, b: number, c: number, d: number) 
 export const editor_snapshot: (a: number) => [number, number, number];
 export const editor_split_zone: (a: number, b: number, c: number, d: number, e: number) => [number, number, number];
 export const editor_state: (a: number) => [number, number, number];
+export const editor_wall_outlines: (a: number) => [number, number, number];
 export const editor_wall_types: (a: number) => [number, number, number];
 export const editor_zone_at: (a: number, b: number, c: number) => number;
 export const editor_zone_stats: (a: number) => [number, number, number];

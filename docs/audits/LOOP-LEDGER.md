@@ -778,3 +778,113 @@ frozen test.
 
 **Board:** `cargo test -p ds-core` **178 green** (was 170; +8 battery), goldens
 unchanged; verification battery **41/41**.
+
+## Phase 0.2 — the capture harness · **DONE**
+
+`scripts/capture-fixtures.mjs` → `docs/evidence/qbiq-parity-q3/<tag>/` : F1–F5 ×
+{fit, 2×, 4×} = 15 PNGs, plus `manifest.json` and `tag-census.json`.
+
+**It renders through `paint.ts::paintPlan`, which is the editor's own sequence.**
+That needed a refactor and it was worth it: a capture harness with its own draw
+order measures a renderer nobody ships. `EditorCanvas.render()` now calls
+`paintPlan` too, so the two cannot drift. The script owns only what is not the
+plan — the mat, the white plate, the viewport.
+
+Provenance is asserted before a pixel is written: the bundle is grepped for
+`paintPlan`, `drawWallNetwork`, `drawZoneTags`, and a capture under 1 000 bytes
+is a failure rather than a file.
+
+## Q3-C — the wall network · **DONE, ruling A1 refined not reversed**
+
+**Mechanism.** `drawWall` stroked each wall's two faces and two end caps
+independently. At every corner and T-junction four of those strokes lie *inside*
+the solid. It was never a stroke-weight problem — the extra ink was **geometry
+that is not on the boundary of the union**, and no weight ladder can fix a line
+that should not exist.
+
+**A1 stands.** No poché, no fill, the wall interior stays white. What changed is
+*which lines exist*. The reference's clean double line IS the union outline; we
+were drawing the correct weight over the wrong geometry.
+
+**`crates/ds-core/src/wallnet.rs`** — the union boundary, exactly, with **no new
+dependency**. Each wall contributes a thickness rectangle, mitred at junctions
+(an end that meets another wall extends by half its own thickness, so the corner
+closes); each rectangle edge is split at its crossings with the others; a piece
+survives iff its midpoint is in no other rectangle's interior. `wall_outlines()`
+crosses the boundary with `{a, b, wall, exterior, glazed}`; cut/interior
+classification moves into the core with it (it was re-derived TS-side from a
+serialized plate on every wall change).
+
+Four unit tests, each naming the artifact it forbids: a lone wall keeps its whole
+rectangle · an L-junction draws nothing through the corner · a closed room yields
+exactly its outer and inner rings and no caps · collinear runs lose their shared
+caps (the shape every imported boundary polyline has). On the sample plate:
+**131 walls → 554 outline segments**, against 131 × 4 = 524 strokes before, but
+now they are the boundary rather than 524 boxes.
+
+**`punchOpening` deleted, and the reason is better than "unused".** It overdrew
+in white to fake a door break. Openings in this model are already *geometry* —
+generated room shells are emitted with a real 0.9 m gap in the wall run
+(`assert_room_enclosed`) — so the punch had nothing to do and was never called
+from the render loop. Grep confirms zero remaining references.
+
+**Glazing** keeps the triple-line convention: the union supplies the two faces,
+`drawGlazing(…, centreOnly)` adds the glass centre line, so a glass front meeting
+a partition is now as clean as any other junction.
+
+## Q3-E — room tags · **PARTIAL, measured in both directions**
+
+**The defect was label-over-FURNITURE, and the first gate could not see it.**
+
+Tags were anchored at their zone's geometric centre. For a 536 m² open-plan
+field that is the middle of the desk grid, which is the worst spot on the sheet
+and exactly where every capture showed the label. Placement now scores a 9 × 9
+grid of anchors inside the zone by how clear the label's box stays of the
+furniture beneath it, breaking ties toward the centre — the pole of
+inaccessibility with the furniture counted as boundary. A tag that fits nowhere
+inside its **own** room is culled rather than allowed to spill onto the next room
+(that is how `MEETING ROOM 2`'s tag came to sit across the cabin beside it); the
+legend still identifies it. A knockout halo goes on only where a tag does land on
+line-work.
+
+**Sabotage found the gate vacuous — the third null result of this queue.**
+Reverting placement to centre-pinning in a disposable worktree left the census
+reporting **0 collisions**, because the census only checked label-vs-label and
+`hits()` had always prevented that. The check was measuring a property that was
+already guaranteed while the defect it was named for went straight past it.
+
+Extended to the real property — a text box overlapping a component box, both
+recorded at the **canvas API** by wrapping `ctx.fillText`, so the boxes carry
+real text metrics and no producer claim is consulted:
+
+| | label-on-label | **label-on-furniture** | text draws |
+|---|---|---|---|
+| centre-pinned (shipped) | 0 | **127** | 211 |
+| furniture-aware (now) | 0 | **29** | 205 |
+
+`FURNITURE_OVERLAP_BUDGET = 32`, set from the measurement, so a regression toward
+centre-pinning fails loudly. It is a budget and not zero because a small room
+whose table fills it has nowhere else for its own tag to go. Both non-vacuity
+guards are asserted (≥20 text draws, ≥100 furniture boxes) — a census that
+recorded nothing would report zero and mean nothing.
+
+**Still open on E:** the 29, and tags on zones whose rect is larger than the room
+drawn inside it (`OPEN WORKSPACE (2)` spilling over a cabin wall).
+
+## What the captures show that is NOT yet fixed
+
+Read off `docs/evidence/qbiq-parity-q3/q3-current/F1@fit.png` and `@4x`:
+
+1. **The plan does not use the floor.** The desk field is one tall blue rectangle;
+   the entire left third and the bottom of the plate are empty white with no
+   program at all. This is the largest remaining visual defect and it is a
+   GENERATOR problem (Q3-F), not a renderer one.
+2. **No legible circulation hierarchy.** There is no spine to trace from the
+   entry — the ground is one undifferentiated field (Q3-F).
+3. **Chairs read as lozenges**, not as task chairs: a rounded rectangle with one
+   ticked edge. It is the most repeated glyph on the sheet (229 components), so
+   it carries more of the "does this look professional" verdict than anything
+   else (Q3-D3).
+4. **Desk rows are ragged** — rows end in single unpaired desks.
+5. Q3-B (the area tool) and Q3-D2 (extracting the symbol spec from the reference
+   PDF) are **not started**.

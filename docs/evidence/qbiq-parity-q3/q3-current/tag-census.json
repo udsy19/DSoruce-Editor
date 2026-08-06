@@ -1,0 +1,161 @@
+[
+  {
+    "id": "F1",
+    "zoom": "fit",
+    "texts": 8,
+    "furniture": 229,
+    "clashes": [],
+    "onFurniture": [
+      "RECEPTION",
+      "OPEN WORKSPACE (2)",
+      "8.0 m² · 5 pax"
+    ]
+  },
+  {
+    "id": "F1",
+    "zoom": "2x",
+    "texts": 18,
+    "furniture": 229,
+    "clashes": [],
+    "onFurniture": [
+      "MEETING ROOM 3",
+      "16 m² · 6 pax",
+      "MEETING ROOM 1",
+      "16 m² · 6 pax"
+    ]
+  },
+  {
+    "id": "F1",
+    "zoom": "4x",
+    "texts": 18,
+    "furniture": 229,
+    "clashes": [],
+    "onFurniture": []
+  },
+  {
+    "id": "F2",
+    "zoom": "fit",
+    "texts": 8,
+    "furniture": 229,
+    "clashes": [],
+    "onFurniture": [
+      "RECEPTION",
+      "OPEN WORKSPACE (2)",
+      "8.0 m² · 5 pax"
+    ]
+  },
+  {
+    "id": "F2",
+    "zoom": "2x",
+    "texts": 18,
+    "furniture": 229,
+    "clashes": [],
+    "onFurniture": [
+      "MEETING ROOM 3",
+      "16 m² · 6 pax",
+      "MEETING ROOM 1",
+      "16 m² · 6 pax"
+    ]
+  },
+  {
+    "id": "F2",
+    "zoom": "4x",
+    "texts": 18,
+    "furniture": 229,
+    "clashes": [],
+    "onFurniture": []
+  },
+  {
+    "id": "F3",
+    "zoom": "fit",
+    "texts": 8,
+    "furniture": 229,
+    "clashes": [],
+    "onFurniture": [
+      "RECEPTION",
+      "OPEN WORKSPACE (2)",
+      "8.0 m² · 5 pax"
+    ]
+  },
+  {
+    "id": "F3",
+    "zoom": "2x",
+    "texts": 18,
+    "furniture": 229,
+    "clashes": [],
+    "onFurniture": [
+      "MEETING ROOM 3",
+      "16 m² · 6 pax",
+      "MEETING ROOM 1",
+      "16 m² · 6 pax"
+    ]
+  },
+  {
+    "id": "F3",
+    "zoom": "4x",
+    "texts": 18,
+    "furniture": 229,
+    "clashes": [],
+    "onFurniture": []
+  },
+  {
+    "id": "F4",
+    "zoom": "fit",
+    "texts": 8,
+    "furniture": 229,
+    "clashes": [],
+    "onFurniture": [
+      "RECEPTION",
+      "OPEN WORKSPACE (2)",
+      "8.0 m² · 5 pax"
+    ]
+  },
+  {
+    "id": "F4",
+    "zoom": "2x",
+    "texts": 16,
+    "furniture": 229,
+    "clashes": [],
+    "onFurniture": [
+      "MEETING ROOM 3",
+      "16 m² · 6 pax"
+    ]
+  },
+  {
+    "id": "F4",
+    "zoom": "4x",
+    "texts": 16,
+    "furniture": 229,
+    "clashes": [],
+    "onFurniture": []
+  },
+  {
+    "id": "F5",
+    "zoom": "fit",
+    "texts": 6,
+    "furniture": 225,
+    "clashes": [],
+    "onFurniture": [
+      "CABIN 2"
+    ]
+  },
+  {
+    "id": "F5",
+    "zoom": "2x",
+    "texts": 13,
+    "furniture": 225,
+    "clashes": [],
+    "onFurniture": [
+      "MEETING ROOM 1",
+      "16 m² · 6 pax"
+    ]
+  },
+  {
+    "id": "F5",
+    "zoom": "4x",
+    "texts": 14,
+    "furniture": 225,
+    "clashes": [],
+    "onFurniture": []
+  }
+]
