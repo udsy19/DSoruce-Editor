@@ -22,6 +22,7 @@ import {
   saveThemeId,
   type ThemeId,
   type ViewerTheme,
+  NEUTRAL_FLOOR_ZONES,
 } from './theme'
 import { SELECTION_ACCENT_HEX } from '../editor/planStyle'
 
@@ -1504,6 +1505,12 @@ export class Viewer3D {
     // Per-zone floor materials: recolor in place if they exist (plates keep
     // their reference), else create + protect from clearContent's disposal.
     for (const zt of Object.keys(t.floorByZone) as ZoneType[]) {
+      // GROUND TAKES THE NEUTRAL FLOOR. Skipping allocation here is the whole
+      // change: `buildZonePlate` already falls back to `floorBaseMat` for any
+      // type without a material, so ground gets the same floor as unzoned plate
+      // instead of a tinted carpet. The table keeps its entry either way — the
+      // toolbar swatch reads it.
+      if (NEUTRAL_FLOOR_ZONES.has(zt)) continue
       const color = t.floorByZone[zt]
       const mat = this.zoneFloorMats.get(zt)
       if (mat) mat.color.setHex(color)

@@ -37,6 +37,25 @@ export interface ViewerTheme {
   accent: number
 }
 
+/**
+ * Zone types whose 3D floor is the NEUTRAL base, not a zone tint.
+ *
+ * Ground in the plan must be ground in the walkthrough. A zone-tinted carpet
+ * under circulation resurrects in 3D exactly the fill the figure/ground rule
+ * removed from the 2D plan — walk the model and the corridors are a coloured
+ * floor again, telling a different story about the same building.
+ *
+ * `floorByZone` deliberately KEEPS its entries for these types:
+ * `ViewerToolbar` reads `floorByZone.Circulation` for its per-theme swatch, so
+ * deleting a key to change a material would break an unrelated consumer. What
+ * changes is which types get a material allocated — `buildZonePlate` already
+ * falls back to `floorBaseMat` for anything unregistered.
+ */
+export const NEUTRAL_FLOOR_ZONES: ReadonlySet<ZoneType> = new Set<ZoneType>([
+  'Circulation',
+  'Unassigned',
+])
+
 export const THEMES: Record<ThemeId, ViewerTheme> = {
   studio: {
     id: 'studio',

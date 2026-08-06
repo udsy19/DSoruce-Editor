@@ -139,3 +139,31 @@ and the palette is banned by VALUE — comments included, per the amber ruling.
 Amended, gate green. The lesson is the one already in this file about success
 messages: **a verification step that can silently not-run is not a verification
 step.** Check exit codes explicitly, never by the presence of a chained echo.
+
+## B3 — 2.4 3D ground floors · **DONE**
+
+`buildZonePlate` resolves `zoneFloorMats.get(type) ?? floorBaseMat`, so the
+change is to stop ALLOCATING a material for ground rather than to change one:
+ground falls through to the neutral base. `NEUTRAL_FLOOR_ZONES` in `theme.ts`,
+consulted by `Viewer3D.applyTheme`.
+
+`floorByZone` keeps all eight keys in all four presets — `ViewerToolbar` reads
+`floorByZone.Circulation` for its per-theme swatch, and deleting a key to change
+a material would break an unrelated consumer.
+
+Guard `src/three/groundFloors.test.mjs`: the set is exactly the two ground types;
+all 4 presets carry all 8 keys plus `floorBase`; and **Viewer3D actually
+references the set** — a set nobody reads is a declaration, and this cycle has
+already shipped one of those.
+
+| sabotage | result |
+|---|---|
+| Viewer3D stops consulting the set (the enabling step) | **RED** |
+| a preset drops its `Circulation` key | **RED** — names the toolbar swatch |
+
+Evidence: `B3-3d-studio-neutral-ground.png`. **Caption is honest:** the Frame
+control did not re-fit the camera, so this is a close view rather than the whole
+model; what it shows is the floor plane uniformly neutral with no cool-blue
+circulation carpet, which is the assertion. A properly framed shot is produced in
+the F2 gallery pass, where viewports are normalised (this capture came back
+1200×744 against Phase 0's 1600×1000, so no pixdiff was possible here).
