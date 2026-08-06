@@ -247,6 +247,12 @@ export const ZONE: Record<string, { fill: string; line: string }> = {
   // gap in the five adopted hues (32/47/128/209/260), placed at the palette's
   // own band (S 60, L 91) so it belongs to the set without impersonating it.
   ClosedOffice: { fill: '#f6dadf', line: '#b14356' },
+  // Ground, like Circulation, and DELIBERATELY the same values as it: Phase 1
+  // changes what leftover floor is CALLED, not how it looks. Phase 2.1 gives
+  // this its own editor-only hatch (the "wasted floor, fix me" affordance);
+  // until then an Unassigned zone must be indistinguishable from the
+  // circulation it used to be, so the core change lands with zero visual delta.
+  Unassigned: { fill: '#d8d8d8', line: '#8b8b8b' },
 }
 
 export const C = {
@@ -561,7 +567,7 @@ const PAPER: PlanStyle = {
   labelPrimary: { color: INK, sizePx: 6, weight: 500, upper: true },
   labelSecondary: { color: '#5f6771', sizePx: 5, weight: 400, upper: true },
   labelPolicy: { names: 'service', metrics: false, pillAtRest: false },
-  groundZones: ['Circulation'],
+  groundZones: ['Circulation', 'Unassigned'],
   groundTint: null, // paper: corridors ARE the paper
 }
 
@@ -607,7 +613,22 @@ export function planStyle(profile: PlanProfile): PlanStyle {
 export function legendEntries(
   zones: ReadonlyArray<{ zone_type: ZoneType }>,
 ): Array<{ kind: ZoneType; fill: string; line: string }> {
+  //
+  // GROUND ZONES ARE EXCLUDED. A swatch keyed to white (paper) or a 2% tint
+  // (editor) explains nothing, and the reference legend lists program
+  // facilities only.
+  //
+  // SCOPE NOTE: this one line belongs to Phase 2.6 and was pulled forward into
+  // Phase 1, because Phase 1 introduces `Unassigned` and without it the Plan Key
+  // would sprout an "Unassigned" swatch the moment the core started emitting the
+  // type — a visible regression shipped deliberately and fixed a commit later.
+  // Phase 2.6 keeps the rest of its scope (`stats.ts` ordering, the report's
+  // LEGEND_ORDER, the on-sheet legend).
+  const ground = planStyle('paper').groundZones
   const seen: ZoneType[] = []
-  for (const z of zones) if (!seen.includes(z.zone_type)) seen.push(z.zone_type)
+  for (const z of zones) {
+    if (ground.includes(z.zone_type)) continue
+    if (!seen.includes(z.zone_type)) seen.push(z.zone_type)
+  }
   return seen.map((kind) => ({ kind, ...ZONE[kind] }))
 }

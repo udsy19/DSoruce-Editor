@@ -96,6 +96,18 @@ export type ZoneType =
   | 'Core'
   | 'ClosedOffice'
   | 'Amenity'
+  /**
+   * Floor the generator could neither furnish nor justify as circulation — too
+   * narrow for a code-width path, or sealed off from the walking network.
+   * Emitted by `ds-core`'s residual classifier (`layout/conform.rs`).
+   *
+   * **Ground, never figure, and never a published line item.** It renders as
+   * paper like circulation does; the editor may flag it, exports fold it back
+   * into Circulation (the core's `zone_stats_published`). Treat it as
+   * circulation's twin wherever you special-case `'Circulation'` — a check that
+   * says `!== 'Circulation'` to mean "is a real room" must exclude this too.
+   */
+  | 'Unassigned'
 export type ZoneShape =
   | { kind: 'Rect'; x: number; y: number; w: number; h: number }
   | { kind: 'RectRing'; x: number; y: number; w: number; h: number; in_w: number; in_h: number }
@@ -159,6 +171,7 @@ export const ZONE_LABEL: Record<ZoneType, string> = {
   Core: 'Core',
   ClosedOffice: 'Closed Office',
   Amenity: 'Amenity',
+  Unassigned: 'Unassigned',
 }
 
 /** A selected room + its on-screen box, handed to the floating `RoomTools`. */

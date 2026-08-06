@@ -390,6 +390,13 @@ pub fn space_type_label(t: ZoneType) -> &'static str {
         ZoneType::Core => "Core / Service",
         ZoneType::ClosedOffice => "Closed Office",
         ZoneType::Amenity => "Amenity",
+        // DELIBERATELY NOT folded to "Circulation" here. The fold to a
+        // published vocabulary happens once, at the serialization boundary
+        // (`fold_unassigned`), and folding a second time here would make a
+        // MISSED fold invisible — the workbook would read "Circulation" and
+        // nobody would know the boundary had been bypassed. Seeing
+        // "Unassigned" in a delivered artifact is the bug report.
+        ZoneType::Unassigned => "Unassigned",
     }
 }
 

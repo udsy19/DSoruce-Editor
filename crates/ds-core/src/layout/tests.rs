@@ -3197,15 +3197,26 @@ fn circulation_conforms_to_a_diagonal_wall() {
     let mut doc = room_from_corners(&corners);
     generate(&mut doc, &program, 7, false);
 
-    // At least one Circulation zone became a boundary-conforming Poly.
+    // At least one RESIDUAL zone became a boundary-conforming Poly.
+    //
+    // Filtered on `origin`, not on `zone_type`. The property under test is
+    // GEOMETRIC — leftover floor reaches the diagonal wall instead of stopping
+    // short of it in a staircase — and it is indifferent to whether that floor
+    // ends up called Circulation or Unassigned. Filtering on `zone_type ==
+    // Circulation` was only ever right because Circulation was the sole residual
+    // type; once the classifier landed, this plate's two conforming polys came
+    // back Unassigned (a 0.9 m perimeter access band at wide-fraction 0.000, and
+    // a 0.458 near-miss) and the test failed while the geometry it guards was
+    // perfect. Widened, not relaxed: `origin == Residual` is exactly the set the
+    // old filter meant.
     let polys: Vec<&Zone> = doc
         .zones
         .iter()
-        .filter(|z| z.zone_type == ZoneType::Circulation && matches!(z.shape, ZoneShape::Poly { .. }))
+        .filter(|z| z.origin == ZoneOrigin::Residual && matches!(z.shape, ZoneShape::Poly { .. }))
         .collect();
     assert!(
         !polys.is_empty(),
-        "no Circulation zone conformed to the diagonal wall"
+        "no residual zone conformed to the diagonal wall"
     );
 
     // Some conforming poly has a vertex ON the chamfer line x + y = 34 — its
@@ -3680,17 +3691,68 @@ fn walking_area_is_unified_no_white_floor() {
         // residual rects may survive ONLY where a walking region wraps interior
         // islands (a hole-containing region a single simple `Poly` can't
         // represent) — capped well below the pre-pass fragment count.
+        //
+        // WIDENED from `zone_type == Circulation && label == "Circulation"` to
+        // the whole residual class. Leftover floor now leaves this pass as
+        // EITHER Circulation or Unassigned, and the fragmentation property is
+        // about the merge, which runs before that judgement and is indifferent
+        // to it. The old filter would have matched nothing and passed vacuously
+        // — guarding a property it could no longer see. See (d).
         let circ: Vec<_> = doc
             .zones
             .iter()
-            .filter(|z| z.zone_type == ZoneType::Circulation && z.label == "Circulation")
+            .filter(|z| z.origin == ZoneOrigin::Residual)
             .collect();
+        // (c0) NON-VACUITY GUARD — runs FIRST, on purpose.
+        //
+        // Checks (a) and (c) both quantify over the residual class. If that
+        // class is ever renamed, re-typed or re-flagged out from under this
+        // test, the filter silently matches nothing, "a handful or fewer"
+        // becomes trivially true, and the test reports green while guarding
+        // nothing. That failure mode is worse than a red test: it is a red test
+        // that lies. This plate is KNOWN to produce residual floor, so an empty
+        // match is a bug in the test's reach, never a property of the plan.
+        //
+        // Ordered ahead of (c) after falsification showed (c)'s own `>= 3` lower
+        // bound fires first on an empty set — with the message "only 0 merged
+        // residual polys — not unified", which sends the next reader hunting a
+        // merge bug that isn't there. The guard is cheap; a failure that names
+        // the real cause is worth more than one that merely goes red.
+        assert!(
+            !circ.is_empty(),
+            "seed {seed}: the residual filter matched NOTHING — the residual class was \
+             renamed out from under this test and checks (a)/(c) are now vacuous"
+        );
+
         let merged_polys =
             circ.iter().filter(|z| matches!(z.shape, ZoneShape::Poly { .. })).count();
         let stray_rects =
             circ.iter().filter(|z| matches!(z.shape, ZoneShape::Rect { .. })).count();
-        assert!(merged_polys >= 3, "seed {seed}: only {merged_polys} merged circulation polys — not unified");
-        assert!(stray_rects <= 6, "seed {seed}: {stray_rects} un-merged residual Circulation rects (fragmentation)");
+        assert!(merged_polys >= 3, "seed {seed}: only {merged_polys} merged residual polys — not unified");
+        assert!(stray_rects <= 6, "seed {seed}: {stray_rects} un-merged residual rects (fragmentation)");
+
+        // (e) CONSERVATION — reclassification MOVES floor between buckets, it
+        // must never LOSE any. Circulation ∪ Unassigned over residual zones is
+        // the same floor the pass used to call Circulation wholesale; if a
+        // future change drops a pocket on the floor instead of typing it, (a)
+        // would catch it only if the pocket were big enough to move the untyped
+        // fraction past 5%. This catches it at 1 m².
+        let residual_m2: f64 = circ.iter().map(|z| z.area()).sum();
+        let typed_m2: f64 = doc
+            .zones
+            .iter()
+            .filter(|z| {
+                z.origin == ZoneOrigin::Residual
+                    && matches!(z.zone_type, ZoneType::Circulation | ZoneType::Unassigned)
+            })
+            .map(|z| z.area())
+            .sum();
+        assert!(
+            (residual_m2 - typed_m2).abs() < 1.0,
+            "seed {seed}: {:.2} m² of residual floor is neither Circulation nor \
+             Unassigned — the classifier dropped it",
+            residual_m2 - typed_m2
+        );
     }
 
     // (d) Determinism incl. the unified circulation.
@@ -3782,11 +3844,16 @@ fn golden_fingerprint(doc: &Document, program: &Program) -> String {
                 p
             }
         };
-        s.push_str(&format!("Z {:?} {} {}\n", z.zone_type, shape, z.label));
+        // `origin` is in the digest so the Drawn/Residual discriminator is pinned
+        // like everything else: a change that silently re-flagged a drawn
+        // corridor as residual (or the reverse) would move real behaviour —
+        // the conform merge and the classifier both key off it — while leaving
+        // every coordinate identical. Strengthens the contract; never relaxes it.
+        s.push_str(&format!("Z {:?} {:?} {} {}\n", z.zone_type, z.origin, shape, z.label));
     }
     let sc = score(doc, program);
     s.push_str(&format!(
-        "S {} {} {} {} {} {} {} {} {}\n",
+        "S {} {} {} {} {} {} {} {} {} {}\n",
         q6(sc.capacity),
         q6(sc.adjacency),
         q6(sc.circulation),
@@ -3795,7 +3862,8 @@ fn golden_fingerprint(doc: &Document, program: &Program) -> String {
         q6(sc.daylight),
         q6(sc.entry_adjacency),
         q6(sc.total),
-        sc.placed_desks
+        sc.placed_desks,
+        q6(sc.unassigned_penalty)
     ));
     format!(
         "c{} w{} z{} desks{} total{} #{:016x}",
@@ -3888,16 +3956,16 @@ fn golden_generate_output_is_frozen() {
     cases.push(("explicit_rooms/l_plate/seed3".to_string(), l_room(), prog_rooms, 3));
 
     const EXPECTED: [&str; 10] = [
-        "default/rect20x14/seed1 = c72 w52 z11 desks21 total87876523 #9810d3ae324aadc0",
-        "default/rect20x14/seed2 = c80 w52 z11 desks25 total89274625 #c75576a35520672f",
-        "default/rect20x14/seed3 = c70 w52 z11 desks20 total86967629 #886837f74a830148",
-        "default/real_plate/seed1 = c222 w155 z40 desks88 total92930827 #337098d31e7b06e2",
-        "default/real_plate/seed2 = c222 w155 z35 desks88 total92401469 #ea4649826bf50f25",
-        "default/real_plate/seed3 = c222 w155 z40 desks88 total92934414 #02a199ddbd42fe35",
-        "no_support/rect20x14/seed1 = c68 w22 z4 desks26 total92565832 #e247ac328db99873",
-        "no_support/real_plate/seed2 = c192 w101 z38 desks88 total95848844 #34fb84018f156b0a",
-        "explicit_rooms/real_plate/seed1 = c209 w125 z26 desks88 total90772681 #db378ce13f4399b8",
-        "explicit_rooms/l_plate/seed3 = c63 w33 z10 desks24 total89503554 #6b55646ca7102d9d",
+"default/rect20x14/seed1 = c72 w52 z11 desks21 total87876523 #1a0244c3d88eeb3c",
+            "default/rect20x14/seed2 = c80 w52 z11 desks25 total89274625 #1fca633eeb04543f",
+            "default/rect20x14/seed3 = c70 w52 z11 desks20 total86967629 #52556c4029d00bfc",
+            "default/real_plate/seed1 = c222 w155 z40 desks88 total90824732 #c760eabf08b5730b",
+            "default/real_plate/seed2 = c222 w155 z35 desks88 total90363979 #222d5680249e3a7a",
+            "default/real_plate/seed3 = c222 w155 z40 desks88 total90824610 #c22488cf2b5b4e08",
+            "no_support/rect20x14/seed1 = c68 w22 z4 desks26 total92565832 #991c040294e31e67",
+            "no_support/real_plate/seed2 = c192 w101 z38 desks88 total94806711 #62b5577874b4cf69",
+            "explicit_rooms/real_plate/seed1 = c209 w125 z26 desks88 total88680743 #834c964e4068e5d5",
+            "explicit_rooms/l_plate/seed3 = c63 w33 z10 desks24 total87682433 #e9ed372ac7f562ed",
     ];
     assert_eq!(cases.len(), EXPECTED.len(), "case list and expectations must line up");
 
@@ -4344,4 +4412,283 @@ fn golden_generate_output_is_frozen() {
 
 fn is_worksurface(c: &crate::model::Component) -> bool {
     c.category == "Desk" || c.category == "Table"
+}
+
+
+
+// ---------------------------------------------------------------------------
+// Circulation vs Unassigned: the classifier's own contract (Phase 1, brief 1.5)
+// ---------------------------------------------------------------------------
+//
+// These test the PROPERTY — "leftover floor is called circulation only when it
+// can host a code-width path connected to the network" — against hand-built
+// geometry whose answer is known by construction, not against whatever the
+// generator happens to emit. A fixture whose verdict you can derive with a ruler
+// is the only kind that can falsify the implementation rather than echo it.
+
+/// A 24×12 room with a 2 m drawn corridor down the middle, and a Workspace
+/// block that leaves a strip of the given width along the north wall. The strip
+/// is the specimen; `strip_w` is the only thing that varies.
+fn plate_with_strip(strip_w: f64) -> Document {
+    let mut doc = room_from_corners(&[(0.0, 0.0), (24.0, 0.0), (24.0, 12.0), (0.0, 12.0)]);
+    // Drawn network: a 2 m corridor running east–west along y ∈ [5, 7].
+    doc.add_zone(
+        ZoneType::Circulation,
+        ZoneShape::Rect { x: 12.0, y: 6.0, w: 24.0, h: 2.0 },
+        "Corridor".to_string(),
+    );
+    // Program fills from the corridor's north face up to the strip, but only
+    // across x ∈ [0, 20] — leaving a 4 m north–south connector at the east end.
+    //
+    // That connector is deliberate and load-bearing. Without it the strip is
+    // walled off from the corridor by the workspace and EVERY specimen comes
+    // back Unassigned on connectivity, so the width conjunct is never exercised
+    // and (a) would pass for the wrong reason. (This is not hypothetical: the
+    // first version of this fixture spanned the full width, and `(b)` failed
+    // with `wide_frac 0.601 connected false` — a fixture that could only ever
+    // have tested one of the two conjuncts.)
+    //
+    // With the connector, each test varies exactly ONE conjunct:
+    //   (a)  narrow + connected  → Unassigned on width
+    //   (b)  wide   + connected  → Circulation
+    //   (b′) wide   + sealed     → Unassigned on connectivity (own fixture)
+    let occupied_h = 12.0 - 7.0 - strip_w;
+    doc.add_zone(
+        ZoneType::Workspace,
+        ZoneShape::Rect { x: 10.0, y: 7.0 + occupied_h / 2.0, w: 20.0, h: occupied_h },
+        "Open Workspace".to_string(),
+    );
+    doc
+}
+
+/// The strip left over along the north wall, as a polygon.
+fn strip_poly(strip_w: f64) -> Vec<Point> {
+    let y0 = 12.0 - strip_w;
+    vec![
+        Point::new(0.05, y0),
+        Point::new(23.95, y0),
+        Point::new(23.95, 11.95),
+        Point::new(0.05, 11.95),
+    ]
+}
+
+/// (a) A pocket too narrow to host a code-width path is **Unassigned**, however
+/// large its area. 0.8 m × 24 m is 19 m² of floor — bigger than most meeting
+/// rooms — and it is still not a corridor, because no part of it is 1.2 m wide.
+/// Area was never the question; clear width is.
+#[test]
+fn dead_pocket_below_min_clear_width_is_unassigned() {
+    let doc = plate_with_strip(0.8);
+    let cls = conform::WalkClassifier::build(&doc).expect("grid builds");
+    let pts = strip_poly(0.8);
+    let (wide_frac, connected, cells) = cls.debug_measure(&pts);
+    assert!(cells > 100, "specimen too small to be meaningful: {cells} cells");
+    // The specimen must be CONNECTED, or this test passes on the connectivity
+    // conjunct and proves nothing about width — the exact way the first draft of
+    // this fixture was broken.
+    assert!(
+        connected,
+        "fixture regression: the narrow strip is sealed off, so this test would          pass on connectivity and never exercise the width test"
+    );
+    assert!(
+        wide_frac < conform_wide_fraction(),
+        "a 0.8 m strip reported {wide_frac:.3} of its area at ≥ {:.1} m clear — \
+         the width measurement is wrong, not the verdict",
+        conform::MIN_CIRC_CLEAR_M
+    );
+    assert_eq!(
+        cls.classify_poly(&pts),
+        ZoneType::Unassigned,
+        "0.8 m strip (19 m², wide_frac {wide_frac:.3}, connected {connected}) called circulation"
+    );
+}
+
+/// (b) A pocket that IS wide enough and DOES join the drawn network is
+/// **Circulation**. The mirror of (a): same fixture, same code path, one number
+/// changed — so a classifier that simply said "Unassigned" to everything would
+/// fail here even while passing (a).
+#[test]
+fn network_connected_wide_pocket_stays_circulation() {
+    let doc = plate_with_strip(2.5);
+    let cls = conform::WalkClassifier::build(&doc).expect("grid builds");
+    let pts = strip_poly(2.5);
+    let (wide_frac, connected, _) = cls.debug_measure(&pts);
+    assert!(
+        wide_frac >= conform_wide_fraction() && connected,
+        "a 2.5 m strip off a 2 m corridor measured wide_frac {wide_frac:.3} connected \
+         {connected} — expected wide and connected"
+    );
+    assert_eq!(cls.classify_poly(&pts), ZoneType::Circulation);
+}
+
+/// (b′) The conjunction is real: **width alone is not enough**. Same 2.5 m strip
+/// as (b), but sealed from the corridor by a full-height program block, so no
+/// ≥ 1.2 m path reaches it. Wide, roomy, and not part of any walking network —
+/// which is precisely the case a width-only test would wave through.
+#[test]
+fn wide_but_sealed_pocket_is_unassigned() {
+    let mut doc = room_from_corners(&[(0.0, 0.0), (24.0, 0.0), (24.0, 12.0), (0.0, 12.0)]);
+    doc.add_zone(
+        ZoneType::Circulation,
+        ZoneShape::Rect { x: 12.0, y: 1.0, w: 24.0, h: 2.0 },
+        "Corridor".to_string(),
+    );
+    // Program spans the full width from the corridor to the strip: nothing can
+    // route north without crossing it.
+    doc.add_zone(
+        ZoneType::Workspace,
+        ZoneShape::Rect { x: 12.0, y: 6.0, w: 24.0, h: 6.0 },
+        "Open Workspace".to_string(),
+    );
+    let cls = conform::WalkClassifier::build(&doc).expect("grid builds");
+    let pts = strip_poly(3.0);
+    let (wide_frac, connected, _) = cls.debug_measure(&pts);
+    assert!(wide_frac >= conform_wide_fraction(), "specimen is not wide: {wide_frac:.3}");
+    assert!(!connected, "specimen is not sealed — the fixture does not test what it claims");
+    assert_eq!(
+        cls.classify_poly(&pts),
+        ZoneType::Unassigned,
+        "a wide pocket sealed off from the network was called circulation on width alone"
+    );
+}
+
+/// (c) THE G7 INVARIANT: reclassifying floor must not move a single desk.
+///
+/// Pinned at 85 for every seed, captured from the fixture plate BEFORE any of
+/// Phase 1 was written (that ordering is the point — a number captured
+/// afterwards can only confirm whatever the change produced). The risk this
+/// guards is specific and was found in the Phase 0 audit: `zone_index_at`'s
+/// ground tie-break decides which zone owns each component, so an `Unassigned`
+/// pocket that overlaps a desk would silently steal it from its Workspace and
+/// the headcount would move with nothing in the diff to explain why.
+#[test]
+fn reclassification_moves_no_workstations() {
+    let area = geometry::polygon_area(&poly_of(&real_plate_doc()));
+    let headcount = (area / 10.0).round() as u32;
+    let mut program = Program::default();
+    program.headcount = Some(headcount);
+    program.desks = ((headcount as f64) * OPEN_SHARE).round() as u32;
+    program.meeting_rooms = 5;
+    program.meeting_w = 3.0;
+    program.meeting_h = 3.0;
+    for seed in 1u64..=6 {
+        let mut doc = real_plate_doc();
+        generate(&mut doc, &program, seed, false);
+        let desks = doc.components.iter().filter(|c| c.category == "Desk").count();
+        assert_eq!(
+            desks, 85,
+            "seed {seed}: {desks} desks — the pre-Phase-1 baseline was 85 on every seed. \
+             Reclassifying leftover floor must not move furniture."
+        );
+    }
+}
+
+/// (d) `Unassigned` counts in NIA and never in usable — so it can only ever
+/// DEPRESS efficiency, never inflate it, and it can never push NIA past GEA.
+#[test]
+fn unassigned_counts_in_nia_but_never_in_usable() {
+    let area = geometry::polygon_area(&poly_of(&real_plate_doc()));
+    let mut program = Program::default();
+    program.headcount = Some((area / 10.0).round() as u32);
+    program.meeting_rooms = 5;
+    for seed in 1u64..=4 {
+        let mut doc = real_plate_doc();
+        generate(&mut doc, &program, seed, false);
+        let gea = doc.floor_area();
+        let (areas, _) = crate::effective_zone_areas(&doc);
+        let nia: f64 = areas.iter().sum();
+        assert!(nia <= gea + 1e-6, "seed {seed}: NIA {nia:.2} > GEA {gea:.2}");
+
+        let unassigned: f64 = doc
+            .zones
+            .iter()
+            .zip(&areas)
+            .filter(|(z, _)| z.zone_type == ZoneType::Unassigned)
+            .map(|(_, a)| *a)
+            .sum();
+        let usable = crate::usable_area(&doc, &areas);
+        assert!(
+            usable + unassigned <= nia + 1e-6,
+            "seed {seed}: usable {usable:.2} + unassigned {unassigned:.2} exceeds NIA {nia:.2} \
+             — unassigned floor is being counted as usable somewhere"
+        );
+    }
+}
+
+/// (e) The classification is deterministic: same seed, identical types.
+/// A classifier that read a hash map's iteration order, or that depended on the
+/// order zones were emitted in, would fail here and nowhere else.
+#[test]
+fn reclassification_is_deterministic() {
+    let mut program = Program::default();
+    program.headcount = Some(80);
+    program.meeting_rooms = 5;
+    for seed in [1u64, 4, 9] {
+        let (mut a, mut b) = (real_plate_doc(), real_plate_doc());
+        generate(&mut a, &program, seed, false);
+        generate(&mut b, &program, seed, false);
+        assert_eq!(a.zones.len(), b.zones.len(), "seed {seed}: zone count differs");
+        for (za, zb) in a.zones.iter().zip(&b.zones) {
+            assert_eq!(za.zone_type, zb.zone_type, "seed {seed}: zone {} type differs", za.id);
+            assert_eq!(za.origin, zb.origin, "seed {seed}: zone {} origin differs", za.id);
+            assert_eq!(za.label, zb.label, "seed {seed}: zone {} label differs", za.id);
+        }
+    }
+}
+
+/// A user can never mint `Residual`: every document-level zone-creating path
+/// produces `Drawn`, so the discriminator keeps meaning what it says even after
+/// somebody retypes a corridor through the UI. (`ZoneOrigin`'s contract.)
+#[test]
+fn user_created_zones_are_always_drawn() {
+    let mut doc = room(20.0, 12.0);
+    let id = doc.add_zone(
+        ZoneType::Circulation,
+        ZoneShape::Rect { x: 10.0, y: 6.0, w: 8.0, h: 2.0 },
+        "Circulation".to_string(),
+    );
+    let z = doc.zones.iter().find(|z| z.id == id).unwrap();
+    assert_eq!(
+        z.origin,
+        ZoneOrigin::Drawn,
+        "add_zone — the UI/wasm entry point — minted a Residual zone"
+    );
+    // …and splitting one keeps it Drawn.
+    let (a, b) = doc.split_zone(id, crate::zone::Axis::Vertical, 10.0).expect("split");
+    for zid in [a, b] {
+        let z = doc.zones.iter().find(|z| z.id == zid).unwrap();
+        assert_eq!(z.origin, ZoneOrigin::Drawn, "split_zone minted a Residual zone");
+    }
+}
+
+/// A `.dsource` written before `origin` existed must load byte-stably, with
+/// every zone `Drawn` — the serde-additive contract.
+#[test]
+fn zones_without_origin_deserialize_as_drawn() {
+    let legacy = r#"{
+        "walls": [], "components": [], "keepouts": [], "entries": [], "anchors": [],
+        "selection": null, "next_id": 7,
+        "zones": [{
+            "id": 3, "zone_type": "Circulation",
+            "shape": {"kind": "Rect", "x": 5.0, "y": 5.0, "w": 4.0, "h": 2.0},
+            "label": "Corridor", "component_ids": []
+        }]
+    }"#;
+    let doc: Document = serde_json::from_str(legacy).expect("legacy document loads");
+    assert_eq!(doc.zones.len(), 1);
+    assert_eq!(
+        doc.zones[0].origin,
+        ZoneOrigin::Drawn,
+        "a zone saved before `origin` existed must load as Drawn — anything else \
+         would retro-classify somebody's saved plan"
+    );
+}
+
+/// Test-local mirror of `conform::CIRC_WIDE_FRACTION`, which is private. Kept
+/// here rather than widening the constant's visibility for a test's sake: the
+/// tests above assert the SHAPE of the decision (below the fraction → not
+/// circulation), so they must not silently follow the constant if somebody
+/// edits it — this mirror makes such an edit a test failure, which is the point.
+fn conform_wide_fraction() -> f64 {
+    0.5
 }

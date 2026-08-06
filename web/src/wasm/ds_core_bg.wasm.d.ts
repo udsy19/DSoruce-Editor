@@ -53,6 +53,7 @@ export const editor_state: (a: number) => [number, number, number];
 export const editor_wall_types: (a: number) => [number, number, number];
 export const editor_zone_at: (a: number, b: number, c: number) => number;
 export const editor_zone_stats: (a: number) => [number, number, number];
+export const editor_zone_stats_published: (a: number) => [number, number, number];
 export const editor_zones: (a: number) => [number, number, number];
 export const open_share: () => number;
 export const __wbindgen_malloc: (a: number, b: number) => number;

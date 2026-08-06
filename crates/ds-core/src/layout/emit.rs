@@ -28,7 +28,39 @@ pub(crate) fn push_component(doc: &mut Document, category: &str, x: f64, y: f64,
 
 /// Mirror of `push_component` for zones: mint a shared id and record a tiled
 /// floor region. `component_ids` is filled later by `reassign_components`.
+///
+/// Emits a **`Drawn`** zone — the designed program: rooms, the desk field, the
+/// corridor network, keep-outs. Leftover floor goes through
+/// [`push_residual_zone`] instead.
 pub(crate) fn push_zone(doc: &mut Document, zone_type: ZoneType, shape: ZoneShape, label: &str) {
+    push_with_origin(doc, zone_type, shape, label, ZoneOrigin::Drawn)
+}
+
+/// Emit a zone the generator could not justify as program: floor left over
+/// after the desk field, the rooms and the fill.
+///
+/// **This is the only function in the codebase that mints `ZoneOrigin::Residual`**,
+/// which is what makes the "generator-only" rule greppable rather than a
+/// convention. It is a separate function from [`push_zone`] rather than a
+/// parameter on it for exactly that reason: a parameter would put `Residual`
+/// within reach of all ~30 `push_zone` call sites, and the invariant would
+/// depend on none of them passing it.
+pub(crate) fn push_residual_zone(
+    doc: &mut Document,
+    zone_type: ZoneType,
+    shape: ZoneShape,
+    label: &str,
+) {
+    push_with_origin(doc, zone_type, shape, label, ZoneOrigin::Residual)
+}
+
+fn push_with_origin(
+    doc: &mut Document,
+    zone_type: ZoneType,
+    shape: ZoneShape,
+    label: &str,
+    origin: ZoneOrigin,
+) {
     let id = doc.alloc_id();
     doc.zones.push(Zone {
         id,
@@ -37,6 +69,7 @@ pub(crate) fn push_zone(doc: &mut Document, zone_type: ZoneType, shape: ZoneShap
         label: label.to_string(),
         component_ids: Vec::new(),
         group: None,
+        origin,
     });
 }
 

@@ -119,9 +119,29 @@ impl Document {
             if !z.shape.contains(x, y) {
                 continue;
             }
-            let circ = z.zone_type == ZoneType::Circulation;
+            // GROUND, not figure: circulation and unassigned floor are the
+            // surface a plan sits on, so both lose to any specific zone.
+            //
+            // `Unassigned` belongs here on semantics — it is ground, and ground
+            // never outranks a room. It is DEFENSIVE, not load-bearing, and the
+            // difference was measured rather than assumed: the Phase 0 audit
+            // called this "the highest-risk item in Phase 1" and predicted the
+            // workstation count would move without it. **That prediction was
+            // falsified.** Reverting this line to `== ZoneType::Circulation` and
+            // running the whole suite in a disposable worktree produced ZERO
+            // failures.
+            //
+            // The reason is an invariant one file over: `conform` emits residual
+            // pockets with corner clearance against every other zone, so they
+            // are strictly disjoint from rooms and fields by construction. A
+            // desk centre inside an `Unassigned` poly is therefore inside no
+            // other zone, and this tie-break never fires for it. The guard costs
+            // nothing and matters the moment that disjointness is relaxed — but
+            // it is not what keeps the count at 85 today, and a comment claiming
+            // otherwise would be a false claim in the one place nobody re-checks.
+            let circ = matches!(z.zone_type, ZoneType::Circulation | ZoneType::Unassigned);
             if circ && found_non_circ {
-                continue; // a specific zone already outranks any circulation
+                continue; // a specific zone already outranks any ground zone
             }
             let area = z.shape.area();
             if !circ && !found_non_circ {
@@ -343,6 +363,10 @@ impl Document {
                 label: format!("{} (2)", base_label),
                 component_ids: Vec::new(),
                 group,
+                // A user split produces a DRAWN zone, even when the zone it
+                // came from was residual: the moment a person shapes it, it is
+                // designed. `Residual` is generator-only (see `ZoneOrigin`).
+                origin: crate::zone::ZoneOrigin::Drawn,
             },
         );
         self.reassign_components();
@@ -386,6 +410,10 @@ impl Document {
             label,
             component_ids: Vec::new(),
             group: None,
+            // THE UI/wasm entry point for creating a zone. Hard-wired to
+            // `Drawn`: there is deliberately no parameter here, so no caller
+            // outside the generator can mint a `Residual` zone.
+            origin: crate::zone::ZoneOrigin::Drawn,
         });
         self.reassign_components();
         id
@@ -431,6 +459,7 @@ mod tests {
             label: format!("Zone {id}"),
             component_ids: Vec::new(),
             group: None,
+            origin: Default::default(),
         }
     }
 

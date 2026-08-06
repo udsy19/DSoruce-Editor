@@ -118,6 +118,10 @@ const ZONE_LABEL: Record<ZoneType, string> = {
   Amenity: 'Amenities',
   Core: 'Core / IT',
   Circulation: 'Circulation',
+  // Published artifacts fold Unassigned into Circulation before they get here
+  // (core `zone_stats_published`). Present only so the map stays total; seeing
+  // this string in a delivered report means the fold was bypassed.
+  Unassigned: 'Circulation',
 }
 
 /** Is point p inside this zone shape? Rings exclude the hole; polys ray-cast. */

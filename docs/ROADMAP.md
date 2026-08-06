@@ -951,6 +951,31 @@ system's declared caution token was the right call for that site. The open
 question is the caution token's HUE, and whether selection and AI-verdict should
 share a channel at all. A Laiout/qbiq-benchmark polish item.
 
+## Track M — Circulation semantics + figure/ground
+
+Making negative space read as floor, not as "Circulation" (`docs/audits/circulation-figure-ground-audit.md`).
+
+- [x] **Phase 0 — audit.** Live-build verification on the real DXF, render-path inventory, core
+  inventory with the measured network/residual split (125.23 vs 170.66 m²), `circulation.rs` reuse
+  assessment, pre-registered predictions. Falsified three brief premises (thumbnails flood grey not
+  blue; the PDF path is already correct; `report.ts` already implements the qbiq metrics card) and
+  found two unlisted hazard sites (`zone_index_at`, ~35 tsc-invisible `'Circulation'` compares).
+- [x] **Phase 1 — core semantics.** `ZoneType::Unassigned` + `Zone.origin{Drawn,Residual}` (replacing
+  the user-editable `label == "Circulation"` seam); `circulation::walkable_grid` reusing ONE
+  rasteriser; the classifier (≥50% of a pocket on ≥1.2 m clear cells AND 4-connected to the drawn
+  network); wasted-floor score penalty; `zone_stats_published` as the single fold boundary. 165 Rust
+  tests. On the DXF plate: Circulation 295.89 → 231.43 m², Unassigned 64.47 m², workstations 101
+  unchanged, published totals byte-exact.
+  *Note: `efficiency_pct` did NOT move — circulation was already excluded from usable, so efficiency
+  never measured waste. Flagged in the audit, not fixed here.*
+- [ ] **Phase 1.5 — `isGroundZone`/`isProgramZone` predicate + ~35-site sweep** (approved pre-commit
+  ahead of Phase 2): `!== 'Circulation'` used to mean "is a real room" must exclude `Unassigned`, or a
+  dead pocket acquires a finish-schedule row, a room name and an AI room option.
+- [ ] **Phase 2 — renderer figure/ground sweep** (2.1–2.8; 2.6 partially landed early, see audit).
+- [ ] **Phase 3 — sheet furniture + metrics card.** Promotion of what `export/report.ts` already has.
+- [ ] **Phase 4 — gates C1–C10** as their own board folded into `run-all.sh` as G13, with its own
+  lying gate (the `GSELF` pattern).
+
 ## Track L — Three-branch integration (`main` × `ui-fixes` × `export`)
 
 One green tree from three divergent branches. Full account:

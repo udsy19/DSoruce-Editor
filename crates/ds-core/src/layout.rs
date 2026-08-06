@@ -48,7 +48,7 @@ use crate::circulation::{self, CirculationConfig};
 use crate::document::Document;
 use crate::geometry::{self, Point};
 use crate::model::{Component, DecisionState, Wall};
-use crate::zone::{Zone, ZoneShape, ZoneType};
+use crate::zone::{Zone, ZoneOrigin, ZoneShape, ZoneType};
 use serde::{Deserialize, Serialize};
 
 mod conform;
@@ -649,7 +649,12 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
                 if w <= 0.0 || h <= 0.0 {
                     continue;
                 }
-                push_zone(
+                // Residual, not drawn: this is floor nothing claimed, and the
+                // type here is PROVISIONAL. `conform::classify_residual_zones`
+                // decides Circulation vs Unassigned once the merge has run —
+                // clear width is a property of the merged pocket, not of the
+                // decomposition rectangles it was assembled from.
+                push_residual_zone(
                     doc,
                     ZoneType::Circulation,
                     ZoneShape::Rect { x: (r.x0 + r.x1) / 2.0, y: (r.y0 + r.y1) / 2.0, w, h },

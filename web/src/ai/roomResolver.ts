@@ -38,6 +38,7 @@ export const ZONE_TYPE_NAME: Record<ZoneType, string> = {
   Core: 'service core',
   ClosedOffice: 'private office',
   Amenity: 'amenity space',
+  Unassigned: 'unassigned floor',
 }
 
 /** Spoken synonyms → the zone type they most likely mean. Longest phrase first

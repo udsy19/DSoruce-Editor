@@ -200,25 +200,30 @@ impl CirculationScore {
 }
 
 /// Occupancy grid over the (padded) wall bounding box.
-struct Grid {
-    cols: usize,
-    rows: usize,
-    cell: f64,
-    origin_x: f64,
-    origin_y: f64,
+///
+/// `pub(crate)` so the layout passes can reuse ONE rasteriser rather than
+/// growing a second, subtly-different one (see `walkable_grid`). The wasm
+/// PUBLIC surface — `evaluate`, `CirculationConfig`, `CirculationScore` — is
+/// unchanged; this is crate-internal reuse, not an API widening.
+pub(crate) struct Grid {
+    pub(crate) cols: usize,
+    pub(crate) rows: usize,
+    pub(crate) cell: f64,
+    pub(crate) origin_x: f64,
+    pub(crate) origin_y: f64,
     /// true = blocked (wall or component), false = free.
-    blocked: Vec<bool>,
+    pub(crate) blocked: Vec<bool>,
 }
 
 impl Grid {
     #[inline]
-    fn idx(&self, x: usize, y: usize) -> usize {
+    pub(crate) fn idx(&self, x: usize, y: usize) -> usize {
         y * self.cols + x
     }
 
     /// Center of cell (x, y) in world meters.
     #[inline]
-    fn cell_center(&self, x: usize, y: usize) -> Point {
+    pub(crate) fn cell_center(&self, x: usize, y: usize) -> Point {
         Point::new(
             self.origin_x + (x as f64 + 0.5) * self.cell,
             self.origin_y + (y as f64 + 0.5) * self.cell,
@@ -227,12 +232,12 @@ impl Grid {
 
     /// Clamp a world coordinate to a valid column/row index.
     #[inline]
-    fn col_of(&self, wx: f64) -> usize {
+    pub(crate) fn col_of(&self, wx: f64) -> usize {
         let c = ((wx - self.origin_x) / self.cell).floor();
         c.clamp(0.0, (self.cols - 1) as f64) as usize
     }
     #[inline]
-    fn row_of(&self, wy: f64) -> usize {
+    pub(crate) fn row_of(&self, wy: f64) -> usize {
         let r = ((wy - self.origin_y) / self.cell).floor();
         r.clamp(0.0, (self.rows - 1) as f64) as usize
     }
@@ -459,7 +464,7 @@ pub fn evaluate(doc: &Document, cfg: &CirculationConfig) -> CirculationScore {
 
 /// Compute the padded wall bbox and rasterise walls + components into it.
 /// Returns `None` if there are no walls (nothing to bound).
-fn build_grid(doc: &Document, cfg: &CirculationConfig) -> Option<Grid> {
+pub(crate) fn build_grid(doc: &Document, cfg: &CirculationConfig) -> Option<Grid> {
     if doc.walls.is_empty() {
         return None;
     }
@@ -509,6 +514,50 @@ fn build_grid(doc: &Document, cfg: &CirculationConfig) -> Option<Grid> {
         }
         cell *= 1.5;
     }
+}
+
+/// The occupancy grid of [`build_grid`], with a set of zones additionally
+/// stamped as blocked.
+///
+/// **Why this exists.** `build_grid`'s free space is *physical*: everything not
+/// a wall and not furniture. A meeting room's floor is free in it, because a
+/// body can stand there. That is the right mask for scoring circulation
+/// QUALITY, and the wrong one for asking "is this leftover pocket part of the
+/// walking network?" — routed over `build_grid`, a dead pocket abutting a
+/// meeting room reads as connected to the network *through the meeting room*,
+/// and gets promoted to `Circulation`. That false negative is invisible in
+/// every screenshot, which is why it is closed here rather than discovered
+/// later.
+///
+/// So the classifier wants a third mask: free **and** unclaimed — physical
+/// obstacles plus program ownership. Passing the program zones as `blocking`
+/// gives exactly that, while the drawn corridor network stays FREE so it can
+/// seed the connectivity flood.
+///
+/// `evaluate()` does not call this and is untouched: it still calls
+/// `build_grid` directly, so its output is byte-identical by construction, not
+/// by argument. (Asserted anyway — see `evaluate_is_byte_identical_to_pre_split`.)
+pub(crate) fn walkable_grid(
+    doc: &Document,
+    cfg: &CirculationConfig,
+    blocking: &[&crate::zone::Zone],
+) -> Option<Grid> {
+    let mut grid = build_grid(doc, cfg)?;
+    for z in blocking {
+        let (x0, y0, x1, y1) = z.shape.bbox();
+        let (c0, c1) = (grid.col_of(x0), grid.col_of(x1));
+        let (r0, r1) = (grid.row_of(y0), grid.row_of(y1));
+        for r in r0..=r1 {
+            for c in c0..=c1 {
+                let p = grid.cell_center(c, r);
+                if z.shape.contains(p.x, p.y) {
+                    let i = grid.idx(c, r);
+                    grid.blocked[i] = true;
+                }
+            }
+        }
+    }
+    Some(grid)
 }
 
 /// Mark cells within `thickness/2` of any wall segment as blocked.
@@ -594,7 +643,7 @@ fn stamp_footprint(grid: &mut Grid, comp: &crate::model::Component, pad: f64, bl
 
 /// Label connected free regions (4-connectivity) via iterative BFS.
 /// Returns (labels, component_sizes, component_touches_border).
-fn label_free_regions(grid: &Grid) -> (Vec<i32>, Vec<usize>, Vec<bool>) {
+pub(crate) fn label_free_regions(grid: &Grid) -> (Vec<i32>, Vec<usize>, Vec<bool>) {
     let n = grid.cols * grid.rows;
     let mut labels = vec![-1i32; n];
     let mut sizes: Vec<usize> = Vec::new();
@@ -694,7 +743,7 @@ fn entry_reachable_fraction(
 
 /// Two-pass chamfer distance transform: distance (in CELL units) from each free
 /// cell to the nearest blocked cell. Blocked cells are seeds at distance 0.
-fn distance_transform(grid: &Grid) -> Vec<f64> {
+pub(crate) fn distance_transform(grid: &Grid) -> Vec<f64> {
     let n = grid.cols * grid.rows;
     let mut dt = vec![0.0f64; n];
     for i in 0..n {

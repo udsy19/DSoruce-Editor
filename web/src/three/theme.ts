@@ -46,6 +46,7 @@ export const THEMES: Record<ThemeId, ViewerTheme> = {
       Meeting: 0xc0b2e2, // soft purple
       Collaboration: 0x9fd3b0, // soft green
       Circulation: 0xbcd2ea, // cool circulation path
+      Unassigned: 0xbcd2ea, // ground: same floor as Circulation (Phase 2.4 makes both neutral)
       Core: 0xbcc3cf, // neutral grey
       ClosedOffice: 0xe9bb8c, // peach
       Amenity: 0x98d0c8, // teal
@@ -65,6 +66,7 @@ export const THEMES: Record<ThemeId, ViewerTheme> = {
       Meeting: 0xccb9b0, // warm mauve
       Collaboration: 0xbfc794, // warm sage
       Circulation: 0xd6cba8, // warm path
+      Unassigned: 0xd6cba8, // ground: same floor as Circulation (Phase 2.4 makes both neutral)
       Core: 0xcbc0a7,
       ClosedOffice: 0xe6b57f, // warm peach
       Amenity: 0xbccca0,
@@ -84,6 +86,7 @@ export const THEMES: Record<ThemeId, ViewerTheme> = {
       Meeting: 0xbcbcbc,
       Collaboration: 0xd8d8d8,
       Circulation: 0xe2e2e2, // lightest path
+      Unassigned: 0xe2e2e2, // ground: same floor as Circulation (Phase 2.4 makes both neutral)
       Core: 0xafafaf,
       ClosedOffice: 0xc6c6c6,
       Amenity: 0xd0d0d0,
@@ -103,6 +106,7 @@ export const THEMES: Record<ThemeId, ViewerTheme> = {
       Meeting: 0xbcbce6,
       Collaboration: 0xafd2d6,
       Circulation: 0xc4d6ee, // lightest cool path
+      Unassigned: 0xc4d6ee, // ground: same floor as Circulation (Phase 2.4 makes both neutral)
       Core: 0xacb9cd,
       ClosedOffice: 0xc6bcdc,
       Amenity: 0xaad2dc,

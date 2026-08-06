@@ -1,8 +1,62 @@
 //! Boundary conforming: growing `Rect` zones into plate-following `Poly` zones,
 //! re-enclosing conformed rooms with walls, and melting the leftover floor into
-//! one unified walking area.
+//! one unified walking area — then deciding which of that leftover floor is
+//! honestly **circulation** and which is merely **unassigned**.
 
 use super::*;
+use crate::circulation::{self, CirculationConfig};
+
+/// Minimum clear width (m) at which leftover floor can be called circulation.
+///
+/// **1.2 m, and it is a floor-plan constant, not a taste.** IBC 2024 §1020.2
+/// requires 44 in (1 118 mm) clear for a corridor serving an occupant load of
+/// 50 or more, 36 in below that; ADA 2010 §403.5 requires 36 in (914 mm)
+/// continuous clear with 60 in passing spaces. 1.2 m clears the IBC figure with
+/// raster headroom and matches Laiout's own 1.5 m default corridor after the
+/// wall-thickness the raster already spends. A strip that cannot host a path
+/// this wide is not a corridor in any code that governs the building — so
+/// calling it "circulation" was never a rounding error, it was a wrong claim.
+///
+/// This is the *width* half of the test. The *extent* half is
+/// [`CIRC_WIDE_FRACTION`], and the two are a conjunction with connectivity.
+pub(crate) const MIN_CIRC_CLEAR_M: f64 = 1.2;
+
+/// What share of a leftover pocket must actually sit on a code-width path
+/// before the whole pocket counts as circulation.
+///
+/// **PRE-REGISTERED at 0.5 in the Phase 0 audit (§E.1) before this classifier
+/// existed, and ratified.** The audit measured both defensible readings of the
+/// brief's bare "1.2 m": *widest point clears 1.2 m* reclassified 12 m² of 170
+/// on the reference plate (the workstream failing while reporting success — an
+/// 80 m² leftover wing kept its `CIRCULATION` label), while *most of the pocket
+/// sits on a 1.2 m path* reclassified ~150 m². The second is the honest read.
+///
+/// **Do not tune this to make a near-miss pass.** Two pockets on the reference
+/// plate sit at 0.45 and 0.47; nudging to 0.45 to admit them would be
+/// calibrating the threshold against the population it is meant to judge, which
+/// is the exact failure `.claude/rules/gate-independence.md` documents. If
+/// evidence says 0.5 is miscalibrated, that is a reported finding with a
+/// proposed re-registration — never a quiet edit.
+///
+/// **THIS is the load-bearing constant, and [`MIN_CIRC_CLEAR_M`] is not** —
+/// measured on the fixture plate after implementation, per pocket, comparing
+/// the wide-fraction at 1.2 m against the same fraction at 0.9 m (the ADA
+/// accessible-route minimum, and `CirculationConfig::target_corridor_width`'s
+/// own default):
+///
+/// | pocket m² | wide @ 1.2 m | wide @ 0.9 m | verdict |
+/// |---|---|---|---|
+/// | 154.5 | 0.442 | 0.464 | Unassigned |
+/// |  63.5 | 0.759 | 0.769 | Circulation |
+/// |   9.2 | 0.219 | 0.227 | Unassigned |
+///
+/// Every pocket moves by ~0.02. Relaxing the width all the way to the ADA floor
+/// would change **no** verdict on this plate: these pockets fail on how MUCH of
+/// them is walkable, not on where the width line is drawn. So the width
+/// constant is a code citation that happens not to bind here, and the fraction
+/// is the decision. Worth knowing before anyone "fixes" a verdict by moving the
+/// wrong number.
+const CIRC_WIDE_FRACTION: f64 = 0.5;
 
 /// Grow boundary-touching **`Rect`** zones — rooms, workspace fields AND
 /// residual circulation, not just circulation — into plate-conforming **`Poly`**
@@ -551,10 +605,16 @@ pub(crate) fn fill_untyped_as_circulation(doc: &mut Document, plate: &[Point]) {
     /// Strict disjointness guard (~one sample cell of shared-edge quantization).
     const OVERLAP_TOL: f64 = 0.08;
 
-    // A residual "Circulation" zone is the fragmentation we melt; the drawn
-    // network (Corridor/Entry/Aisle) carries other labels and is preserved.
-    let is_residual =
-        |z: &Zone| z.zone_type == ZoneType::Circulation && z.label == "Circulation";
+    // The fragmentation we melt is everything the generator had LEFT OVER; the
+    // drawn network (spine `Corridor`, perimeter ring, `Entry`, `Aisle`) is
+    // designed and is preserved untouched.
+    //
+    // This was `zone_type == Circulation && label == "Circulation"`. A label is
+    // a display string a user can retype — and `RoomTools` offers "Circulation"
+    // as a room type — so renaming a drawn corridor silently converted network
+    // into residual and the next run of this pass would melt it. `origin` is
+    // structural and generator-only (see `ZoneOrigin`).
+    let is_residual = |z: &Zone| z.origin == ZoneOrigin::Residual;
 
     let (mut minx, mut miny, mut maxx, mut maxy) =
         (f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY);
@@ -757,7 +817,247 @@ pub(crate) fn fill_untyped_as_circulation(doc: &mut Document, plate: &[Point]) {
         !(absorbed || z.shape.area() < MIN_AREA)
     });
     for pts in emit {
-        push_zone(doc, ZoneType::Circulation, ZoneShape::Poly { pts }, "Circulation");
+        // Type is provisional: `classify_residual_zones` below decides whether
+        // this merged pocket is honestly circulation or unassigned. It is
+        // emitted as residual so that judgement cannot be skipped.
+        push_residual_zone(doc, ZoneType::Circulation, ZoneShape::Poly { pts }, "Circulation");
+    }
+
+    // Every pocket of leftover floor now exists in its merged form. Judge them.
+    classify_residual_zones(doc);
+}
+
+/// Decides, for each pocket of leftover floor, whether it is **circulation** or
+/// merely **unassigned**.
+///
+/// One grid is built for the whole document and every residual zone is measured
+/// against it, so the answer cannot depend on the order zones were emitted in.
+///
+/// The mask is the point of the type. `circulation::build_grid`'s free space is
+/// *physical* — anything that is not wall and not furniture — so it runs
+/// straight through a meeting room. Judged against that, a dead pocket touching
+/// a meeting-room wall would read as "connected to the walking network" via the
+/// meeting room and be promoted. So this builds its mask with the **program**
+/// zones stamped as blocked and the **drawn corridor network left free**: what
+/// remains is exactly the walkable-and-unclaimed floor, and the network is what
+/// seeds the flood.
+pub(crate) struct WalkClassifier {
+    grid: circulation::Grid,
+    /// Per cell: free in the mask AND clear width ≥ [`MIN_CIRC_CLEAR_M`].
+    /// Clear width at a cell is `2 · distance-to-nearest-obstacle`.
+    wide: Vec<bool>,
+    /// Per cell: reachable from the drawn corridor network by 4-connected steps
+    /// **through `wide` cells only**. A pocket joined to the network solely by a
+    /// sub-code pinch is therefore NOT reachable — which is the intent: you
+    /// cannot call a space part of the walking network if you cannot legally
+    /// walk into it.
+    reach: Vec<bool>,
+    /// False when the document carries no drawn corridor network at all. The
+    /// connectivity conjunct is then vacuous and width alone decides — stated
+    /// rather than silently defaulted, because "connected to nothing" would
+    /// otherwise mark every pocket on a corridor-less plan as unassigned.
+    has_network: bool,
+}
+
+impl WalkClassifier {
+    /// Build the mask for `doc`. `None` when there are no walls to bound a grid
+    /// (the same degenerate case `circulation::evaluate` refuses).
+    pub(crate) fn build(doc: &Document) -> Option<Self> {
+        let cfg = CirculationConfig::new();
+        // Program zones block; residual pockets and the drawn network do not.
+        let program: Vec<&Zone> = doc
+            .zones
+            .iter()
+            .filter(|z| {
+                !matches!(z.zone_type, ZoneType::Circulation | ZoneType::Unassigned)
+            })
+            .collect();
+        let grid = circulation::walkable_grid(doc, &cfg, &program)?;
+        let n = grid.cols * grid.rows;
+        let dt = circulation::distance_transform(&grid);
+
+        let mut wide = vec![false; n];
+        for i in 0..n {
+            if !grid.blocked[i] && 2.0 * dt[i] * grid.cell >= MIN_CIRC_CLEAR_M {
+                wide[i] = true;
+            }
+        }
+
+        // Seeds: cells inside a zone that is circulation AND drawn — i.e. the
+        // designed network (spine `Corridor`, perimeter ring, `Entry`, `Aisle`).
+        // A residual zone is never a seed; that would let leftover floor vouch
+        // for leftover floor.
+        let mut reach = vec![false; n];
+        let mut stack: Vec<usize> = Vec::new();
+        let mut has_network = false;
+        for z in &doc.zones {
+            if z.origin != ZoneOrigin::Drawn || z.zone_type != ZoneType::Circulation {
+                continue;
+            }
+            has_network = true;
+            let (x0, y0, x1, y1) = z.shape.bbox();
+            let (c0, c1) = (grid.col_of(x0), grid.col_of(x1));
+            let (r0, r1) = (grid.row_of(y0), grid.row_of(y1));
+            for r in r0..=r1 {
+                for c in c0..=c1 {
+                    let i = grid.idx(c, r);
+                    if !wide[i] || reach[i] {
+                        continue;
+                    }
+                    let p = grid.cell_center(c, r);
+                    if z.shape.contains(p.x, p.y) {
+                        reach[i] = true;
+                        stack.push(i);
+                    }
+                }
+            }
+        }
+        // 4-connected flood through `wide`.
+        while let Some(i) = stack.pop() {
+            let (c, r) = (i % grid.cols, i / grid.cols);
+            let step = |c: usize, r: usize, st: &mut Vec<usize>, reach: &mut Vec<bool>| {
+                let j = r * grid.cols + c;
+                if wide[j] && !reach[j] {
+                    reach[j] = true;
+                    st.push(j);
+                }
+            };
+            if c > 0 { step(c - 1, r, &mut stack, &mut reach); }
+            if c + 1 < grid.cols { step(c + 1, r, &mut stack, &mut reach); }
+            if r > 0 { step(c, r - 1, &mut stack, &mut reach); }
+            if r + 1 < grid.rows { step(c, r + 1, &mut stack, &mut reach); }
+        }
+
+        Some(WalkClassifier { grid, wide, reach, has_network })
+    }
+
+    /// Classify one leftover pocket by sampling this grid over the polygon the
+    /// pass will actually emit — not over the coarser cell set it was traced
+    /// from, so the measurement matches the delivered shape.
+    ///
+    /// Circulation iff **both**:
+    ///   * ≥ [`CIRC_WIDE_FRACTION`] of the pocket's area sits on cells of clear
+    ///     width ≥ [`MIN_CIRC_CLEAR_M`], and
+    ///   * some part of it is reachable from the drawn network through such
+    ///     cells (vacuous when the plan draws no network).
+    ///
+    /// A pocket that is wide but sealed off is Unassigned: width alone does not
+    /// make floor part of a walking network.
+    /// Diagnostic twin of `classify_poly`: returns the two numbers the decision
+    /// was made from, so a surprising verdict can be explained rather than
+    /// argued about. Test-only.
+    #[cfg(test)]
+    pub(crate) fn debug_measure(&self, pts: &[Point]) -> (f64, bool, usize) {
+        let (mut minx, mut miny, mut maxx, mut maxy) =
+            (f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY);
+        for p in pts {
+            minx = minx.min(p.x); miny = miny.min(p.y);
+            maxx = maxx.max(p.x); maxy = maxy.max(p.y);
+        }
+        let (c0, c1) = (self.grid.col_of(minx), self.grid.col_of(maxx));
+        let (r0, r1) = (self.grid.row_of(miny), self.grid.row_of(maxy));
+        let (mut inside, mut wide_n, mut reach_n) = (0usize, 0usize, 0usize);
+        for r in r0..=r1 {
+            for c in c0..=c1 {
+                let p = self.grid.cell_center(c, r);
+                if !geometry::point_in_polygon(p.x, p.y, pts) { continue; }
+                inside += 1;
+                let i = self.grid.idx(c, r);
+                if self.wide[i] { wide_n += 1; }
+                if self.reach[i] { reach_n += 1; }
+            }
+        }
+        let wf = if inside > 0 { wide_n as f64 / inside as f64 } else { 0.0 };
+        (wf, !self.has_network || reach_n > 0, inside)
+    }
+
+    pub(crate) fn classify_poly(&self, pts: &[Point]) -> ZoneType {
+        let (mut minx, mut miny, mut maxx, mut maxy) =
+            (f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY);
+        for p in pts {
+            minx = minx.min(p.x);
+            miny = miny.min(p.y);
+            maxx = maxx.max(p.x);
+            maxy = maxy.max(p.y);
+        }
+        if !(maxx > minx && maxy > miny) {
+            return ZoneType::Unassigned;
+        }
+        let (c0, c1) = (self.grid.col_of(minx), self.grid.col_of(maxx));
+        let (r0, r1) = (self.grid.row_of(miny), self.grid.row_of(maxy));
+        let (mut inside, mut wide_n, mut reach_n) = (0usize, 0usize, 0usize);
+        for r in r0..=r1 {
+            for c in c0..=c1 {
+                let p = self.grid.cell_center(c, r);
+                if !geometry::point_in_polygon(p.x, p.y, pts) {
+                    continue;
+                }
+                inside += 1;
+                let i = self.grid.idx(c, r);
+                if self.wide[i] {
+                    wide_n += 1;
+                }
+                if self.reach[i] {
+                    reach_n += 1;
+                }
+            }
+        }
+        if inside == 0 {
+            // Smaller than one grid cell. Nothing this size is a corridor.
+            return ZoneType::Unassigned;
+        }
+        let wide_frac = wide_n as f64 / inside as f64;
+        let connected = !self.has_network || reach_n > 0;
+        if wide_frac >= CIRC_WIDE_FRACTION && connected {
+            ZoneType::Circulation
+        } else {
+            ZoneType::Unassigned
+        }
+    }
+}
+
+/// Re-type every **residual** zone as `Circulation` or `Unassigned`.
+///
+/// A sweep over `origin == Residual` rather than a decision taken at each
+/// emission site, so no path can mint leftover floor and skip the judgement —
+/// including the pockets the merge rejects (a region with a hole, whose
+/// original residual rects survive) and the sub-`MIN_AREA` slivers.
+///
+/// Runs AFTER the merge on purpose: clear width is a property of the merged
+/// shape, and two slivers that merge into one 1.4 m band are a corridor while
+/// neither half was.
+pub(crate) fn classify_residual_zones(doc: &mut Document) {
+    if !doc.zones.iter().any(|z| z.origin == ZoneOrigin::Residual) {
+        return;
+    }
+    let Some(cls) = WalkClassifier::build(doc) else { return };
+    for i in 0..doc.zones.len() {
+        if doc.zones[i].origin != ZoneOrigin::Residual {
+            continue;
+        }
+        let pts: Vec<Point> = match &doc.zones[i].shape {
+            ZoneShape::Poly { pts } => pts.iter().map(|p| Point::new(p[0], p[1])).collect(),
+            ZoneShape::Rect { x, y, w, h } => {
+                let (hw, hh) = (w / 2.0, h / 2.0);
+                vec![
+                    Point::new(x - hw, y - hh),
+                    Point::new(x + hw, y - hh),
+                    Point::new(x + hw, y + hh),
+                    Point::new(x - hw, y + hh),
+                ]
+            }
+            // A residual zone is never a ring — the perimeter corridor is drawn.
+            ZoneShape::RectRing { .. } => continue,
+        };
+        let t = cls.classify_poly(&pts);
+        doc.zones[i].zone_type = t;
+        // The label follows the type so the two can never disagree on screen.
+        // Identification is the LEGEND's job on paper (both are ground), but the
+        // editor still names what you select.
+        doc.zones[i].label = match t {
+            ZoneType::Unassigned => "Unassigned".to_string(),
+            _ => "Circulation".to_string(),
+        };
     }
 }
 

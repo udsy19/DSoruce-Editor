@@ -46,7 +46,18 @@ struct Metrics {
     /// every occupiable zone (Workspace + Meeting + Collaboration + ClosedOffice
     /// + Amenity); the loss is Circulation + Core/service. Standard workplace
     /// space-efficiency definition (BCO 2023 / RICS IPMS / JLL), target ~70–85%.
+    /// The loss now also includes `Unassigned`. Computed over the UNFOLDED
+    /// truth — see `usable_area`.
     efficiency_pct: f64,
+    /// Floor (m²) the generator could neither furnish nor justify as a
+    /// code-width connected path: `ZoneType::Unassigned`. The honest measure of
+    /// wasted floor, and the term the layout score penalises.
+    ///
+    /// UNFOLDED, because this struct is the core telling the truth about itself.
+    /// Client-facing surfaces fold it into circulation (`published_zone_type`);
+    /// nothing that folds may also read this field, or the same floor is
+    /// counted twice.
+    unassigned_area: f64,
     /// Indicative fit-out cost (currency units) — see `cost.rs`.
     indicative_cost: f64,
     /// Indicative embodied carbon (kgCO2e) — see `cost.rs`.
@@ -237,13 +248,53 @@ fn effective_zone_areas(doc: &Document) -> (Vec<f64>, Option<usize>) {
 /// occupiable space, not overhead. `areas` are the de-overlapped effective zone
 /// areas from `effective_zone_areas`, in zone order. Standard definition per
 /// BCO 2023 / RICS IPMS / JLL; a good fit-out lands ~70–85%.
+///
+/// **`Unassigned` is excluded here and this is the whole point of the type.**
+/// It counts in NIA (it is floor inside the building; pretending otherwise
+/// would break NIA <= GEA) but it is usable by nobody, so it now correctly
+/// DEPRESSES efficiency. While the same floor was called `Circulation` it was
+/// excluded too — the number did not change, but the REASON it was excluded was
+/// a lie, and the Circulation row of the areas split was inflated by it.
+///
+/// This function reads the UNFOLDED truth. The fold to a published vocabulary
+/// happens strictly downstream, at serialization; efficiency must never be
+/// computed over folded data, or the waste re-hides inside circulation.
 fn usable_area(doc: &Document, areas: &[f64]) -> f64 {
     doc.zones
         .iter()
         .zip(areas)
-        .filter(|(z, _)| !matches!(z.zone_type, ZoneType::Circulation | ZoneType::Core))
+        .filter(|(z, _)| {
+            !matches!(
+                z.zone_type,
+                ZoneType::Circulation | ZoneType::Core | ZoneType::Unassigned
+            )
+        })
         .map(|(_, a)| *a)
         .sum()
+}
+
+/// The zone type a **published** artifact is allowed to show.
+///
+/// `Unassigned` folds to `Circulation`; everything else is itself. This is the
+/// ONE place the fold happens, so "which surfaces fold?" is answered by who
+/// calls this rather than by thirty scattered conditionals.
+///
+/// **Why fold at all.** No shipping product publishes a dead-space category
+/// (qbiq, Laiout, TestFit, Hypar, CBRE Plans), and no measurement standard
+/// defines one: BOMA Z65.1 treats circulation — primary and secondary — as part
+/// of Usable Area and reports it as a factor; IPMS's only "quantify separately"
+/// bucket is Limited Use Areas, which is about headroom and columns, not
+/// leftover pockets. A "Dead space: 170 m²" row in a client takeoff would be
+/// unreadable against every convention its reader has.
+///
+/// **Why not fold everywhere.** The editor is a working surface, and showing a
+/// planner exactly where floor is being wasted is the entire value of the
+/// distinction. So `zone_stats` stays honest and `zone_stats_published` folds.
+pub(crate) fn published_zone_type(t: ZoneType) -> ZoneType {
+    match t {
+        ZoneType::Unassigned => ZoneType::Circulation,
+        other => other,
+    }
 }
 
 /// Area (m²) of `shape ∩ rect`, clipped to the plate — the floor a Workspace
@@ -608,6 +659,14 @@ impl Editor {
             workstations,
             area_per_workstation,
             efficiency_pct,
+            unassigned_area: self
+                .doc
+                .zones
+                .iter()
+                .zip(&areas)
+                .filter(|(z, _)| z.zone_type == ZoneType::Unassigned)
+                .map(|(_, a)| *a)
+                .sum(),
             indicative_cost: cost::indicative_cost(&self.doc),
             indicative_carbon: cost::indicative_carbon(&self.doc),
             specified_cost: cost::specified_cost(&self.doc),
@@ -625,6 +684,27 @@ impl Editor {
     /// Per-zone stats for the Statistics panel + AI reasoning. Array of
     /// `{ id, zone_type, label, area, capacity, seated, pct_of_nia }`.
     pub fn zone_stats(&self) -> Result<JsValue, JsValue> {
+        serde_wasm_bindgen::to_value(&self.zone_rows(false))
+            .map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
+    /// `zone_stats()` for **published** artifacts: identical rows, except every
+    /// `Unassigned` zone reports as `Circulation`.
+    ///
+    /// THE fold boundary, expressed as one boolean rather than as a conditional
+    /// at each export site. Every client-facing path — takeoff CSV, the PDF
+    /// sheet, the QTO workbook, the report's areas split — reads this; the
+    /// editor's Areas/Zones tabs read `zone_stats()` and see the truth.
+    ///
+    /// Rows are otherwise byte-identical, INCLUDING ids and areas, so a folded
+    /// and an unfolded read of the same document agree about every number and
+    /// disagree only about the word.
+    pub fn zone_stats_published(&self) -> Result<JsValue, JsValue> {
+        serde_wasm_bindgen::to_value(&self.zone_rows(true))
+            .map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
+    fn zone_rows(&self, fold: bool) -> Vec<ZoneStat> {
         // De-overlapped areas so the Zones tab / Areas donut sum to GEA (never
         // above it) on tilted/irregular plates — same source of truth as metrics.
         let (areas, spanning) = effective_zone_areas(&self.doc);
@@ -685,8 +765,15 @@ impl Editor {
                 };
                 ZoneStat {
                     id: z.id,
-                    zone_type: z.zone_type,
-                    label: z.label.clone(),
+                    zone_type: if fold { published_zone_type(z.zone_type) } else { z.zone_type },
+                    // The label follows the type through the fold, so a folded
+                    // row can never read "Circulation" beside the word
+                    // "Unassigned" and invite the reader to spot the seam.
+                    label: if fold && z.zone_type == ZoneType::Unassigned {
+                        "Circulation".to_string()
+                    } else {
+                        z.label.clone()
+                    },
                     area,
                     capacity,
                     seated,
@@ -694,7 +781,7 @@ impl Editor {
                 }
             })
             .collect();
-        serde_wasm_bindgen::to_value(&stats).map_err(|e| JsValue::from_str(&e.to_string()))
+        stats
     }
 
     /// Autonomously generate a test-fit from a `Program` (plain JS object).
@@ -1067,6 +1154,7 @@ mod tests {
             label: "Open Workspace".into(),
             component_ids: Vec::new(),
             group: None,
+            origin: Default::default(),
         });
 
         let n_generated = 8;
@@ -1131,6 +1219,7 @@ mod tests {
             label: format!("{zt:?}"),
             component_ids: Vec::new(),
             group: None,
+            origin: Default::default(),
         });
         id
     }

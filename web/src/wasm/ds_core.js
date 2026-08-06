@@ -606,6 +606,27 @@ export class Editor {
         return takeFromExternrefTable0(ret[0]);
     }
     /**
+     * `zone_stats()` for **published** artifacts: identical rows, except every
+     * `Unassigned` zone reports as `Circulation`.
+     *
+     * THE fold boundary, expressed as one boolean rather than as a conditional
+     * at each export site. Every client-facing path — takeoff CSV, the PDF
+     * sheet, the QTO workbook, the report's areas split — reads this; the
+     * editor's Areas/Zones tabs read `zone_stats()` and see the truth.
+     *
+     * Rows are otherwise byte-identical, INCLUDING ids and areas, so a folded
+     * and an unfolded read of the same document agree about every number and
+     * disagree only about the word.
+     * @returns {any}
+     */
+    zone_stats_published() {
+        const ret = wasm.editor_zone_stats_published(this.__wbg_ptr);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
      * All zones, for rendering. Part of `state()`, but exposed standalone for a
      * cheap re-read after a zone-only edit.
      * @returns {any}

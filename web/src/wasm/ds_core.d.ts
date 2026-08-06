@@ -270,6 +270,20 @@ export class Editor {
      */
     zone_stats(): any;
     /**
+     * `zone_stats()` for **published** artifacts: identical rows, except every
+     * `Unassigned` zone reports as `Circulation`.
+     *
+     * THE fold boundary, expressed as one boolean rather than as a conditional
+     * at each export site. Every client-facing path — takeoff CSV, the PDF
+     * sheet, the QTO workbook, the report's areas split — reads this; the
+     * editor's Areas/Zones tabs read `zone_stats()` and see the truth.
+     *
+     * Rows are otherwise byte-identical, INCLUDING ids and areas, so a folded
+     * and an unfolded read of the same document agree about every number and
+     * disagree only about the word.
+     */
+    zone_stats_published(): any;
+    /**
      * All zones, for rendering. Part of `state()`, but exposed standalone for a
      * cheap re-read after a zone-only edit.
      */
@@ -362,6 +376,7 @@ export interface InitOutput {
     readonly editor_wall_types: (a: number) => [number, number, number];
     readonly editor_zone_at: (a: number, b: number, c: number) => number;
     readonly editor_zone_stats: (a: number) => [number, number, number];
+    readonly editor_zone_stats_published: (a: number) => [number, number, number];
     readonly editor_zones: (a: number) => [number, number, number];
     readonly open_share: () => number;
     readonly __wbindgen_malloc: (a: number, b: number) => number;

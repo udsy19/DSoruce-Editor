@@ -62,6 +62,10 @@ pub struct LayoutScore {
     pub total: f64,
     /// desks actually placed (diagnostic for the loop's "which sub-score is weak")
     pub placed_desks: u32,
+    /// Points deducted from `total` for floor the plan wastes: 10 × the
+    /// `Unassigned` share of the plate. Surfaced so the autonomous loop can say
+    /// WHICH term cost a candidate its rank, rather than only that it lost.
+    pub unassigned_penalty: f64,
 }
 
 // ---- M5: professional scoring (spec §5) ----
@@ -357,14 +361,45 @@ pub fn score(doc: &Document, program: &Program) -> LayoutScore {
     let wl = program.w_daylight * bias.daylight;
     let we = program.w_entry * bias.entry;
     let wsum = (wc + wa + wr + wd + wp + wl + we).max(1e-6);
-    let total = (wc * capacity
+
+    // --- wasted floor: the penalty that makes the search prefer honest plans ---
+    //
+    // PRE-REGISTERED in the Phase 0 audit (§F) before this code existed:
+    // `0.10 × (unassigned_m² / plate_m²) × 100` points, i.e. **10 points per
+    // unit of wasted-floor fraction**, subtracted from the weighted total. On
+    // the reference plate (~170 m² of 930) that is ~1.8 points — enough to break
+    // a tie toward the plan that wastes less floor, deliberately NOT enough to
+    // reorder candidates separated by more than that.
+    //
+    // Subtractive rather than a weighted sub-score on purpose. Every term above
+    // is "how good is this plan at X"; waste is not a quality being averaged, it
+    // is a debit against whatever the plan otherwise achieved. Folding it into
+    // `wsum` would also let a program that zeroes `w_*` weights dilute the
+    // penalty to nothing, which is exactly backwards.
+    //
+    // Before `ZoneType::Unassigned` existed this term could not have been
+    // written: wasted floor was labelled `Circulation`, and a search penalising
+    // circulation would have penalised real corridors too — the generator would
+    // have learned to draw fewer corridors, not to waste less floor.
+    let unassigned_m2: f64 = doc
+        .zones
+        .iter()
+        .filter(|z| z.zone_type == ZoneType::Unassigned)
+        .map(|z| z.area_on(plate_poly.as_deref()))
+        .sum();
+    let waste_fraction = if floor > 0.0 { unassigned_m2 / floor } else { 0.0 };
+    let unassigned_penalty = 10.0 * waste_fraction;
+
+    let total = ((wc * capacity
         + wa * adjacency
         + wr * circulation
         + wd * density
         + wp * program_fit
         + wl * daylight
         + we * entry_adjacency)
-        / wsum;
+        / wsum
+        - unassigned_penalty)
+        .clamp(0.0, 100.0);
 
     LayoutScore {
         capacity,
@@ -376,5 +411,6 @@ pub fn score(doc: &Document, program: &Program) -> LayoutScore {
         entry_adjacency,
         total,
         placed_desks,
+        unassigned_penalty,
     }
 }

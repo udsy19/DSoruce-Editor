@@ -300,6 +300,7 @@ mod tests {
             label: String::new(),
             component_ids: Vec::new(),
             group: None,
+            origin: Default::default(),
         }
     }
 

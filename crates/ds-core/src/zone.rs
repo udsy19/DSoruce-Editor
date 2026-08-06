@@ -25,6 +25,53 @@ pub enum ZoneType {
     Core,          // WC, stairs, lifts, MEP, service   → light gray
     ClosedOffice,  // private cellular office           → pale peach/orange
     Amenity,       // kitchen / cafe / reception        → pale teal
+    /// Floor the generator could neither furnish nor justify as circulation:
+    /// too narrow to host a code-width path, or sealed off from the walking
+    /// network. **A finding, not a program.**
+    ///
+    /// It exists because conflating leftover residue with *circulation* told
+    /// two lies at once: it inflated the Circulation row of the areas split,
+    /// and it flattered efficiency by counting waste as a working corridor. On
+    /// the reference plate that was 170.66 m² — 57.7% of everything the plan
+    /// called circulation.
+    ///
+    /// **Editor-only in presentation, never a published line item.** No
+    /// surveyed product (qbiq, Laiout, TestFit, Hypar, CBRE Plans) publishes a
+    /// "dead space" category, and neither BOMA Z65.1 nor IPMS defines one —
+    /// IPMS "Limited Use Areas" is about headroom and columns, not leftover
+    /// pockets. So every export folds this back into Circulation
+    /// (`fold_unassigned`); only the working surface shows it, where its whole
+    /// job is to say *fix me*.
+    Unassigned,
+}
+
+/// How a zone came to exist. The discriminator between a corridor somebody
+/// **designed** and floor the generator **had left over**.
+///
+/// This was a string compare (`label == "Circulation"`) living in one function
+/// in `layout/conform.rs`. That worked only because both sides were written
+/// three lines apart. It was already broken in a way nothing could detect:
+/// zone labels are user-editable and `RoomTools` offers "Circulation" as a
+/// room type, so renaming a drawn `Corridor` to `Circulation` silently
+/// converted network into residual — and the next conform pass would melt it.
+/// Phase 1 would have made that seam load-bearing across five consumers in
+/// four files.
+///
+/// **`Residual` is generator-only.** No UI path and no wasm mutator may set
+/// it; a zone a user draws, retypes or renames is always `Drawn`. That is what
+/// keeps the discriminator meaning what it says.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ZoneOrigin {
+    /// Designed: the drawn corridor network, rooms, the desk field, keep-outs —
+    /// and anything a user creates. The serde default, so a `.dsource` written
+    /// before this field existed loads with every zone `Drawn`, which is the
+    /// truth for those files: they predate the residual classifier.
+    #[default]
+    Drawn,
+    /// Emitted by the generator's residual pass over floor nothing claimed.
+    /// Carries [`ZoneType::Circulation`] or [`ZoneType::Unassigned`] depending
+    /// on whether it can host a code-width path connected to the network.
+    Residual,
 }
 
 /// Footprint shape. `Rect` is the v1 workhorse; `RectRing` models the perimeter
@@ -163,6 +210,11 @@ pub struct Zone {
     /// Optional grouping tag for multi-rect (e.g. L-shaped) logical rooms.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub group: Option<u32>,
+    /// Designed, or left over? See [`ZoneOrigin`]. `#[serde(default)]` makes
+    /// this additive: every `.dsource` written before the field existed loads
+    /// with `Drawn`, byte-stably.
+    #[serde(default)]
+    pub origin: ZoneOrigin,
 }
 
 impl Zone {
@@ -187,7 +239,11 @@ impl Zone {
             ZoneType::Collaboration => 3.0, // m² per seat
             ZoneType::ClosedOffice => 9.0,  // 1–2 person cellular
             ZoneType::Amenity => 4.0,       // m² per seat
-            ZoneType::Circulation | ZoneType::Core => return 0,
+            // Circulation and Core seat nobody; Unassigned seats nobody BY
+            // DEFINITION — it is floor the generator failed to use, and giving
+            // it a nominal capacity would let waste inflate the headcount the
+            // plan claims it can hold.
+            ZoneType::Circulation | ZoneType::Core | ZoneType::Unassigned => return 0,
         };
         (self.area() / per).floor().max(0.0) as u32
     }
@@ -291,6 +347,7 @@ mod tests {
             label: String::new(),
             component_ids: Vec::new(),
             group: None,
+            origin: Default::default(),
         };
         // 60 m² Workspace / 6 = 10.
         assert_eq!(mk(ZoneType::Workspace, 10.0, 6.0).capacity(), 10);

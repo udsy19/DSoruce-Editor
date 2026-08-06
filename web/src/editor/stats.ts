@@ -61,6 +61,9 @@ export const ZONE_META: Record<ZoneType, { label: string; fill: string; line: st
   Amenity: { label: 'Amenity', ...ZONE.Amenity },
   Circulation: { label: 'Circulation', ...ZONE.Circulation },
   Core: { label: 'Core / Service', ...ZONE.Core },
+  // Internal/editor surfaces only. Published paths read the core's folded rows
+  // (`zone_stats_published`), where this type never appears.
+  Unassigned: { label: 'Unassigned', ...ZONE.Unassigned },
 }
 export const ZONE_ORDER: ZoneType[] = [
   'Workspace',
@@ -69,6 +72,7 @@ export const ZONE_ORDER: ZoneType[] = [
   'ClosedOffice',
   'Amenity',
   'Circulation',
+  'Unassigned',
   'Core',
 ]
 
