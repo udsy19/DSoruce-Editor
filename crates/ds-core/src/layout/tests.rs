@@ -4905,3 +4905,43 @@ fn compactness_measures_shape_not_tracing_resolution() {
          reproduces the confound it was built to guard against"
     );
 }
+
+/// EDITED PLANS MUST STILL REPORT SANE METRICS.
+///
+/// Reported from the live editor: GEA 1 m², efficiency **1159 %**, area/
+/// workstation 0.0 — after editing walls on a generated plan. Every gate in the
+/// circulation workstream asserts `efficiency_pct` invariance on a FRESHLY
+/// GENERATED document; not one of them touches an edited one, so a metric that
+/// only breaks after an edit was invisible to all of them. That is testing the
+/// population I chose rather than the population the user has.
+#[test]
+fn edited_walls_cannot_produce_absurd_metrics() {
+    let area = geometry::polygon_area(&poly_of(&real_plate_doc()));
+    let mut program = Program::default();
+    program.headcount = Some((area / 10.0).round() as u32);
+    program.meeting_rooms = 5;
+    let mut doc = real_plate_doc();
+    generate(&mut doc, &program, 3, false);
+
+    let gea_before = doc.floor_area();
+    assert!(gea_before > 100.0, "fixture sanity: GEA {gea_before:.1}");
+
+    // The edit: break the envelope. A user dragging or deleting a boundary wall
+    // leaves the outer loop open, and `plate_polygon` falls back to "largest
+    // CLOSED loop" — which can be some small interior artifact.
+    let outer: Vec<u32> = doc.walls.iter().filter(|w| !w.generated).map(|w| w.id).take(3).collect();
+    doc.walls.retain(|w| !outer.contains(&w.id));
+
+    let gea = doc.floor_area();
+    let (areas, _) = crate::effective_zone_areas(&doc);
+    let nia: f64 = areas.iter().sum::<f64>().min(gea);
+    let usable = crate::usable_area(&doc, &areas);
+    let eff = if nia > 0.0 { usable / nia * 100.0 } else { 0.0 };
+
+    println!("EDITED gea={gea:.2} nia={nia:.2} usable={usable:.2} eff={eff:.1}%");
+
+    // The invariants that must survive ANY edit, not just a regeneration.
+    assert!(eff <= 100.0 + 1e-6,
+        "efficiency {eff:.1}% exceeds 100 — usable {usable:.2} > NIA {nia:.2} after a wall edit");
+    assert!(nia <= gea + 1e-6, "NIA {nia:.2} > GEA {gea:.2} after a wall edit");
+}

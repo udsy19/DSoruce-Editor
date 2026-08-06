@@ -5688,7 +5688,12 @@ kbd {
 --------------------------------------------------------------------------- */
 .pack-dock {
   position: fixed;
-  right: 18px;
+  /* Clear of the inspector, not on top of it. At `right: 18px` this sat over
+     the Areas/Zones/CO2/Costs tab row at the foot of the panel — a floating
+     control covering the tabs it floats over. Offsetting by the panel's own
+     width keeps it on the canvas, where there is room, and keeps it correct
+     when `--inspector` narrows at the small breakpoint. */
+  right: calc(var(--inspector) + 18px);
   bottom: 18px;
   z-index: 60;
   display: flex;

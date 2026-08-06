@@ -245,12 +245,18 @@ export function AppShell() {
           />
         </div>
       )}
-      {/* The deliverable pack is the product's headline output, so its one
-          control lives here — on every route, exactly once in the document.
-          On the landing route the editor is not mounted yet; `ensureEditor`
-          mounts it (and its wasm doc) on demand, which is also what the very
-          first click of a fresh session does. */}
-      <DeliverablePackAction ensureEditor={ensureEditor} />
+      {/* The deliverable pack exports a FINISHED PLAN, so it belongs on the one
+          route where a finished plan exists.
+          It used to render on every route as a fixed bottom-right dock, which
+          put it on top of two different primary controls: the wizard footer's
+          Next button (measured — `document.elementFromPoint` at the centre of
+          `[data-testid=wizard-next]` returned `pack-btn`, so Next was
+          unclickable by mouse at 1600×1000) and, in the editor, the
+          Areas/Zones/CO₂/Costs tab row. A floating control that covers the
+          primary action on the screen it floats over is not prominent, it is in
+          the way — and on Property/Space/Program/Generate there is no plan to
+          export yet, so it was offering an action that could not work. */}
+      {route.name === 'editor' && <DeliverablePackAction ensureEditor={ensureEditor} />}
     </>
   )
 }
