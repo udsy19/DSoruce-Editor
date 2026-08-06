@@ -144,19 +144,23 @@ check(
    * deferral that merely printed would be a warning, and warnings rot — this
    * one cannot absorb a third violation. Phase 2 exit requires this list empty.
    */
-  const DEFERRED = {
-    'web/src/export/sheet.ts': [
-      "import { ACCENT_AMBER, hexToRgba, hexToRgb01 } from '../editor/planStyle'",
-      'export const ACCENT: Rgb = hex2rgb(ACCENT_AMBER)',
-      'ctx.fillStyle = hexToRgba(ACCENT_AMBER, 0.5)',
-    ],
-    'web/src/export/report.ts': [
-      "import { ACCENT_AMBER } from '../editor/planStyle'",
-      "const ALT_COLORS = ['#7b74d4', ACCENT_AMBER, '#3f9c95', '#c4607a', '#5b8def']",
-    ],
-  }
-  const AMBER = [/#e8a13c\b/i, /\b232\s*,\s*161\s*,\s*60\b/, /\b0xe8a13c\b/i,
-                 /ACCENT_AMBER/, /SELECTION_ACCENT/, /--accent-amber/, /--accent-selection/]
+  // EMPTY, as Phase 2 exit requires. The five entries that lived here were
+  // sheet.ts and report.ts referencing ACCENT_AMBER — references, never raw
+  // literals, so they were never second sources. Nothing restates the value in a
+  // deliverable now, and the check below is unconditional.
+  const DEFERRED = {}
+  // THE LAW IS ABOUT SOURCES, NOT PRESENCE. A deliverable may show the accent —
+  // G7 positively REQUIRES accent pixels on the walkthrough title card — but it
+  // may never RESTATE the value. So this matches the raw literal in every
+  // encoding and deliberately does NOT match the names: `ACCENT_AMBER` and
+  // `var(--accent-amber)` are references to the one source, which is the whole
+  // point of having one.
+  //
+  // An earlier version of this check banned the names too. Made unconditional it
+  // would have forbidden exactly what G7 asserts, and I mistook that for a
+  // conflict between a ruling and a board. There was none: the board constrains
+  // where the literal is written, G7 constrains pixels in the artifact.
+  const AMBER = [/#e8a13c\b/i, /\b232\s*,\s*161\s*,\s*60\b/, /\b0xe8a13c\b/i]
   const stillDeferred = []
   for (const rel of DELIVERABLES) {
     const abs = path.join(ROOT, rel)
