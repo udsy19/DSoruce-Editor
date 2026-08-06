@@ -21,6 +21,12 @@ use crate::circulation::{self, CirculationConfig};
 /// [`CIRC_WIDE_FRACTION`], and the two are a conjunction with connectivity.
 pub(crate) const MIN_CIRC_CLEAR_M: f64 = 1.2;
 
+/// Boundary tolerance for shape measurement: the SAME 0.3 m the merge pass snaps
+/// residual boundary vertices onto the plate with (`fill_untyped_as_circulation`'s
+/// `SNAP`). Simplifying at a finer tolerance would preserve the staircase the
+/// snap created; at a coarser one it would erase real corners.
+pub(crate) const SNAP_TOL: f64 = 0.3;
+
 /// What share of a leftover pocket must actually sit on a code-width path
 /// before the whole pocket counts as circulation.
 ///
@@ -57,6 +63,35 @@ pub(crate) const MIN_CIRC_CLEAR_M: f64 = 1.2;
 /// is the decision. Worth knowing before anyone "fixes" a verdict by moving the
 /// wrong number.
 const CIRC_WIDE_FRACTION: f64 = 0.5;
+
+/// The elongation at which a shape stops being a room and starts being a path.
+///
+/// **3:1, and τ is DERIVED from it rather than fitted.** Width and connectivity
+/// cannot tell a corridor from a clearing: on the reference plate a 3.8 × 3.1 m
+/// near-square cleared both and was billed as circulation. A corridor is a
+/// shape you pass ALONG; the cheapest honest statement of that is that it is at
+/// least three times as long as it is wide.
+///
+/// For a `w × L` rectangle the isoperimetric quotient is `πwL/(w+L)²`, so at
+/// `L = A·w` it is `πA/(1+A)²` — a pure function of the aspect ratio. The rule
+/// is therefore expressible as a threshold on [`compactness`], and the threshold
+/// is a consequence of the rule instead of a number chosen to sort the pockets
+/// we happened to look at.
+///
+/// **Deliberately NOT 0.30.** That value separated the ten pockets of one plate
+/// cleanly, which is exactly what makes it untrustworthy — a threshold fitted to
+/// the population it judges is the calibration failure
+/// `.claude/rules/gate-independence.md` documents. It would also have left the
+/// fixture plate's only circulation pocket (0.291) inside the boundary by 3%,
+/// where any re-trace could flip it. At 3:1 that pocket clears by a factor of two.
+pub(crate) const MIN_CORRIDOR_ASPECT: f64 = 3.0;
+
+/// Compactness at or above which a residual pocket is a clearing, not a path.
+/// `πA/(1+A)²` at `A =` [`MIN_CORRIDOR_ASPECT`] — 3π/16 ≈ 0.589.
+pub(crate) fn corridor_compactness_max() -> f64 {
+    let a = MIN_CORRIDOR_ASPECT;
+    std::f64::consts::PI * a / ((1.0 + a) * (1.0 + a))
+}
 
 /// Grow boundary-touching **`Rect`** zones — rooms, workspace fields AND
 /// residual circulation, not just circulation — into plate-conforming **`Poly`**
@@ -827,6 +862,101 @@ pub(crate) fn fill_untyped_as_circulation(doc: &mut Document, plate: &[Point]) {
     classify_residual_zones(doc);
 }
 
+/// Ramer–Douglas–Peucker on a CLOSED ring.
+///
+/// Splits the ring at its two most distant-in-index extremes (the first vertex
+/// and the vertex farthest from it), simplifies each chain, and rejoins — the
+/// standard way to apply an open-polyline algorithm to a loop without the
+/// result depending on where the vertex list happens to start.
+///
+/// Exists because [`compactness`] would otherwise measure JAGGEDNESS, not shape.
+/// A wall-following pocket leaves this pass with a staircase boundary snapped to
+/// the plate, and every extra vertex adds perimeter without adding area: the
+/// 80.43 m² ribbon on the reference plate carries 41 vertices and a 109 m
+/// perimeter, so its raw compactness (0.085) is partly an artifact of how it was
+/// traced rather than a fact about its shape. Simplifying first at the same
+/// tolerance the boundary was snapped with makes a smooth corridor and a jagged
+/// one of the same shape score together, which is the only way a threshold on
+/// the result can mean anything.
+pub(crate) fn simplify_rdp_closed(pts: &[Point], eps: f64) -> Vec<Point> {
+    if pts.len() < 4 {
+        return pts.to_vec();
+    }
+    let far = (1..pts.len())
+        .max_by(|&a, &b| {
+            let da = (pts[a].x - pts[0].x).hypot(pts[a].y - pts[0].y);
+            let db = (pts[b].x - pts[0].x).hypot(pts[b].y - pts[0].y);
+            da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .unwrap_or(pts.len() - 1);
+    let mut ring: Vec<Point> = Vec::new();
+    let chain_a: Vec<Point> = pts[..=far].to_vec();
+    let mut chain_b: Vec<Point> = pts[far..].to_vec();
+    chain_b.push(pts[0]);
+    let a = rdp(&chain_a, eps);
+    let b = rdp(&chain_b, eps);
+    ring.extend_from_slice(&a);
+    // `b` starts where `a` ended and ends where `a` started; drop both duplicates.
+    if b.len() > 2 {
+        ring.extend_from_slice(&b[1..b.len() - 1]);
+    }
+    ring
+}
+
+fn rdp(pts: &[Point], eps: f64) -> Vec<Point> {
+    if pts.len() < 3 {
+        return pts.to_vec();
+    }
+    let (a, b) = (pts[0], pts[pts.len() - 1]);
+    let mut worst = 0.0f64;
+    let mut idx = 0usize;
+    for (i, p) in pts.iter().enumerate().take(pts.len() - 1).skip(1) {
+        let d = geometry::point_segment_dist(*p, a, b);
+        if d > worst {
+            worst = d;
+            idx = i;
+        }
+    }
+    if worst <= eps {
+        return vec![a, b];
+    }
+    let mut left = rdp(&pts[..=idx], eps);
+    let right = rdp(&pts[idx..], eps);
+    left.pop();
+    left.extend(right);
+    left
+}
+
+/// Isoperimetric quotient `4piA / P^2` over the SIMPLIFIED boundary: 1.0 for a
+/// circle, 0.785 for a square, and falling toward 0 as a shape becomes a path.
+///
+/// Both area and perimeter come from the simplified ring, so the measure is
+/// internally consistent — mixing a raw area with a simplified perimeter would
+/// bias every jagged shape upward.
+pub(crate) fn compactness(pts: &[Point], eps: f64) -> f64 {
+    let ring = simplify_rdp_closed(pts, eps);
+    if ring.len() < 3 {
+        // The whole pocket simplified away: every vertex sat within `eps` of the
+        // line through its neighbours, so the shape is smaller than the
+        // tolerance it is measured at. Return the CIRCLE bound (1.0) — the
+        // maximally non-path answer — so such a pocket is rejected rather than
+        // waved through on a shape nobody could measure. Conservative by
+        // choice, and stated: a silent 1.0 falling out of a guard clause is how
+        // a fallback becomes an accidental rule.
+        return 1.0;
+    }
+    let area = geometry::polygon_area(&ring);
+    let mut per = 0.0;
+    for i in 0..ring.len() {
+        let j = (i + 1) % ring.len();
+        per += (ring[j].x - ring[i].x).hypot(ring[j].y - ring[i].y);
+    }
+    if per <= 1e-9 {
+        return 1.0; // degenerate ring — same conservative answer as above
+    }
+    4.0 * std::f64::consts::PI * area / (per * per)
+}
+
 /// Decides, for each pocket of leftover floor, whether it is **circulation** or
 /// merely **unassigned**.
 ///
@@ -1008,7 +1138,11 @@ impl WalkClassifier {
         }
         let wide_frac = wide_n as f64 / inside as f64;
         let connected = !self.has_network || reach_n > 0;
-        if wide_frac >= CIRC_WIDE_FRACTION && connected {
+        // THIRD CONJUNCT — shape. Measured on the RDP-simplified boundary at the
+        // same tolerance the boundary was snapped with, so a pocket is judged on
+        // its shape and not on how finely it happened to be traced.
+        let path_shaped = compactness(pts, SNAP_TOL) < corridor_compactness_max();
+        if wide_frac >= CIRC_WIDE_FRACTION && connected && path_shaped {
             ZoneType::Circulation
         } else {
             ZoneType::Unassigned

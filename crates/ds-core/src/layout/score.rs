@@ -381,6 +381,19 @@ pub fn score(doc: &Document, program: &Program) -> LayoutScore {
     // written: wasted floor was labelled `Circulation`, and a search penalising
     // circulation would have penalised real corridors too — the generator would
     // have learned to draw fewer corridors, not to waste less floor.
+    //
+    // **It is INERT on some plates, and that is correct — do not "fix" it.**
+    // Measured on the DXF reference plate, all three strategies (Open/Balanced/
+    // Cellular) scored an identical penalty of 0.693129690346807, to fifteen
+    // decimal places, despite placing 101 / 98 / 84 desks. That is not a bug: the
+    // leftover there is the same set of unfurnished wings whatever the strategy
+    // does with the middle of the floor, so the term correctly contributes
+    // nothing to choosing between them.
+    //
+    // The term is live where strategies genuinely differ in waste — on the
+    // fixture plate it ranges 171.3 m² (seed 1) to 195.0 m² (seed 4), a spread
+    // of ~0.3 points. A future reader finding it constant on one plate is
+    // looking at a property of that plate, not a broken constant.
     let unassigned_m2: f64 = doc
         .zones
         .iter()

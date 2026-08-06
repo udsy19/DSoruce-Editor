@@ -628,3 +628,63 @@ providing. A third instance earns a section in `.claude/rules/gate-independence.
 — the pattern is *"a check whose subject moved out from under it, still green or
 still listed"*, and it is distinct from the producer-metadata family because
 nothing here is trusting the producer; the check simply lost its grip.
+
+---
+
+# E.2 restated — the binding numbers, with their revision history
+
+Three revisions. Each row says which numbers were binding when, so the trail
+shows what was believed at each ruling rather than only where it ended up.
+
+| quantity | Phase 0 (pre-change) | E.2 as predicted | Phase 1 actual | **Phase 1b actual (shape conjunct)** |
+|---|---|---|---|---|
+| Circulation, honest | 295.89 m² (26 z) | 125–170 | 231.43 m² (20 z) | **213.16 m² (18 z)** |
+| — network (drawn) | 125.23 | unchanged | 125.23 | **125.23** |
+| — residual kept | 170.66 | — | 106.20 | **87.93** |
+| Unassigned | 0 | 130–160 | 64.47 (6 z) | **82.74 (8 z)** |
+| Circulation, published | 295.89 | — | 295.89 | **295.89** |
+| `efficiency_pct` | 61.63 | 57–60 ↓ | 61.63 | **61.63** |
+| `unassigned_pct` | — | — | — | **9.11** |
+| Workstations | 101 | 101 | 101 | **101** |
+| Candidate A / B / C | 88 / 86 / 87 | — | 87.14 / 85.71 / 85.92 | *(A>C>B preserved)* |
+
+**Which predictions were wrong, and why**, kept in one place:
+
+1. `efficiency_pct` (predicted ↓ 57–60, actual invariant at 61.63). Circulation
+   was already outside `usable`; the rename could not move it. → C6 re-registered
+   as *invariance*, and waste given its own name, `unassigned_pct`.
+2. Unassigned magnitude (predicted 130–160, actual 64.47 then 82.74). §E.1's
+   per-pocket distance transform was computed **inside each pocket**, truncating
+   clearance at its own boundary; the classifier measures over the whole walkable
+   mask, which is the clearance a person actually has. Pockets are wider than
+   E.1 implied.
+3. The `zone_index_at` tie-break (predicted to break G7, actual zero failures).
+   Residual pockets are strictly disjoint by construction, so it never fires.
+
+**The pattern across all three:** each wrong prediction came from a scalar
+standing in for geometry — a within-pocket DT, a "wing" label, an assumed
+overlap. The corrections all came from tables. Same lesson as zone 847.
+
+## Zone 847 and the shape conjunct — resolved
+
+**847 stays Circulation, and the earlier characterisation of it was wrong.** At
+80.43 m² with a 109.1 m perimeter over 41 vertices spanning 32.8 × 16 m, its
+compactness is 0.085 raw — *less compact than a 2 × 40 m corridor* (0.142). It is
+a wall-following connective ribbon, not a room-sized void. Both of us reasoned
+from a prose label and one max-inscribed-width scalar.
+
+**The concern it stood for was real one row down.** Zone 848 — 10.83 m²,
+compactness 0.777, a 3.8 × 3.1 m near-square — cleared width and connectivity and
+was billed as circulation. It now flips, along with 851 (0.649). 810 (0.392, an
+L-shaped connector filling 49% of its bbox) correctly stays.
+
+τ is **derived, not fitted**: a corridor is at least 3× as long as it is wide, and
+for a `w × L` rectangle the isoperimetric quotient is `πA/(1+A)²`, so 3:1 gives
+τ = 3π/16 ≈ 0.589. The 0.30 that separated the ten observed pockets was discarded
+— it was fitted to the population it judges, and it would have left the fixture's
+only circulation pocket inside the boundary by 3%.
+
+The confound was killed first, and measured: a staircase-traced 2 × 40 m corridor
+scores 0.095 raw and **0.143 simplified** (641 vertices → 4), landing on the
+smooth corridor's 0.142.
+

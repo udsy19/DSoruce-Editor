@@ -3959,11 +3959,11 @@ fn golden_generate_output_is_frozen() {
 "default/rect20x14/seed1 = c72 w52 z11 desks21 total87876523 #1a0244c3d88eeb3c",
             "default/rect20x14/seed2 = c80 w52 z11 desks25 total89274625 #1fca633eeb04543f",
             "default/rect20x14/seed3 = c70 w52 z11 desks20 total86967629 #52556c4029d00bfc",
-            "default/real_plate/seed1 = c222 w155 z40 desks88 total90824732 #c760eabf08b5730b",
+            "default/real_plate/seed1 = c222 w155 z40 desks88 total90806929 #54c08e269f5425f8",
             "default/real_plate/seed2 = c222 w155 z35 desks88 total90363979 #222d5680249e3a7a",
             "default/real_plate/seed3 = c222 w155 z40 desks88 total90824610 #c22488cf2b5b4e08",
             "no_support/rect20x14/seed1 = c68 w22 z4 desks26 total92565832 #991c040294e31e67",
-            "no_support/real_plate/seed2 = c192 w101 z38 desks88 total94806711 #62b5577874b4cf69",
+            "no_support/real_plate/seed2 = c192 w101 z38 desks88 total94429991 #a040b9f4bb97fed1",
             "explicit_rooms/real_plate/seed1 = c209 w125 z26 desks88 total88680743 #834c964e4068e5d5",
             "explicit_rooms/l_plate/seed3 = c63 w33 z10 desks24 total87682433 #e9ed372ac7f562ed",
     ];
@@ -4691,4 +4691,209 @@ fn zones_without_origin_deserialize_as_drawn() {
 /// edits it — this mirror makes such an edit a test failure, which is the point.
 fn conform_wide_fraction() -> f64 {
     0.5
+}
+
+// ---------------------------------------------------------------------------
+// The SHAPE conjunct: a corridor is path-shaped, a clearing is not
+// ---------------------------------------------------------------------------
+//
+// Width and connectivity alone cannot tell a corridor from a room-sized void:
+// on the reference plate a 3.8 x 3.1 m near-square pocket cleared both tests and
+// was billed as circulation. These two fixtures are the pair — one pocket that
+// must be rejected on shape, one that must survive it — so the conjunct can be
+// shown to fire without over-firing.
+
+/// 24x12 room, a 2 m drawn corridor across y in [5,7], program filling the north
+/// band except a 5x5 m square at the east end. The square is wide, and it sits
+/// directly on the corridor's north face, so it passes width AND connectivity —
+/// it can only be rejected on shape.
+fn plate_with_square_pocket() -> Document {
+    let mut doc = room_from_corners(&[(0.0, 0.0), (24.0, 0.0), (24.0, 12.0), (0.0, 12.0)]);
+    doc.add_zone(
+        ZoneType::Circulation,
+        ZoneShape::Rect { x: 12.0, y: 6.0, w: 24.0, h: 2.0 },
+        "Corridor".to_string(),
+    );
+    doc.add_zone(
+        ZoneType::Workspace,
+        ZoneShape::Rect { x: 9.5, y: 9.5, w: 19.0, h: 5.0 },
+        "Open Workspace".to_string(),
+    );
+    doc
+}
+
+fn square_pocket_poly() -> Vec<Point> {
+    vec![
+        Point::new(19.05, 7.05),
+        Point::new(23.95, 7.05),
+        Point::new(23.95, 11.95),
+        Point::new(19.05, 11.95),
+    ]
+}
+
+/// 24x12 room, same 2 m corridor, program pushed north so a 24 x 1.5 m ribbon is
+/// left between them. Same width and connectivity as the square; the ONLY thing
+/// that differs is its shape.
+fn plate_with_ribbon_pocket() -> Document {
+    let mut doc = room_from_corners(&[(0.0, 0.0), (24.0, 0.0), (24.0, 12.0), (0.0, 12.0)]);
+    doc.add_zone(
+        ZoneType::Circulation,
+        ZoneShape::Rect { x: 12.0, y: 6.0, w: 24.0, h: 2.0 },
+        "Corridor".to_string(),
+    );
+    doc.add_zone(
+        ZoneType::Workspace,
+        ZoneShape::Rect { x: 12.0, y: 10.25, w: 24.0, h: 3.5 },
+        "Open Workspace".to_string(),
+    );
+    doc
+}
+
+fn ribbon_pocket_poly() -> Vec<Point> {
+    vec![
+        Point::new(0.05, 7.05),
+        Point::new(23.95, 7.05),
+        Point::new(23.95, 8.45),
+        Point::new(0.05, 8.45),
+    ]
+}
+
+/// FALSIFICATION (a): a compact pocket is NOT a corridor, however wide and
+/// however well connected. This is the defect the shape conjunct exists for —
+/// a ~24 m² near-square counted as circulation on the delivered plate.
+#[test]
+fn square_pocket_is_unassigned_on_shape_alone() {
+    let doc = plate_with_square_pocket();
+    let cls = conform::WalkClassifier::build(&doc).expect("grid builds");
+    let pts = square_pocket_poly();
+    let (wide_frac, connected, _) = cls.debug_measure(&pts);
+    // The premise: it passes the FIRST TWO conjuncts. If it did not, this test
+    // would pass for the wrong reason and prove nothing about shape.
+    assert!(
+        wide_frac >= 0.5 && connected,
+        "fixture regression: the square must clear width ({wide_frac:.3}) and \
+         connectivity ({connected}), so that only SHAPE can reject it"
+    );
+    assert_eq!(
+        cls.classify_poly(&pts),
+        ZoneType::Unassigned,
+        "a 4.9 x 4.9 m square pocket was billed as circulation"
+    );
+}
+
+/// FALSIFICATION (b): the conjunct must not over-fire. A 24 x 1.5 m ribbon in
+/// the same position, with the same width and connectivity, IS a corridor and
+/// must survive. Drop tau far enough and this goes red — which is what makes it
+/// a real guard against an over-aggressive threshold rather than a restatement
+/// of (a).
+#[test]
+fn ribbon_pocket_survives_the_shape_conjunct() {
+    let doc = plate_with_ribbon_pocket();
+    let cls = conform::WalkClassifier::build(&doc).expect("grid builds");
+    let pts = ribbon_pocket_poly();
+    let (wide_frac, connected, _) = cls.debug_measure(&pts);
+    assert!(wide_frac >= 0.5 && connected, "fixture regression: ribbon must clear width+connectivity");
+    assert_eq!(
+        cls.classify_poly(&pts),
+        ZoneType::Circulation,
+        "a 24 x 1.5 m corridor-shaped ribbon was rejected as unassigned — tau is too aggressive"
+    );
+}
+
+/// BINDING (pre-registered before the shape conjunct existed): the classifier
+/// only ever sees `Residual` zones, so the DRAWN corridor network — the spine,
+/// the perimeter ring, entries and aisles — can never be re-typed by it.
+///
+/// This is the escalation clause of the workstream brief turned into a test: if
+/// a width/shape rule ever reclassified a drawn corridor, the rule would be
+/// wrong, not the corridor. Checked across three plate families so it cannot
+/// hold by accident of one plate's geometry.
+#[test]
+fn the_drawn_network_is_never_reclassified() {
+    let mut checked = 0usize;
+    let mut cases: Vec<(&str, Document, Program, u64)> = Vec::new();
+    let area = geometry::polygon_area(&poly_of(&real_plate_doc()));
+    let mut big = Program::default();
+    big.headcount = Some((area / 10.0).round() as u32);
+    big.meeting_rooms = 5;
+    for seed in 1u64..=6 {
+        cases.push(("real_plate", real_plate_doc(), big.clone(), seed));
+    }
+    let mut small = Program::default();
+    small.headcount = Some(40);
+    small.meeting_rooms = 3;
+    for seed in [3u64, 7] {
+        cases.push(("l_room", l_room(), small.clone(), seed));
+    }
+    for seed in [7u64, 11] {
+        cases.push((
+            "chamfer",
+            room_from_corners(&[(0.0, 0.0), (24.0, 0.0), (24.0, 10.0), (18.0, 16.0), (0.0, 16.0)]),
+            Program::default(),
+            seed,
+        ));
+    }
+    for (name, mut doc, program, seed) in cases {
+        generate(&mut doc, &program, seed, false);
+        for z in &doc.zones {
+            if z.origin != ZoneOrigin::Drawn {
+                continue;
+            }
+            checked += 1;
+            assert_ne!(
+                z.zone_type,
+                ZoneType::Unassigned,
+                "{name} seed {seed}: drawn zone {} ('{}') was reclassified Unassigned — \
+                 the classifier reached designed geometry",
+                z.id, z.label
+            );
+        }
+    }
+    assert!(checked > 100, "only {checked} drawn zones inspected — the sweep is too small to bind");
+}
+
+
+
+/// The shape measure must describe the SHAPE, not how finely the shape was
+/// traced. A smooth 2 × 40 m corridor and a staircase-traced one of the same
+/// footprint must score the same compactness.
+///
+/// Added after a falsification round found NOTHING guarding this: disabling the
+/// RDP simplification (`SNAP_TOL` 0.3 → 0.0) left all 168 tests green, even
+/// though it is the step that makes the threshold mean anything. Raw, the two
+/// shapes below score 0.095 and 0.142 — a 50% spread on identical geometry,
+/// which at a tighter tau would decide a verdict on tracing resolution alone.
+#[test]
+fn compactness_measures_shape_not_tracing_resolution() {
+    use crate::layout::conform::{compactness, SNAP_TOL};
+    let smooth: Vec<Point> = [(0.0, 0.0), (40.0, 0.0), (40.0, 2.0), (0.0, 2.0)]
+        .iter().map(|&(x, y)| Point::new(x, y)).collect();
+    // Same footprint, traced as a 0.25 m staircase along both long edges.
+    let mut jagged: Vec<Point> = Vec::new();
+    let mut x = 0.0;
+    while x < 40.0 {
+        jagged.push(Point::new(x, 0.0));
+        jagged.push(Point::new(x, 0.05));
+        x += 0.25;
+    }
+    jagged.push(Point::new(40.0, 2.0));
+    let mut xb = 40.0;
+    while xb > 0.0 {
+        jagged.push(Point::new(xb, 2.0));
+        jagged.push(Point::new(xb, 1.95));
+        xb -= 0.25;
+    }
+    let (cs, cj) = (compactness(&smooth, SNAP_TOL), compactness(&jagged, SNAP_TOL));
+    assert!(
+        (cs - cj).abs() < 0.02,
+        "the same corridor scores {cs:.3} smooth and {cj:.3} jagged — compactness is \
+         measuring tracing resolution, not shape (is the RDP simplification on?)"
+    );
+    // And the raw measure really is confounded — so the test above is not vacuous.
+    let raw_gap = (compactness(&smooth, 0.0) - compactness(&jagged, 0.0)).abs();
+    assert!(
+        raw_gap > 0.03,
+        "unsimplified boundaries agree to {raw_gap:.3} — this fixture no longer \
+         reproduces the confound it was built to guard against"
+    );
 }

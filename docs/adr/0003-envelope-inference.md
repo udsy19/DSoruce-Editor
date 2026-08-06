@@ -572,6 +572,36 @@ tests and every `evaluate()` harness work.
   provenance cannot be established are not evidence, so the polluted entry is
   purged wherever it exists rather than tracked down.
 
+## Medial-axis pocket classification — PARKED with an evidence trigger
+
+The residual classifier (`layout/conform.rs`) decides corridor-vs-clearing with
+three conjuncts: clear width ≥ 1.2 m over ≥ 50% of the pocket, 4-connectivity to
+the drawn network, and an isoperimetric shape test on the RDP-simplified boundary
+(τ from a 3:1 minimum corridor aspect). Compactness is a **proxy** for
+path-shapedness; a medial-axis / skeleton test would measure it directly — is
+there a spine, and does the pocket hug it — and would not need a simplification
+step to be meaningful.
+
+It is not built, on purpose. Compactness separates the observed population by a
+factor of two at both ends (the fixture's one circulation pocket scores 0.291
+against τ 0.589; the near-square defect it was written for scores 0.777), so a
+skeleton implementation today would be benchmarked against cases the incumbent
+already calls correctly — the null result this ADR has twice agreed is a
+legitimate outcome, bought at the cost of a medial-axis transform.
+
+**Trigger condition — the medial-axis test activates on the first real plate
+where the simplified-compactness verdict contradicts a human call on a pocket.**
+
+Concretely: a user (or a reviewer on a delivered sheet) identifies a region the
+classifier called `Circulation` that is plainly a room-shaped void, or called
+`Unassigned` that is plainly a corridor, AND the pocket's compactness sits on the
+correct side of τ — i.e. the proxy, not the threshold, is what got it wrong.
+A verdict that is merely near τ is a re-registration question about τ, not
+evidence against the proxy, and must not be used to trigger this.
+
+That pocket becomes the fixture, and the skeleton test then runs against a
+failure that exists rather than one we imagined.
+
 ## Branch 1a (shell repair) — PARKED with an evidence trigger
 
 Not scheduled. Its candidates (`dxffix`, `snap-repair`, `l5in`, `iieta`) repair
