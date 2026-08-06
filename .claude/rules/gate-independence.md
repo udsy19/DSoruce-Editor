@@ -391,11 +391,56 @@ most valuable line the round produces.
 
 **Family.** This joins *a check whose subject moved out from under it* — the
 vacuous residual filter, and a parity guard that crashed for two months while
-listed as passing. They are not the same defect (one is a guard that lost its
-grip; this is a guard that was never attached) but they are one family:
-**green boards that do not guard what they claim.** The unified question is the
+listed as passing — and *a known hazard patched at one call site*: the wizard's
+lost-update race carried a comment NAMING the hazard beside a local mitigation
+that fixed the instance and left the class live, so the same race kept eating
+uploaded floor plates on every path nobody had patched. Four sightings, three
+mechanisms (a guard that lost its grip; a guard never attached; a hazard
+understood, localised, and left standing) but one family: **green boards that do
+not guard what they claim.**
+
+The tell for the third mechanism is textual, which makes it cheap to catch: **a
+comment that explains why a hazard cannot bite HERE is evidence the hazard is
+live somewhere else.** Grep for the shape — "would clobber", "must not fire
+during", "preserving X so Y doesn't" — and ask whether the fix is local or
+structural. The unified question is the
 same one this file opens with — what positive evidence establishes that this
 check would fail if the thing it checks were broken?
+
+## Evidence must prove it came from the build it claims
+
+**The surface: a screenshot, and the instrument that produced it.**
+
+Two incidents, one turn, both nearly shipped as fact.
+
+**Stale build.** An "after" screenshot was captured by navigating to the same
+URL+hash. That is not a reload — `CLAUDE.md` says so in as many words — so the
+page never re-fetched, the canvas still ran the previous build, and the pixel
+diff came back 0.22%: pure noise. The conclusion drawn from it, *"the feature is
+not drawing,"* happened to be true for an entirely different reason, which is the
+worst kind of near-miss: right answer, worthless evidence, and no way to tell
+from the artifact.
+
+**Unreproducible instrument.** The follow-up measurement mutated the live style
+object in-page and re-rendered, reading the difference. It returned 18, then 5,
+then 0 across three runs of the same experiment — one of them taken while the dev
+server was dying. The mutation never reached the renderer at all. **Three
+contradictory readings from one instrument is a finding about the instrument, not
+a range to average.** The number finally trusted (16/255) came from differencing
+two static files that differed only in the feature under test.
+
+**The rule.**
+- Any capture cited as evidence asserts its own provenance FIRST: force
+  `location.reload()` unconditionally, then read a known token out of the served
+  module (a constant you just changed) and abort if it does not match. Cheap,
+  and it kills the goto-is-not-reload class rather than the instance.
+- Prefer **differencing two artifacts that differ only in the thing measured**
+  over sampling one artifact and reasoning about which pixels belong to what. A
+  window inside a shape contains label glyphs, outlines and antialiasing tails
+  that no threshold cleanly separates; a difference contains only the change.
+- If the same measurement gives different answers on repeat runs, stop measuring
+  and fix the instrument. Report the spread — it is the most useful thing you
+  learned.
 
 ## Reporting convention: scope every negative claim
 

@@ -141,7 +141,16 @@ scripts/pixdiff.py before.png after.png [diff.png]   # "nothing changed" is a me
 - **Bind your dev server to its own port.** Never reuse 5173 — parallel worktrees hold it, and a
   `vite --strictPort` from another branch answers normally while serving someone else's code.
 - **Reload is not `goto`.** After a crash (WebGL especially) navigating to the same URL+hash does not
-  reload; force `location.reload()`.
+  reload; force `location.reload()`. **Any capture you will cite as evidence must prove its own
+  provenance first:** reload unconditionally, then read a token out of the served module (a constant
+  you just changed) and abort if it does not match. A screenshot from a stale build is
+  indistinguishable from a screenshot of a broken feature — measured, 0.22% of pure noise reported as
+  "the feature is not drawing."
+- **Measure by DIFFERENCING two artifacts that differ only in the thing under test**, not by sampling
+  one and reasoning about which pixels belong to what: a window inside a shape holds label glyphs,
+  outlines and antialiasing tails that no threshold separates cleanly. And if a measurement gives
+  different answers on repeat runs (18, then 5, then 0 — an in-page harness that never reached the
+  renderer), the instrument is the finding; fix it before quoting any of its numbers.
 - **Grep the served module for an identifier, never comment text** — esbuild strips comments in dev.
 - **Verify through the app's own module graph**, not a hand-rolled `import()` of the same file — a
   second, uninitialised copy of the wasm module throws and looks exactly like a broken export.
