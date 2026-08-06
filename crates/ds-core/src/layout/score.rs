@@ -66,6 +66,21 @@ pub struct LayoutScore {
     /// `Unassigned` share of the plate. Surfaced so the autonomous loop can say
     /// WHICH term cost a candidate its rank, rather than only that it lost.
     pub unassigned_penalty: f64,
+    /// Did `generate` actually produce a plan?
+    ///
+    /// False when nothing was placed at all — no desks, no rooms, no zones.
+    /// That is a FAILED generation, not a low-scoring one, and it must be
+    /// distinguishable by the caller without inspecting document state.
+    ///
+    /// It exists because several sub-scores are computed over populations that
+    /// are empty in exactly that case, and an empty population has no
+    /// violations: a plan containing nothing scored `adjacency` 100,
+    /// `daylight` 100 and `entry_adjacency` 100, for a `total` of 38.7 — and an
+    /// empty 78 m² plate scored 90.5 on circulation, HIGHER than a populated
+    /// 930 m² plate with 104 real desks and real corridors. Emptiness was being
+    /// scored as perfection, and the wizard then offered the user three scored
+    /// candidates for a document with nothing in it.
+    pub feasible: bool,
 }
 
 // ---- M5: professional scoring (spec §5) ----
@@ -414,6 +429,30 @@ pub fn score(doc: &Document, program: &Program) -> LayoutScore {
         - unassigned_penalty)
         .clamp(0.0, 100.0);
 
+    // Nothing placed at all → a failed generation. Every sub-score above that
+    // divides by an empty population returned its maximum, so report the
+    // failure instead of a flattering blend of vacuous perfect scores. The
+    // three affected sub-scores are zeroed rather than left at 100 so a caller
+    // reading them individually cannot be misled either.
+    //
+    // Conditioned on document state, not on a generator flag: a flag can be
+    // dropped, and an empty document cannot lie about being empty.
+    let feasible = placed_desks > 0 || !doc.zones.is_empty() || !doc.components.is_empty();
+    if !feasible {
+        return LayoutScore {
+            capacity: 0.0,
+            adjacency: 0.0,
+            circulation,
+            density: 0.0,
+            program_fit: 0.0,
+            daylight: 0.0,
+            entry_adjacency: 0.0,
+            total: 0.0,
+            placed_desks,
+            feasible,
+        };
+    }
+
     LayoutScore {
         capacity,
         adjacency,
@@ -425,5 +464,6 @@ pub fn score(doc: &Document, program: &Program) -> LayoutScore {
         total,
         placed_desks,
         unassigned_penalty,
+        feasible,
     }
 }

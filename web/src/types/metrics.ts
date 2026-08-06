@@ -53,6 +53,22 @@ export interface LayoutScore {
   entry_adjacency: number
   total: number
   placed_desks: number
+  /**
+   * Did `generate` actually produce a plan? False when nothing was placed at
+   * all — a FAILED generation, not a low-scoring one.
+   *
+   * Never present a candidate, a score or a priced deliverable for an
+   * infeasible result. Several sub-scores divide by populations that are empty
+   * in exactly that case, so before this existed an empty plan reported
+   * adjacency/daylight/entry_adjacency of 100 for a total of 38.7, and the
+   * wizard offered three scored candidates for a document containing nothing
+   * (cad-validation/findings/F4-empty-plan-scored-as-success.md).
+   *
+   * Optional so a score decoded from an older persisted plan still type-checks;
+   * treat `undefined` as feasible, since pre-existing saved plans were only
+   * ever stored after a successful generate.
+   */
+  feasible?: boolean
 }
 export interface CirculationScore {
   score: number

@@ -202,7 +202,9 @@ export function SpaceStep({
         // Shared with GenerateStep — see `shell/resume.ts` for why every step
         // that touches the plate has to go through one function.
         resumeDrawing(controller.current, rec)
-        readyRef.current?.(true)
+        // Same gate as a fresh upload: a resumed draft whose drawing yields no
+        // plate is no more complete than one that never traced.
+        readyRef.current?.(!!derivePlate(d, rec?.draft?.areaPolygon ?? null, rec?.draft?.heal?.on ?? true))
       }
       if (rec?.draft?.areaPolygon) setAreaPolygon(rec.draft.areaPolygon)
       if (rec?.draft?.markers) setMarkers(rec.draft.markers)
@@ -474,7 +476,8 @@ export function SpaceStep({
       setActiveTool('none')
       proposePlate(d)
       // Fresh upload → no sub-area yet, so the plate is the whole-floor hull.
-      const r = computeReadouts(d, derivePlate(d, null, healOn))
+      const plate = derivePlate(d, null, healOn)
+      const r = computeReadouts(d, plate)
       // Also drop any §3.5 anchor pins — they were pinned to the OLD plate.
       await updateDraft(projectId, {
         drawing: d,
@@ -484,7 +487,19 @@ export function SpaceStep({
         anchors: [],
       })
       hydratedRef.current = true
-      readyRef.current?.(true)
+      // No plate means there is nothing for the generator to build inside, so
+      // this step is NOT complete — the readouts already say "no plate traced".
+      // Previously readiness was signalled on "a file was uploaded" alone, and
+      // the wizard walked from here to "Pick a test-fit · 3 alternatives ·
+      // best 41/100" with three blank thumbnails, then on to the priced report
+      // (cad-validation/findings/F9-wizard-gating.md).
+      if (!plate) {
+        setErr(
+          'No floor plate could be traced from this drawing, so there is nothing to fit into. ' +
+            'Try “As drawn” instead of “Heal gaps”, select an area by hand, or upload a plan that includes the building shell.',
+        )
+      }
+      readyRef.current?.(!!plate)
       setBusy(false)
     })()
   }
@@ -811,14 +826,26 @@ export function SpaceStep({
               </div>
             </div>
 
+            {/* Coverage is the fraction of the drawing's furniture that falls
+                inside the traced boundary — evidence the boundary is right. It
+                defaults to 1 when the drawing has NO furniture, which is a
+                sensible internal default (the plate ladder needs a sortable
+                number) but a vacuous claim to print: "100% furniture coverage"
+                appeared directly beneath "COMPONENTS 0", corroborating a
+                boundary that in one corpus file was a triangle missing the plan
+                entirely. With nothing to check against, say that instead — it
+                is both honest and more useful, because it tells the user the
+                boundary is unverified and why.
+                See cad-validation/findings/F8-vacuous-coverage-claim.md. */}
             <p className="space-caveat">
               Counts are exact. The boundary and room labels are best-effort where the walls don't
               fully close
               {readouts.plateMethod ? ` (traced by ${readouts.plateMethod}` : ''}
-              {readouts.plateMethod && readouts.plateCoverage != null
+              {readouts.plateMethod && readouts.plateCoverage != null &&
+                readouts.bom.reduce((s, g) => s + g.count, 0) > 0
                 ? `, ${Math.round(readouts.plateCoverage * 100)}% furniture coverage).`
                 : readouts.plateMethod
-                  ? ').'
+                  ? '; this drawing has no furniture to check the boundary against).'
                   : '.'}
             </p>
 

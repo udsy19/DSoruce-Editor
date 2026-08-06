@@ -4905,3 +4905,55 @@ fn compactness_measures_shape_not_tracing_resolution() {
          reproduces the confound it was built to guard against"
     );
 }
+
+/// A generation that places NOTHING is a failure, not a low score.
+///
+/// Written against the property, not the fix: several sub-scores divide by a
+/// population that is empty in exactly this case, and an empty population has
+/// no violations. Before this was closed, a plan containing nothing scored
+/// adjacency 100, daylight 100 and entry_adjacency 100 for a total of 38.7 —
+/// and the wizard offered the user three scored candidates for an empty
+/// document (cad-validation/findings/F4-empty-plan-scored-as-success.md).
+///
+/// The ordering assertion is the one that catches the inversion: an EMPTY plate
+/// must score strictly below a populated one on every headline number. A
+/// threshold on the absolute value would not — 38.7 looks like a bad score
+/// rather than a vacuous one.
+#[test]
+fn an_empty_plan_is_infeasible_and_never_outscores_a_real_one() {
+    let program = Program::default();
+
+    // A plate too small for the program to place anything into.
+    let mut empty = room(2.0, 1.5);
+    generate(&mut empty, &program, 1, false);
+    let empty_score = score(&empty, &program);
+
+    assert_eq!(empty_score.placed_desks, 0, "fixture must actually place nothing");
+    assert!(empty.components.is_empty(), "fixture must actually place nothing");
+    assert!(!empty_score.feasible, "a plan with nothing in it must report infeasible");
+
+    // The vacuous sub-scores must not read as perfect.
+    for (name, v) in [
+        ("adjacency", empty_score.adjacency),
+        ("daylight", empty_score.daylight),
+        ("entry_adjacency", empty_score.entry_adjacency),
+        ("capacity", empty_score.capacity),
+        ("program_fit", empty_score.program_fit),
+    ] {
+        assert!(v < 1.0, "empty plan scored {v} on {name}; an empty population has no violations, not perfection");
+    }
+    assert_eq!(empty_score.total, 0.0, "an empty plan must not carry a headline score");
+
+    // A real plan on the same code path must still be feasible and score.
+    let mut real = room(20.0, 14.0);
+    generate(&mut real, &program, 1, false);
+    let real_score = score(&real, &program);
+    assert!(real_score.feasible, "a populated plan must report feasible");
+    assert!(real_score.placed_desks > 0);
+    assert!(
+        real_score.total > empty_score.total,
+        "a populated plan ({}) must outscore an empty one ({})",
+        real_score.total,
+        empty_score.total
+    );
+}
