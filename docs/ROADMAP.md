@@ -968,10 +968,15 @@ Making negative space read as floor, not as "Circulation" (`docs/audits/circulat
   unchanged, published totals byte-exact.
   *Note: `efficiency_pct` did NOT move — circulation was already excluded from usable, so efficiency
   never measured waste. Flagged in the audit, not fixed here.*
-- [ ] **Phase 1.5 — `isGroundZone`/`isProgramZone` predicate + ~35-site sweep** (approved pre-commit
-  ahead of Phase 2): `!== 'Circulation'` used to mean "is a real room" must exclude `Unassigned`, or a
-  dead pocket acquires a finish-schedule row, a room name and an AI room option.
+- [x] **Phase 1.5 — `isGroundZone`/`isProgramZone` predicate + ~30-site sweep.** `!== 'Circulation'`
+  meant "is a real room" in ~30 tsc-invisible string compares; all routed through the predicate
+  (intentParser 5, qtoWorkbook 3, planGraphic 3, finishSchedule 2, sheetSet 2, report,
+  servicesSheets, roomThumbs, roomNaming, takeoff, walkthrough, stats). Plus `unassigned_pct` as
+  waste's own name — `efficiency_pct` stays the untouched BCO/RICS/JLL ratio so the qbiq parity
+  benchmark survives.
 - [ ] **Phase 2 — renderer figure/ground sweep** (2.1–2.8; 2.6 partially landed early, see audit).
+  **Blocked past 2.2 on the zone-847 ruling** — the per-pocket table is in the audit; the open
+  question is whether a second, shape-based discriminant is pre-registered before 2.3.
 - [ ] **Phase 3 — sheet furniture + metrics card.** Promotion of what `export/report.ts` already has.
 - [ ] **Phase 4 — gates C1–C10** as their own board folded into `run-all.sh` as G13, with its own
   lying gate (the `GSELF` pattern).
