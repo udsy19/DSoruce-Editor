@@ -86,6 +86,18 @@ assert.ok(p.headcount >= 80 && p.headcount <= 96, `headcount ${p.headcount} off 
 // (c) Desks scale to FILL the plate (open share of headcount, ~75), the majority
 // use — never the sparse ~14 the old drawing carried.
 assert.ok(p.desks >= 70, `desks ${p.desks} do not scale to fill the plate`)
+// CEILING, added 2026-08-06. The floor alone is half a guard: it catches
+// OPEN_SHARE drifting down and waves through drift upward, so a value of 1.0 —
+// "every seat is an open desk", i.e. no enclosed offices at all — would pass a
+// test whose whole job is to keep this side in step with the core. The rule the
+// ceiling encodes is the product's, not the constant's: a professional mix
+// always puts SOME of the headcount in enclosed rooms, so open desks stay
+// meaningfully below headcount.
+assert.ok(
+  p.desks <= p.headcount * 0.95,
+  `desks ${p.desks} vs headcount ${p.headcount} — open share is implausibly high; ` +
+    'a mix with no enclosed seats is not a professional program',
+)
 assert.ok(p.desks > p.meeting_rooms * 5, 'the program must be open-desk-dominant')
 
 // (d) A genuinely denser imported plan raises desks (floor), never lowers them.
