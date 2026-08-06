@@ -9,7 +9,7 @@ plan in [`SOLUTIONS.md`](SOLUTIONS.md). Updated 2026-08-06, branch `testing-edge
 |---|---|---|
 | Blocked at conversion (crash / truncation) | 3 | **0** |
 | No floor plate derived | 6 | **1** (`cad33`) |
-| Places furniture end-to-end | **2 / 24** | **20 / 24** |
+| Places furniture end-to-end | **2 / 24** | **21 / 24** |
 | **Scale independently verified physical** | 2 / 24 | **17 / 24** |
 | Wrongly-scaled imports that *say so* | 0 / 7 | **7 / 7** |
 | Failed imports presented as scored candidates | 13 | **0** |
@@ -41,6 +41,7 @@ is deliberately stricter than the end-to-end one.
 | `c2ff4ba` population support scoring | [F1](findings/F1-unit-scale-trusted-blindly.md) | 15 → 20; hardware arcs can no longer outvote door leaves |
 | `6faced2` empty plans are failures | [F4](findings/F4-empty-plan-scored-as-success.md), [F8](findings/F8-vacuous-coverage-claim.md), [F9](findings/F9-wizard-gating.md) | `LayoutScore.feasible`; infeasible candidates never rendered; Space step gates on a **plate**, not on a file arriving |
 | `5f90cca` scale confidence | [F1](findings/F1-unit-scale-trusted-blindly.md) | every wrongly-scaled import now says so — 25/25 agreement with the independent gate |
+| `7602805` furniture-footprint anchor | [F1](findings/F1-unit-scale-trusted-blindly.md) | 20 → 21; `CwSp_AA` 6.9 → 4 595 m² (a 4.9 × 1.8 m "office" with 1 375 walls), `AH` 885 → 9 530 m² |
 
 Each carries its gate. `units.test.mjs` holds the independence demonstration the rules require —
 `$INSUNITS` rewritten to every legal code, to garbage, and deleted, all yield byte-identical
@@ -51,11 +52,19 @@ not have caught the inversion — 38.7 reads as a bad score rather than a vacuou
 
 ## Not yet fixed
 
-### 1. Four files still place nothing
+### 1. Three files still place nothing
+
+`BUSNSS-Offcs-CwSp_AA.dwg` — the one file assessed here as a real bug — is
+**fixed** by the furniture-footprint anchor (`7602805`). It had no door swings at
+all, and the wall band is wide enough (a factor of 12) that inches satisfied 70%
+of its 845 wall gaps; the header then won the tie. Its 105 placed blocks break
+it: 0% human-scale at inches, 100% at metres. It now traces 4 595 m² and places a
+full program. Its scale is still flagged `low` — the wall pairs only reach 18%
+physical — so the size is plausible but unconfirmed, and the UI says so.
+
 
 | File | Plate | Assessment |
 |---|---|---|
-| `BUSNSS-Offcs-CwSp_AA.dwg` | 6.9 m² | **real bug.** Scale wrong: 70% of 845 wall gaps read as physical at inches, but a 4.9 × 1.8 m "office" with 1 375 wall entities is not one. The wall anchor is satisfiable at more than one scale and the header wins ties. |
 | `BUSNSS-Offcs-Trdtnl_AL.dwg` | 21.5 m² | **unverifiable.** No door arcs, no wall-category entities, and the file has *no layer table at all* — there is nothing to anchor to. Correctly flagged `low` confidence. |
 | `BUSNSS-Offcs-Trdtnl_AM.dwg` | 20.1 m² | **probably correct.** The plate is physical (52% of 446 wall gaps); 20 m² genuinely will not hold a 20-desk program. A clean 5 × 5 m rectangle places 1 desk and a 9.5 × 2.4 m one places 0, so this is near the true floor. |
 | `Office-furniture-blocks.zip/cad33.dwg` | none | **out of scope.** A furniture block library, not a floor plan. Refusing is right; it now says so and blocks the wizard rather than proceeding. |

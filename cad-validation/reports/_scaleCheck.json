@@ -76,18 +76,18 @@
   },
   {
     "file": "BUSNSS-Offcs-CwSp_AA.dwg",
-    "units": "in",
-    "unitsSource": "header",
+    "units": "m",
+    "unitsSource": "furniture-anchor",
     "spanM": [
-      4.935914587802245,
-      1.8028819304283523
+      194.32734597646777,
+      70.97960356017131
     ],
     "doorSamples": 0,
     "doorFrac": null,
     "wallSamples": 845,
-    "wallFrac": 0.7041420118343196,
-    "plateM2": 6.9375,
-    "verdict": "PHYSICAL"
+    "wallFrac": 0.17751479289940827,
+    "plateM2": 4594.906250011176,
+    "verdict": "NOT PHYSICAL"
   },
   {
     "file": "BUSNSS-Offcs-Trdtnl_AA.dwg",
@@ -136,17 +136,17 @@
   },
   {
     "file": "BUSNSS-Offcs-Trdtnl_AE.dwg",
-    "units": "ft",
-    "unitsSource": "wall-anchor",
+    "units": "m",
+    "unitsSource": "furniture-anchor",
     "spanM": [
-      15.240000000000009,
-      24.709017560856957
+      50.00000000000003,
+      81.06633058023937
     ],
     "doorSamples": 0,
     "doorFrac": null,
     "wallSamples": 140,
-    "wallFrac": 0.4357142857142857,
-    "plateM2": 106.93750000000003,
+    "wallFrac": 0.37142857142857144,
+    "plateM2": 1350.0000000000007,
     "verdict": "NOT PHYSICAL"
   },
   {
@@ -181,18 +181,18 @@
   },
   {
     "file": "BUSNSS-Offcs-Trdtnl_AH.dwg",
-    "units": "ft",
-    "unitsSource": "door-anchor",
+    "units": "m",
+    "unitsSource": "furniture-anchor",
     "spanM": [
-      51.804021855775616,
-      26.58564689472232
+      169.96070162656042,
+      87.22325096693673
     ],
     "doorSamples": 15,
-    "doorFrac": 0.2,
-    "wallSamples": 383,
-    "wallFrac": 0.38642297650130547,
-    "plateM2": 885.3693422750596,
-    "verdict": "NOT PHYSICAL"
+    "doorFrac": 0,
+    "wallSamples": 384,
+    "wallFrac": 0.5442708333333334,
+    "plateM2": 9530.036285949947,
+    "verdict": "PHYSICAL"
   },
   {
     "file": "BUSNSS-Offcs-Trdtnl_AI.dwg",
@@ -256,17 +256,17 @@
   },
   {
     "file": "call-center-offices.dwg",
-    "units": "ft",
-    "unitsSource": "wall-anchor",
+    "units": "m",
+    "unitsSource": "furniture-anchor",
     "spanM": [
-      33.85410051300872,
-      3.261360000000001
+      111.06988357286323,
+      10.700000000000003
     ],
     "doorSamples": 0,
     "doorFrac": null,
     "wallSamples": 19,
     "wallFrac": 1,
-    "plateM2": 62.922827433846436,
+    "plateM2": 677.2956776640078,
     "verdict": "PHYSICAL"
   },
   {
@@ -302,7 +302,7 @@
   {
     "file": "Two-story-house-410202.dwg",
     "units": "m",
-    "unitsSource": "wall-anchor",
+    "unitsSource": "furniture-anchor",
     "spanM": [
       28.6553038479546,
       15.413258342772167
@@ -332,7 +332,7 @@
   {
     "file": "Office-furniture-blocks.zip/cad33.dwg",
     "units": "mm",
-    "unitsSource": "extent-anchor",
+    "unitsSource": "furniture-anchor",
     "spanM": [
       3.829556972794113,
       0.01715287475761862
@@ -347,7 +347,7 @@
   {
     "file": "Various-furniture-blocks.zip/muebles varios.dwg",
     "units": "m",
-    "unitsSource": "wall-anchor",
+    "unitsSource": "furniture-anchor",
     "spanM": [
       68.00704775472073,
       28.286315714266806
