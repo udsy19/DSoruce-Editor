@@ -254,13 +254,35 @@ rendered there, not only the subject's), and what positive evidence establishes
 they did not come from something other than the thing being checked (none —
 attribution is assumed from position).
 
-**The falsification, and it is cheap.** Render the pack twice, once with implied
-seating on and once off (`implySeats: false` on the print path), and diff the
-per-instance `ink / outline` ratios. Any chair whose ratio drops below the floor
+**The falsification: RUN, and the result is recorded below.** Render the pack
+twice, once with implied seating on and once off (`implySeats: false` on the
+print path), and diff the per-instance `ink / outline` ratios. Any chair whose ratio drops below the floor
 when the implied seats disappear was being carried by ink that was never its
 own. Fixing the double-draw is necessary but not sufficient: the attribution
 weakness survives it, because any future glyph whose decoration overlaps a
 billed footprint reintroduces it.
+
+**RESULT (three-branch merge, seeded pack, 189 instances / 18 rooms).** Run in a
+disposable worktree, flipping `implySeats` in `printPlan.ts` — NOT in
+`planGraphic.ts`, whose own flag governs a different draw call. The first attempt
+flipped the wrong one and produced byte-identical statistics; that identity was
+the signal the wrong flag had been flipped, not evidence of independence.
+
+| | min | p25 | median |
+|---|---|---|---|
+| shipped (`implySeats: false`) | 1.52 | 1.94 | 2.18 |
+| implied seating ON | 1.52 | 2.18 | 2.31 |
+
+The borrowing effect is **real and measurable** — implied rings lift the quartile
+by 0.24 and the median by 0.13, so ink that is not a component's own does reach
+its footprint. But **no billed instance depends on it**: with that ink gone the
+worst instance still scores 1.52 against a 0.70 floor, 2.2x clear. The concern
+this section raises is therefore not live on this pack.
+
+The attribution weakness itself SURVIVES that result and is unchanged: nothing
+attributes ink to the glyph that drew it, so any future decoration overlapping a
+billed footprint reintroduces it, and over-draw (ink nobody bills) is still
+invisible to a one-sided floor.
 
 **The fix shape**, when it is addressed: attribute ink to the glyph that drew it
 rather than to the footprint it lands in — draw each billed instance to an
