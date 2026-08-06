@@ -3881,6 +3881,14 @@ fn golden_fingerprint(doc: &Document, program: &Program) -> String {
 /// (`support_spaces = false`), and an EXPLICIT `rooms` program, over a plain
 /// rectangle, the L plate and the user's real multi-wing plate.
 ///
+/// PROVENANCE. Last re-captured for the circulation workstream: Phase 1b (the
+/// shape conjunct). Two of the ten cases moved; component, wall, zone and desk
+/// counts were identical in all ten, and only `total` and the digest changed —
+/// the classifier re-types leftover floor without moving geometry. The digest
+/// now also pins `Zone.origin` and the wasted-floor penalty, so a silent
+/// re-flagging of drawn-vs-residual trips it. Re-captured deliberately, never
+/// relaxed (CLAUDE.md).
+///
 /// The expected strings were captured from the generator as it stood; they are
 /// the behavioural contract, NOT a hand-derived truth. Regenerating them is
 /// only legitimate when a change is *intended* to move geometry — a refactor

@@ -593,3 +593,33 @@ passing count in both boards. Packet at
 `docs/evidence/circulation-audit/G10-walkthrough.md` with the verdict line blank —
 an agent filling it in would be producing the artifact whose whole worth is that
 a human produced it.
+
+## E1/E2 — closeout · **DONE**
+
+**E1** — the quantitative restatement is the table already written above
+(§ *E1 — final quantitative restatement*), verified current: workstations **101**,
+`efficiency_pct` **61.63** (invariant), published fold **295.89 m²** byte-exact,
+candidate ordering **A > C > B**, tags **24 → 7** with ground **17 → 0**, card
+circulation grey **1 226 px → 0**.
+
+**E2** — `golden_generate_output_is_frozen` passes and now carries a provenance
+stamp naming its last re-capture (Phase 1b, the shape conjunct), what moved (two
+of ten cases; only `total` and the digest — geometry identical in all ten), and
+what the digest additionally pins (`Zone.origin`, the wasted-floor penalty).
+
+## F2–F4 — handoff · **PARTIAL, stated**
+
+- **F4 — the G10 packet: DONE.** `docs/evidence/circulation-audit/G10-walkthrough.md`
+  — setup, a ten-step script, the question, seven sub-questions, and a blank
+  verdict block. The "what changed" context is behind a fold so it cannot
+  contaminate the answers. This is the artifact the workstream ends on.
+- **F3 — discovered-not-fixed:** the pack-dock overlapping the wizard's primary
+  CTA (`elementFromPoint` at the Next button's centre returns `pack-btn`;
+  measured rects in the Phase 0 audit §A). Filed there with repro evidence, not
+  fixed — out of scope, and the boundary-discard defect that shared its filing
+  was fixed instead (`8f06e83`) once it started costing verification time.
+- **F2 — the before/after gallery: NOT BUILT.** Phase 0 evidence and current
+  evidence both exist in `docs/evidence/circulation-audit/`, but not paired at
+  matched viewports; the 3D capture in particular came back 1200×744 against
+  Phase 0's 1600×1000. Assembling it is mechanical (re-capture five surfaces at
+  one viewport, pair them) and is the one queue item left undone.
