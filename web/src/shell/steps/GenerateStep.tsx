@@ -20,6 +20,7 @@ import type { EditorController } from '../../App'
 import type { Candidate, GenResult } from '../../types/program'
 import { STRATEGY_LABEL, STRATEGY_BLURB } from '../../editor/EditorCanvas'
 import { buildReportModel, computeWinners, type AltKpis } from '../../export/report'
+import { MetricsCard } from '../../ui/MetricsCard'
 import { evaluateCandidates, evaluatorAvailable, type SoftVerdict } from '../../ai/evaluator'
 import { getProject, updateDraft, updateProject, type ProjectRecord } from '../../persist/projects'
 import { defaultSpec, programSpecToProgram } from '../../program/spec'
@@ -325,6 +326,11 @@ export function GenerateStep({
                     ))}
                   </div>
                 )}
+
+                {/* The qbiq left summary strip for the ACTIVE alternative.
+                    `batch` is the whole candidate set, so the average tick is
+                    recomputed per generation and never a constant. */}
+                {active && k && <MetricsCard kpis={k} batch={kpis} compact />}
 
                 <dl className="generate-alt-metrics">
                   <div>

@@ -5803,3 +5803,79 @@ kbd {
   color: var(--accent);
   font-weight: 600;
 }
+
+/* ---------------------------------------------------------------------------
+   METRICS CARD — the qbiq left summary strip, on screen (ui/MetricsCard.tsx).
+   Figures then three benchmarked ratio bars. The bar's fill width and the
+   average tick's position arrive as the custom properties --v and --at; every
+   other appearance decision lives here.
+   --------------------------------------------------------------------------- */
+.metrics-card {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 16px;
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.metrics-card.is-compact { padding: 12px; gap: 12px; }
+.metrics-card-figures { display: flex; flex-direction: column; gap: 8px; margin: 0; }
+.metrics-card-figures > div { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.metrics-card-figures dt { color: var(--muted); font-size: 12px; }
+.metrics-card-figures dd { margin: 0; font-size: 14px; font-weight: 600; }
+.metrics-card-bars { display: flex; flex-direction: column; gap: 10px; }
+.metrics-bar-head { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+.metrics-bar-track { position: relative; height: 6px; border-radius: 3px; background: var(--hairline); overflow: visible; }
+.metrics-bar-fill { width: var(--v, 0%); height: 100%; border-radius: 3px; background: var(--accent); }
+/* The average tick reads as a benchmark mark, not as part of the fill: it sits
+   ABOVE the track and is deliberately neutral ink, so "where I am" (accent) and
+   "where the batch averages" (ink) never blur into one bar. */
+.metrics-bar-tick {
+  position: absolute;
+  top: -3px;
+  left: var(--at, 0%);
+  width: 2px;
+  height: 12px;
+  border-radius: 1px;
+  background: var(--ink);
+  transform: translateX(-1px);
+}
+
+/* ---------------------------------------------------------------------------
+   METRICS CARD — the qbiq left summary strip, on screen (ui/MetricsCard.tsx).
+   Figures, then three benchmarked ratio bars. The bar fill width and the
+   average tick position arrive as the custom properties --v and --at; every
+   other appearance decision lives here, per the standing rule.
+   --------------------------------------------------------------------------- */
+.metrics-card {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 16px;
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.metrics-card.is-compact { padding: 12px; gap: 12px; }
+.metrics-card-figures { display: flex; flex-direction: column; gap: 8px; margin: 0; }
+.metrics-card-figures > div { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.metrics-card-figures dt { color: var(--muted); font-size: 12px; }
+.metrics-card-figures dd { margin: 0; font-size: 14px; font-weight: 600; }
+.metrics-card-bars { display: flex; flex-direction: column; gap: 10px; }
+.metrics-bar-head { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+.metrics-bar-track { position: relative; height: 6px; border-radius: 3px; background: var(--hairline); }
+.metrics-bar-fill { width: var(--v, 0%); height: 100%; border-radius: 3px; background: var(--accent); }
+/* The average tick reads as a BENCHMARK MARK, not as part of the fill: it sits
+   above the track in neutral ink, so "where this plan is" (accent) and "where
+   the batch averages" (ink) can never blur into one bar. */
+.metrics-bar-tick {
+  position: absolute;
+  top: -3px;
+  left: var(--at, 0%);
+  width: 2px;
+  height: 12px;
+  border-radius: 1px;
+  background: var(--ink);
+  transform: translateX(-1px);
+}

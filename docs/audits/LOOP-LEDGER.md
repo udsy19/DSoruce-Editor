@@ -524,3 +524,34 @@ guard: `coreParity` now reads `DAYLIGHT_RADIUS_M` from `kpis.ts`, and
 `legendParity` reads `LEGEND_ORDER` from `kpis.ts`. The guard that did NOT follow
 `OPEN_SHARE` crashed for two months while listed as passing — this is that lesson
 applied before the fact rather than after.
+
+## C2 — on-screen metrics card · **DONE** · C3 — **already satisfied**
+
+`ui/MetricsCard.tsx`: net area · seats · open space · offices · conf rooms ·
+density, then Daylight / Privacy / Efficiency as ratio bars with a **per-batch
+average tick**. Every value is read from `AltKpis` — the module C1 extracted, the
+same one the PDF report consumes. Nothing in the card derives a metric.
+
+`batchMean` recomputes per generation and returns `null` for a batch of one,
+because the mean of one plan is that plan and a tick there would be theatre.
+
+Dynamic values ride CSS custom properties (`--v`, `--at`) rather than an inline
+style dictionary, so appearance stays in `styles.css` per the standing rule and
+only the datum crosses the boundary. The tick is neutral ink above the track, not
+part of the accent fill: "where this plan is" and "where the batch averages"
+must not blur into one bar.
+
+| sabotage | result |
+|---|---|
+| the tick becomes a constant | **RED** |
+| the card imports `Editor` to derive a metric | **RED** — "must FORMAT AltKpis" |
+
+**C3 needed no work.** The candidate cards already render the headline trio
+(workstations · m²/person · efficiency) from the same shared `AltKpis`, in the
+same grammar. Adding a second trio would have been the duplication this phase
+exists to remove — recorded rather than churned. (The brief says "seats"; the
+card shows *workstations*, which is the sharper number for comparing desk counts
+and is pre-existing. Flagged, not changed.)
+
+**Not done in C2:** the presentation-side-panel mount. The card is one component
+and mounting it there is a second call site, not new logic.
