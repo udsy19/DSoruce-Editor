@@ -709,6 +709,16 @@ export function drawComponent(v: PaintView, c: DocComponent, selected: boolean) 
       rotation: c.rotation,
       mirror: c.mirror,
       seats: c.seats ?? seatsForSize(c.category, c.w, c.h),
+      // NO IMPLIED SEATING ON THE CANVAS EITHER (R6, extended to this consumer).
+      // The generator emits real `Chair` components now, and this loop draws
+      // every one of them as its own glyph. Leaving the flag at its default put
+      // a second, implied chair under each desk and a full implied ring around
+      // each table — 63 desks drew 126 chairs, and a 10-seat table drew its ring
+      // on top of the 8 chairs that actually fit. R6 ruled the print path with
+      // exactly this reasoning; the canvas is the same consumer error, and the
+      // shared module keeps its default so symbols.test.mjs still pins that the
+      // glyph reads its seat count from the MODEL.
+      implySeats: false,
       selected,
     },
     {
