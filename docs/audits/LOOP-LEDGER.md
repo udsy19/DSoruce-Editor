@@ -294,3 +294,19 @@ real slowdown is the move this programme forbids.
 `ok`. It said FAILED, and the commit went in anyway. Both misses this loop have
 the same cause: **reading a summary line instead of an exit code.** Every
 verification step in the remainder of this loop checks `$?`.
+
+## C4 — daylight mirror registered in `coreParity` · **DONE**
+
+`score.rs`'s `DAYLIGHT_REACH_M` (5.0) and `report.ts`'s `DAYLIGHT_RADIUS_M` (5)
+both answer "is this desk daylit?". They must agree or the Rust sub-score the
+optimiser maximises and the KPI the client report prints describe different
+buildings. `score.rs` already carried the claim in prose; CLAUDE.md is explicit
+that **a `mirrors X` comment is a claim to verify, not documentation** — and it
+had never been registered.
+
+Found in the Phase 0 audit as a live unpinned mirror. Now pinned.
+
+| sabotage | result |
+|---|---|
+| Rust 5.0 → 7.0 | **RED** — `rust: 7 / ts: 5` |
+| TS 5 → 9 | **RED** — `rust: 5 / ts: 9` |

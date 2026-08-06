@@ -98,6 +98,27 @@ console.log('core parity — TS mirrors of Rust values')
   check('HEAD_SEAT_MIN_M', rustConst(m, 'model.rs', 'HEAD_SEAT_MIN_M'), tsConst(s, 'symbols.ts', 'HEAD_SEAT_MIN_M'))
 }
 
+// --- 1b. Daylight reach: layout/score.rs ←→ export/report.ts -----------------
+//
+// Both sides answer "is this desk daylit?" and they must answer it the same way,
+// or the Rust sub-score the optimiser maximises and the KPI the client report
+// prints describe different buildings. `score.rs` already carries the claim in
+// prose — "matches the report's DAYLIGHT_RADIUS_M so the Rust sub-score and the
+// exported KPI agree on which desks see a window" — and CLAUDE.md is explicit
+// that **a `mirrors X` comment is a claim to verify, not documentation.**
+//
+// It was never registered here. Found during the Phase 0 audit as a live,
+// unpinned mirror; this closes it.
+{
+  const sc = rust('layout/score.rs')
+  const rp = ts('export/report.ts')
+  check(
+    'DAYLIGHT_REACH_M (score.rs) ←→ DAYLIGHT_RADIUS_M (report.ts)',
+    rustConst(sc, 'layout/score.rs', 'DAYLIGHT_REACH_M'),
+    tsConst(rp, 'export/report.ts', 'DAYLIGHT_RADIUS_M'),
+  )
+}
+
 // --- 2. SpaceKind: layout.rs ←→ the TS union + the AI tool enum ---------------
 // UNAVOIDABLE for the schema: the room kinds a model may propose have to be
 // literals inside the JSON schema it reads. A kind present in one list and not
