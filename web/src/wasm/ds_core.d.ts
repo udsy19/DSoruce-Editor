@@ -93,6 +93,10 @@ export class Editor {
      */
     density_score(): number;
     /**
+     * The fixture ids, in order, so a harness enumerates rather than hard-codes.
+     */
+    static fixture_ids(): any;
+    /**
      * Construct a fresh `Editor` from a `snapshot` (scratch-clone for previews).
      */
     static from_snapshot(snap: any): Editor;
@@ -110,6 +114,15 @@ export class Editor {
      * Score the current document against a `Program` without regenerating.
      */
     layout_score(program: any): any;
+    /**
+     * Load one of the frozen **edited-plan fixtures** (`"F1"`…`"F5"`) — see
+     * `src/fixtures.rs` for what each state is and why they exist.
+     *
+     * The browser harness and `cargo test` build these from the same code, so a
+     * capture and an assertion are looking at one document rather than two that
+     * were meant to match. Unknown name → an error, never a silent empty doc.
+     */
+    load_fixture(name: string): void;
     /**
      * Merge zones `a` and `b`; returns the resulting zone id (a clean rect union
      * reuses `a`'s id) or the shared group id (logical L-room) as a number.
@@ -343,10 +356,12 @@ export interface InitOutput {
     readonly editor_delete_selected: (a: number) => void;
     readonly editor_delete_zone: (a: number, b: number) => [number, number];
     readonly editor_density_score: (a: number) => number;
+    readonly editor_fixture_ids: () => [number, number, number];
     readonly editor_from_snapshot: (a: any) => [number, number, number];
     readonly editor_generate: (a: number, b: any, c: bigint, d: number) => [number, number, number];
     readonly editor_get_cad_json: (a: number) => [number, number];
     readonly editor_layout_score: (a: number, b: any) => [number, number, number];
+    readonly editor_load_fixture: (a: number, b: number, c: number) => [number, number];
     readonly editor_merge_zones: (a: number, b: number, c: number) => [number, number, number];
     readonly editor_metrics: (a: number) => [number, number, number];
     readonly editor_move_component: (a: number, b: number, c: number, d: number) => void;

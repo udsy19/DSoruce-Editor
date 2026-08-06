@@ -19,6 +19,65 @@ pub struct Anchor {
     pub y: f64,
 }
 
+/// Fraction of a plan's anchor points a wall-network face must contain before it
+/// may be called the floor plate.
+///
+/// **0.9, and the slack is for furniture, not for doubt.** Components are
+/// centre-referenced and sit hard against walls; a desk pushed to a facade or a
+/// door leaf swinging through a threshold can put a centre a few centimetres
+/// outside the centreline polygon, and a chair placed in a lobby recess likewise.
+/// Measured on the sample plate's generated plan: **253 of 254 anchors, 0.9961**
+/// — the one straggler is exactly that case, and the number is re-derived by
+/// `plate_containment_on_a_real_plan_is_not_near_the_threshold` rather than
+/// remembered here.
+///
+/// The failures this rejects are not near the line: a scratch loop inside the
+/// plan contains ~0, and a plate cut in half by a committed CAD line contains
+/// ~0.5. Nothing legitimate lives between 0.5 and 0.99, so the threshold is not
+/// a tuned parameter; it is a gap, and 0.9 sits in the middle of it.
+pub(crate) const PLATE_CONTAINMENT: f64 = 0.9;
+
+/// Below this many anchor points there is not enough plan to judge a face by.
+///
+/// A plate confirmed in the wizard has zero zones and zero components, and every
+/// import would fail a containment test against a plan that does not exist yet.
+/// Under this count the trace keeps its historical largest-wins behaviour, which
+/// is the honest reading when there is no evidence either way.
+pub(crate) const MIN_PLAN_ANCHORS: usize = 8;
+
+/// What the wall network could tell us about the floor plate.
+///
+/// The point of the type is that **"we don't know" is a value**. The old code
+/// had two outcomes — a polygon or a silent bounding-box fallback — so a
+/// document whose envelope had just been broken reported a confident number
+/// derived from the wrong loop. Callers that render to a user must branch on
+/// this; callers that need geometry may take `floor_area()`'s fallback and know
+/// what they are taking.
+#[derive(Clone, Debug)]
+pub(crate) enum PlateResolution {
+    /// A face of the wall network contains this plan: the floor plate.
+    Traced(Vec<crate::geometry::Point>),
+    /// The walls close nowhere — an open envelope. Historically the ordinary
+    /// case for a plate imported as loose segments, and the bounding box is a
+    /// reasonable stand-in.
+    Open,
+    /// The walls DO close, but no closed face contains the plan. Something the
+    /// user drew changed which loops exist, and the honest answer is that the
+    /// floor is no longer identifiable — not a number from the wrong loop.
+    Unresolved,
+}
+
+impl PlateResolution {
+    /// Wire tag for the frontend, so the panel can branch without re-deriving.
+    pub(crate) fn tag(&self) -> &'static str {
+        match self {
+            PlateResolution::Traced(_) => "traced",
+            PlateResolution::Open => "open",
+            PlateResolution::Unresolved => "unresolved",
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct Document {
     pub walls: Vec<Wall>,
@@ -204,20 +263,102 @@ impl Document {
         Some((min_x, min_y, max_x, max_y))
     }
 
-    /// The floor-plate polygon traced from the walls (largest closed loop), or
-    /// `None` when the walls don't close. Metrics clip zone areas against this
-    /// so a non-rectangular plate reports true areas, not its bounding box.
-    /// Generated partitions are excluded from the trace: the plate is the
+    /// The floor-plate polygon traced from the walls, or `None` when no face of
+    /// the wall network can be identified as the building envelope.
+    ///
+    /// **This used to be "the largest closed loop", and that was a defect.**
+    /// Largest-wins is right exactly while the envelope's own loop is closed;
+    /// one user gesture breaks that assumption. Draw a phone-booth outline while
+    /// the envelope is open — or commit a CAD line that snaps across the plate
+    /// and splits its face in two — and the largest surviving face is no longer
+    /// the building. A 930 m² floor reported **1 m²**, the panel divided by it,
+    /// and space efficiency read **1159%**. Nothing in `generate` was wrong; the
+    /// number had simply never been measured after an edit.
+    ///
+    /// So selection now asks the question largest-wins was standing in for:
+    /// *which face is the floor this plan sits on?* A candidate must **contain
+    /// the plan** — see [`PLATE_CONTAINMENT`]. A document with too little plan to
+    /// judge by (a plate just imported, before `generate`) has no evidence
+    /// either way and keeps largest-wins; a document with a plan and no face that
+    /// contains it is **unresolved**, which is a state the panel reports rather
+    /// than a number it invents.
+    ///
+    /// Generated partitions stay excluded from the trace: the plate is the
     /// building envelope, and re-tracing our own room shells would corrupt
     /// regeneration (see docs/design/testfit-pro-quality.md §2).
     pub(crate) fn plate_polygon(&self) -> Option<Vec<crate::geometry::Point>> {
+        match self.plate_resolution() {
+            PlateResolution::Traced(poly) => Some(poly),
+            _ => None,
+        }
+    }
+
+    /// Points the plate must contain to count as this plan's floor: every
+    /// component centre and every zone's representative point.
+    ///
+    /// Derived from the DOCUMENT, never from anything the plate trace produced —
+    /// the check would otherwise be asking the candidate to vouch for itself.
+    fn plan_anchors(&self) -> Vec<crate::geometry::Point> {
+        let mut pts: Vec<crate::geometry::Point> = self
+            .components
+            .iter()
+            .map(|c| crate::geometry::Point::new(c.x, c.y))
+            .collect();
+        for z in &self.zones {
+            match z.shape {
+                ZoneShape::Rect { x, y, .. } | ZoneShape::RectRing { x, y, .. } => {
+                    pts.push(crate::geometry::Point::new(x, y))
+                }
+                ZoneShape::Poly { pts: ref ring } => {
+                    if !ring.is_empty() {
+                        let n = ring.len() as f64;
+                        let (sx, sy) =
+                            ring.iter().fold((0.0, 0.0), |(ax, ay), p| (ax + p[0], ay + p[1]));
+                        pts.push(crate::geometry::Point::new(sx / n, sy / n));
+                    }
+                }
+            }
+        }
+        pts
+    }
+
+    /// `plan_anchors`, for the test that publishes the containment measurement.
+    #[cfg(test)]
+    pub(crate) fn plan_anchors_for_test(&self) -> Vec<crate::geometry::Point> {
+        self.plan_anchors()
+    }
+
+    /// Which face — if any — is this plan's floor, and how confident are we.
+    pub(crate) fn plate_resolution(&self) -> PlateResolution {
         let segs: Vec<_> = self
             .walls
             .iter()
             .filter(|w| !w.generated)
             .map(|w| (w.a, w.b))
             .collect();
-        crate::geometry::trace_floor_polygon(&segs, crate::geometry::LOOP_SNAP_TOL)
+        let faces =
+            crate::geometry::trace_floor_faces(&segs, crate::geometry::LOOP_SNAP_TOL);
+        if faces.is_empty() {
+            return PlateResolution::Open;
+        }
+        let anchors = self.plan_anchors();
+        // Too little plan to judge by. A plate confirmed in the wizard has zero
+        // zones and zero components, and demanding it contain a plan that does
+        // not exist yet would fail every import. Largest-wins is the honest
+        // reading when there is no evidence: `faces` is largest-first.
+        if anchors.len() < MIN_PLAN_ANCHORS {
+            return PlateResolution::Traced(faces.into_iter().next().unwrap());
+        }
+        for face in faces {
+            let inside = anchors
+                .iter()
+                .filter(|p| crate::geometry::point_in_polygon(p.x, p.y, &face))
+                .count();
+            if inside as f64 >= PLATE_CONTAINMENT * anchors.len() as f64 {
+                return PlateResolution::Traced(face);
+            }
+        }
+        PlateResolution::Unresolved
     }
 
     /// `plate_polygon` mapped to plain `[x, y]` pairs — the wire shape the
@@ -228,18 +369,30 @@ impl Document {
             .map(|poly| poly.into_iter().map(|p| [p.x, p.y]).collect())
     }
 
-    /// True floor area (meters²): the traced plate-polygon area when the walls
-    /// close (exact for any shape, identical to the bbox for rectangles);
-    /// bbox fallback for open walls.
-    pub fn floor_area(&self) -> f64 {
-        if let Some(poly) = self.plate_polygon() {
-            return crate::geometry::polygon_area(&poly).abs();
-        }
+    /// The wall bounding box's area — the fallback floor figure, and an upper
+    /// bound on any face inside it.
+    fn bbox_area(&self) -> f64 {
         match self.wall_bbox() {
             Some((min_x, min_y, max_x, max_y)) => {
                 (max_x - min_x).max(0.0) * (max_y - min_y).max(0.0)
             }
             None => 0.0,
+        }
+    }
+
+    /// True floor area (meters²): the traced plate-polygon area when the plate
+    /// resolves (exact for any shape, identical to the bbox for rectangles);
+    /// the wall bounding box otherwise.
+    ///
+    /// **The fallback is a number, and the fallback is not trustworthy** — which
+    /// is why callers that show it to a user must ask [`Self::plate_resolution`]
+    /// first. Geometry consumers (the 3D floor slab, zone clipping) need *a*
+    /// number and are better served by a defensible over-estimate than by zero;
+    /// the statistics panel is served by the truth, which is that we do not know.
+    pub fn floor_area(&self) -> f64 {
+        match self.plate_resolution() {
+            PlateResolution::Traced(poly) => crate::geometry::polygon_area(&poly).abs(),
+            _ => self.bbox_area(),
         }
     }
 

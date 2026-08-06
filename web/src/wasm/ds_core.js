@@ -205,6 +205,17 @@ export class Editor {
         return ret;
     }
     /**
+     * The fixture ids, in order, so a harness enumerates rather than hard-codes.
+     * @returns {any}
+     */
+    static fixture_ids() {
+        const ret = wasm.editor_fixture_ids();
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
      * Construct a fresh `Editor` from a `snapshot` (scratch-clone for previews).
      * @param {any} snap
      * @returns {Editor}
@@ -259,6 +270,23 @@ export class Editor {
             throw takeFromExternrefTable0(ret[1]);
         }
         return takeFromExternrefTable0(ret[0]);
+    }
+    /**
+     * Load one of the frozen **edited-plan fixtures** (`"F1"`…`"F5"`) — see
+     * `src/fixtures.rs` for what each state is and why they exist.
+     *
+     * The browser harness and `cargo test` build these from the same code, so a
+     * capture and an assertion are looking at one document rather than two that
+     * were meant to match. Unknown name → an error, never a silent empty doc.
+     * @param {string} name
+     */
+    load_fixture(name) {
+        const ptr0 = passStringToWasm0(name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.editor_load_fixture(this.__wbg_ptr, ptr0, len0);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
     }
     /**
      * Merge zones `a` and `b`; returns the resulting zone id (a clean rect union

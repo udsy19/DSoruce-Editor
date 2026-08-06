@@ -208,6 +208,29 @@ pub fn rect_polygon_clip_area(poly: &[Point], x0: f64, y0: f64, x1: f64, y1: f64
 /// the largest area and wins. Returns `None` when no closed loop exists (open
 /// walls), letting callers fall back to bounding-box behavior.
 pub fn trace_floor_polygon(segments: &[(Point, Point)], tol: f64) -> Option<Vec<Point>> {
+    // `trace_floor_faces` is sorted largest-first by a STABLE sort, so equal-area
+    // faces keep traversal order and this is byte-identical to the original
+    // `if area > best` scan. Ties are not hypothetical — the sample plate's
+    // envelope is enumerated twice at 930.06 m², and picking the other one
+    // reorders `plate_points`, which moves every clipped zone area and every
+    // score that reads them. `max_by` returns the LAST maximum and did exactly
+    // that: it re-hashed five of the ten frozen golden cases while leaving all
+    // their counts and coordinates identical.
+    trace_floor_faces(segments, tol).into_iter().next()
+}
+
+/// **Every** closed, positive-area face of the wall network — the enumeration
+/// [`trace_floor_polygon`] reduces by taking the largest.
+///
+/// Largest-wins is only correct while the building envelope IS the largest
+/// closed loop, and one user gesture invalidates that: draw a small closed box
+/// while the envelope's loop is open and the box becomes the largest face, so a
+/// 930 m² floor reports as 1 m². Callers that can tell the envelope from a
+/// scratch loop — because they know what the floor is supposed to contain —
+/// need the candidates, not the winner. See `Document::plate_polygon`.
+///
+/// Faces are returned largest-first.
+pub fn trace_floor_faces(segments: &[(Point, Point)], tol: f64) -> Vec<Vec<Point>> {
     fn snap(nodes: &mut Vec<Point>, p: Point, tol: f64) -> usize {
         if let Some(i) = nodes.iter().position(|n| n.dist(&p) <= tol) {
             return i;
@@ -230,7 +253,7 @@ pub fn trace_floor_polygon(segments: &[(Point, Point)], tol: f64) -> Option<Vec<
     }
 
     let mut used: std::collections::HashSet<(usize, usize)> = std::collections::HashSet::new();
-    let mut best: Option<(f64, Vec<Point>)> = None;
+    let mut faces: Vec<(f64, Vec<Point>)> = Vec::new();
     // The clockwise-next rule makes edge succession a permutation, so every walk
     // returns to its starting directed edge; the bound is only a safety net.
     let max_steps = 2 * segments.len() + 4;
@@ -275,12 +298,13 @@ pub fn trace_floor_polygon(segments: &[(Point, Point)], tol: f64) -> Option<Vec<
             let area = polygon_area(&pts);
             // Open-wall Euler tours double back on themselves and enclose ~0
             // area; requiring a real area rejects them.
-            if area > 1e-6 && best.as_ref().map_or(true, |(ba, _)| area > *ba) {
-                best = Some((area, pts));
+            if area > 1e-6 {
+                faces.push((area, pts));
             }
         }
     }
-    best.map(|(_, pts)| pts)
+    faces.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+    faces.into_iter().map(|(_, pts)| pts).collect()
 }
 
 // ---------------------------------------------------------------------------

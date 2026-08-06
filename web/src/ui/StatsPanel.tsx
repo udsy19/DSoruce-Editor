@@ -22,8 +22,15 @@ export function StatsPanel({ ec }: { ec: EditorCanvas }) {
   const m = ec.getMetrics()
   const zoneStats = ec.getZoneStats()
   const zones = buildZones(zoneStats)
-  const nia = zones.totalArea || m.net_internal_area || 0
+  // ONE NIA, and it is the core's. This line used to read
+  // `zones.totalArea || m.net_internal_area` — a THIRD owner, summing the Zones
+  // tab's rows TS-side while the GEA beside it came from `metrics()`. That is
+  // the pairing the user saw: NIA 138 m² printed next to GEA 1 m². The core now
+  // has exactly one `net_internal_area` and both of its readers go through it,
+  // so the panel has no business deriving a fourth.
+  const nia = m.net_internal_area ?? zones.totalArea ?? 0
   const elements = buildElements(ec.getState(), nia)
+  const plate = m.plate_state ?? 'traced'
 
   const hasFit = zones.groups.length > 0
 
@@ -56,7 +63,26 @@ export function StatsPanel({ ec }: { ec: EditorCanvas }) {
             <ChipTile kind="cost" icon="dollar" value={inrShort(elements.totalCost)} label="Fit-out" />
           </div>
 
-          <MetricRow label="Gross External Area" value={intFmt(m.gross_external_area ?? 0)} unit="m²" />
+          {/* GEA is the one row whose truth depends on the wall network closing.
+              When it does not, the row says so — it does NOT print the bounding
+              box in the same slot with the same weight as a measurement. */}
+          {plate === 'unresolved' ? (
+            <MetricRow
+              label="Gross External Area"
+              value="unresolved"
+              unit=""
+              state="error"
+              note="The wall loop no longer closes around the plan. Repair the boundary to measure the floor."
+            />
+          ) : (
+            <MetricRow
+              label="Gross External Area"
+              value={intFmt(m.gross_external_area ?? 0)}
+              unit="m²"
+              state={plate === 'open' ? 'approx' : undefined}
+              note={plate === 'open' ? 'Walls do not close — measured from their bounding box.' : undefined}
+            />
+          )}
           <MetricRow label="Net Internal Area" value={intFmt(nia)} unit="m²" />
           <MetricRow label="Workstations" value={intFmt(m.workstations ?? 0)} unit="pax" />
           <MetricRow label="Area / Workstation" value={(m.area_per_workstation ?? 0).toFixed(1)} unit="m²" />
@@ -295,14 +321,36 @@ function ChipTile({ kind, icon, value, label }: { kind: string; icon: string; va
   )
 }
 
-function MetricRow({ label, value, unit }: { label: string; value: string | number; unit: string }) {
+/**
+ * One statistics row.
+ *
+ * `state` is the row's TRUSTWORTHINESS, not its styling: `error` means the
+ * quantity could not be measured and the row says why; `approx` means it is a
+ * stand-in. A row must always render something — a blank slot is indistinguishable
+ * from a zero, and both are indistinguishable from a broken read.
+ */
+function MetricRow({
+  label,
+  value,
+  unit,
+  state,
+  note,
+}: {
+  label: string
+  value: string | number
+  unit: string
+  state?: 'error' | 'approx'
+  note?: string
+}) {
+  const shown = value === '' || value == null ? '—' : value
   return (
-    <div className="metric-row">
+    <div className={`metric-row${state ? ` is-${state}` : ''}`} title={note}>
       <span className="label">{label}</span>
       <span className="value">
-        {value}
+        {shown}
         {unit && <span className="unit">{unit}</span>}
       </span>
+      {note && <span className="metric-note">{note}</span>}
     </div>
   )
 }

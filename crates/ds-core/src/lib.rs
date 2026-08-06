@@ -9,7 +9,10 @@
 mod circulation;
 mod cost;
 mod document;
+mod fixtures;
 mod geometry;
+#[cfg(test)]
+mod metrics_tests;
 mod layout;
 mod model;
 mod qto;
@@ -72,6 +75,15 @@ struct Metrics {
     /// **Internal only.** The editor's Areas split and the layout score read it;
     /// no published surface ever does, per the standing fold rule.
     unassigned_pct: f64,
+    /// **Whether `floor_area` is a measurement.** `"traced"` · `"open"` ·
+    /// `"unresolved"` — see `document::PlateResolution`.
+    ///
+    /// The panel must branch on this before printing GEA, NIA, efficiency or
+    /// area-per-workstation. A silent bounding-box fallback on a document that
+    /// previously traced is not a smaller number, it is a *different quantity*,
+    /// and presenting it in the same slot is how "GEA 1 m²" read as a fact
+    /// rather than as a broken wall loop.
+    plate_state: &'static str,
     /// Indicative fit-out cost (currency units) — see `cost.rs`.
     indicative_cost: f64,
     /// Indicative embodied carbon (kgCO2e) — see `cost.rs`.
@@ -273,6 +285,32 @@ fn effective_zone_areas(doc: &Document) -> (Vec<f64>, Option<usize>) {
 /// This function reads the UNFOLDED truth. The fold to a published vocabulary
 /// happens strictly downstream, at serialization; efficiency must never be
 /// computed over folded data, or the waste re-hides inside circulation.
+/// **THE net internal area.** One function, because there were two.
+///
+/// `metrics()` summed the effective zone areas and clamped with
+/// `.min(floor_area)`; `zone_rows()` summed them and did not. On a document whose
+/// plate had collapsed the pair disagreed by two orders of magnitude, and the
+/// panel showed both at once: **GEA 1 m² beside NIA 138 m²**, with
+/// `efficiency = usable / nia` reading **1159%** because it divided by the
+/// clamped one. Two derivations of one quantity is the same defect family as two
+/// copies of one value (`.claude/rules/no-bloat.md`); the divergence just took
+/// longer to surface because nothing compared them.
+///
+/// The clamp survives, conditioned on what it was always assuming: zones tile
+/// the plate, so their sum cannot exceed the gross floor — **provided the gross
+/// floor is a real measurement**. When the plate is unresolved it is not, and
+/// clamping to it would propagate one wrong number into every metric downstream.
+fn net_internal_area(doc: &Document, areas: &[f64]) -> f64 {
+    let sum: f64 = areas.iter().sum();
+    match doc.plate_resolution() {
+        document::PlateResolution::Traced(_) => sum.min(doc.floor_area()),
+        // Open / Unresolved: `floor_area()` is a bounding-box stand-in, not a
+        // measurement. Clamping NIA to it is how a broken loop became a 1159%
+        // efficiency. Report the zones' own sum and let the plate state say why.
+        _ => sum,
+    }
+}
+
 fn usable_area(doc: &Document, areas: &[f64]) -> f64 {
     doc.zones
         .iter()
@@ -285,6 +323,74 @@ fn usable_area(doc: &Document, areas: &[f64]) -> f64 {
         })
         .map(|(_, a)| *a)
         .sum()
+}
+
+/// The statistics panel's numbers, derived from a document and nothing else.
+///
+/// **Pure on purpose.** This was the body of `Editor::metrics()`, which returns a
+/// `JsValue` and is therefore unreachable from `cargo test` — so the panel's
+/// arithmetic was the one part of the core no Rust test could see, and it is
+/// where the 1159% shipped. Lifting it out costs nothing and puts every metric
+/// under `metrics_can_never_be_impossible`.
+fn compute_metrics(doc: &Document) -> Metrics {
+    let resolution = doc.plate_resolution();
+    let floor_area = doc.floor_area();
+    let (areas, _) = effective_zone_areas(doc);
+    let nia = net_internal_area(doc, &areas);
+    // THE ONE workstation definition (== Pax everywhere: chip, row, Zones tab,
+    // CSV) — see `workstation_count`. `stats.ts` `zonePax` sums the same per-zone
+    // `seated`, so the panel's Pax is identical to this number.
+    let workstations = workstation_count(doc);
+    // Space efficiency (BCO 2023 / RICS IPMS / JLL): usable / NIA, where
+    // usable = every occupiable zone and the "loss" is Circulation +
+    // Core/service (WC, stairs, lifts, MEP). Private offices (ClosedOffice)
+    // and amenity (reception/pantry/café) ARE usable space, not overhead —
+    // excluding them (the old bug) understated efficiency by ~25 pts.
+    let usable = usable_area(doc, &areas);
+    let unassigned: f64 = doc
+        .zones
+        .iter()
+        .zip(&areas)
+        .filter(|(z, _)| z.zone_type == ZoneType::Unassigned)
+        .map(|(_, a)| *a)
+        .sum();
+    let area_per_workstation = if workstations > 0 {
+        nia / workstations as f64
+    } else {
+        0.0
+    };
+    // `usable` is a subset of the same `areas` NIA sums, so the ratio cannot
+    // exceed 1 by construction — but "by construction" is what the clamped-NIA
+    // pairing also looked like. The debug assertion fires at the source rather
+    // than leaving a future divergence to surface as a number on a screen.
+    let efficiency_pct = if nia > 0.0 { usable / nia * 100.0 } else { 0.0 };
+    debug_assert!(
+        efficiency_pct <= 100.0 + 1e-6,
+        "efficiency {efficiency_pct} > 100: usable {usable} / nia {nia} \
+         (plate {})",
+        resolution.tag()
+    );
+    Metrics {
+        floor_area,
+        wall_count: doc.walls.len(),
+        component_count: doc.components.len(),
+        confirmed: doc
+            .components
+            .iter()
+            .filter(|c| c.decision == DecisionState::Confirmed)
+            .count(),
+        gross_external_area: floor_area,
+        net_internal_area: nia,
+        workstations,
+        area_per_workstation,
+        efficiency_pct,
+        unassigned_area: unassigned,
+        unassigned_pct: if nia > 0.0 { unassigned / nia * 100.0 } else { 0.0 },
+        plate_state: resolution.tag(),
+        indicative_cost: cost::indicative_cost(doc),
+        indicative_carbon: cost::indicative_carbon(doc),
+        specified_cost: cost::specified_cost(doc),
+    }
 }
 
 /// The zone type a **published** artifact is allowed to show.
@@ -632,62 +738,8 @@ impl Editor {
     /// polygon so non-rectangular plates report true numbers (see
     /// `Document::plate_polygon`); rectangular rooms are unchanged.
     pub fn metrics(&self) -> Result<JsValue, JsValue> {
-        let floor_area = self.doc.floor_area();
-        let (areas, _) = effective_zone_areas(&self.doc);
-        // Zones tile the plate; the oriented desk field's plate-spanning
-        // Workspace is de-overlapped in `effective_zone_areas`, so the sum can no
-        // longer exceed the gross floor. `.min` stays a cheap invariant guard.
-        let nia: f64 = areas.iter().sum::<f64>().min(floor_area);
-        // THE ONE workstation definition (== Pax everywhere: chip, row, Zones tab,
-        // CSV) — see `workstation_count`. `stats.ts` `zonePax` sums the same per-zone
-        // `seated`, so the panel's Pax is identical to this number.
-        let workstations = workstation_count(&self.doc);
-        // Space efficiency (BCO 2023 / RICS IPMS / JLL): usable / NIA, where
-        // usable = every occupiable zone and the "loss" is Circulation +
-        // Core/service (WC, stairs, lifts, MEP). Private offices (ClosedOffice)
-        // and amenity (reception/pantry/café) ARE usable space, not overhead —
-        // excluding them (the old bug) understated efficiency by ~25 pts.
-        let usable = usable_area(&self.doc, &areas);
-        let unassigned: f64 = self
-            .doc
-            .zones
-            .iter()
-            .zip(&areas)
-            .filter(|(z, _)| z.zone_type == ZoneType::Unassigned)
-            .map(|(_, a)| *a)
-            .sum();
-        let area_per_workstation = if workstations > 0 {
-            nia / workstations as f64
-        } else {
-            0.0
-        };
-        let efficiency_pct = if nia > 0.0 {
-            usable / nia * 100.0
-        } else {
-            0.0
-        };
-        let m = Metrics {
-            floor_area,
-            wall_count: self.doc.walls.len(),
-            component_count: self.doc.components.len(),
-            confirmed: self
-                .doc
-                .components
-                .iter()
-                .filter(|c| c.decision == DecisionState::Confirmed)
-                .count(),
-            gross_external_area: floor_area,
-            net_internal_area: nia,
-            workstations,
-            area_per_workstation,
-            efficiency_pct,
-            unassigned_area: unassigned,
-            unassigned_pct: if nia > 0.0 { unassigned / nia * 100.0 } else { 0.0 },
-            indicative_cost: cost::indicative_cost(&self.doc),
-            indicative_carbon: cost::indicative_carbon(&self.doc),
-            specified_cost: cost::specified_cost(&self.doc),
-        };
-        serde_wasm_bindgen::to_value(&m).map_err(|e| JsValue::from_str(&e.to_string()))
+        serde_wasm_bindgen::to_value(&compute_metrics(&self.doc))
+            .map_err(|e| JsValue::from_str(&e.to_string()))
     }
 
     /// All zones, for rendering. Part of `state()`, but exposed standalone for a
@@ -720,11 +772,29 @@ impl Editor {
             .map_err(|e| JsValue::from_str(&e.to_string()))
     }
 
+    /// Wrap a document so the pure readers below can be tested natively — the
+    /// `#[wasm_bindgen]` methods return `JsValue` and are unreachable from
+    /// `cargo test`, which is precisely why the panel's arithmetic went untested.
+    #[cfg(test)]
+    pub(crate) fn for_test(doc: Document) -> Editor {
+        Editor { doc, rev: 0 }
+    }
+
+    /// `zone_rows`, for the invariant battery. Reads the Zones tab's actual rows
+    /// rather than re-calling the metric function they are supposed to agree with.
+    #[cfg(test)]
+    pub(crate) fn zone_rows_for_test(&self, fold: bool) -> Vec<ZoneStat> {
+        self.zone_rows(fold)
+    }
+
     fn zone_rows(&self, fold: bool) -> Vec<ZoneStat> {
         // De-overlapped areas so the Zones tab / Areas donut sum to GEA (never
         // above it) on tilted/irregular plates — same source of truth as metrics.
         let (areas, spanning) = effective_zone_areas(&self.doc);
-        let nia: f64 = areas.iter().sum();
+        // ONE NIA. This line used to read `areas.iter().sum()` while `metrics()`
+        // summed and clamped — the two-owner split that put GEA 1 m² beside
+        // NIA 138 m² on the same panel.
+        let nia = net_internal_area(&self.doc, &areas);
         let stats: Vec<ZoneStat> = self
             .doc
             .zones
@@ -888,6 +958,26 @@ impl Editor {
         // old plan and a new one report the same pax for the same building.
         self.doc.backfill_seats();
         Ok(())
+    }
+
+    /// Load one of the frozen **edited-plan fixtures** (`"F1"`…`"F5"`) — see
+    /// `src/fixtures.rs` for what each state is and why they exist.
+    ///
+    /// The browser harness and `cargo test` build these from the same code, so a
+    /// capture and an assertion are looking at one document rather than two that
+    /// were meant to match. Unknown name → an error, never a silent empty doc.
+    pub fn load_fixture(&mut self, name: &str) -> Result<(), JsValue> {
+        self.touch();
+        let doc = fixtures::build(name)
+            .ok_or_else(|| JsValue::from_str(&format!("no such fixture: {name}")))?;
+        self.doc = doc;
+        Ok(())
+    }
+
+    /// The fixture ids, in order, so a harness enumerates rather than hard-codes.
+    pub fn fixture_ids() -> Result<JsValue, JsValue> {
+        serde_wasm_bindgen::to_value(&fixtures::FIXTURE_IDS)
+            .map_err(|e| JsValue::from_str(&e.to_string()))
     }
 
     /// Construct a fresh `Editor` from a `snapshot` (scratch-clone for previews).

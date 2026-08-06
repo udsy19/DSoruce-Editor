@@ -786,6 +786,27 @@ button {
   font-weight: 500;
   margin-left: 4px;
 }
+/* A row whose quantity could not be measured, and one measured by proxy. The
+   note wraps onto its own line, so the row grows rather than truncating the
+   reason — a metric that cannot be trusted has to be able to say why. */
+.metric-row.is-error,
+.metric-row.is-approx {
+  flex-wrap: wrap;
+}
+.metric-row.is-error .value {
+  color: var(--danger);
+  font-weight: 600;
+}
+.metric-row.is-approx .value {
+  color: var(--muted);
+}
+.metric-row .metric-note {
+  flex-basis: 100%;
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--muted);
+}
 
 /* metric chips */
 .chip-row {

@@ -25,6 +25,21 @@ export interface Metrics {
   /** Wasted floor as % of NIA — waste's own name, kept OUT of `efficiency_pct`
    *  so that number stays comparable to the industry benchmark. Never published. */
   unassigned_pct?: number
+  /**
+   * Whether `gross_external_area` is a MEASUREMENT.
+   *
+   * - `traced` — a face of the wall network was identified as this plan's floor.
+   * - `open` — the walls close nowhere; the figure is the wall bounding box.
+   * - `unresolved` — the walls DO close, but no closed face contains the plan.
+   *   Something the user drew changed which loops exist and the floor is no
+   *   longer identifiable.
+   *
+   * The panel MUST branch on this before printing a gross area. A silent
+   * bounding-box fallback is not a smaller number, it is a different quantity,
+   * and showing it in the same slot is how "GEA 1 m²" read as a fact rather than
+   * as a broken wall loop. Optional only for documents metered by an older core.
+   */
+  plate_state?: 'traced' | 'open' | 'unresolved'
   indicative_cost?: number
   /** Σ observed ₹ prices of bank-bound components (specified furniture capex). */
   specified_cost?: number

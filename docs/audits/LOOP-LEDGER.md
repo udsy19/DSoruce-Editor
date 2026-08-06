@@ -643,3 +643,138 @@ battery **40/40**.
 
 **The one remaining action is not an agent's.** Run
 `docs/evidence/circulation-audit/G10-walkthrough.md` and write the verdict.
+
+---
+
+# QUEUE 3 — QBIQ PARITY: THE EDITOR AS A DRAWING
+
+Mandate: plans this editor renders must read as an architect's test fit, and
+metrics must be impossible to silently break. Standing rule for the whole queue:
+**both populations, always** — every gate runs against freshly generated plans
+AND against edited ones.
+
+## Phase 0.1 — the edited-plan fixtures · **DONE**
+
+Five frozen states in `crates/ds-core/src/fixtures.rs`, built from the sample
+plate's generate output and reachable from BOTH sides of the wasm boundary
+(`Editor::load_fixture`), so a browser capture and a Rust assertion look at one
+document rather than at two that were meant to match.
+
+| id | state |
+|----|-------|
+| F1 | pristine `generate` on the sample plate |
+| F2 | F1 + a user-drawn 1.2 × 1.0 m closed wall loop; envelope intact |
+| F3 | F2 with one plate wall removed — **the GEA-collapse state** |
+| F4 | generate → select a zone → resize → reassign to Circulation |
+| F5 | edit soup: eleven mixed mutations across walls, zones, components |
+
+The plate boundary is the one thing that crosses from TypeScript: captured from
+`samples/furniture-plan.dxf` by `scripts/capture-plate-fixture.mjs` into
+`crates/ds-core/fixtures/plate-furniture-plan.json` — **34 vertices, 930.06 m²,
+method `partition-envelope`** — and frozen like a golden. Re-capturing it is a
+re-registration event.
+
+**Wall deletion has no `Editor` mutator at all** (`delete_selected` deletes
+components only; the frontend has no wall-delete path). F3 therefore edits the
+document directly. That is *not* a claim the state is unreachable — the second
+route is a CAD-committed line that snaps across the plate and subdivides its
+face, which needs no deletion and is covered separately by
+`a_wall_drawn_across_the_plate_cannot_halve_the_floor`.
+
+## Q3-A — the metrics collapse · **DONE, mechanism named and reproduced**
+
+### The repro, and what it printed
+
+Reproduced exactly, and the numbers match the report. Sabotage S1 (below)
+restores the pre-fix plate rule and the battery prints:
+
+```
+efficiency 1466.6666666666129 > 100: usable 17.600000000000023 / nia 1.2000000000000455 (plate traced)
+```
+
+**NIA 1.2 m²** — the drawn box — against a 930 m² floor, and an efficiency of
+**1466%** against the reported **1159%**. Same mechanism, same order of
+magnitude; the difference is the size of the scratch loop the user happened to
+draw. The previous session's hypothesis (delete the outer walls after generate)
+was correctly reported as falsified: with no closed loop at all the trace returns
+`None` and the bbox fallback made GEA go *up*. It takes a surviving *closed* loop.
+
+### Three mechanisms, not one
+
+1. **Plate selection.** `trace_floor_polygon` took the largest closed loop.
+   Correct only while the envelope's loop is the largest — one drawn box while
+   the envelope is open, and the box IS the building.
+2. **Two NIA owners in the core.** `metrics()` summed and clamped with
+   `.min(floor_area)`; `zone_rows()` summed unclamped. On a collapsed plate the
+   pair disagreed by two orders of magnitude and the panel showed both at once.
+3. **A THIRD owner in the panel.** `StatsPanel.tsx` read
+   `zones.totalArea || m.net_internal_area` — a TS-side sum of the Zones tab's
+   rows, printed beside a GEA from `metrics()`. This is the pairing that was on
+   screen. It was not in the mission's mechanism list and was found by reading
+   the panel.
+
+### The fix
+
+- `geometry::trace_floor_faces` enumerates every closed positive-area face
+  (largest-first, stable); `trace_floor_polygon` is now its first element.
+- `Document::plate_resolution` → `Traced | Open | Unresolved`. A face must
+  contain ≥ `PLATE_CONTAINMENT` (0.9) of the plan's anchor points — every
+  component centre and zone representative point, derived from the document and
+  never from the trace. Under `MIN_PLAN_ANCHORS` (8) there is no evidence and
+  largest-wins stands, which is what a plate confirmed in the wizard needs.
+- `Metrics.plate_state` crosses the boundary; `StatsPanel` renders GEA as an
+  explicit **error row** when unresolved and an **approx row** when open, never a
+  number in the same slot with the same weight.
+- **One `net_internal_area`**, read by `compute_metrics` and `zone_rows` alike;
+  the panel reads the core's. `compute_metrics` was lifted out of the
+  `#[wasm_bindgen]` method — the panel's arithmetic was the one part of the core
+  no Rust test could reach, which is where the 1159% lived.
+
+**The threshold is a gap, not a knob.** Measured on the sample plate's generated
+plan: **253/254 anchors = 0.9961**. A scratch loop contains ~0; a plate halved by
+a committed line contains ~0.5. Nothing legitimate lives between 0.5 and 0.99.
+`plate_containment_on_a_real_plan_is_not_near_the_threshold` re-derives the
+number so the doc comment cannot drift from it.
+
+### The battery
+
+`crates/ds-core/src/metrics_tests.rs` — 8 tests. 120 seeds × 10 mutations from
+each fixture = **1 200 metric evaluations** over a seeded xorshift (the repo's own
+PRNG convention; no new dependency). Invariants: efficiency ≤ 100 · NIA ≤ GEA
+when traced · no NaN/negative · never workstations > 0 with area/WS == 0 ·
+`plate_state` is one of three known strings · the two NIA readers agree.
+Non-vacuity is asserted, not assumed: `the_randomized_battery_reaches_broken_plates`
+requires the population to include both traced and unresolved plates, and it
+prints the census — `{open: 123, traced: 501, unresolved: 576}`.
+
+### Sabotage round — three parts, and TWO NULL RESULTS
+
+Run in a disposable worktree (`/tmp/q3-falsify-a`, removed after), never against
+the real tree.
+
+| sabotage | result |
+|---|---|
+| **S1** — plate selection reverted to largest-closed-loop | **4 of 7 RED**, including the reproduced `efficiency 1466%` above |
+| **S2** — the second NIA owner restored in `zone_rows` | **GREEN.** The check compared `compute_metrics` against `net_internal_area` — two calls to the same function. Rewritten to re-derive NIA from the Zones tab's own `pct_of_nia` rows; S2 then **RED**, caught by the random battery at seed 31 (rows 973.745 vs metrics 930.063), *not* by any of the five fixtures |
+| **S3** — the conditional clamp reverted to clamping always | **GREEN.** Cause is benign: once selection is fixed, an unresolved plate falls back to the wall bbox, which dominates every face inside it, so the clamp is inert on every state reachable. Inert is not guarded — added `nia_is_never_capped_by_a_plate_we_do_not_trust`, which builds a document whose bbox is 2 m long while its plan is 940 m², making the conditional load-bearing. S3 then **RED** |
+
+Two of three parts shipped unguarded and were only found because the round was
+run exhaustively rather than to a checklist. S2 is also the case for the random
+battery earning its keep: **no fixture separated the two NIA owners**; a
+five-mutation random sequence did.
+
+### A latent verdict-mover, found on the way
+
+Rewriting `trace_floor_polygon` as `max_by(area)` over the enumerated faces
+re-hashed **five of the ten frozen golden cases** while leaving every count and
+every coordinate identical (`c222 w155 z40 desks88 total90806929`, digest
+`54c08e26…` → `604f449b…`). Cause: the sample plate's envelope is enumerated
+**twice** at 930.06 m² — ties are real — and `max_by` returns the LAST maximum,
+so the plate polygon came back with a different vertex order, moving every
+clipped zone area and every score that reads them. Restored to first-wins over a
+stable sort; goldens unchanged, not re-captured. Recorded because the failure
+mode is invisible: identical geometry, different hash, and the only signal was a
+frozen test.
+
+**Board:** `cargo test -p ds-core` **178 green** (was 170; +8 battery), goldens
+unchanged; verification battery **41/41**.
