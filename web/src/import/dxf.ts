@@ -245,6 +245,67 @@ interface ScaleEvidence {
   extent: number
 }
 
+/**
+ * Grade the scale we settled on, by re-measuring the FINISHED drawing.
+ *
+ * The unit decision picks the best-supported candidate, but "best available"
+ * is not "right": across the validation corpus several drawings land on a unit
+ * that makes only a minority of their doors and walls physical, and today they
+ * are indistinguishable from the ones we got right — they trace a plate, place
+ * furniture and score well, all at (say) 30× the true size. Every area, cost
+ * and m²/person figure downstream is then wrong, silently.
+ *
+ * So this asks the finished metres-space geometry the same question the
+ * validation gate asks from outside: what fraction of the door swings are legal
+ * doors, and what fraction of the wall pairs are legal wall assemblies? The
+ * bands are the same external specifications used to choose the unit — they are
+ * a statement about buildings, not about this drawing.
+ *
+ * `low` does NOT mean the import is unusable. It means the size is unconfirmed,
+ * and nothing derived from it should be presented as a hard number.
+ */
+function assessScale(
+  entities: DrawEntity[],
+  furniture: FurnitureItem[],
+  source: UnitsSource,
+): { confidence: 'high' | 'low'; reason: string } {
+  // No anchor was measurable at all — we took the header on trust and said so.
+  if (source === 'header-unverified') {
+    return {
+      confidence: 'low',
+      reason:
+        'this drawing has no doors or wall pairs to measure, so its size is taken from the file’s own units setting and could not be checked',
+    }
+  }
+
+  const ev = scaleEvidence(entities, furniture)
+  const share = (vals: number[], lo: number, hi: number): number | null =>
+    vals.length === 0 ? null : vals.filter((v) => v >= lo && v <= hi).length / vals.length
+
+  const doors = share(ev.doorRadii, DOOR_LEAF_MIN_M, DOOR_LEAF_MAX_M)
+  const walls = share(wallPairGaps(ev.wallSegments), WALL_THICKNESS_MIN_M, WALL_THICKNESS_MAX_M)
+
+  // Majority of either population physical → the size is corroborated.
+  const MAJORITY = 0.5
+  if ((doors != null && doors >= MAJORITY) || (walls != null && walls >= MAJORITY)) {
+    return { confidence: 'high', reason: '' }
+  }
+  if (doors == null && walls == null) {
+    return {
+      confidence: 'low',
+      reason:
+        'this drawing has no doors or wall pairs to measure, so its size could not be checked',
+    }
+  }
+  const pct = (v: number | null) => (v == null ? 'none' : `${Math.round(v * 100)}%`)
+  return {
+    confidence: 'low',
+    reason:
+      `at the size we read this drawing at, only ${pct(doors)} of its door swings are door-width ` +
+      `and ${pct(walls)} of its wall pairs are wall-thickness — so the scale may be wrong, and every area below with it`,
+  }
+}
+
 /** Multiply one entity's geometry by `s`, in place. Angles are unaffected. */
 function scaleEntity(e: DrawEntity, s: number): void {
   if (e.pts) {
@@ -1021,6 +1082,7 @@ export function parseDrawing(dxfText: string): Drawing {
   return {
     units: label,
     unitsSource,
+    scaleConfidence: assessScale(kept.entities, kept.furniture, unitsSource),
     bounds,
     layers,
     entities: kept.entities,

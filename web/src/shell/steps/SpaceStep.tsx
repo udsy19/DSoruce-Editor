@@ -777,6 +777,20 @@ export function SpaceStep({
                 the sub-area only.
               </div>
             )}
+            {/* Scale confidence is a DIFFERENT question from plate confidence,
+                and both can be wrong independently. The plate notice below asks
+                "is this the right outline?"; this one asks "is the drawing the
+                right SIZE?". A drawing can trace a perfect boundary at 30× the
+                true scale — it then places furniture and scores well, and every
+                area, cost and m²/person figure derived from it is wrong with no
+                outward sign. Five files in the validation corpus do exactly
+                that (cad-validation/STATUS.md). */}
+            {drawing?.scaleConfidence?.confidence === 'low' && (
+              <div className="space-plate-draft" data-testid="scale-confidence-notice" role="status">
+                <strong>Check the scale.</strong> {drawing.scaleConfidence.reason}. Measure a known
+                dimension against the plan before trusting the areas below.
+              </div>
+            )}
             {plateDraft && (
               <div className="space-plate-draft" data-testid="plate-draft-notice" role="status">
                 <strong>Check the floor plate.</strong> {plateDraft.reason}{' '}

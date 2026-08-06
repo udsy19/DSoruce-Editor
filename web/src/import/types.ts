@@ -82,6 +82,18 @@ export interface Drawing {
    * raster import) need not supply it.
    */
   unitsSource?: 'header' | 'door-anchor' | 'wall-anchor' | 'extent-anchor' | 'header-unverified'
+  /**
+   * How far the chosen scale can be trusted, graded by re-measuring the
+   * FINISHED geometry: what fraction of the door swings are legal doors, and
+   * what fraction of the wall pairs are legal wall assemblies.
+   *
+   * `low` does not mean the import is unusable — it means the drawing's SIZE is
+   * unconfirmed. A low-confidence drawing still traces a plate, places furniture
+   * and scores; it just does so at a size that may be wrong by a large factor,
+   * taking every area, cost and m²/person figure with it. Never print a hard
+   * number for one without saying this first.
+   */
+  scaleConfidence?: { confidence: 'high' | 'low'; reason: string }
   /** [minX, minY, maxX, maxY] meters, from the actual geometry (not the sheet). */
   bounds: [number, number, number, number]
   layers: string[]

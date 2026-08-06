@@ -206,5 +206,41 @@ function metricPlanDxf(insunitsGroup) {
   ok(Math.abs(w - 30) < 0.01, `room still reads 30 m wide (got ${w.toFixed(4)})`)
 }
 
+// ---------------------------------------------------------------------------
+// 6. Scale CONFIDENCE — the importer must know when it does not know.
+//
+//    Picking the best-supported unit is not the same as picking the right one.
+//    A drawing can trace a perfect boundary at 30x the true size, place
+//    furniture and score well, and every area / cost / m2-per-person figure
+//    below it is wrong with no outward sign. So the importer re-measures the
+//    FINISHED geometry and grades itself.
+// ---------------------------------------------------------------------------
+{
+  // Doors are real 0.9 m leaves at the chosen scale -> corroborated.
+  const good = parseDrawing(metricPlanDxf(6))
+  ok(
+    good.scaleConfidence?.confidence === 'high',
+    `a plan whose doors are door-width is high confidence (got '${good.scaleConfidence?.confidence}')`,
+  )
+  ok(good.scaleConfidence?.reason === '', 'a high-confidence scale carries no caveat')
+
+  // Nothing measurable at all -> must say so rather than imply certainty.
+  const blind = [
+    '0', 'SECTION', '2', 'HEADER', '9', '$INSUNITS', '70', '1', '0', 'ENDSEC',
+    '0', 'SECTION', '2', 'ENTITIES',
+    '0', 'LINE', '8', 'WALL', '10', '0', '20', '0', '11', '0.4', '21', '0',
+    '0', 'ENDSEC', '0', 'EOF',
+  ].join('\n')
+  const d = parseDrawing(blind)
+  ok(
+    d.scaleConfidence?.confidence === 'low',
+    `a plan with nothing to measure is low confidence (got '${d.scaleConfidence?.confidence}')`,
+  )
+  ok(
+    (d.scaleConfidence?.reason ?? '').length > 0,
+    'a low-confidence scale explains itself, so the user can act on it',
+  )
+}
+
 console.log(failed === 0 ? `PASS (${checks} checks)` : `FAIL (${checks} checks, ${failed} failing)`)
 process.exit(failed === 0 ? 0 : 1)
