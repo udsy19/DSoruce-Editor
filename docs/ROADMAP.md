@@ -974,9 +974,14 @@ Making negative space read as floor, not as "Circulation" (`docs/audits/circulat
   servicesSheets, roomThumbs, roomNaming, takeoff, walkthrough, stats). Plus `unassigned_pct` as
   waste's own name — `efficiency_pct` stays the untouched BCO/RICS/JLL ratio so the qbiq parity
   benchmark survives.
+- [x] **Phase 1b — the shape conjunct.** A corridor is path-shaped: isoperimetric quotient below
+  τ = 3π/16 ≈ 0.589 (derived from a 3:1 minimum corridor aspect, NOT fitted to the observed
+  pockets), measured on the RDP-simplified boundary so the test describes shape and not tracing
+  resolution. 847 stays Circulation (a 0.085-compactness ribbon, not the void we both called it);
+  848 and 851 flip. Split 106.20/64.47 → 87.93/82.74. 169 Rust tests.
 - [ ] **Phase 2 — renderer figure/ground sweep** (2.1–2.8; 2.6 partially landed early, see audit).
-  **Blocked past 2.2 on the zone-847 ruling** — the per-pocket table is in the audit; the open
-  question is whether a second, shape-based discriminant is pre-registered before 2.3.
+  **Unblocked** — the 847 ruling is settled and the amended classifier has landed with its
+  validation table.
 - [ ] **Phase 3 — sheet furniture + metrics card.** Promotion of what `export/report.ts` already has.
 - [ ] **Phase 4 — gates C1–C10** as their own board folded into `run-all.sh` as G13, with its own
   lying gate (the `GSELF` pattern).
