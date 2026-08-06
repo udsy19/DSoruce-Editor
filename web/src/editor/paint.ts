@@ -345,6 +345,16 @@ export function drawZones(
       : v.presentation
         ? lighten(pal.fill, 0.4)
         : pal.fill
+    // TEXTURE over the fill, computed once for all three shape branches: the
+    // Core's poché, or the editor-only hatch that marks unassigned floor. Both
+    // are the same operation on the same three call sites, so they share one
+    // decision rather than three copies of `if (kind === X)`.
+    const texture: FillStyle | null =
+      z.zone_type === 'Core'
+        ? { ...CORE_POCHE, color: pal.line }
+        : z.zone_type === 'Unassigned'
+          ? style.unassignedHatch
+          : null
     if (z.shape.kind === 'Poly') {
       // Boundary-conforming polygon: trace + fill + hairline; label at the
       // area-weighted centroid.
@@ -359,10 +369,23 @@ export function drawZones(
       }
       ctx.closePath()
       ctx.fill()
-      ctx.strokeStyle = hexToRgba(pal.line, 0.45)
-      ctx.lineWidth = strokePx('roomEnclosure', v.scale)
-      ctx.stroke()
-      if (z.zone_type === 'Core') {
+      // Unassigned ground gets a DASHED hairline instead of the room enclosure:
+      // on a 19-40 px ribbon the edge is most of what there is to see, so this
+      // carries the "nobody uses this" signal that a 9 px hatch pitch cannot.
+      const outline = z.zone_type === 'Unassigned' ? style.unassignedOutline : null
+      if (outline) {
+        ctx.save()
+        ctx.setLineDash(outline.dash ?? [])
+        ctx.strokeStyle = outline.stroke!
+        ctx.lineWidth = strokePx(outline.tier ?? 'furniture', v.scale)
+        ctx.stroke()
+        ctx.restore()
+      } else {
+        ctx.strokeStyle = hexToRgba(pal.line, 0.45)
+        ctx.lineWidth = strokePx('roomEnclosure', v.scale)
+        ctx.stroke()
+      }
+      if (texture) {
         let bminX = Infinity
         let bminY = Infinity
         let bmaxX = -Infinity
@@ -376,7 +399,7 @@ export function drawZones(
         }
         fillWith(
           v,
-                    { ...CORE_POCHE, color: pal.line },
+                    texture,
           () => {
             ctx.moveTo(sp[0].x, sp[0].y)
             for (let i = 1; i < sp.length; i++) ctx.lineTo(sp[i].x, sp[i].y)
@@ -413,10 +436,10 @@ export function drawZones(
       ctx.rect(o.x, o.y, s.w * v.scale, s.h * v.scale)
       ctx.rect(io.x, io.y, s.in_w * v.scale, s.in_h * v.scale)
       ctx.fill('evenodd')
-      if (z.zone_type === 'Core') {
+      if (texture) {
         fillWith(
           v,
-                    { ...CORE_POCHE, color: pal.line },
+                    texture,
           () => {
             ctx.rect(o.x, o.y, s.w * v.scale, s.h * v.scale)
             ctx.rect(io.x, io.y, s.in_w * v.scale, s.in_h * v.scale)
@@ -434,13 +457,22 @@ export function drawZones(
       ctx.fillRect(p.x, p.y, w, h)
       // Soft inset border (secondary to walls) — a refined architectural edge,
       // not a saturated toy outline.
-      ctx.strokeStyle = hexToRgba(pal.line, 0.45)
-      ctx.lineWidth = strokePx('roomEnclosure', v.scale)
+      const rectOutline = z.zone_type === 'Unassigned' ? style.unassignedOutline : null
+      ctx.save()
+      if (rectOutline) {
+        ctx.setLineDash(rectOutline.dash ?? [])
+        ctx.strokeStyle = rectOutline.stroke!
+        ctx.lineWidth = strokePx(rectOutline.tier ?? 'furniture', v.scale)
+      } else {
+        ctx.strokeStyle = hexToRgba(pal.line, 0.45)
+        ctx.lineWidth = strokePx('roomEnclosure', v.scale)
+      }
       ctx.strokeRect(p.x + 0.5, p.y + 0.5, w - 1, h - 1)
-      if (z.zone_type === 'Core') {
+      ctx.restore()
+      if (texture) {
         fillWith(
           v,
-                    { ...CORE_POCHE, color: pal.line },
+                    texture,
           () => ctx.rect(p.x, p.y, w, h),
           { minX: p.x, minY: p.y, maxX: p.x + w, maxY: p.y + h },
           0,

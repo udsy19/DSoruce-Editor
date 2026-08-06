@@ -501,6 +501,24 @@ export interface PlanStyle {
   }
   groundZones: ZoneType[]
   /**
+   * Texture drawn over `Unassigned` ground, or `null` for none.
+   *
+   * Keyed to the ONE type rather than to all ground zones: circulation is
+   * working floor and gets nothing, unassigned floor is a defect the planner
+   * should see. Both remain ground — neither is filled with its palette colour.
+   */
+  unassignedHatch: FillStyle | null
+  /**
+   * Dashed hairline around `Unassigned` ground, or `null` for none.
+   *
+   * Carries more signal than the hatch on the shapes this actually marks: the
+   * unassigned pockets on the reference plate have inradii of 0.53–1.1 m, so at
+   * overview zoom they are 19–40 px wide and a 9 px hatch pitch fits two to four
+   * strokes across them. An outline is legible at any width, because a ribbon
+   * is nearly all edge.
+   */
+  unassignedOutline: ElementStyle | null
+  /**
    * What a ground zone gets INSTEAD of its palette fill. `null` is true ground:
    * the paper shows through. The editor uses a barely-there tint (spec allows
    * <=2%) so a corridor stays visible as a selectable object while editing --
@@ -525,6 +543,35 @@ const RAYON_WALL_HATCH: FillStyle = {
   alpha: 0.34,
   angleDeg: 45,
   spacing: { ofThickness: 1 / 3 },
+  tier: 'furniture',
+}
+
+/**
+ * UNASSIGNED hatch — the editor-only "wasted floor, fix me" flag.
+ *
+ * Uses the existing `hatch` kind of {@link FillStyle}. That union was widened
+ * once, for wall grammars, with a note that a FOURTH kind would be a schema
+ * finding rather than a patch; this needs no fourth kind, which is the union
+ * doing its job.
+ *
+ * **Deliberately quiet.** At 3.5% ink on a 9 px pitch it reads as a texture over
+ * paper, not as a fill: the point is that unassigned floor is still GROUND —
+ * the same white a corridor sits on — carrying a mark that says *nobody uses
+ * this*. If it ever reads as a colour, it has become a third program category
+ * and the whole figure/ground rule is back where it started.
+ *
+ * **Editor only.** `paper` renders this as nothing at all: on a sheet it is
+ * indistinguishable from circulation, because no competitor publishes a
+ * dead-space category and neither do we (see the core's `published_zone_type`).
+ * This is a working-tool divergence, recorded in the spec's `profiles.editor`
+ * alongside the grid and the in-room labels.
+ */
+export const UNASSIGNED_HATCH: FillStyle = {
+  kind: 'hatch',
+  color: '#5c626c',
+  alpha: 0.035,
+  angleDeg: 45,
+  spacing: { px: 9 },
   tier: 'furniture',
 }
 
@@ -569,6 +616,8 @@ const PAPER: PlanStyle = {
   labelPolicy: { names: 'service', metrics: false, pillAtRest: false },
   groundZones: ['Circulation', 'Unassigned'],
   groundTint: null, // paper: corridors ARE the paper
+  unassignedHatch: null, // paper: and so is wasted floor — the sheet never tells
+  unassignedOutline: null,
 }
 
 /**
@@ -591,6 +640,13 @@ const EDITOR: PlanStyle = {
   labelSecondary: { color: '#5f6771', sizePx: 9, weight: 400, upper: false },
   labelPolicy: { names: 'all', metrics: true, pillAtRest: false },
   groundTint: 'rgba(23,26,30,0.02)', // editor: still selectable, still ground
+  unassignedHatch: UNASSIGNED_HATCH,
+  unassignedOutline: {
+    stroke: 'rgba(92, 98, 108, 0.45)',
+    dash: [4, 3],
+    tier: 'furniture',
+    z: 31,
+  },
 }
 
 const PROFILES: Record<PlanProfile, PlanStyle> = { editor: EDITOR, paper: PAPER }
