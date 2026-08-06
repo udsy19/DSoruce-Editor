@@ -311,6 +311,9 @@ export function drawZones(
   zones: DocZone[],
   platePoly: [number, number][] | null,
   zoneStats: Map<number, ZoneStat>,
+  /** Selected/hovered zone ids — the same set `drawZoneTags` promotes to pills.
+   *  A ground zone in this set keeps its tag; see `suppressTag` below. */
+  highlight?: ReadonlySet<number>,
 ): ZoneTag[] {
   if (zones.length === 0) return []
   const style = planStyle(v.presentation ? 'paper' : 'editor')
@@ -340,6 +343,26 @@ export function drawZones(
     // Ground zones are the surface the plan sits on, not content on it.
     const ground = style.groundZones.includes(z.zone_type)
     if (ground && style.groundTint === null) continue
+    // GROUND CARRIES NO NAME. Circulation and unassigned floor are the surface
+    // the plan sits on, and a surface is not labelled — it is identified by the
+    // legend, which is why the legend is a required feature of this phase and
+    // not a nicety (spec `required_new_feature`).
+    //
+    // Measured before this line existed: 17 of the 24 zone tags drawn at rest
+    // were ground — 9 reading CIRCULATION, 8 reading CORRIDOR — so 71% of all
+    // in-plan text named the floor rather than the rooms. The reference prints
+    // eight tiny service-room abbreviations and nothing else.
+    //
+    // The paper profile already achieved this by accident: its `continue` above
+    // skips fill AND tag together. The editor kept a non-null tint, fell
+    // through, and pushed a tag. So this is the editor catching up to a rule the
+    // sheet has always followed, not a new rule.
+    //
+    // EXCEPTION, deliberate: a SELECTED ground zone still gets its tag, because
+    // interaction states are never part of the resting drawing and you cannot
+    // edit a corridor you cannot name. `drawZoneTags` draws the selected tag as
+    // the interactive pill; suppressing it here would make corridors unnameable.
+    const suppressTag = ground && !highlight?.has(z.id)
     ctx.fillStyle = ground
       ? style.groundTint!
       : v.presentation
@@ -445,7 +468,7 @@ export function drawZones(
       const cap = stat?.capacity ?? 0
       const metrics: string | null =
         area >= 12 ? `${fmtArea(area)} m²${cap > 0 ? ` · ${cap} pax` : ''}` : null
-      tags.push({ id: z.id, name, metrics, cx: c.x, cy: c.y, namePx: 10, color: pal.line })
+      if (!suppressTag) tags.push({ id: z.id, name, metrics, cx: c.x, cy: c.y, namePx: 10, color: pal.line })
     } else if (z.shape.kind === 'RectRing') {
       const s = z.shape
       const o = v.toScreen(s.x - s.w / 2, s.y - s.h / 2)
@@ -517,7 +540,7 @@ export function drawZones(
       ctx.font = '500 9.5px "Hanken Grotesk", system-ui, sans-serif'
       if (h < 34 || ctx.measureText(metrics).width > maxW) metrics = null
       const c = v.toScreen(s.x, s.y)
-      tags.push({ id: z.id, name, metrics, cx: c.x, cy: c.y, namePx, color: pal.line })
+      if (!suppressTag) tags.push({ id: z.id, name, metrics, cx: c.x, cy: c.y, namePx, color: pal.line })
     }
   }
   if (clipped) ctx.restore()

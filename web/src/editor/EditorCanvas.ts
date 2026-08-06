@@ -1648,7 +1648,16 @@ export class EditorCanvas {
   private paintZones(zones?: DocZone[]): ZoneTag[] {
     if (!zones || zones.length === 0) return []
     this.updateZoneStats(zones)
-    return drawZones(this.host, zones, this.platePoly, this.zoneStats)
+    // Same set `drawZoneTags` uses to promote a label to a pill. Passed here too
+    // so a SELECTED ground zone keeps its tag: ground carries no name at rest,
+    // but you must be able to name the corridor you are editing.
+    return drawZones(
+      this.host,
+      zones,
+      this.platePoly,
+      this.zoneStats,
+      new Set(this.selectedZoneId != null ? [this.selectedZoneId] : []),
+    )
   }
 
   /** Outline + handles for the selected room (nothing when none is selected). */
