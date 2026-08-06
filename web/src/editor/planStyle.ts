@@ -519,6 +519,30 @@ export interface PlanStyle {
    */
   unassignedOutline: ElementStyle | null
   /**
+   * Poché over `Core` zones, or `null` for none.
+   *
+   * **Paper says null, and the spec is why.** `qbiq-plan-style-spec.json`
+   * `wall_poche` records the measurement: *"There is NO dark poche anywhere in
+   * the reference. Walls are drawn as thin DOUBLE LINES with unfilled
+   * interiors."* The only poché/hatch the spec sanctions is between WALL FACES
+   * (Rayon's grammar); `core` appears in it exactly once, as a palette role,
+   * with no texture. Professional convention pochés the material that is CUT —
+   * walls — not a core's floor area.
+   *
+   * So this is per-profile rather than a module constant: the editor keeps the
+   * texture as a working affordance (a core reads as "not your floor plate at
+   * a glance"), and the sheet does not. Same divergence pattern as the grid and
+   * the in-room labels, recorded in the spec's `profiles.editor`.
+   *
+   * This became a live question only when the LOD-reference fix resurrected a
+   * poché that had never rendered; before that the paper profile carried a
+   * declaration it never honoured, and every paper-parity judgment in this
+   * workstream — including Phase 0's "presentation output is already fully
+   * correct" — was measured against a render where it was dead. Setting paper to
+   * `null` keeps those judgments valid rather than silently invalidating them.
+   */
+  corePoche: FillStyle | null
+  /**
    * What a ground zone gets INSTEAD of its palette fill. `null` is true ground:
    * the paper shows through. The editor uses a barely-there tint (spec allows
    * <=2%) so a corridor stays visible as a selectable object while editing --
@@ -590,7 +614,8 @@ export const UNASSIGNED_HATCH: FillStyle = {
 }
 
 /** Zone-core poche: fixed screen density, so it reads the same at any zoom. */
-export const CORE_POCHE: Omit<Extract<FillStyle, { kind: 'hatch' }>, 'color'> = {
+const CORE_POCHE_BASE: Extract<FillStyle, { kind: 'hatch' }> = {
+  color: '#5c626c', // overridden per-zone with the palette line colour at the call site
   kind: 'hatch',
   alpha: 0.34,
   angleDeg: 45,
@@ -632,6 +657,7 @@ const PAPER: PlanStyle = {
   groundTint: null, // paper: corridors ARE the paper
   unassignedHatch: null, // paper: and so is wasted floor — the sheet never tells
   unassignedOutline: null,
+  corePoche: null, // spec: the reference has NO poche anywhere
 }
 
 /**
@@ -661,6 +687,7 @@ const EDITOR: PlanStyle = {
     tier: 'furniture',
     z: 31,
   },
+  corePoche: CORE_POCHE_BASE,
 }
 
 const PROFILES: Record<PlanProfile, PlanStyle> = { editor: EDITOR, paper: PAPER }

@@ -13,7 +13,7 @@ import { fmtMeters } from '../cad/dimEdit'
 import type { DocComponent, DocState, DocWall, DocZone } from '../types/doc'
 import {
   planStyle, strokePx, C, DECISION_DOT, ZONE,
-  WHITE, BLACK, THUMB_FILL, THUMB_OTHER, hexToRgba, CORE_POCHE, CHROME, hatchLevel, detailLevel, SERVICE_ROOMS, abbreviate,
+  WHITE, BLACK, THUMB_FILL, THUMB_OTHER, hexToRgba, CHROME, hatchLevel, detailLevel, SERVICE_ROOMS, abbreviate,
 } from './planStyle'
 import type { FillStyle } from './planStyle'
 import type { Metrics, ZoneStat } from '../types/metrics'
@@ -367,7 +367,9 @@ export function drawZones(
     // decision rather than three copies of `if (kind === X)`.
     const texture: FillStyle | null =
       z.zone_type === 'Core'
-        ? { ...CORE_POCHE, color: pal.line }
+        ? style.corePoche
+          ? { ...(style.corePoche as Extract<FillStyle, { kind: 'hatch' }>), color: pal.line }
+          : null
         : z.zone_type === 'Unassigned'
           ? style.unassignedHatch
           : null
