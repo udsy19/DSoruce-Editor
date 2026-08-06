@@ -167,3 +167,34 @@ model; what it shows is the floor plane uniformly neutral with no cool-blue
 circulation carpet, which is the assertion. A properly framed shot is produced in
 the F2 gallery pass, where viewports are normalised (this capture came back
 1200×744 against Phase 0's 1600×1000, so no pixdiff was possible here).
+
+## B4 — 2.5 `printPlan` roomLabels · **DONE**
+
+The audit flagged this as **latent**: the fill branch honours the ground rule
+(measured 1 px of composited circulation grey across 1400×1000), the roomLabels
+branch did not — it printed `z.label` for any `Rect` clearing a size gate, with
+no ground check. Residual pockets are `Poly` and escaped by accident; the DRAWN
+network (`Corridor`/`Entry`/`Aisle`) is all `Rect`.
+
+**Falsified live rather than argued.** `B4-corridor-on-sheet-probe.mjs` renders a
+14 m × 4 m corridor through the real `renderPrintCanvas` with a text-recording
+context:
+
+| | sheet text |
+|---|---|
+| before | `["CORRIDOR", "BOARDROOM"]` — `corridorOnSheet: true` |
+| after | `["BOARDROOM"]` — `corridorOnSheet: false` |
+| ground check removed again | `["CORRIDOR", "BOARDROOM"]` |
+
+On the reference plate no corridor cleared the gate, which is why it never fired
+— a property of one plate at one scale, not a fix. The probe builds the plate
+that triggers it instead of waiting for one to arrive.
+
+Guard `src/export/printLabels.test.mjs` asserts the branch consults the ground
+rule **and** keeps its fit gate (so the fix cannot degrade into "label everything
+that is not ground"). Its own first run failed on the fit-gate assertion because
+the comment I added pushed the gate past the 900-char slice — the guard reported
+"the gate vanished" when the gate had merely moved. Slice widened, and noted:
+**a source-slicing assertion is a positional assumption, and positions move.**
+
+Probe kept at `docs/evidence/circulation-audit/B4-corridor-on-sheet-probe.mjs`.

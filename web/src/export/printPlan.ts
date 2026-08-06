@@ -9,6 +9,7 @@
 // chrome (rulers, grips, selection, CAD overlays) that must not print.
 
 import type { DocState } from '../types/doc'
+import { isGroundZone } from '../types/doc'
 import { drawSymbol, seatsForSize } from '../editor/symbols'
 import { ZONE, PRINT, planStyle, strokePx, hexToRgba } from '../editor/planStyle'
 
@@ -261,6 +262,16 @@ export function renderPrintCanvas(
     ctx.fillStyle = PRINT_ZONE_LABEL
     for (const z of state.zones ?? []) {
       const s = z.shape
+      // GROUND CARRIES NO NAME ON THE SHEET. The fill branch above already
+      // honours this; this branch did not, and printed `z.label` for any Rect
+      // clearing the size gate. Residual pockets are `Poly` and escaped by
+      // accident; the DRAWN network — Corridor / Entry / Aisle — is all `Rect`.
+      //
+      // On the reference plate no corridor cleared the gate, so it never fired.
+      // That is a property of one plate at one scale, not a fix: falsified by
+      // rendering a 14 m x 4 m corridor through this function, which printed
+      // ["CORRIDOR", "BOARDROOM"] onto the sheet.
+      if (isGroundZone(z.zone_type)) continue
       if (s.kind === 'Rect' && z.label && s.w * k > 140 && s.h * k > 50) {
         ctx.fillText(z.label.toUpperCase(), X(s.x - s.w / 2) + 10, Y(s.y - s.h / 2) + 22)
       }
