@@ -318,3 +318,59 @@ Found in the Phase 0 audit as a live unpinned mirror. Now pinned.
 |---|---|
 | Rust 5.0 → 7.0 | **RED** — `rust: 7 / ts: 5` |
 | TS 5 → 9 | **RED** — `rust: 5 / ts: 9` |
+
+---
+
+# E1 — final quantitative restatement
+
+Measured on the DXF reference plate through the wizard; core numbers unchanged
+since Phase 1b (B2–B6 are renderer-only and touch no core value).
+
+| quantity | Phase 0 | E.2 predicted | Phase 1 | **Phase 1b (final)** | registered? |
+|---|---|---|---|---|---|
+| Circulation, honest | 295.89 m² (26 z) | 125–170 | 231.43 (20 z) | **213.16 (18 z)** | — |
+| — network (drawn) | 125.23 | unchanged | 125.23 | **125.23** | ✔ unchanged |
+| — residual kept | 170.66 | — | 106.20 | **87.93** | — |
+| Unassigned | 0 | 130–160 | 64.47 | **82.74 (8 z)** | ✘ missed, mechanism recorded |
+| Circulation, published | 295.89 | — | 295.89 | **295.89** | ✔ byte-exact |
+| `efficiency_pct` | 61.63 | 57–60 ↓ | 61.63 | **61.63** | ✔ invariant (prediction wrong) |
+| `unassigned_pct` | — | — | — | **9.11** | new, internal only |
+| Workstations | 101 | 101 | 101 | **101** | ✔ invariant |
+| Candidate A / C / B | 88 / 87 / 86 | — | 87.14 / 85.92 / 85.71 | **A > C > B** | ✔ ordering preserved |
+| Zone tags at rest | 24 (17 ground) | — | — | **7 (0 ground)** | ✔ |
+| Card `#d8d8d8` px | 1 226 | — | — | **0** | ✔ |
+
+**Three predictions missed, all with mechanism recorded, none absorbed:**
+1. `efficiency_pct` invariant, not ↓ — circulation was already outside `usable`.
+2. Unassigned 82.74 not 130–160 — §E.1's DT was computed *within* each pocket.
+3. `zone_index_at` tie-break broke nothing — residual pockets are disjoint by
+   construction, so it never fires.
+
+Each came from a scalar standing in for geometry; each was corrected by a table.
+That pattern is now `.claude/rules/gate-independence.md` § *A scalar is not
+geometry*.
+
+# Queue state at stop
+
+**Complete:** A1 · A2 (+A2b) · B1 (+B1b) · B2 · B3 · B4 · B5 · B6 · C4.
+Phase 2 (2.1–2.8) is closed. Nine committed items, each with its own commit,
+falsification and sabotage round.
+
+**Parked with written blocker:** the `generate` perf regression (above), with a
+three-step fix ladder, verdict-preserving options first.
+
+**Not reached — no blocker, simply not built:**
+- **C1–C3** (Phase 3 promotion: shared KPI module, on-screen metrics card with
+  average ticks, candidate-card headline trio). Substantial UI work; `report.ts`
+  already holds the computations, so this remains a promotion, not construction.
+- **D1–D3** (C-board: `scripts/gates/circulation/run-all.mjs`, C1–C10, G13 fold,
+  lying gate, board sabotage).
+- **E2** (golden provenance stamp), **F2–F4** (gallery, discovered-not-fixed
+  filings, G10 packet).
+
+These are unreached rather than blocked: every ruling they need is in §2, and
+each has a written specification in the loop brief. A successor can start at C1
+without re-deriving anything.
+
+**Suite state at stop:** Rust 169/169 (perf test intermittent, 3/4); all node
+tests green by exit code; typecheck 0; style gate 0; accent univalence 0.
