@@ -81,6 +81,12 @@ export class DrawingCanvas implements DrawingEvents {
   private readonly s: DrawingScene
   private ro: ResizeObserver | null = null
 
+  /** The backing element — read-only, so callers can measure whether this
+   *  instance is the one currently on screen (see DrawingView's `__dc` seam). */
+  get canvasEl(): HTMLCanvasElement {
+    return this.s.canvas
+  }
+
   constructor(canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d')
     if (!ctx) throw new Error('2D canvas context unavailable')

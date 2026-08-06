@@ -5,7 +5,7 @@
 // (wasm scratch clone) and this panel only calls it on hover, caching per
 // entry for the session.
 import { useEffect, useState } from 'react'
-import type { CSSProperties, FormEvent, KeyboardEvent, ReactNode } from 'react'
+import type { FormEvent, KeyboardEvent, ReactNode } from 'react'
 import { groupPlans, type SavedPlan } from '../persist/plans'
 import type { HistoryEntry } from '../persist/history'
 import { formatINR } from '../materialBank/client'
@@ -46,7 +46,6 @@ export interface LibraryPanelProps {
   syncing?: boolean
 }
 
-const MONO = "'IBM Plex Mono', ui-monospace, monospace"
 
 const defaultPlanName = () =>
   `Plan ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}`
@@ -174,33 +173,31 @@ export function LibraryPanel({
       <div key={p.id}>
         <div
           data-testid="library-row"
-          style={{
-            ...S.row,
-            ...(indented ? S.rowIndent : {}),
-            background: selected.includes(p.id) ? 'var(--accent-amber-soft)' : 'transparent',
-          }}
+          className={`lib-row${indented ? ' is-indented' : ''}${
+            selected.includes(p.id) ? ' is-selected' : ''
+          }`}
           onMouseLeave={() => setConfirming((c) => (c === p.id ? null : c))}
         >
           <input
             type="checkbox"
-            style={S.check}
+            className="lib-check"
             checked={selected.includes(p.id)}
             aria-label={`Select ${p.name} for compare`}
             onChange={() => toggleSelect(p.id)}
           />
           <button
             type="button"
-            style={S.thumbBtn}
+            className="lib-thumb-btn"
             title={`Open ${p.name}`}
             aria-label={`Open ${p.name}`}
             onClick={() => onLoad(p)}
           >
-            <img src={p.thumb} alt="" style={S.thumbImg} draggable={false} />
+            <img src={p.thumb} alt="" className="lib-thumb-img" draggable={false} />
           </button>
-          <div style={S.main}>
+          <div className="lib-main">
             {isEditing ? (
               <input
-                style={S.nameInput}
+                className="lib-name-input"
                 value={editing.draft}
                 autoFocus
                 aria-label={`Rename ${p.name}`}
@@ -209,10 +206,10 @@ export function LibraryPanel({
                 onKeyDown={renameKey}
               />
             ) : (
-              <span style={S.nameRow}>
-                {p.floor && <span style={S.floorTag}>{p.floor.label} · </span>}
+              <span className="lib-name-row">
+                {p.floor && <span className="lib-floor-tag">{p.floor.label} · </span>}
                 <span
-                  style={S.name}
+                  className="lib-name"
                   title={`${p.name} — double-click to rename`}
                   onDoubleClick={() => setEditing({ id: p.id, draft: p.name })}
                 >
@@ -220,7 +217,7 @@ export function LibraryPanel({
                 </span>
                 <button
                   type="button"
-                  style={S.tinyBtn}
+                  className="lib-tiny-btn"
                   title={`Rename ${p.name}`}
                   aria-label={`Rename ${p.name}`}
                   onClick={() => setEditing({ id: p.id, draft: p.name })}
@@ -229,16 +226,16 @@ export function LibraryPanel({
                 </button>
               </span>
             )}
-            <span style={S.metricLine}>
+            <span className="lib-metric num">
               {Math.round(p.metrics.workstations)} ws · {Math.round(p.metrics.efficiencyPct)}% ·{' '}
               {formatINR(p.metrics.indicativeCost)}
             </span>
-            <span style={S.ago}>{timeAgo(p.updatedAt)}</span>
+            <span className="lib-ago num">{timeAgo(p.updatedAt)}</span>
           </div>
           {confirming === p.id ? (
             <button
               type="button"
-              style={S.confirmBtn}
+              className="lib-confirm-btn"
               title={`Permanently delete ${p.name}`}
               onClick={() => {
                 setConfirming(null)
@@ -252,7 +249,7 @@ export function LibraryPanel({
               {onAssign && (
                 <button
                   type="button"
-                  style={S.tinyBtn}
+                  className="lib-tiny-btn"
                   title={`Add ${p.name} to a project…`}
                   aria-label={`Add ${p.name} to a project`}
                   data-testid="library-assign"
@@ -270,7 +267,7 @@ export function LibraryPanel({
               {onExport && (
                 <button
                   type="button"
-                  style={S.tinyBtn}
+                  className="lib-tiny-btn"
                   title={`Download ${p.name} as .dsource`}
                   aria-label={`Download ${p.name} as .dsource`}
                   data-testid="library-export"
@@ -281,7 +278,7 @@ export function LibraryPanel({
               )}
               <button
                 type="button"
-                style={S.tinyBtn}
+                className="lib-tiny-btn"
                 title={`Delete ${p.name}`}
                 aria-label={`Delete ${p.name}`}
                 onClick={() => setConfirming(p.id)}
@@ -294,7 +291,7 @@ export function LibraryPanel({
         {assigning?.id === p.id && (
           <form
             data-testid="assign-form"
-            style={{ ...S.assignForm, ...(indented ? S.rowIndent : {}) }}
+            className={`lib-assign-form${indented ? ' is-indented' : ''}`}
             onSubmit={(ev) => {
               ev.preventDefault()
               commitAssign()
@@ -305,7 +302,7 @@ export function LibraryPanel({
           >
             <input
               data-testid="assign-name"
-              style={S.assignInput}
+              className="lib-assign-input"
               list="library-project-names"
               placeholder="Project name"
               aria-label="Project name"
@@ -315,7 +312,7 @@ export function LibraryPanel({
             />
             <input
               data-testid="assign-floor"
-              style={S.assignFloorInput}
+              className="lib-assign-floor"
               placeholder="L1"
               aria-label="Floor label"
               value={assigning.floor}
@@ -324,7 +321,7 @@ export function LibraryPanel({
             <button
               type="submit"
               data-testid="assign-commit"
-              style={{ ...S.assignBtn, opacity: assigning.name.trim() ? 1 : 0.5 }}
+              className="lib-assign-btn"
               disabled={!assigning.name.trim()}
               title="Add this plan to the project as a floor"
             >
@@ -337,21 +334,21 @@ export function LibraryPanel({
   }
 
   return (
-    <div data-testid="library-panel" style={S.root}>
+    <div data-testid="library-panel" className="lib">
       {/* — Floor switcher: the open plan's project, one chip per floor — */}
       {currentGroup && currentPlan && (
-        <div data-testid="floor-switcher" style={S.switcher}>
-          <span style={S.switcherName} title={currentGroup.projectName}>
+        <div data-testid="floor-switcher" className="lib-switcher">
+          <span className="lib-switcher-name" title={currentGroup.projectName}>
             {currentGroup.projectName}
           </span>
-          <span style={S.switcherFloors}>
+          <span className="lib-switcher-floors">
             {currentGroup.floors.map((f) => {
               const isCurrent = f.id === currentPlan.id
               return (
                 <button
                   key={f.id}
                   type="button"
-                  style={{ ...S.floorChip, ...(isCurrent ? S.floorChipOn : {}) }}
+                  className={`lib-floor-chip${isCurrent ? ' is-on' : ''}`}
                   title={isCurrent ? `${f.name} (open)` : `Open ${f.name}`}
                   aria-pressed={isCurrent}
                   onClick={() => {
@@ -367,24 +364,24 @@ export function LibraryPanel({
       )}
 
       {/* — Save current plan — */}
-      <form style={S.saveForm} onSubmit={submitSave}>
+      <form className="lib-save-form" onSubmit={submitSave}>
         <input
-          style={S.saveInput}
+          className="lib-save-input"
           value={saveName}
           aria-label="Plan name"
           onChange={(ev) => setSaveName(ev.target.value)}
         />
-        <button type="submit" data-testid="library-save" style={S.saveBtn}>
+        <button type="submit" data-testid="library-save" className="lib-save-btn">
           Save current plan
         </button>
       </form>
 
       {/* — Cloud sync (design §5): last-synced state + manual sync — */}
       {onSync && (
-        <div style={S.syncRow}>
+        <div className="lib-sync-row">
           <span
             data-testid="library-sync-status"
-            style={{ ...S.syncStatus, ...(syncState?.error ? S.syncStatusErr : {}) }}
+            className={`lib-sync-status${syncState?.error ? ' is-error' : ''}`}
             title={syncState?.error ?? 'Plans sync to your account across devices'}
           >
             <CloudIcon />
@@ -393,7 +390,7 @@ export function LibraryPanel({
           <button
             type="button"
             data-testid="library-sync"
-            style={S.syncBtn}
+            className="lib-sync-btn"
             disabled={!!syncing}
             title="Sync saved plans with your account"
             onClick={onSync}
@@ -404,25 +401,22 @@ export function LibraryPanel({
       )}
 
       {/* — Saved plans — */}
-      <div style={S.eyebrowRow}>
-        <span style={S.eyebrow}>Saved plans</span>
+      <div className="lib-eyebrow-row">
+        <span className="lib-eyebrow">Saved plans</span>
         <button
           type="button"
           data-testid="library-compare"
-          style={{
-            ...S.compareBtn,
-            ...(selected.length === 2 ? S.compareOn : S.compareOff),
-          }}
+          className={`lib-compare ${selected.length === 2 ? 'is-on' : 'is-off'}`}
           disabled={selected.length !== 2}
           title={selected.length === 2 ? 'Compare the two checked plans' : 'Check exactly two plans to compare'}
           onClick={compare}
         >
-          Compare{selected.length > 0 && <span style={S.compareCount}> {selected.length}/2</span>}
+          Compare{selected.length > 0 && <span className="lib-compare-count num"> {selected.length}/2</span>}
         </button>
       </div>
 
       {ordered.length === 0 && (
-        <p style={S.lead}>Nothing saved yet. Save the current plan to keep it across sessions.</p>
+        <p className="lib-lead">Nothing saved yet. Save the current plan to keep it across sessions.</p>
       )}
 
       {/* Existing project names as suggestions for the assign form. */}
@@ -437,11 +431,11 @@ export function LibraryPanel({
       {/* — Projects: header + floors (sorted by index), then ungrouped flat — */}
       {projects.map((g) => (
         <div key={g.projectId} data-testid="project-group">
-          <div data-testid="project-header" style={S.projectHeader}>
-            <span style={S.projectName} title={g.projectName}>
+          <div data-testid="project-header" className="lib-project-header">
+            <span className="lib-project-name" title={g.projectName}>
               {g.projectName}
             </span>
-            <span style={S.projectCount}>
+            <span className="lib-project-count num">
               {g.floors.length} floor{g.floors.length === 1 ? '' : 's'}
             </span>
           </div>
@@ -454,60 +448,60 @@ export function LibraryPanel({
       <button
         type="button"
         data-testid="library-history-toggle"
-        style={S.historyToggle}
+        className="lib-history-toggle"
         aria-expanded={historyOpen}
         onClick={() => setHistoryOpen((o) => !o)}
       >
-        <span style={{ ...S.caret, transform: historyOpen ? 'rotate(0deg)' : 'rotate(-90deg)' }}>
+        <span className={`lib-caret${historyOpen ? '' : ' is-collapsed'}`}>
           <Icon name="caret" size={13} />
         </span>
-        <span style={S.eyebrow}>History</span>
-        <span style={S.historyCount}>{entries.length}</span>
+        <span className="lib-eyebrow">History</span>
+        <span className="lib-history-count num">{entries.length}</span>
       </button>
 
       {historyOpen && (
         <>
-          <p style={S.lead}>
+          <p className="lib-lead">
             Restoring rewinds; save to library first to keep the current state forever.
           </p>
           {entries.length === 0 && (
-            <p style={S.lead}>No checkpoints yet — history records your edits automatically.</p>
+            <p className="lib-lead">No checkpoints yet — history records your edits automatically.</p>
           )}
           {entries.map((e) => {
             const thumb = hoveredAt === e.at ? thumbs[e.at] : null
             return (
               <div
                 key={e.at}
-                style={S.historyRow}
+                className="lib-history-row"
                 onMouseEnter={() => hoverEntry(e)}
                 onMouseLeave={() => setHoveredAt((h) => (h === e.at ? null : h))}
               >
-                <div style={S.historyLine}>
-                  <span style={S.historyLabel}>
-                    <span style={S.monoBit}>{hhmm(e.at)}</span>
+                <div className="lib-history-line">
+                  <span className="lib-history-label">
+                    <span className="lib-mono-bit num">{hhmm(e.at)}</span>
                     {' · '}
                     {e.reason}
                     {' · '}
-                    <span style={S.monoBit}>{e.program.desks} ws</span>
+                    <span className="lib-mono-bit num">{e.program.desks} ws</span>
                   </span>
                   <button
                     type="button"
                     data-testid="library-restore"
-                    style={S.restoreBtn}
+                    className="lib-restore-btn"
                     title={`Restore the ${hhmm(e.at)} checkpoint`}
                     onClick={() => onRestore(e)}
                   >
                     Restore
                   </button>
                 </div>
-                {thumb && <img src={thumb} alt="" style={S.historyThumb} draggable={false} />}
+                {thumb && <img src={thumb} alt="" className="lib-history-thumb" draggable={false} />}
               </div>
             )
           })}
         </>
       )}
 
-      {storageNote && <div style={S.storageFoot}>{storageNote}</div>}
+      {storageNote && <div className="lib-storage-foot num">{storageNote}</div>}
     </div>
   )
 }
@@ -554,7 +548,7 @@ function FolderPlusIcon() {
 
 function CloudIcon() {
   return (
-    <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden style={{ flex: 'none' }}>
+    <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden className="lib-cloud-icon">
       <path d="M17.5 19a4.5 4.5 0 0 0 .5-8.97A6 6 0 0 0 6.2 9.2 4 4 0 0 0 7 17h10.5Z" />
     </svg>
   )
@@ -568,415 +562,3 @@ function TrashIcon() {
   )
 }
 
-const S: Record<string, CSSProperties> = {
-  root: {
-    fontFamily: "var(--font-ui, 'Space Grotesk', system-ui, sans-serif)",
-    color: 'var(--text)',
-    display: 'flex',
-    flexDirection: 'column',
-  },
-  saveForm: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 7,
-    paddingBottom: 14,
-    borderBottom: '1px solid var(--hairline)',
-    marginBottom: 12,
-  },
-  saveInput: {
-    fontFamily: "var(--font-ui, 'Space Grotesk', system-ui, sans-serif)",
-    fontSize: 12.5,
-    padding: '6px 9px',
-    border: '1px solid var(--hairline-strong)',
-    borderRadius: 6,
-    background: 'var(--surface-2)',
-    color: 'var(--text)',
-    outline: 'none',
-    minWidth: 0,
-  },
-  saveBtn: {
-    fontFamily: "var(--font-ui, 'Space Grotesk', system-ui, sans-serif)",
-    fontSize: 12.5,
-    fontWeight: 600,
-    padding: '7px 10px',
-    border: '1px solid var(--accent-amber)',
-    borderRadius: 6,
-    background: 'var(--accent-amber)',
-    color: 'var(--accent-ink)',
-    cursor: 'pointer',
-  },
-  syncRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-    padding: '2px 2px 12px',
-    marginBottom: 12,
-    borderBottom: '1px solid var(--hairline)',
-  },
-  syncStatus: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: 6,
-    flex: 1,
-    minWidth: 0,
-    fontFamily: MONO,
-    fontSize: 10.5,
-    color: 'var(--muted)',
-    whiteSpace: 'nowrap',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-  },
-  syncStatusErr: {
-    color: 'var(--danger-deep)',
-  },
-  syncBtn: {
-    fontFamily: "var(--font-ui, 'Space Grotesk', system-ui, sans-serif)",
-    fontSize: 11.5,
-    fontWeight: 600,
-    flex: 'none',
-    padding: '4px 11px',
-    borderRadius: 6,
-    border: '1px solid var(--hairline-strong)',
-    background: 'var(--surface)',
-    color: 'var(--text-2)',
-    cursor: 'pointer',
-  },
-  eyebrowRow: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingBottom: 8,
-  },
-  eyebrow: {
-    fontSize: 11,
-    fontWeight: 600,
-    letterSpacing: '0.08em',
-    textTransform: 'uppercase',
-    color: 'var(--eyebrow)',
-  },
-  compareBtn: {
-    fontFamily: "var(--font-ui, 'Space Grotesk', system-ui, sans-serif)",
-    fontSize: 11.5,
-    fontWeight: 600,
-    padding: '3px 9px',
-    borderRadius: 6,
-    border: '1px solid var(--hairline-strong)',
-  },
-  compareOn: {
-    background: 'var(--accent-amber-soft)',
-    borderColor: 'var(--accent-amber)',
-    color: 'var(--accent-amber)',
-    cursor: 'pointer',
-  },
-  compareOff: {
-    background: 'var(--surface)',
-    color: 'var(--muted)',
-    opacity: 0.6,
-    cursor: 'default',
-  },
-  compareCount: {
-    fontFamily: MONO,
-    fontWeight: 600,
-  },
-  lead: {
-    margin: '0 0 10px',
-    fontSize: 12.5,
-    lineHeight: 1.5,
-    color: 'var(--muted)',
-  },
-  row: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-    padding: '7px 4px',
-    borderRadius: 8,
-    borderBottom: '1px solid var(--hairline)',
-  },
-  /** Floors sit indented beneath their project header. */
-  rowIndent: {
-    marginLeft: 14,
-  },
-  projectHeader: {
-    display: 'flex',
-    alignItems: 'baseline',
-    gap: 8,
-    padding: '10px 4px 4px',
-  },
-  projectName: {
-    fontSize: 12,
-    fontWeight: 700,
-    letterSpacing: '0.02em',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-    color: 'var(--text)',
-  },
-  projectCount: {
-    marginLeft: 'auto',
-    fontFamily: MONO,
-    fontSize: 10,
-    color: 'var(--muted)',
-    whiteSpace: 'nowrap',
-  },
-  floorTag: {
-    fontFamily: MONO,
-    fontSize: 11,
-    fontWeight: 600,
-    color: 'var(--accent-amber)',
-    whiteSpace: 'nowrap',
-    flex: 'none',
-  },
-  assignForm: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 6,
-    padding: '6px 4px 8px 26px',
-    borderBottom: '1px solid var(--hairline)',
-  },
-  assignInput: {
-    fontFamily: "var(--font-ui, 'Space Grotesk', system-ui, sans-serif)",
-    fontSize: 12,
-    flex: 1,
-    minWidth: 0,
-    padding: '4px 7px',
-    border: '1px solid var(--hairline-strong)',
-    borderRadius: 5,
-    background: 'var(--surface-2)',
-    color: 'var(--text)',
-    outline: 'none',
-  },
-  assignFloorInput: {
-    fontFamily: MONO,
-    fontSize: 11.5,
-    width: 44,
-    flex: 'none',
-    padding: '4px 6px',
-    border: '1px solid var(--hairline-strong)',
-    borderRadius: 5,
-    background: 'var(--surface-2)',
-    color: 'var(--text)',
-    outline: 'none',
-  },
-  assignBtn: {
-    fontFamily: "var(--font-ui, 'Space Grotesk', system-ui, sans-serif)",
-    fontSize: 11.5,
-    fontWeight: 600,
-    flex: 'none',
-    padding: '4px 10px',
-    border: '1px solid var(--accent-amber)',
-    borderRadius: 5,
-    background: 'var(--accent-amber)',
-    color: 'var(--accent-ink)',
-    cursor: 'pointer',
-  },
-  switcher: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-    padding: '2px 0 12px',
-    marginBottom: 12,
-    borderBottom: '1px solid var(--hairline)',
-  },
-  switcherName: {
-    fontSize: 12,
-    fontWeight: 700,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-    color: 'var(--text)',
-  },
-  switcherFloors: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 4,
-    marginLeft: 'auto',
-    flex: 'none',
-  },
-  floorChip: {
-    fontFamily: MONO,
-    fontSize: 11,
-    fontWeight: 600,
-    padding: '2px 7px',
-    border: '1px solid var(--hairline-strong)',
-    borderRadius: 5,
-    background: 'var(--surface)',
-    color: 'var(--text-2)',
-    cursor: 'pointer',
-  },
-  floorChipOn: {
-    borderColor: 'var(--accent-amber)',
-    background: 'var(--accent-amber-soft)',
-    color: 'var(--accent-amber)',
-    cursor: 'default',
-  },
-  check: {
-    accentColor: 'var(--accent-amber)',
-    flex: 'none',
-    margin: 0,
-    cursor: 'pointer',
-  },
-  thumbBtn: {
-    flex: 'none',
-    padding: 0,
-    border: '1px solid var(--hairline)',
-    borderRadius: 5,
-    background: 'var(--canvas-mat)',
-    cursor: 'pointer',
-    overflow: 'hidden',
-    lineHeight: 0,
-  },
-  thumbImg: {
-    display: 'block',
-    width: 52,
-    height: 38,
-    objectFit: 'cover',
-  },
-  main: {
-    flex: 1,
-    minWidth: 0,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 2,
-  },
-  nameRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 4,
-    minWidth: 0,
-  },
-  name: {
-    fontSize: 13,
-    fontWeight: 600,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-    cursor: 'text',
-  },
-  nameInput: {
-    fontFamily: "var(--font-ui, 'Space Grotesk', system-ui, sans-serif)",
-    fontSize: 12.5,
-    fontWeight: 600,
-    padding: '2px 6px',
-    border: '1px solid var(--accent-amber)',
-    borderRadius: 5,
-    background: 'var(--surface)',
-    color: 'var(--text)',
-    outline: 'none',
-    minWidth: 0,
-  },
-  metricLine: {
-    fontFamily: MONO,
-    fontSize: 10.5,
-    color: 'var(--text-2)',
-    whiteSpace: 'nowrap',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-  },
-  ago: {
-    fontFamily: MONO,
-    fontSize: 10,
-    color: 'var(--muted)',
-  },
-  tinyBtn: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: 22,
-    height: 22,
-    flex: 'none',
-    border: 'none',
-    background: 'transparent',
-    borderRadius: 5,
-    cursor: 'pointer',
-    padding: 0,
-    color: 'var(--muted)',
-  },
-  confirmBtn: {
-    fontFamily: "var(--font-ui, 'Space Grotesk', system-ui, sans-serif)",
-    fontSize: 11,
-    fontWeight: 600,
-    flex: 'none',
-    padding: '3px 8px',
-    border: '1px solid var(--danger-deep)',
-    borderRadius: 5,
-    background: 'var(--danger-deep-wash)',
-    color: 'var(--danger-deep)',
-    cursor: 'pointer',
-  },
-  historyToggle: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 6,
-    width: '100%',
-    marginTop: 16,
-    padding: '8px 0 8px',
-    border: 'none',
-    borderTop: '1px solid var(--hairline)',
-    background: 'transparent',
-    cursor: 'pointer',
-    textAlign: 'left',
-    font: 'inherit',
-  },
-  caret: {
-    display: 'inline-flex',
-    color: 'var(--muted)',
-    transition: 'transform 0.12s',
-  },
-  historyCount: {
-    marginLeft: 'auto',
-    fontFamily: MONO,
-    fontSize: 11,
-    color: 'var(--muted)',
-  },
-  historyRow: {
-    padding: '4px 2px',
-    borderBottom: '1px solid var(--hairline)',
-  },
-  historyLine: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-  },
-  historyLabel: {
-    flex: 1,
-    minWidth: 0,
-    fontSize: 12,
-    color: 'var(--text-2)',
-    whiteSpace: 'nowrap',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-  },
-  monoBit: {
-    fontFamily: MONO,
-    fontSize: 11.5,
-  },
-  restoreBtn: {
-    fontFamily: "var(--font-ui, 'Space Grotesk', system-ui, sans-serif)",
-    fontSize: 11,
-    fontWeight: 600,
-    flex: 'none',
-    padding: '2px 8px',
-    border: '1px solid var(--hairline-strong)',
-    borderRadius: 5,
-    background: 'var(--surface)',
-    color: 'var(--text-2)',
-    cursor: 'pointer',
-  },
-  storageFoot: {
-    marginTop: 14,
-    paddingTop: 8,
-    borderTop: '1px solid var(--hairline)',
-    fontFamily: MONO,
-    fontSize: 10.5,
-    color: 'var(--muted)',
-  },
-  historyThumb: {
-    display: 'block',
-    width: 120,
-    height: 'auto',
-    marginTop: 5,
-    borderRadius: 4,
-    border: '1px solid var(--hairline)',
-    background: 'var(--canvas-mat)',
-  },
-}

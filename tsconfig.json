@@ -13,5 +13,5 @@
     "allowImportingTsExtensions": false,
     "verbatimModuleSyntax": true
   },
-  "include": ["api/**/*.ts", "deploy/apiCore.ts", "deploy/server.ts"]
+  "include": ["api/**/*.ts", "deploy/apiCore.ts", "deploy/server.ts", "deploy/shareStore.ts"]
 }

@@ -1,0 +1,14 @@
+// ACCENT-UNIVALENCE FIXTURE — every way amber can escape its declaration.
+// Copied to web/src/ui/__fixture.tsx by the sensor's self-test, then removed.
+// Case 3 (0x) and case 4 (stringified) exist because both shipped for real:
+// the 0x form was invisible to every hex- and name-keyed sensor Campaign 4 had,
+// and the stringified form was introduced BY Campaign 4's own blanket replace.
+import { ACCENT_AMBER, SELECTION_ACCENT } from '../editor/planStyle'
+export const cases = {
+  decimalTriplet: { background: 'rgba(232, 161, 60, 0.12)' },   // 1 — ui-fixes' vocabulary
+  deadFallback:   { border: '1px solid var(--accent, #E8A13C)' }, // 2 — claims amber, renders blue
+  numericLiteral: { color: 0xE8A13C },                            // 3 — R5.5: the 0x encoding
+  stringifiedAI:  { border: '1px solid ACCENT_AMBER' },           // 4 — R5.5: token as literal text
+  stringifiedSel: { outline: '2px solid SELECTION_ACCENT' },      // 4b — same defect, other name
+  correct:        { color: ACCENT_AMBER, outline: `1px solid ${SELECTION_ACCENT}` }, // must NOT flag
+}

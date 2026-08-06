@@ -319,6 +319,7 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
                 program.meeting_w,
                 program.meeting_h,
                 Placement::Flexible,
+                0, // derived meeting: no explicit brief
             ));
         }
         take(&mut jobs, SpaceKind::Focus);
@@ -658,9 +659,10 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
         }
     }
 
-    // Keep-outs surface as `Core` zones (gray tint, Core cost/NIA rate). Emitted
-    // last so a point inside a keep-out buckets to Core, winning the
-    // last-non-Circulation-wins tie over any overlapping Workspace rect.
+    // Keep-outs surface as `Core` zones (gray tint, Core cost/NIA rate). A point
+    // inside a keep-out buckets to Core rather than to an overlapping spanning
+    // Workspace rect because `Document::zone_index_at` picks the SMALLEST
+    // containing zone (a shaft is always smaller than the field around it).
     for (kx, ky, kw, kh, label) in &keepout_zones {
         push_zone(
             doc,
@@ -688,6 +690,14 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
         }
     }
 
+    // Seat every generated desk. Last, so it sees the final desk set (including
+    // the cross-region top-up pass) and so desk placement above is untouched.
+    seat_desk_chairs(doc, plate.as_deref(), &iwalls, clear);
+
     // Fill each zone's component_ids by point-in-zone on component centers.
     doc.reassign_components();
+
+    // Model the facade's glazing module. Runs AFTER zones and components so the
+    // ids they were allocated (the workbook's Room IDs) never move.
+    glaze_facade(doc);
 }

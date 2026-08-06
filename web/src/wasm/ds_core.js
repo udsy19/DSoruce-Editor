@@ -186,6 +186,25 @@ export class Editor {
         }
     }
     /**
+     * The scoring engine's density verdict for this document, 0..100 — 100
+     * across the professional 8–12 m²/person band, tapering to 0 at ≤4.5
+     * (crammed) and ≥20 (sparse).
+     *
+     * **Exported because the frontend was deciding "too dense" on its own.**
+     * `ai/engine.ts` compared `area_per_workstation` against a hand-typed
+     * 6.0 m² whose comment said "planning norm (see layout.rs)" — a citation to
+     * a constant that has never existed there. It was also the wrong quantity:
+     * the scorer judges m² per SEAT (desks + meeting capacity), not per desk.
+     * So the AI preview warned the user off layouts the engine was perfectly
+     * happy with, in the engine's name. Whether a plan is professionally dense
+     * is one question with one answer; this is it.
+     * @returns {number}
+     */
+    density_score() {
+        const ret = wasm.editor_density_score(this.__wbg_ptr);
+        return ret;
+    }
+    /**
      * Construct a fresh `Editor` from a `snapshot` (scratch-clone for previews).
      * @param {any} snap
      * @returns {Editor}
@@ -311,6 +330,20 @@ export class Editor {
      */
     qto_schedule() {
         const ret = wasm.editor_qto_schedule(this.__wbg_ptr);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
+     * Wall run length + elevational area per wall type, door count/width per
+     * door type, and per-room area/headcount — all derived from geometry.
+     * Shape: `{ sqfPerM2, wallHeightM, floorAreaM2, walls[], doors[],
+     * doorCount, doorTotalWidthM, rooms[] }`. See `quantity::Quantities`.
+     * @returns {any}
+     */
+    quantities() {
+        const ret = wasm.editor_quantities(this.__wbg_ptr);
         if (ret[2]) {
             throw takeFromExternrefTable0(ret[1]);
         }
@@ -469,6 +502,19 @@ export class Editor {
         wasm.editor_set_wall(this.__wbg_ptr, id, ax, ay, bx, by);
     }
     /**
+     * Set a wall's height in meters. Anything `>= 0` and below the full storey
+     * height ([`model::FULL_WALL_HEIGHT_M`]) makes it a **partial-height screen**
+     * and moves its run into the takeoff's `Half Drywall` category; pass a
+     * negative value (or the full height) to clear the override back to full
+     * height. No-op if the id is unknown. This is the only writer of
+     * `Wall::height_m` — the generator has no partial-height primitive.
+     * @param {number} id
+     * @param {number} height_m
+     */
+    set_wall_height(id, height_m) {
+        wasm.editor_set_wall_height(this.__wbg_ptr, id, height_m);
+    }
+    /**
      * Reclassify zone `id` to `zone_type` (one of the serde `ZoneType` tags,
      * e.g. "Workspace"). Distinct from the component-level `set_decision`.
      * @param {number} id
@@ -523,6 +569,21 @@ export class Editor {
         return takeFromExternrefTable0(ret[0]);
     }
     /**
+     * Per-wall classification for the **plan renderer**:
+     * `[{ id, wallType, planKey, lengthM }, ...]` in document order, where
+     * `planKey` is a `qbiqPalette.ts` `WallType` (`"drywall"`, `"glass"`, …).
+     * The renderer must colour from THIS rather than re-deriving types in TS —
+     * that is what keeps the coloured plan and the billed workbook in agreement.
+     * @returns {any}
+     */
+    wall_types() {
+        const ret = wasm.editor_wall_types(this.__wbg_ptr);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
      * The most-specific zone id containing world point `(x, y)`, or undefined.
      * @param {number} x
      * @param {number} y
@@ -558,6 +619,48 @@ export class Editor {
     }
 }
 if (Symbol.dispose) Editor.prototype[Symbol.dispose] = Editor.prototype.free;
+
+/**
+ * Depth of a door/window leaf across its wall (m) — the committed footprint;
+ * the swing arc is drawn by the 2D symbol, not stored.
+ *
+ * **Exported for the same reason as [`open_share`]:** `cad/archTools.ts` had its
+ * own `LEAF_DEPTH = 0.15`, so a hand-drawn door and a generated door were one
+ * object with two authored depths. Cheap to unify now, weird later.
+ * @returns {number}
+ */
+export function door_depth() {
+    const ret = wasm.door_depth();
+    return ret;
+}
+
+/**
+ * Standard office single-leaf door width (m) — 900×2100. Exported alongside
+ * [`door_depth`]: `cad/archTools.ts` had `DOOR_DEFAULT = 0.9` for exactly the
+ * same object.
+ * @returns {number}
+ */
+export function door_width() {
+    const ret = wasm.door_width();
+    return ret;
+}
+
+/**
+ * The open-plan share of headcount seated at open workstations.
+ *
+ * **Exported because the frontend was keeping its own copies and one had already
+ * drifted.** `program/spec.ts` used 0.85 while `ai/suggestProgram.ts` used 0.90
+ * with a comment claiming it mirrored Rust — so the same headcount produced a
+ * different building depending on which path the user came in through (88
+ * people → 75 desks via the Program step, 79 via suggestProgram). A value that
+ * decides how many desks a floor gets has exactly one owner: the generator that
+ * places them. Read this; do not re-declare it.
+ * @returns {number}
+ */
+export function open_share() {
+    const ret = wasm.open_share();
+    return ret;
+}
 function __wbg_get_imports() {
     const import0 = {
         __proto__: null,

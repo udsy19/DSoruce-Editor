@@ -8,7 +8,7 @@
 // hands the result in. Rendering is TS-side for now and migrates into a
 // Rust/WebGL renderer later (docs/adr/0001-rendering-staging.md).
 
-import { drawFurnitureSymbol } from './furniture'
+import { drawSymbol, seatsForSize } from './symbols'
 import { fmtMeters } from '../cad/dimEdit'
 import type { DocComponent, DocState, DocWall, DocZone } from '../types/doc'
 import {
@@ -694,21 +694,44 @@ export function drawComponent(v: PaintView, c: DocComponent, selected: boolean) 
   // solid worktop/seat fill (a filled object reads as furniture, where a hollow
   // white plate under a hollow outline read as faint clutter over the pastel
   // zone). Reference furniture gets no fill so it recedes into context.
-  drawFurnitureSymbol(ctx, {
-    category: c.category,
-    cx: p.x,
-    cy: p.y,
-    w,
-    h,
-    rotation: c.rotation,
-    mirror: c.mirror,
-    stroke: ref ? C.furnitureRef : frozen ? DECISION_DOT.Confirmed : C.furniture,
-    detail: ref ? C.furnitureRef : C.furnitureDetail,
-    fill: ref ? undefined : frozen ? hexToRgba(DECISION_DOT.Confirmed, 0.1) : C.furnitureFill,
-    seat: ref ? undefined : frozen ? hexToRgba(DECISION_DOT.Confirmed, 0.16) : C.furnitureSeat,
-    accent: C.accent,
-    selected,
-  })
+  // R2: symbols.ts owns symbol geometry. Dimensions cross in METRES — the symbol
+  // module owns world→screen — and the seat count comes from the MODEL, falling
+  // back to the same world-size rule the core uses. Never from `w`/`h` on screen:
+  // countables are not LOD'd at any zoom, on any surface.
+  drawSymbol(
+    ctx,
+    {
+      category: c.category,
+      cx: p.x,
+      cy: p.y,
+      w: c.w,
+      h: c.h,
+      rotation: c.rotation,
+      mirror: c.mirror,
+      seats: c.seats ?? seatsForSize(c.category, c.w, c.h),
+      // NO IMPLIED SEATING ON THE CANVAS EITHER (R6, extended to this consumer).
+      // The generator emits real `Chair` components now, and this loop draws
+      // every one of them as its own glyph. Leaving the flag at its default put
+      // a second, implied chair under each desk and a full implied ring around
+      // each table — 63 desks drew 126 chairs, and a 10-seat table drew its ring
+      // on top of the 8 chairs that actually fit. R6 ruled the print path with
+      // exactly this reasoning; the canvas is the same consumer error, and the
+      // shared module keeps its default so symbols.test.mjs still pins that the
+      // glyph reads its seat count from the MODEL.
+      implySeats: false,
+      selected,
+    },
+    {
+      stroke: ref ? C.furnitureRef : frozen ? DECISION_DOT.Confirmed : C.furniture,
+      detail: ref ? C.furnitureRef : C.furnitureDetail,
+      fill: ref ? undefined : frozen ? hexToRgba(DECISION_DOT.Confirmed, 0.1) : C.furnitureFill,
+      seat: ref ? undefined : frozen ? hexToRgba(DECISION_DOT.Confirmed, 0.16) : C.furnitureSeat,
+      accent: C.accent,
+    },
+    // Face 9 stays law through the conversion: NO dpr arithmetic here. The view
+    // carries dpr and the symbol module owns every device-pixel decision.
+    { pxPerM: v.scale, dpr: typeof devicePixelRatio === 'number' ? devicePixelRatio : 1 },
+  )
 
   // Label only for the selected item — zone labels carry the room names, so the
   // plan stays clean.

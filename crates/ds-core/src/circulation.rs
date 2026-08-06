@@ -532,15 +532,30 @@ fn rasterize_walls(grid: &mut Grid, doc: &Document) {
     }
 }
 
+/// Loose seating: a task chair tucks under its worktop and rolls out of the way,
+/// so it is **not** fixed construction and cannot narrow a code-measured clear
+/// width. ADA 2010 §403 / IBC 1020 measure the required clear route to fixed
+/// elements and permanently installed furnishings; a chair is neither. Excluding
+/// it is what lets `generate()` seat every desk (`layout::seat_desk_chairs`)
+/// without the chair backs in a bench aisle reporting as a 0.2 m chokepoint.
+fn is_loose_seating(c: &crate::model::Component) -> bool {
+    c.category == "Chair"
+}
+
 /// Mark cells inside each component's (rotation-aware) footprint as blocked —
 /// EXCEPT doors, which are openings: a `Door` component sits in a wall gap and
 /// must read as *passable*, or every enclosed room would appear sealed and
 /// connectivity would collapse (spec §2 "Circulation evaluator change").
 /// Doors are stamped FREE *after* everything blocked, inflated by half a cell,
 /// so the jambs' raster bleed (walls rasterize at ≥ one cell thick) can never
-/// pinch the 0.9 m opening below its true width.
+/// pinch the 0.9 m opening below its true width. Loose seating is skipped
+/// entirely — see [`is_loose_seating`].
 fn rasterize_components(grid: &mut Grid, doc: &Document) {
-    for comp in doc.components.iter().filter(|c| c.category != "Door") {
+    for comp in doc
+        .components
+        .iter()
+        .filter(|c| c.category != "Door" && !is_loose_seating(c))
+    {
         stamp_footprint(grid, comp, 0.0, true);
     }
     let half_cell = grid.cell * 0.5;
@@ -894,7 +909,7 @@ mod tests {
         ];
         for (a, b) in corners {
             let id = doc.alloc_id();
-            doc.walls.push(Wall { id, a, b, thickness: t, generated: false, glazing: false });
+            doc.walls.push(Wall { id, a, b, thickness: t, generated: false, glazing: false, height_m: None });
         }
         doc
     }
@@ -914,6 +929,7 @@ mod tests {
             label: "box".to_string(),
             product_id: None,
             price_inr: None,
+            seats: 0, // test fixture: seat count is irrelevant to what these assert
             decision: DecisionState::Open,
         });
     }
@@ -982,6 +998,7 @@ mod tests {
                     thickness: 0.1,
                     generated: true,
                     glazing: false,
+                    height_m: None,
                 });
             };
             seg(2.0, 2.0, 2.0, 5.0); // left
@@ -1004,6 +1021,7 @@ mod tests {
                     label: "Door".to_string(),
                     product_id: None,
                     price_inr: None,
+                    seats: 0, // test fixture: seat count is irrelevant to what these assert
                     decision: DecisionState::Open,
                 });
             } else {

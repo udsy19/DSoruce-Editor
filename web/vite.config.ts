@@ -6,6 +6,8 @@ import path from 'node:path'
 import { promises as fs } from 'node:fs'
 import { OPENAI_TOOLS, buildSystem } from './src/ai/llmSchema'
 import { dwgConvertPlugin } from './src/import/dwgConvert'
+import { handleShareApi, sharePageId } from '../deploy/shareStore'
+import { handlePackApi } from '../deploy/packStore'
 
 // Dev-only agent proxy. Holds the LLM key server-side and relays to any
 // OpenAI-compatible endpoint (OpenAI / Groq / OpenRouter / Together / local
@@ -251,6 +253,64 @@ function plansStore(): Plugin {
   }
 }
 
+// Dev-only shareable 3D viewer (`/share/<id>`), the dev counterpart of the two
+// share blocks in deploy/server.ts. The STORE + the whole /api/share surface is
+// NOT duplicated here — both servers call the same `deploy/shareStore.ts`
+// handler, so dev and prod cannot drift. Only the page differs: in dev the
+// viewer entry is rewritten onto vite's own HTML pipeline (so it is transformed
+// and hot-reloaded like index.html); in prod it is served from dist/viewer.html.
+// Bundles land in DEV_PLANS_DIR/share, beside the dev plan store.
+function shareViewer(): Plugin {
+  return {
+    name: 'ds-share-viewer',
+    configureServer(server) {
+      server.middlewares.use('/api/share', (req: IncomingMessage, res: ServerResponse) => {
+        const sub = new URL(req.url ?? '/', 'http://internal').pathname.replace(/^\//, '')
+        handleShareApi(req, res, sub, DEV_PLANS_DIR).catch((e: Error & { statusCode?: number }) => {
+          res.statusCode = e.statusCode ?? 500
+          res.setHeader('content-type', 'application/json')
+          res.end(JSON.stringify({ error: e.message }))
+        })
+      })
+      server.middlewares.use((req: IncomingMessage, _res: ServerResponse, next: () => void) => {
+        const p = new URL(req.url ?? '/', 'http://internal').pathname
+        if (sharePageId(p)) req.url = '/viewer.html' // vite serves + transforms it
+        next()
+      })
+    },
+  }
+}
+
+// Dev-only write side of the one-action deliverable pack. Same rule as the
+// share store: the handler itself is NOT duplicated here — `deploy/packStore.ts`
+// serves both this middleware and deploy/server.ts, so dev and prod cannot
+// drift. The repo root is passed so the endpoint can shoot the walkthrough with
+// scripts/render-walkthrough.mjs (a GPU-capable headless Chromium + ffmpeg);
+// without it — and on Vercel, where api/pack answers 501 — the browser encodes
+// the take itself through WebCodecs. Artifacts land in the repo's `out/`, which
+// is exactly what scripts/gates/g10-one-action.mjs polls.
+const REPO_ROOT = path.resolve('..')
+const PACK_OUT_DIR = path.resolve(process.env.PACK_OUT_DIR || path.join(REPO_ROOT, 'out'))
+
+function packWriter(): Plugin {
+  return {
+    name: 'ds-pack-writer',
+    configureServer(server) {
+      server.middlewares.use('/api/pack', (req: IncomingMessage, res: ServerResponse) => {
+        const sub = new URL(req.url ?? '/', 'http://internal').pathname.replace(/^\//, '')
+        handlePackApi(req, res, sub, { outDir: PACK_OUT_DIR, repoRoot: REPO_ROOT }).catch(
+          (e: Error & { statusCode?: number }) => {
+            if (res.headersSent) return void res.end()
+            res.statusCode = e.statusCode ?? 500
+            res.setHeader('content-type', 'application/json')
+            res.end(JSON.stringify({ error: e.message }))
+          },
+        )
+      })
+    },
+  }
+}
+
 function readJson(req: IncomingMessage): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
     let body = ''
@@ -319,8 +379,20 @@ export default defineConfig(({ mode }) => {
       agentProxy(),
       claudeProxy(),
       plansStore(),
+      shareViewer(),
+      packWriter(),
       dwgConvertPlugin(),
     ],
+    build: {
+      // Two entries: the editor SPA and the standalone share viewer (/share/<id>
+      // serves dist/viewer.html). Naming `main` keeps index.html's chunk names.
+      rollupOptions: {
+        input: {
+          main: path.resolve('index.html'),
+          viewer: path.resolve('viewer.html'),
+        },
+      },
+    },
     server: {
       port: 5173,
       proxy: {

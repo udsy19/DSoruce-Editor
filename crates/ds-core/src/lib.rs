@@ -13,6 +13,7 @@ mod geometry;
 mod layout;
 mod model;
 mod qto;
+mod quantity;
 mod zone;
 
 use document::{Anchor, Document};
@@ -79,6 +80,39 @@ pub struct Editor {
     /// "nothing changed" from "changed back to an equal value" without
     /// serializing the document. See [`Editor::revision`].
     rev: u64,
+}
+
+/// The open-plan share of headcount seated at open workstations.
+///
+/// **Exported because the frontend was keeping its own copies and one had already
+/// drifted.** `program/spec.ts` used 0.85 while `ai/suggestProgram.ts` used 0.90
+/// with a comment claiming it mirrored Rust — so the same headcount produced a
+/// different building depending on which path the user came in through (88
+/// people → 75 desks via the Program step, 79 via suggestProgram). A value that
+/// decides how many desks a floor gets has exactly one owner: the generator that
+/// places them. Read this; do not re-declare it.
+#[wasm_bindgen]
+pub fn open_share() -> f64 {
+    layout::OPEN_SHARE
+}
+
+/// Depth of a door/window leaf across its wall (m) — the committed footprint;
+/// the swing arc is drawn by the 2D symbol, not stored.
+///
+/// **Exported for the same reason as [`open_share`]:** `cad/archTools.ts` had its
+/// own `LEAF_DEPTH = 0.15`, so a hand-drawn door and a generated door were one
+/// object with two authored depths. Cheap to unify now, weird later.
+#[wasm_bindgen]
+pub fn door_depth() -> f64 {
+    layout::DOOR_D
+}
+
+/// Standard office single-leaf door width (m) — 900×2100. Exported alongside
+/// [`door_depth`]: `cad/archTools.ts` had `DOOR_DEFAULT = 0.9` for exactly the
+/// same object.
+#[wasm_bindgen]
+pub fn door_width() -> f64 {
+    layout::DOOR_W
 }
 
 /// Per-zone floor areas (m², clipped to the plate polygon) with the oriented
@@ -295,6 +329,7 @@ impl Editor {
             thickness,
             generated: false,
             glazing: false,
+            height_m: None,
         });
         id
     }
@@ -305,6 +340,7 @@ impl Editor {
         self.touch();
         let id = self.doc.alloc_id();
         let label = format!("{} {}", category, id);
+        let seats = crate::model::seats_for(&category, w, h);
         self.doc.components.push(Component {
             id,
             category,
@@ -315,6 +351,7 @@ impl Editor {
             rotation: 0.0,
             mirror: false,
             reference: false, // placed/generated content counts; only imported furniture is reference
+            seats,
             label,
             product_id: None,
             price_inr: None,
@@ -464,6 +501,10 @@ impl Editor {
         if let Some(c) = self.doc.component_mut(id) {
             c.w = w.max(0.05);
             c.h = h.max(0.05);
+            // Seats follow the footprint: grow a table and it seats more people.
+            // Re-resolved here so the stored count can never go stale — the whole
+            // contract is that the renderer reads `seats` and never recomputes it.
+            c.seats = crate::model::seats_for(&c.category, c.w, c.h);
         }
     }
 
@@ -473,6 +514,10 @@ impl Editor {
         self.touch();
         if let Some(c) = self.doc.component_mut(id) {
             c.category = category;
+            // Reclassifying changes what the object IS, so it changes how many
+            // people sit at it (a Desk seats 1; the same footprint as a Table
+            // seats its perimeter). Kept in lockstep with `set_component_size`.
+            c.seats = crate::model::seats_for(&c.category, c.w, c.h);
         }
     }
 
@@ -601,12 +646,39 @@ impl Editor {
                     })
                     .count();
                 let area = areas[i];
-                // The plate-spanning oriented Workspace reports its REAL seated
-                // desk count as capacity, not the area rule-of-thumb: its bbox
-                // area would imply several times the desks it actually holds, so
-                // the on-canvas "N pax" label (which reads `capacity`) would lie.
-                // Every other zone keeps the area-based `capacity()`.
-                let capacity = if Some(i) == spanning {
+                // FURNITURE WINS over the area rule-of-thumb.
+                //
+                // `Zone::capacity()` is a planning estimate (floor area ÷ m² per
+                // seat) for an EMPTY room. Once a room is furnished we know the
+                // real answer: the seats its furniture provides. Using the
+                // estimate anyway is what put "BOARDROOM 24 m² · 9 pax" over a
+                // table the plan draws with 12 chairs — the tag and the drawing
+                // disagreeing about the same room, from two different sources.
+                //
+                // Σ of `Component::seats` is the same owner the glyph renders
+                // (ui-system.md §3.6), so tag and drawing now agree by
+                // construction rather than by coincidence. An unfurnished zone
+                // has no seats and keeps the area estimate.
+                //
+                // This also subsumes the old plate-spanning-Workspace special
+                // case: every desk seats exactly 1, so Σ seats over a desk field
+                // IS its seated-desk count.
+                // `Chair` is EXCLUDED: a chair is seating *for* a table or desk,
+                // and that table already reports the seats it provides. Counting
+                // both double-books the same person — a cabin holding a 2-seat
+                // table plus its one chair would report 3. A desk seats its own
+                // occupant (its chair is part of the desk symbol), so desks count.
+                let furnished: u32 = z
+                    .component_ids
+                    .iter()
+                    .filter_map(|&cid| self.doc.components.iter().find(|c| c.id == cid))
+                    .filter(|c| !c.reference) // imported context furniture seats nobody
+                    .filter(|c| c.category != "Chair")
+                    .map(|c| c.seats)
+                    .sum();
+                let capacity = if furnished > 0 {
+                    furnished
+                } else if Some(i) == spanning {
                     seated as u32
                 } else {
                     z.capacity()
@@ -675,6 +747,22 @@ impl Editor {
         serde_wasm_bindgen::to_value(&score).map_err(|e| JsValue::from_str(&e.to_string()))
     }
 
+    /// The scoring engine's density verdict for this document, 0..100 — 100
+    /// across the professional 8–12 m²/person band, tapering to 0 at ≤4.5
+    /// (crammed) and ≥20 (sparse).
+    ///
+    /// **Exported because the frontend was deciding "too dense" on its own.**
+    /// `ai/engine.ts` compared `area_per_workstation` against a hand-typed
+    /// 6.0 m² whose comment said "planning norm (see layout.rs)" — a citation to
+    /// a constant that has never existed there. It was also the wrong quantity:
+    /// the scorer judges m² per SEAT (desks + meeting capacity), not per desk.
+    /// So the AI preview warned the user off layouts the engine was perfectly
+    /// happy with, in the engine's name. Whether a plan is professionally dense
+    /// is one question with one answer; this is it.
+    pub fn density_score(&self) -> f64 {
+        layout::density_of_doc(&self.doc)
+    }
+
     // ----- Undo primitive: lossless Document snapshot/restore (Conflict §5).
     // A snapshot is an opaque JSON string carrying the whole document *including*
     // `next_id`, so a restore can never collide ids. -----
@@ -693,6 +781,9 @@ impl Editor {
             .as_string()
             .ok_or_else(|| JsValue::from_str("snapshot must be a string"))?;
         self.doc = serde_json::from_str(&s).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        // Plans saved before the `seats` facet load with 0; resolve them so an
+        // old plan and a new one report the same pax for the same building.
+        self.doc.backfill_seats();
         Ok(())
     }
 
@@ -701,8 +792,9 @@ impl Editor {
         let s = snap
             .as_string()
             .ok_or_else(|| JsValue::from_str("snapshot must be a string"))?;
-        let doc: Document =
+        let mut doc: Document =
             serde_json::from_str(&s).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        doc.backfill_seats();
         Ok(Editor { doc, rev: 0 })
     }
 
@@ -806,6 +898,49 @@ impl Editor {
             w.b = Point::new(bx, by);
         }
     }
+
+    /// Set a wall's height in meters. Anything `>= 0` and below the full storey
+    /// height ([`model::FULL_WALL_HEIGHT_M`]) makes it a **partial-height screen**
+    /// and moves its run into the takeoff's `Half Drywall` category; pass a
+    /// negative value (or the full height) to clear the override back to full
+    /// height. No-op if the id is unknown. This is the only writer of
+    /// `Wall::height_m` — the generator has no partial-height primitive.
+    pub fn set_wall_height(&mut self, id: u32, height_m: f64) {
+        self.touch();
+        if let Some(w) = self.doc.walls.iter_mut().find(|w| w.id == id) {
+            w.height_m = if height_m > 0.0 && height_m < model::FULL_WALL_HEIGHT_M {
+                Some(height_m)
+            } else {
+                None
+            };
+        }
+    }
+
+    // ----- Quantity surface (`quantity.rs`): the geometric truth the Quantity
+    // Takeoff workbook reads. Every number is computed from the document, never
+    // typed. `qtoWorkbook.ts` joins it with the TS-only finish/furniture data to
+    // produce `out/ground-truth.json`, which `scripts/gates/g3-quantity-truth.py`
+    // then cross-checks against the workbook's cells. -----
+
+    /// Wall run length + elevational area per wall type, door count/width per
+    /// door type, and per-room area/headcount — all derived from geometry.
+    /// Shape: `{ sqfPerM2, wallHeightM, floorAreaM2, walls[], doors[],
+    /// doorCount, doorTotalWidthM, rooms[] }`. See `quantity::Quantities`.
+    pub fn quantities(&self) -> Result<JsValue, JsValue> {
+        serde_wasm_bindgen::to_value(&quantity::quantities(&self.doc))
+            .map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
+    /// Per-wall classification for the **plan renderer**:
+    /// `[{ id, wallType, planKey, lengthM }, ...]` in document order, where
+    /// `planKey` is a `qbiqPalette.ts` `WallType` (`"drywall"`, `"glass"`, …).
+    /// The renderer must colour from THIS rather than re-deriving types in TS —
+    /// that is what keeps the coloured plan and the billed workbook in agreement.
+    pub fn wall_types(&self) -> Result<JsValue, JsValue> {
+        serde_wasm_bindgen::to_value(&quantity::classify_walls(&self.doc))
+            .map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
 }
 
 impl Default for Editor {
@@ -893,6 +1028,7 @@ mod tests {
             label: format!("Desk {id}"),
             product_id: None,
             price_inr: None,
+            seats: 0, // test fixture: seat count is irrelevant to what these assert
             decision: DecisionState::Open,
         }
     }
@@ -919,6 +1055,7 @@ mod tests {
                 thickness: 0.1,
                 generated: false,
                 glazing: false,
+                height_m: None,
             });
         }
         // One Workspace zone covering the whole plate.
@@ -980,6 +1117,7 @@ mod tests {
             label: format!("{category} {id}"),
             product_id: price.map(|_| format!("p{id}")),
             price_inr: price,
+            seats: 0, // test fixture: seat count is irrelevant to what these assert
             decision: DecisionState::Open,
         }
     }
@@ -1018,6 +1156,7 @@ mod tests {
                 thickness: 0.1,
                 generated: false,
                 glazing: false,
+                height_m: None,
             });
         }
         add_rect_zone(&mut doc, ZoneType::Workspace, 5.0, 5.0, 10.0, 10.0); // x∈[0,10]
@@ -1241,6 +1380,7 @@ mod tests {
                 thickness: 0.1,
                 generated: false,
                 glazing: false,
+                height_m: None,
             });
         }
         for (i, zt) in [
@@ -1355,6 +1495,7 @@ mod tests {
                 thickness: 0.1,
                 generated: false,
                 glazing: false,
+                height_m: None,
             });
         }
         doc

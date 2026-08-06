@@ -4,6 +4,34 @@ import { SelectionCard } from '../ui/SelectionCard'
 import type { Drawing, FurnitureItem } from './types'
 
 /**
+ * Live DrawingCanvas instances, newest last.
+ *
+ * Three of these can exist at once — the Space step's preview, the Program
+ * step's anchor plan, and the editor's import mode — because EditorView stays
+ * mounted behind the wizard. A single `window.__dc` assigned at mount therefore
+ * pointed at whichever mounted LAST, which was the hidden 300x150 editor canvas
+ * rather than the 727x532 one the user was looking at. The previous answer was
+ * to add more names (`__spacedc`, `__programdc`); this replaces all three with
+ * one seam that resolves to the canvas actually on screen.
+ */
+const liveCanvases = new Set<DrawingCanvas>()
+
+if (import.meta.env.DEV && typeof window !== 'undefined') {
+  Object.defineProperty(window, '__dc', {
+    configurable: true,
+    get() {
+      const all = [...liveCanvases]
+      // The visible one, if any — a hidden canvas has a zero-size client rect.
+      return (
+        all.find((c) => c.canvasEl.getBoundingClientRect().width > 0) ??
+        all[all.length - 1] ??
+        null
+      )
+    },
+  })
+}
+
+/**
  * React wrapper around {@link DrawingCanvas}. Mounts a full-size container with
  * a canvas, creates the renderer once, pushes the `drawing` prop on change,
  * wires `onSelect`/`onChange`, hands the instance to `onCanvas`, and disposes on
@@ -61,6 +89,7 @@ export function DrawingView({
     if (!canvas) return
     const dc = new DrawingCanvas(canvas)
     dcRef.current = dc
+    liveCanvases.add(dc)
     // rAF-throttled re-anchor: the canvas renders per pointer-move while
     // panning/zooming, but the popover only needs one reposition per frame.
     dc.onViewChange = () => {
@@ -75,6 +104,7 @@ export function DrawingView({
     return () => {
       cancelAnimationFrame(rafRef.current)
       rafRef.current = 0
+      liveCanvases.delete(dc)
       dc.dispose()
       dcRef.current = null
       onCanvasRef.current?.(null)
@@ -141,7 +171,7 @@ export function DrawingView({
             style={{
               border: 'none',
               background: 'transparent',
-              color: 'var(--accent, #2d5bd6)',
+              color: 'var(--accent)',
               fontFamily: 'inherit',
               fontSize: 12,
               fontWeight: 600,

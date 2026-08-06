@@ -27,23 +27,12 @@ import type { DocState, DocZone, ZoneType } from '../types/doc'
 import type { Metrics, ZoneStat } from '../types/metrics'
 import { distToPoly } from '../editor/paint'
 import { pointInZoneShape } from '../util/zoneGeom'
-import {
-  PAGE_W,
-  PAGE_H,
-  ContentOp,
-  PdfPage,
-  PdfJpeg,
-  Rgb,
-  buildMultiPagePdfBytes,
-  renderPrintCanvas,
-  canvasToJpeg,
-  PRINT_ZONE_FILL,
-  textWidth,
-  pdfSafeText,
-} from './pdf'
+import { PAGE_W, PAGE_H, ContentOp, PdfPage, PdfJpeg, Rgb, buildMultiPagePdfBytes, textWidth, pdfSafeText } from './pdfDoc'
+import { renderPrintCanvas, canvasToJpeg, PRINT_ZONE_FILL } from './printPlan'
 import { Page, MARGIN, RES, ACCENT, hex2rgb, pageHeader, logoJpeg } from './sheet'
 import { triggerDownload } from './png'
 import { ACCENT_AMBER } from '../editor/planStyle'
+import { SF_PER_M2 } from '../util/units'
 
 // ---------------------------------------------------------------------------
 // Report model (pure, testable)
@@ -103,7 +92,6 @@ export interface ReportModel {
   alternatives: AltKpis[]
 }
 
-const SQF_PER_M2 = 10.7639
 /** Daylit = a workstation within this distance of the exterior (facade). */
 const DAYLIGHT_RADIUS_M = 5
 
@@ -205,7 +193,7 @@ function computeAltKpis(input: AlternativeInput): AltKpis {
     const efficiencyPct =
       m.efficiency_pct ?? (geaM2 > 0 ? (niaM2 / geaM2) * 100 : 0)
 
-    const usfSf = niaM2 * SQF_PER_M2
+    const usfSf = niaM2 * SF_PER_M2
     const densitySqf = seats > 0 ? usfSf / seats : 0
     const densityM2 = seats > 0 ? niaM2 / seats : 0
 
@@ -265,17 +253,34 @@ export function computeWinners(kpis: AltKpis[]): Record<number, string[]> {
   const out: Record<number, string[]> = {}
   if (kpis.length < 2) return out
   const add = (i: number, label: string) => (out[i] = [...(out[i] ?? []), label])
-  const argmax = (f: (a: AltKpis) => number) => {
+  /**
+   * Index of the best alternative on `f`, or null when NOBODY is any good at
+   * it — every alternative scores 0.
+   *
+   * "Best of nothing" is not a superlative. Reloading the Generate step used to
+   * run the search on an empty plate and return three 0-workstation candidates;
+   * a plain argmax dutifully crowned the first one **"Most seats · Best
+   * daylight · Best density"**, three gold stars on a blank sheet. The bug that
+   * produced the empty plate is fixed at its source, but the rule belongs here:
+   * this function is shared by the gallery AND the branded report, so anything
+   * that can hand it a degenerate field — a plate that fails to trace, a
+   * program nothing fits, a path not yet written — inherits the honesty for
+   * free instead of re-earning it.
+   */
+  const argmax = (f: (a: AltKpis) => number): number | null => {
     let bi = 0
     kpis.forEach((a, i) => {
       if (f(a) > f(kpis[bi])) bi = i
     })
-    return bi
+    return f(kpis[bi]) > 0 ? bi : null
   }
-  add(argmax((a) => a.seats), 'Most seats')
-  add(argmax((a) => a.daylightPct), 'Best daylight')
+  const award = (i: number | null, label: string) => {
+    if (i !== null) add(i, label)
+  }
+  award(argmax((a) => a.seats), 'Most seats')
+  award(argmax((a) => a.daylightPct), 'Best daylight')
   // Densest = most workstations per m² of net internal area.
-  add(argmax((a) => (a.niaM2 > 0 ? a.workstations / a.niaM2 : 0)), 'Best density')
+  award(argmax((a) => (a.niaM2 > 0 ? a.workstations / a.niaM2 : 0)), 'Best density')
   return out
 }
 

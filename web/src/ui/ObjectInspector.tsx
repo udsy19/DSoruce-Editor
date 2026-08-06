@@ -130,42 +130,34 @@ function WallProps({ info }: { info: Extract<SelectedInfo, { kind: 'wall' }> }) 
 
 /* ---------------------------- canvas / model ------------------------------ */
 
+/**
+ * Nothing selected → the one canvas control that actually does something.
+ *
+ * This card used to list Units / Grid / Axis / Background as four "settings"
+ * rows that were pure read-outs of hard-coded constants, followed by a sentence
+ * admitting it: "…the rest are display-only until per-canvas settings land."
+ * Four inert controls plus an apology for them. A control that does nothing is
+ * worse than an absent one — it costs the user a click and their trust — so they
+ * are gone (no-bloat §2), leaving Presentation, which works.
+ */
 function CanvasProps({ ec }: { ec: EditorCanvas }) {
   return (
     <div className="panel-body" data-testid="canvas-props">
-      <div className="panel-eyebrow">Canvas</div>
+      <div className="panel-eyebrow">Drawing</div>
       <div className="metric-row">
-        <span className="label">Units</span>
-        <span className="value">Meters</span>
-      </div>
-      <div className="metric-row">
-        <span className="label">Grid</span>
-        <span className="value num">
-          1.0<span className="unit">m</span>
+        <span className="label">
+          Presentation
+          <span className="row-hint">Swap the plan for a paper sheet</span>
         </span>
-      </div>
-      <div className="metric-row">
-        <span className="label">Axis</span>
-        <span className="value">Shown</span>
-      </div>
-      <div className="metric-row">
-        <span className="label">Background</span>
-        <span className="value">Floor plate</span>
-      </div>
-      <div className="metric-row">
-        <span className="label">Presentation</span>
         <button
           className={ec.presentation ? 'seg on' : 'seg'}
           data-testid="canvas-presentation"
+          aria-pressed={ec.presentation}
           onClick={() => ec.setPresentation(!ec.presentation)}
         >
           {ec.presentation ? 'On' : 'Off'}
         </button>
       </div>
-      <p className="inline-note">
-        Units, grid, axis and background follow the plan. Presentation mode swaps the plan for a
-        paper sheet — the rest are display-only until per-canvas settings land.
-      </p>
     </div>
   )
 }

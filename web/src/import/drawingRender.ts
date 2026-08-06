@@ -10,7 +10,8 @@ import type { Drawing, DrawEntity, FurnitureItem } from './types'
 import { CATEGORY_COLOR } from './types'
 import { backdropBounds } from './rasterImport'
 import { normalizeFurniture } from './normalize'
-import { drawFurnitureSymbol } from '../editor/furniture'
+import { MONO, UI } from '../ui/type'
+import { drawSymbol, seatsForSize } from '../editor/symbols'
 import {
   ACCENT,
   ACCENT_HALO,
@@ -21,7 +22,9 @@ import {
   AREA_MASK,
   AREA_VERTEX_PX,
   FURNITURE_DETAIL,
+  FURNITURE_FILL,
   FURNITURE_LINE,
+  FURNITURE_SEAT,
   FURNITURE_RANK,
   HANDLE_PX,
   HOVER,
@@ -296,7 +299,7 @@ function drawAnchorPin(
   ctx.stroke()
   // A short label beside the pin so the plan reads which room is forced where.
   ctx.fillStyle = '#e8edf2'
-  ctx.font = '600 10px "Space Grotesk", system-ui, sans-serif'
+  ctx.font = `600 10px ${UI}`
   ctx.textAlign = 'left'
   ctx.textBaseline = 'middle'
   ctx.fillText(label, p.x + r + 3, p.y)
@@ -318,7 +321,7 @@ function drawPin(s: DrawingScene, p: { x: number; y: number }, ref: string, ghos
   ctx.strokeStyle = '#ffffff'
   ctx.stroke()
   ctx.fillStyle = '#1a1d21'
-  ctx.font = '600 10px "IBM Plex Mono", ui-monospace, monospace'
+  ctx.font = `600 10px ${MONO}`
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
   ctx.fillText(ref.slice(0, 4), p.x, p.y + 0.5)
@@ -364,7 +367,7 @@ function drawPlaceGhost(s: DrawingScene): void {
   // dims label under the footprint
   const bottom = Math.max(...pts.map((q) => q.y))
   ctx.fillStyle = ACCENT
-  ctx.font = '11px "IBM Plex Mono", ui-monospace, monospace'
+  ctx.font = `11px ${MONO}`
   ctx.textAlign = 'center'
   ctx.textBaseline = 'top'
   ctx.fillText(`${spec.w.toFixed(2)} × ${spec.h.toFixed(2)} m`, p.x, bottom + 6)
@@ -414,19 +417,24 @@ function drawItemSymbol(
   const odd = Math.round(norm.rotation / (Math.PI / 2)) % 2 !== 0
   const nw = odd ? norm.h : norm.w
   const nh = odd ? norm.w : norm.h
-  drawFurnitureSymbol(s.ctx, {
-    category: norm.category,
-    cx: c.x,
-    cy: c.y,
-    w: nw * s.scale,
-    h: nh * s.scale,
-    rotation: -norm.rotation, // world CCW → screen CW (Y-flip)
-    mirror: norm.mirror, // door hinge hand (recovered from the swing arc)
-    stroke,
-    detail,
-    accent: ACCENT,
-    selected,
-  })
+  drawSymbol(
+    s.ctx,
+    {
+      category: norm.category,
+      cx: c.x,
+      cy: c.y,
+      w: nw, // METRES — the symbol module owns the world→screen conversion
+      h: nh,
+      rotation: -norm.rotation, // world CCW → screen CW (Y-flip)
+      mirror: norm.mirror, // door hinge hand (recovered from the swing arc)
+      // Seat count from the object's WORLD size, the same rule the core uses —
+      // never from its size on screen. Countables are not LOD'd (R2).
+      seats: seatsForSize(norm.category, nw, nh),
+      selected,
+    },
+    { stroke, detail, fill: FURNITURE_FILL, seat: FURNITURE_SEAT, accent: ACCENT },
+    { pxPerM: s.scale, dpr: s.dpr },
+  )
 }
 
 function drawTexts(s: DrawingScene): void {
@@ -442,7 +450,7 @@ function drawTexts(s: DrawingScene): void {
     ctx.translate(p.x, p.y)
     if (e.rot) ctx.rotate(-e.rot) // world CCW → screen CW
     ctx.fillStyle = e.color ?? CATEGORY_COLOR[e.category] ?? '#9aa2ad'
-    ctx.font = `${px.toFixed(1)}px "IBM Plex Mono", ui-monospace, monospace`
+    ctx.font = `${px.toFixed(1)}px ${MONO}`
     ctx.fillText(e.text, 0, 0)
     ctx.restore()
   }

@@ -4,16 +4,8 @@
 // report AND the drawing set draw on ONE primitive set (no-bloat,
 // docs/design/drawing-set-generator.md §3.1). No new PDF engine, no new deps.
 
-import {
-  PAGE_W,
-  PAGE_H,
-  ContentOp,
-  PdfJpeg,
-  Rgb,
-  textWidth,
-  pdfSafeText,
-  canvasToJpeg,
-} from './pdf'
+import { PAGE_W, PAGE_H, ContentOp, PdfJpeg, Rgb, textWidth, pdfSafeText } from './pdfDoc'
+import { canvasToJpeg } from './printPlan'
 import type { DocState } from '../types/doc'
 import { ACCENT_AMBER, hexToRgba, hexToRgb01 } from '../editor/planStyle'
 /** Outer page margin (pt), shared by report + drawing-set pages. */

@@ -3,6 +3,42 @@
 
 use super::*;
 
+/// The density sub-score for a document — the scoring engine's ONE opinion of
+/// whether a plan is professionally dense, so nothing outside this module gets
+/// to hold a second one. Floor area is the true plate-polygon area when the
+/// walls close a loop (identical to the bbox for rectangular rooms); bbox only
+/// as a fallback, or an L-plate's density would be diluted by its void notch.
+/// Total SEATS = workstations + meeting/collab capacity (the report's KPI), so
+/// density measures people-per-area the way a consultant reads it, not desk
+/// footprint coverage (which rewarded cramming). 0 when there is nothing to
+/// judge.
+pub fn density_of_doc(doc: &Document) -> f64 {
+    let poly = geometry::trace_floor_polygon(&wall_segments(doc), geometry::LOOP_SNAP_TOL);
+    density_of(doc, poly.as_deref())
+}
+
+/// See [`density_of_doc`] — this form takes an already-traced plate so `score`
+/// does not trace the same polygon twice.
+pub fn density_of(doc: &Document, plate_poly: Option<&[Point]>) -> f64 {
+    let floor = plate_poly
+        .map(geometry::polygon_area)
+        .unwrap_or_else(|| doc.floor_area());
+    let meeting_seats: f64 = doc
+        .zones
+        .iter()
+        .filter(|z| matches!(z.zone_type, ZoneType::Meeting | ZoneType::Collaboration))
+        .map(|z| z.capacity() as f64)
+        .sum();
+    let seats =
+        doc.components.iter().filter(|c| c.category == "Desk").count() as f64 + meeting_seats;
+    if floor <= 0.0 || seats <= 0.0 {
+        0.0
+    } else {
+        density_score(floor / seats)
+    }
+}
+
+
 /// Weighted objective breakdown. All sub-scores are 0..100; `total` is the
 /// weight-normalised blend. Serialize so the frontend metrics panel and the
 /// optimizer loop read the exact same numbers a human judges by.
@@ -196,30 +232,15 @@ pub fn score(doc: &Document, program: &Program) -> LayoutScore {
     };
 
     // --- density: peak at the professional 8–12 m²/person band (spec §5) ---
-    // Floor area is the true plate-polygon area when the walls close a loop
-    // (identical to the bbox for rectangular rooms); bbox only as a fallback.
-    // Otherwise an L-plate's density would be diluted by its void notch. The
-    // plate polygon (traced once at the top) is also reused by the daylight
-    // sub-score below.
+    // The whole verdict lives in `density_of` so the scorer and every consumer
+    // outside this crate (the wasm `Editor::density_score`, and through it the
+    // AI consequence preview) read ONE opinion of what a dense plan is.
+    let density = density_of(doc, plate_poly.as_deref());
+    // The plate's true floor area — also what the support-space program sizes to.
     let floor = plate_poly
         .as_deref()
         .map(geometry::polygon_area)
         .unwrap_or_else(|| doc.floor_area());
-    // Total SEATS = workstations + meeting/collab capacity (the report's KPI),
-    // so density measures people-per-area the way a consultant reads it, not
-    // desk footprint coverage (which rewarded cramming).
-    let meeting_seats: f64 = doc
-        .zones
-        .iter()
-        .filter(|z| matches!(z.zone_type, ZoneType::Meeting | ZoneType::Collaboration))
-        .map(|z| z.capacity() as f64)
-        .sum();
-    let seats = placed_desks as f64 + meeting_seats;
-    let density = if floor <= 0.0 || seats <= 0.0 {
-        0.0
-    } else {
-        density_score(floor / seats)
-    };
 
     // --- circulation: the teammate-owned "walking place" evaluator ---
     // `crates/ds-core/src/circulation.rs::evaluate(doc, &CirculationConfig)`

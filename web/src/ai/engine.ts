@@ -9,7 +9,6 @@ import { EditorCanvas } from '../editor/EditorCanvas'
 import { ToolCall, PreviewDiff, MetricDelta, Consequence } from './contract'
 
 const MIN_CORRIDOR = 1.5 // m — NBC 2016 Part 4 business-corridor minimum (India-first)
-const MIN_AREA_PER_WS = 6.0 // m² — planning norm (see layout.rs)
 
 /** Apply one tool call to a wasm Editor (live or scratch). May throw a ZoneError string. */
 function applyCall(ed: Editor, call: ToolCall): void {
@@ -58,12 +57,14 @@ export function applyLive(ec: EditorCanvas, calls: ToolCall[]): string | null {
 interface Snap {
   m: Metrics
   circ: CirculationScore | null
+  /** The CORE's density verdict (0..100), not ours — see `Editor::density_score`. */
+  density: number
 }
 function read(ed: Editor): Snap {
   const m = ed.metrics() as Metrics
   const walls = (ed.state() as DocState).walls.length
   const circ = walls > 0 ? (ed.circulation() as CirculationScore) : null
-  return { m, circ }
+  return { m, circ, density: ed.density_score() as number }
 }
 
 /** Dry-run: clone → apply → read → diff. The live editor is never touched. */
@@ -147,11 +148,15 @@ function buildDiff(before: Snap, after: Snap): PreviewDiff {
       text: `Min corridor drops to ${aCorr.toFixed(2)} m — below the ${MIN_CORRIDOR} m corridor minimum (NBC 2016).`,
     })
   }
-  const aApw = num(am.area_per_workstation)
-  if (aApw > 0 && aApw < MIN_AREA_PER_WS && num(am.workstations) > num(bm.workstations)) {
+  // Density: the CORE decides. A full 100 means the plan sits inside the
+  // professional band `layout::density_score` rewards; anything less means this
+  // edit pushed it out, and by how much is the engine's own number. This panel
+  // reports that verdict — it does not hold a second opinion about what "too
+  // dense" is (it used to, against the wrong quantity, in the engine's name).
+  if (after.density < 100 && after.density < before.density - 1e-6) {
     consequences.push({
       severity: 'warn',
-      text: `Area per workstation falls to ${aApw.toFixed(1)} m² — tighter than the ~${MIN_AREA_PER_WS} m² planning norm.`,
+      text: `Density leaves the professional band — the layout scorer's density rating drops to ${Math.round(after.density)}/100 (was ${Math.round(before.density)}).`,
     })
   }
   const aScore = after.circ?.score

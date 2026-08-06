@@ -3,6 +3,7 @@ import type { DocState, DocWall, DocComponent } from '../types/doc'
 import { catByCategory } from '../editor/catalog'
 import { WALL_HEIGHT, CEILING_HEIGHT } from './Viewer3D'
 import { buildFurniture3D, furnitureHeight } from './furniture3d'
+import { MONO, UI } from '../ui/type'
 
 /**
  * Orthographic architectural SECTION / ELEVATION renderer.
@@ -477,14 +478,14 @@ function drawAnnotations(
   ctx.translate(dimX - 8, (floorY + ceilY) / 2)
   ctx.rotate(-Math.PI / 2)
   ctx.fillStyle = DIM_INK
-  ctx.font = '600 11px "IBM Plex Mono", ui-monospace, monospace'
+  ctx.font = `600 11px ${MONO}`
   ctx.textAlign = 'center'
   ctx.textBaseline = 'alphabetic'
   ctx.fillText(`${CEILING_HEIGHT.toFixed(2)} m`, 0, 0)
   ctx.restore()
 
   // Level tags at the right edge.
-  ctx.font = '600 10px "IBM Plex Mono", ui-monospace, monospace'
+  ctx.font = `600 10px ${MONO}`
   ctx.fillStyle = DIM_INK
   ctx.textAlign = 'right'
   ctx.textBaseline = 'bottom'
@@ -499,13 +500,13 @@ function drawAnnotations(
 
   // Section label, bottom band.
   ctx.fillStyle = INK
-  ctx.font = '700 13px "Space Grotesk", system-ui, sans-serif'
+  ctx.font = `700 13px ${UI}`
   ctx.textAlign = 'left'
   ctx.textBaseline = 'middle'
   const ly = L.rectB + PAD_B / 2
   ctx.fillText(`SECTION ${cut.label}-${cut.label}`, L.rectL, ly)
   ctx.textAlign = 'right'
-  ctx.font = '400 10px "IBM Plex Mono", ui-monospace, monospace'
+  ctx.font = `400 10px ${MONO}`
   ctx.fillStyle = DIM_INK
   ctx.fillText(cut.axis === 'y' ? 'LONGITUDINAL' : 'CROSS', wPx - PAD_R, ly)
 }

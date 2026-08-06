@@ -27,7 +27,7 @@
 // testfit.ts (the single point-in-polygon + shell-linework collectors) — no fork.
 
 import type { Drawing } from './types'
-import { collectWallSegments, pointInRing, type Pt } from './testfit'
+import { collectWallSegments, pointInRing, type Pt , PLATE_WALL_THICKNESS_M } from './testfit'
 import { normalizeFurniture } from './normalize'
 
 /** One imported wall/glazing segment, translated into editor coords — ready for
@@ -69,7 +69,6 @@ export interface BaseStamp {
   keptFurniture: number
 }
 
-const IMPORTED_WALL_THICKNESS = 0.15 // m — matches pushPlateToEditor's default
 
 /**
  * Partition an imported drawing by a selection polygon and translate the OUTSIDE
@@ -115,7 +114,7 @@ export function baseStampAround(
     // `mirror` false. A DOOR is NOT symmetric (it has a hand), so the flip is a
     // genuine reflection: the editor pose is `rotation` (no +π) with the hand
     // INVERTED (`!mirror`). Both make the merged piece read exactly as the (now
-    // correct) import view — see the derivation in furniture.ts/drawDoor.
+    // correct) import view — see the derivation in symbols.ts `drawDoor`.
     const isDoor = norm.category === 'Door'
     comps.push({
       category: norm.category,
@@ -141,7 +140,7 @@ export function baseStampAround(
       ay: a[1] - offset.y,
       bx: b[0] - offset.x,
       by: b[1] - offset.y,
-      thickness: IMPORTED_WALL_THICKNESS,
+      thickness: PLATE_WALL_THICKNESS_M,
     })
   }
 

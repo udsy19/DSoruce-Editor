@@ -313,6 +313,29 @@ export const THUMB_OTHER = 'rgba(138, 144, 153, 0.55)'
 export const ACCENT_AMBER = '#E8A13C'
 
 /**
+ * SELECTION accent — amber's second sanctioned meaning (Ruling R5): selection,
+ * hover, active, pick. References {@link ACCENT_AMBER} rather than restating the
+ * value, so amber has one owner and a rebrand is one line.
+ *
+ * Distinct from ACCENT_AMBER because the MEANINGS are independent, not because
+ * the colours differ. Reading `SELECTION_ACCENT` at a call site tells you why
+ * that mark is amber, which a shared constant cannot.
+ *
+ * Never reaches paper: selection is chrome, and chrome vanishes on the sheet.
+ *
+ * DO NOT let this name absorb a third meaning. One owner of the VALUE permits
+ * many honest names; it does not permit one dishonest name. If something amber
+ * is neither an AI action nor a live selection, it gets its own token
+ * referencing the same declaration — or it is not amber. Widening
+ * `SELECTION_ACCENT` to mean "the warm one" would rebuild the vocabulary
+ * blindness this structure exists to remove (ADR 0005, face 15).
+ */
+export const SELECTION_ACCENT = ACCENT_AMBER
+
+/** The same value as a 0x literal, for three.js material colours. */
+export const SELECTION_ACCENT_HEX = parseInt(ACCENT_AMBER.slice(1), 16)
+
+/**
  * Colour math lives with the colours. Deriving a tint from its base is what
  * stops a hand-expanded copy going stale: the minimap's view cone was written
  * as `rgba(232, 161, 60, 0.45)`, which is this accent in decimal and therefore
@@ -339,13 +362,13 @@ export function hexToRgba(hex: string, a: number): string {
  * a base on purpose, so the schematic reads as one material.
  */
 export const MINIMAP = {
-  accent: ACCENT_AMBER,
+  accent: SELECTION_ACCENT,
   ink: '#5c626c',
   wallLine: 'rgba(92, 98, 108, 0.85)',
   dot: 'rgba(92, 98, 108, 0.35)',
   /** View cone — a radial fade of the accent to fully transparent. */
-  coneInner: hexToRgba(ACCENT_AMBER, 0.45),
-  coneOuter: hexToRgba(ACCENT_AMBER, 0),
+  coneInner: hexToRgba(SELECTION_ACCENT, 0.45),
+  coneOuter: hexToRgba(SELECTION_ACCENT, 0),
   /** Viewer puck outline. */
   viewerOutline: 'rgba(24, 26, 30, 0.6)',
   /** The floating box's own chrome (warm translucent paper over the 3D view). */

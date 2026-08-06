@@ -1,0 +1,173 @@
+/* The shared-link viewer page (/share/<id>). Self-contained: every font is
+   bundled from @fontsource by main.ts, no external stylesheet or CDN — a hard
+   constraint of both deploy targets. */
+
+:root {
+  --bar-h: 52px;
+  --ink: #1a1d21;
+  --ink-2: #5c6670;
+  --hairline: #e6e8ec;
+  /* Value is SET AT RUNTIME by main.ts from planStyle's ACCENT_AMBER — this
+     page is standalone (no external stylesheet, a deploy constraint), so it
+     cannot reference --accent-amber. The declaration below is a fallback for
+     a bare-CSS render only; the one source is still planStyle.ts. */
+  --page: #ffffff;
+  --font-ui: 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
+  --font-brand: 'Schibsted Grotesk', var(--font-ui);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--page);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  overflow: hidden;
+}
+
+.bar {
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: var(--bar-h);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 16px;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--hairline);
+  z-index: 2;
+}
+
+.brand {
+  font-family: var(--font-brand);
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.16em;
+}
+
+.brand::after {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 7px;
+  border-radius: 2px;
+  background: var(--accent);
+  vertical-align: 1px;
+}
+
+.rule {
+  width: 1px;
+  height: 20px;
+  background: var(--hairline);
+}
+
+.title {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.15;
+}
+
+.plan {
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sub {
+  font-size: 11px;
+  color: var(--ink-2);
+  letter-spacing: 0.04em;
+}
+
+.tools {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+}
+
+.btn {
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid var(--hairline);
+  border-radius: 7px;
+  padding: 7px 12px;
+  cursor: pointer;
+}
+
+.btn:hover {
+  border-color: #c9ced6;
+}
+
+.btn[aria-pressed='true'] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #241a08;
+}
+
+#stage {
+  position: fixed;
+  inset: var(--bar-h) 0 0 0;
+}
+
+#stage canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.hint {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 7px 13px;
+  font-size: 12px;
+  color: var(--ink-2);
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  pointer-events: none;
+  transition: opacity 0.25s;
+}
+
+.hint:empty {
+  opacity: 0;
+}
+
+.notice {
+  position: fixed;
+  left: 50%;
+  top: calc(var(--bar-h) + 24px);
+  transform: translateX(-50%);
+  max-width: 520px;
+  padding: 14px 18px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid var(--hairline);
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+  box-shadow: 0 8px 30px rgba(20, 24, 30, 0.08);
+}
+
+.notice code {
+  font-size: 12px;
+  background: #f3f4f6;
+  padding: 1px 5px;
+  border-radius: 4px;
+}

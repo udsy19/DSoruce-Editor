@@ -23,7 +23,9 @@ function crcTable(): Uint32Array {
   return t
 }
 
-function crc32(bytes: Uint8Array): number {
+/** CRC-32 of a byte range. Exported so callers can cheaply key identical
+ *  payloads (workbook.ts de-dupes embedded media with it). */
+export function crc32(bytes: Uint8Array): number {
   const t = crcTable()
   let c = 0xffffffff
   for (let i = 0; i < bytes.length; i++) c = t[(c ^ bytes[i]) & 0xff] ^ (c >>> 8)

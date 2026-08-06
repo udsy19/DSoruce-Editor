@@ -23,6 +23,7 @@ import {
   type ThemeId,
   type ViewerTheme,
 } from './theme'
+import { SELECTION_ACCENT_HEX } from '../editor/planStyle'
 
 /**
  * Framework-agnostic Three.js viewer that renders a 2D office plan (DocState,
@@ -328,7 +329,7 @@ export class Viewer3D {
     transparent: true,
     opacity: 0.6,
   })
-  private highlightMat = new THREE.LineBasicMaterial({ color: 0xe8a13c })
+  private highlightMat = new THREE.LineBasicMaterial({ color: SELECTION_ACCENT_HEX })
   private shared: Set<THREE.BufferGeometry | THREE.Material>
 
   // Click-pick state (orbit mode). One persistent amber wireframe box is
@@ -338,7 +339,7 @@ export class Viewer3D {
   // Separate material from `highlightMat` so the pulse doesn't affect the 2D
   // selection outline that shares highlightMat.
   private pickOutlineMat = new THREE.LineBasicMaterial({
-    color: 0xe8a13c,
+    color: SELECTION_ACCENT_HEX,
     transparent: true,
     opacity: 0.9,
   })

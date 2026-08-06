@@ -8,6 +8,7 @@ import {
 } from 'react'
 import type { Pose } from './Viewer3D'
 import { MINIMAP } from '../editor/planStyle'
+import { MONO } from '../ui/type'
 
 /**
  * Live top-down minimap for the first-person walkthrough. A small translucent
@@ -244,7 +245,7 @@ export const Minimap = forwardRef<MinimapHandle, MinimapProps>(function Minimap(
           position: 'absolute',
           top: 6,
           left: 8,
-          font: '500 9px/1 "IBM Plex Mono", ui-monospace, monospace',
+          font: `500 9px/1 ${MONO}`,
           letterSpacing: '0.08em',
           color: INK,
           pointerEvents: 'none',

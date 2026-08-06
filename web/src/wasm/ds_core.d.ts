@@ -78,6 +78,21 @@ export class Editor {
      */
     delete_zone(id: number): void;
     /**
+     * The scoring engine's density verdict for this document, 0..100 — 100
+     * across the professional 8–12 m²/person band, tapering to 0 at ≤4.5
+     * (crammed) and ≥20 (sparse).
+     *
+     * **Exported because the frontend was deciding "too dense" on its own.**
+     * `ai/engine.ts` compared `area_per_workstation` against a hand-typed
+     * 6.0 m² whose comment said "planning norm (see layout.rs)" — a citation to
+     * a constant that has never existed there. It was also the wrong quantity:
+     * the scorer judges m² per SEAT (desks + meeting capacity), not per desk.
+     * So the AI preview warned the user off layouts the engine was perfectly
+     * happy with, in the engine's name. Whether a plan is professionally dense
+     * is one question with one answer; this is it.
+     */
+    density_score(): number;
+    /**
      * Construct a fresh `Editor` from a `snapshot` (scratch-clone for previews).
      */
     static from_snapshot(snap: any): Editor;
@@ -126,6 +141,13 @@ export class Editor {
      * from the document directly — no IFC round-trip, works offline.
      */
     qto_schedule(): any;
+    /**
+     * Wall run length + elevational area per wall type, door count/width per
+     * door type, and per-room area/headcount — all derived from geometry.
+     * Shape: `{ sqfPerM2, wallHeightM, floorAreaM2, walls[], doors[],
+     * doorCount, doorTotalWidthM, rooms[] }`. See `quantity::Quantities`.
+     */
+    quantities(): any;
     /**
      * Rename a zone's label (e.g. to match a reclassified type).
      */
@@ -203,6 +225,15 @@ export class Editor {
      */
     set_wall(id: number, ax: number, ay: number, bx: number, by: number): void;
     /**
+     * Set a wall's height in meters. Anything `>= 0` and below the full storey
+     * height ([`model::FULL_WALL_HEIGHT_M`]) makes it a **partial-height screen**
+     * and moves its run into the takeoff's `Half Drywall` category; pass a
+     * negative value (or the full height) to clear the override back to full
+     * height. No-op if the id is unknown. This is the only writer of
+     * `Wall::height_m` — the generator has no partial-height primitive.
+     */
+    set_wall_height(id: number, height_m: number): void;
+    /**
      * Reclassify zone `id` to `zone_type` (one of the serde `ZoneType` tags,
      * e.g. "Workspace"). Distinct from the component-level `set_decision`.
      */
@@ -222,6 +253,14 @@ export class Editor {
      */
     state(): any;
     /**
+     * Per-wall classification for the **plan renderer**:
+     * `[{ id, wallType, planKey, lengthM }, ...]` in document order, where
+     * `planKey` is a `qbiqPalette.ts` `WallType` (`"drywall"`, `"glass"`, …).
+     * The renderer must colour from THIS rather than re-deriving types in TS —
+     * that is what keeps the coloured plan and the billed workbook in agreement.
+     */
+    wall_types(): any;
+    /**
      * The most-specific zone id containing world point `(x, y)`, or undefined.
      */
     zone_at(x: number, y: number): number | undefined;
@@ -237,11 +276,43 @@ export class Editor {
     zones(): any;
 }
 
+/**
+ * Depth of a door/window leaf across its wall (m) — the committed footprint;
+ * the swing arc is drawn by the 2D symbol, not stored.
+ *
+ * **Exported for the same reason as [`open_share`]:** `cad/archTools.ts` had its
+ * own `LEAF_DEPTH = 0.15`, so a hand-drawn door and a generated door were one
+ * object with two authored depths. Cheap to unify now, weird later.
+ */
+export function door_depth(): number;
+
+/**
+ * Standard office single-leaf door width (m) — 900×2100. Exported alongside
+ * [`door_depth`]: `cad/archTools.ts` had `DOOR_DEFAULT = 0.9` for exactly the
+ * same object.
+ */
+export function door_width(): number;
+
+/**
+ * The open-plan share of headcount seated at open workstations.
+ *
+ * **Exported because the frontend was keeping its own copies and one had already
+ * drifted.** `program/spec.ts` used 0.85 while `ai/suggestProgram.ts` used 0.90
+ * with a comment claiming it mirrored Rust — so the same headcount produced a
+ * different building depending on which path the user came in through (88
+ * people → 75 desks via the Program step, 79 via suggestProgram). A value that
+ * decides how many desks a floor gets has exactly one owner: the generator that
+ * places them. Read this; do not re-declare it.
+ */
+export function open_share(): number;
+
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly __wbg_editor_free: (a: number, b: number) => void;
+    readonly door_depth: () => number;
+    readonly door_width: () => number;
     readonly editor_add_anchor: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly editor_add_component: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => number;
     readonly editor_add_entry: (a: number, b: number, c: number) => void;
@@ -257,6 +328,7 @@ export interface InitOutput {
     readonly editor_delete_component: (a: number, b: number) => void;
     readonly editor_delete_selected: (a: number) => void;
     readonly editor_delete_zone: (a: number, b: number) => [number, number];
+    readonly editor_density_score: (a: number) => number;
     readonly editor_from_snapshot: (a: any) => [number, number, number];
     readonly editor_generate: (a: number, b: any, c: bigint, d: number) => [number, number, number];
     readonly editor_get_cad_json: (a: number) => [number, number];
@@ -268,6 +340,7 @@ export interface InitOutput {
     readonly editor_new: () => number;
     readonly editor_plate: (a: number) => [number, number, number];
     readonly editor_qto_schedule: (a: number) => [number, number, number];
+    readonly editor_quantities: (a: number) => [number, number, number];
     readonly editor_rename_zone: (a: number, b: number, c: number, d: number) => [number, number];
     readonly editor_resize_zone: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number];
     readonly editor_restore: (a: number, b: any) => [number, number];
@@ -281,13 +354,16 @@ export interface InitOutput {
     readonly editor_set_component_size: (a: number, b: number, c: number, d: number) => void;
     readonly editor_set_decision: (a: number, b: number, c: number, d: number) => void;
     readonly editor_set_wall: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
+    readonly editor_set_wall_height: (a: number, b: number, c: number) => void;
     readonly editor_set_zone_type: (a: number, b: number, c: number, d: number) => [number, number];
     readonly editor_snapshot: (a: number) => [number, number, number];
     readonly editor_split_zone: (a: number, b: number, c: number, d: number, e: number) => [number, number, number];
     readonly editor_state: (a: number) => [number, number, number];
+    readonly editor_wall_types: (a: number) => [number, number, number];
     readonly editor_zone_at: (a: number, b: number, c: number) => number;
     readonly editor_zone_stats: (a: number) => [number, number, number];
     readonly editor_zones: (a: number) => [number, number, number];
+    readonly open_share: () => number;
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_exn_store: (a: number) => void;

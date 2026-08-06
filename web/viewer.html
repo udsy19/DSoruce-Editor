@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%23E8A13C'/%3E%3C/svg%3E"
+    />
+    <title>DSource — shared 3D model</title>
+  </head>
+  <body>
+    <header class="bar">
+      <span class="brand">DSOURCE</span>
+      <span class="rule"></span>
+      <span class="title">
+        <span class="plan" id="plan-name">Loading model…</span>
+        <span class="sub" id="plan-sub">shared 3D model</span>
+      </span>
+      <span class="tools">
+        <button id="reset-view" class="btn" type="button" title="Frame the whole floor">
+          Frame plan
+        </button>
+        <button
+          id="walk-toggle"
+          class="btn"
+          type="button"
+          data-testid="walk-toggle"
+          aria-pressed="false"
+        >
+          Walk through
+        </button>
+      </span>
+    </header>
+    <main id="stage"></main>
+    <p class="hint" id="hint"></p>
+    <div class="notice" id="notice" hidden></div>
+    <script type="module" src="/src/viewer/main.ts"></script>
+  </body>
+</html>

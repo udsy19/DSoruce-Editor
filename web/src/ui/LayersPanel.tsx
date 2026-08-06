@@ -5,7 +5,7 @@
 // once an entity uses it OR it is the active layer), so onAdd typically calls
 // store.setActiveLayer(name).
 import { useState } from 'react'
-import type { CSSProperties, FormEvent } from 'react'
+import type { FormEvent } from 'react'
 
 export interface LayerRow {
   name: string
@@ -25,101 +25,6 @@ export interface LayersPanelProps {
   onAdd: (name: string) => void
 }
 
-const S: Record<string, CSSProperties> = {
-  card: {
-    background: 'var(--surface, #ffffff)',
-    border: '1px solid var(--hairline, #e6e8ec)',
-    borderRadius: 10,
-    padding: '10px 0 8px',
-    fontFamily: '"Space Grotesk", sans-serif',
-    color: 'var(--text, #1a1d21)',
-    minWidth: 220,
-  },
-  eyebrow: {
-    fontSize: 11,
-    fontWeight: 600,
-    letterSpacing: '0.08em',
-    textTransform: 'uppercase',
-    color: 'var(--eyebrow, #6e7a84)',
-    padding: '0 12px 8px',
-  },
-  row: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-    padding: '5px 12px',
-    cursor: 'default',
-  },
-  iconBtn: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: 22,
-    height: 22,
-    border: 'none',
-    background: 'transparent',
-    borderRadius: 5,
-    cursor: 'pointer',
-    padding: 0,
-    color: 'var(--text-2, #3a4048)',
-  },
-  radio: {
-    width: 13,
-    height: 13,
-    borderRadius: '50%',
-    border: '1.5px solid var(--hairline-strong, #d7dbe0)',
-    background: 'var(--surface, #ffffff)',
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    cursor: 'pointer',
-    padding: 0,
-    flex: 'none',
-  },
-  name: {
-    flex: 1,
-    fontSize: 13,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-    cursor: 'pointer',
-  },
-  count: {
-    fontFamily: '"IBM Plex Mono", monospace',
-    fontSize: 11,
-    color: 'var(--muted, #5c6670)',
-  },
-  addForm: {
-    display: 'flex',
-    gap: 6,
-    padding: '8px 12px 2px',
-    borderTop: '1px solid var(--hairline, #e6e8ec)',
-    marginTop: 6,
-  },
-  addInput: {
-    flex: 1,
-    minWidth: 0,
-    fontFamily: '"Space Grotesk", sans-serif',
-    fontSize: 12.5,
-    padding: '5px 8px',
-    border: '1px solid var(--hairline-strong, #d7dbe0)',
-    borderRadius: 6,
-    background: 'var(--surface-2, #fbfcfd)',
-    color: 'var(--text, #1a1d21)',
-    outline: 'none',
-  },
-  addBtn: {
-    fontFamily: '"Space Grotesk", sans-serif',
-    fontSize: 12.5,
-    fontWeight: 600,
-    padding: '5px 10px',
-    border: '1px solid var(--hairline-strong, #d7dbe0)',
-    borderRadius: 6,
-    background: 'var(--surface, #ffffff)',
-    color: 'var(--text-2, #3a4048)',
-    cursor: 'pointer',
-  },
-}
 
 function EyeIcon({ open }: { open: boolean }) {
   return (
@@ -153,20 +58,16 @@ export function LayersPanel({ layers, onToggle, onSetActive, onAdd }: LayersPane
   }
 
   return (
-    <div data-testid="layers-panel" style={S.card}>
-      <div style={S.eyebrow}>Layers</div>
+    <div data-testid="layers-panel" className="layers-card">
+      <div className="layers-eyebrow">Layers</div>
       {layers.map((l) => (
         <div
           key={l.name}
-          style={{
-            ...S.row,
-            background: l.active ? 'var(--accent-soft, #e8eefc)' : 'transparent',
-            opacity: l.visible ? 1 : 0.55,
-          }}
+          className={`layers-row${l.active ? ' is-active' : ''}${l.visible ? '' : ' is-hidden'}`}
         >
           <button
             type="button"
-            style={S.iconBtn}
+            className="layers-icon-btn"
             title={l.visible ? `Hide layer ${l.name}` : `Show layer ${l.name}`}
             aria-label={l.visible ? `Hide layer ${l.name}` : `Show layer ${l.name}`}
             aria-pressed={l.visible}
@@ -179,44 +80,32 @@ export function LayersPanel({ layers, onToggle, onSetActive, onAdd }: LayersPane
             role="radio"
             aria-checked={l.active}
             title={`Draw on layer ${l.name}`}
-            style={{
-              ...S.radio,
-              borderColor: l.active
-                ? 'var(--accent, #2d5bd6)'
-                : 'var(--hairline-strong, #d7dbe0)',
-            }}
+            className={`layers-radio${l.active ? ' is-active' : ''}`}
             onClick={() => onSetActive(l.name)}
           >
             {l.active && (
-              <span
-                style={{
-                  width: 7,
-                  height: 7,
-                  borderRadius: '50%',
-                  background: 'var(--accent, #2d5bd6)',
-                }}
-              />
+              <span className="layers-radio-dot" />
             )}
           </button>
           <span
-            style={{ ...S.name, fontWeight: l.active ? 600 : 400 }}
+            className={`layers-name${l.active ? ' is-active' : ''}`}
             title={l.name}
             onClick={() => onSetActive(l.name)}
           >
             {l.name}
           </span>
-          <span style={S.count}>{l.count}</span>
+          <span className="layers-count num">{l.count}</span>
         </div>
       ))}
-      <form style={S.addForm} onSubmit={submit}>
+      <form className="layers-add-form" onSubmit={submit}>
         <input
-          style={S.addInput}
+          className="layers-add-input"
           value={draft}
           placeholder="New layer…"
           aria-label="New layer name"
           onChange={(ev) => setDraft(ev.target.value)}
         />
-        <button type="submit" style={S.addBtn}>
+        <button type="submit" className="layers-add-btn">
           Add
         </button>
       </form>

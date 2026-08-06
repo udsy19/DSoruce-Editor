@@ -251,6 +251,7 @@ mod tests {
             label: String::new(),
             product_id: None,
             price_inr: None,
+            seats: 0, // test fixture: seat count is irrelevant to what these assert
             decision: DecisionState::Open,
         }
     }
@@ -265,6 +266,7 @@ mod tests {
             thickness: 0.2,
             generated: false,
             glazing: false,
+            height_m: None,
         };
         vec![
             seg(p(0.0, 0.0), p(w, 0.0)),
@@ -282,6 +284,7 @@ mod tests {
             thickness: 0.1,
             generated: true,
             glazing,
+            height_m: None,
         }
     }
 

@@ -1,4 +1,5 @@
 import type { ZoneType } from '../types/doc'
+import { SELECTION_ACCENT_HEX } from '../editor/planStyle'
 /**
  * 3D viewer material themes. A theme is a palette that the {@link Viewer3D}
  * maps onto the scene's fabric: a per-zone floor tint (so the plan reads by
@@ -54,7 +55,7 @@ export const THEMES: Record<ThemeId, ViewerTheme> = {
     wallExt: 0xb7bbc4, // heavier exterior plate
     ground: 0xcfc8b8,
     grid: 0xb2b8c0,
-    accent: 0xe8a13c,
+    accent: SELECTION_ACCENT_HEX,
   },
   warm: {
     id: 'warm',
@@ -73,7 +74,7 @@ export const THEMES: Record<ThemeId, ViewerTheme> = {
     wallExt: 0xbdb08f, // warm taupe, heavier
     ground: 0xc2b48f,
     grid: 0xb3a888,
-    accent: 0xe8a13c,
+    accent: SELECTION_ACCENT_HEX,
   },
   mono: {
     id: 'mono',

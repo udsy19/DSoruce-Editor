@@ -11,6 +11,7 @@ import {
   type SnapResult,
   type Vec2,
 } from './model'
+import { MONO } from '../ui/type'
 
 /** Per-kind default line weight (px). Overridable via entity.weight. */
 const WEIGHT: Record<string, number> = {
@@ -349,7 +350,7 @@ function drawDimension(
   g.translate(sp.x, sp.y)
   g.rotate(ang)
   g.fillStyle = color
-  g.font = `${Math.max(9, 0.11 * rc.pxPerM)}px "IBM Plex Mono", monospace`
+  g.font = `${Math.max(9, 0.11 * rc.pxPerM)}px ${MONO}`
   g.textAlign = 'center'
   g.textBaseline = 'bottom'
   g.fillText(label, 0, 0)
@@ -387,7 +388,7 @@ function drawText(
   g.translate(sp.x, sp.y)
   g.rotate(ang)
   g.fillStyle = color
-  g.font = `${Math.max(6, e.h * rc.pxPerM)}px "IBM Plex Mono", monospace`
+  g.font = `${Math.max(6, e.h * rc.pxPerM)}px ${MONO}`
   g.textAlign = 'left'
   g.textBaseline = 'alphabetic'
   g.fillText(e.text, 0, 0)
@@ -580,7 +581,7 @@ export function renderSnapIndicator(
   // Type label, offset up-right of the marker (dimension typeface).
   const label = SNAP_LABEL[snap.type]
   if (label) {
-    g.font = '9px "IBM Plex Mono", monospace'
+    g.font = `9px ${MONO}`
     g.textAlign = 'left'
     g.textBaseline = 'alphabetic'
     const tx = cx + r + 4

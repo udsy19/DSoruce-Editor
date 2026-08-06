@@ -1,15 +1,15 @@
-// Guided-workflow step chrome — design: docs/design/workflow.md §1 (Slice 1).
+// Guided-workflow step chrome — design: docs/design/ui-system.md §1.1, §2.3.
 //
-// Presentational only. It gives a first-time (naive) user three anchors so they
-// always know where they are and what to do next:
+// Presentational only. Three fixed chrome bands around one work area:
 //   1. an always-visible LINEAR STEPPER — the four guided steps (Property ·
-//      Space · Program · Generate) plus a calm, muted tail of the editor phases
-//      that follow (Review → Design → Visualise → Share), Laiout-style. Completed
-//      steps are checked and clickable (jump back); the current step is
-//      highlighted; upcoming steps are dimmed.
-//   2. a one-line "what to do here" GUIDE strip above the step body.
+//      Space · Program · Generate). Completed steps are checked and clickable
+//      (jump back); the current step is highlighted; upcoming steps are dimmed.
+//   2. a compact CONTEXT band — "2 · SPACE", the step title, and the single
+//      imperative for the step, on two tight lines.
 //   3. a Back/Next footer where a disabled Next always SAYS WHY ("Upload a floor
 //      plan to continue") instead of silently doing nothing.
+// The work area between them is `1fr; min-height:0` and does NOT scroll — the
+// step inside it declares its own single scroll owner (layout law rule 5).
 // All state (which step is active, whether Next is enabled + why, what the
 // buttons do, where a completed step jumps to) is passed in by the shell — this
 // component steers nothing itself.
@@ -19,21 +19,20 @@ import { Icon } from '../ui/icons'
 
 export type WizardStepId = 'property' | 'space' | 'program' | 'generate'
 
-// The guided wizard is these four steps. Everything after Generate happens
-// inside the editor; we still show those phases as a dimmed "next, in the
-// editor" tail so a first-time user sees the whole journey at a glance.
+// The guided wizard is these four steps, and only these four. A dimmed tail of
+// "editor phases" (Review → Design → Visualise → Share) used to follow them —
+// deleted, because no such phases exist in the editor. The stepper only ever
+// advertises steps the product actually has.
 const STEPS: { id: WizardStepId; label: string }[] = [
   { id: 'property', label: 'Property' },
   { id: 'space', label: 'Space' },
   { id: 'program', label: 'Program' },
   { id: 'generate', label: 'Generate' },
 ]
-const EDITOR_STEPS = ['Review', 'Design', 'Visualise', 'Share']
 
 export function WizardChrome({
   current,
   title,
-  subtitle,
   guide,
   onBack,
   onNext,
@@ -43,14 +42,14 @@ export function WizardChrome({
   nextDisabled = false,
   disabledReason,
   nextTestId = 'wizard-next',
+  nextFormId,
   hideNext = false,
   children,
 }: {
   current: WizardStepId
   title: string
-  subtitle?: string
-  /** One-line, imperative "what to do here" shown in the guide strip above the
-   *  body. The single unmissable instruction for the step. */
+  /** One-line, imperative "what to do here" shown under the title. The single
+   *  unmissable instruction for the step. */
   guide?: ReactNode
   onBack?: () => void
   onNext?: () => void
@@ -64,6 +63,10 @@ export function WizardChrome({
   disabledReason?: string
   /** testid of the Next button — per-step so E2E can target e.g. `program-next`. */
   nextTestId?: string
+  /** When the step's body is a `<form>`, Next becomes that form's submit button
+   *  via the HTML form-owner attribute. Lets a form-shaped step (Property) live
+   *  under this chrome without lifting its state up here. */
+  nextFormId?: string
   /** The terminal step (Generate) exits by picking a candidate, not by a Next
    *  button — hide it so no dead "Next" dangles at the end of the wizard. */
   hideNext?: boolean
@@ -113,38 +116,23 @@ export function WizardChrome({
               </li>
             )
           })}
-          {/* Dimmed tail: the phases that continue once a fit is opened in the
-              editor. Non-interactive — just the road ahead. */}
-          {EDITOR_STEPS.map((label) => (
-            <li key={label} className="wizard-step future" aria-disabled>
-              <span className="wizard-rail" aria-hidden />
-              <span className="wizard-step-hit">
-                <span className="wizard-step-dot" aria-hidden>
-                  <span className="wizard-step-pip" />
-                </span>
-                <span className="wizard-step-label">{label}</span>
-              </span>
-            </li>
-          ))}
         </ol>
       </header>
 
       <div className="wizard-head">
         <span className="panel-eyebrow">
-          Step {idx + 1} of {STEPS.length} · {STEPS[idx]?.label}
+          {idx + 1} of {STEPS.length} · {STEPS[idx]?.label}
         </span>
         <h1 className="wizard-title">{title}</h1>
-        {subtitle && <p className="studio-sub">{subtitle}</p>}
+        {guide && (
+          <p className="wizard-guide" data-testid="wizard-guide">
+            <span className="wizard-guide-arrow" aria-hidden>
+              <Icon name="caret" size={12} />
+            </span>
+            <span className="wizard-guide-text">{guide}</span>
+          </p>
+        )}
       </div>
-
-      {guide && (
-        <div className="wizard-guide" data-testid="wizard-guide">
-          <span className="wizard-guide-arrow" aria-hidden>
-            <Icon name="caret" size={13} />
-          </span>
-          <span className="wizard-guide-text">{guide}</span>
-        </div>
-      )}
 
       <div className="wizard-body">{children}</div>
 
@@ -166,11 +154,12 @@ export function WizardChrome({
               </span>
             )}
             <button
-              type="button"
+              type={nextFormId ? 'submit' : 'button'}
+              form={nextFormId}
               className="empty-btn primary wizard-next"
               data-testid={nextTestId}
               onClick={onNext}
-              disabled={nextDisabled || !onNext}
+              disabled={nextDisabled || (!onNext && !nextFormId)}
             >
               {nextLabel} <Icon name="caret" size={13} />
             </button>
