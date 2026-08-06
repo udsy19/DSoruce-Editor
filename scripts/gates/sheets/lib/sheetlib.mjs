@@ -83,8 +83,10 @@ export function sourceHex(relFile, name) {
  *   sheetSet.ts   PANEL_W
  */
 export function templateSpec() {
-  const PAGE_W = sourceNumber('web/src/export/pdf.ts', 'PAGE_W')
-  const PAGE_H = sourceNumber('web/src/export/pdf.ts', 'PAGE_H')
+  // PAGE_W/PAGE_H are PDF container constants and moved to pdfDoc.ts when pdf.ts
+  // was split under R1. The anchor follows the DECLARATION, not the old filename.
+  const PAGE_W = sourceNumber('web/src/export/pdfDoc.ts', 'PAGE_W')
+  const PAGE_H = sourceNumber('web/src/export/pdfDoc.ts', 'PAGE_H')
   const MARGIN = sourceNumber('web/src/export/sheet.ts', 'MARGIN')
   const TITLE_BLOCK_H = sourceNumber('web/src/export/sheet.ts', 'TITLE_BLOCK_H')
   const RES = sourceNumber('web/src/export/sheet.ts', 'RES')

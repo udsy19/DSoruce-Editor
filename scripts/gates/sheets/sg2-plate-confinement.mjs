@@ -76,7 +76,7 @@ const TAGGED_SHEET = { file: 'A02', page: 4 }
 /**
  * world (m) → sheet pt, re-derived from CORE STATE and the template.
  *
- * `renderPrintCanvas` (web/src/export/pdf.ts:423) fits `stateBbox` — every wall
+ * `renderPrintCanvas` (web/src/export/printPlan.ts) fits `stateBbox` — every wall
  * endpoint and every rotated component corner — into a wPx×hPx canvas with a
  * 48 px pad, and `worldMapper` (sheetSet.ts) places that canvas in the plate.
  * Reproduced here from the document and the template constants, so the gate
