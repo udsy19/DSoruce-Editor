@@ -36,6 +36,7 @@
 // 'furniture' if you would rather not widen the type.)
 
 import { PAGE_W, PAGE_H, textWidth, pdfSafeText } from './pdfDoc'
+import { isGroundZone } from '../types/doc'
 import type { PdfJpeg } from './pdfDoc'
 import {
   Page,
@@ -274,7 +275,7 @@ export function finishTypeFor(z: DocZone): FinishKey {
  */
 export function roomTypeLabel(z: DocZone | null): string {
   if (!z) return TYPE_LABEL.other
-  if (z.zone_type === 'Circulation') return 'Circulation'
+  if (isGroundZone(z.zone_type)) return 'Circulation'
   return TYPE_LABEL[finishTypeFor(z)]
 }
 
@@ -298,7 +299,7 @@ interface Row {
  *  by zone id). Circulation is corridor / "walking place" — graphic on the plan,
  *  not a scheduled room — so it is excluded, matching roomLabels/servicesSheets. */
 function scheduleRows(state: DocState): Row[] {
-  const zones = (state.zones ?? []).filter((z) => z.zone_type !== 'Circulation')
+  const zones = (state.zones ?? []).filter((z) => !isGroundZone(z.zone_type))
   const ordered = [...zones].sort((a, b) => a.id - b.id)
   // The schedule prints the same disambiguated name the plans and the workbook
   // print — `roomDisplayNames` is the single source (defect D4: three rows all

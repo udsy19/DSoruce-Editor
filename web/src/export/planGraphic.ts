@@ -21,6 +21,7 @@
 // `Math.random`, no iteration over unordered collections, fixed font metrics.
 
 import type { DocComponent, DocState, DocZone } from '../types/doc'
+import { isGroundZone } from '../types/doc'
 import type { CirculationScore } from '../types/metrics'
 import { drawSymbol } from '../editor/symbols'
 import { zoneArea, zoneCenter } from '../util/zoneGeom'
@@ -77,7 +78,7 @@ export interface PlanGraphicResult {
 }
 
 /** Zone types that are building fabric / walking space, not a schedulable room. */
-const NON_ROOM_ZONES = new Set(['Circulation', 'Core'])
+const NON_ROOM_ZONES = new Set(['Circulation', 'Unassigned', 'Core'])
 /** The reference gives all circulation ONE aggregated Inventory row, Room ID 0. */
 export const CIRCULATION_ROOM_ID = '0'
 
@@ -114,7 +115,7 @@ export function planRoomList(state: DocState, roomRefs?: Map<number, string>): P
     })
   }
   // One aggregated circulation label, anchored on the largest circulation zone.
-  const circ = zones.filter((z) => z.zone_type === 'Circulation')
+  const circ = zones.filter((z) => isGroundZone(z.zone_type))
   if (circ.length > 0) {
     let best = circ[0]
     for (const z of circ) if (zoneArea(z.shape) > zoneArea(best.shape)) best = z
@@ -219,7 +220,7 @@ export function renderPlanCanvas(
       }
       wctx.globalCompositeOperation = 'destination-out'
       for (const z of zones) {
-        if (z.zone_type === 'Circulation') continue
+        if (isGroundZone(z.zone_type)) continue
         pathZone(wctx, z, X, Y, k)
         wctx.fill(z.shape.kind === 'RectRing' ? 'evenodd' : 'nonzero')
       }

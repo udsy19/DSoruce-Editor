@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { isGroundZone } from '../types/doc'
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js'
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js'
@@ -703,7 +704,7 @@ export function planWalkRoute(
 
   // ── The circulation spine: the axis every stop is laid out along.
   const circulation = (state.zones ?? [])
-    .filter((z) => z.zone_type === 'Circulation')
+    .filter((z) => isGroundZone(z.zone_type))
     .sort((a, b) => zoneArea(b.shape) - zoneArea(a.shape))[0]
   const cb = circulation ? zoneBBox(circulation.shape) : null
   const horiz = cb ? cb.maxX - cb.minX >= cb.maxY - cb.minY : true

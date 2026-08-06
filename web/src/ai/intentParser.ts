@@ -1,4 +1,5 @@
 import { AgentDriver, DriverContext, DriverResult, ToolCall } from './contract'
+import { isGroundZone } from '../types/doc'
 import type { ZoneType } from '../types/doc'
 import type { Program } from '../types/program'
 import { resolveRoomRef, describeRoom } from './roomResolver'
@@ -184,7 +185,7 @@ export class LocalDriver implements AgentDriver {
       if (room) zoneId = room.id
     }
     if (zoneId == null) {
-      const opts = ctx.zones.filter((z) => z.zone_type !== 'Circulation')
+      const opts = ctx.zones.filter((z) => !isGroundZone(z.zone_type))
       if (opts.length === 0) return { kind: 'chat', say: 'There are no rooms yet — generate a fit first.' }
       return {
         kind: 'clarify',
@@ -201,7 +202,7 @@ export class LocalDriver implements AgentDriver {
   }
 
   private merge(t: string, ctx: DriverContext): DriverResult {
-    const nonCirc = ctx.zones.filter((z) => z.zone_type !== 'Circulation')
+    const nonCirc = ctx.zones.filter((z) => !isGroundZone(z.zone_type))
     // Explicit "A + B" (also how clarify options come back).
     if (t.includes('+')) {
       const parts = t
@@ -232,10 +233,10 @@ export class LocalDriver implements AgentDriver {
     let zoneId = ctx.selectionZoneId
     if (zoneId == null) {
       const room = resolveRoomRef(t, ctx.zones)
-      if (room && room.zone_type !== 'Circulation') zoneId = room.id
+      if (room && !isGroundZone(room.zone_type)) zoneId = room.id
     }
     if (zoneId == null) {
-      const opts = ctx.zones.filter((z) => z.zone_type !== 'Circulation')
+      const opts = ctx.zones.filter((z) => !isGroundZone(z.zone_type))
       if (opts.length === 0) return { kind: 'chat', say: 'Generate a fit first, then I can split a room.' }
       return { kind: 'clarify', say: 'Which room should I split?', options: opts.map((z) => `Split ${z.label}`) }
     }
@@ -260,7 +261,7 @@ export class LocalDriver implements AgentDriver {
 function roomList(ctx: DriverContext): string {
   return (
     ctx.zones
-      .filter((z) => z.zone_type !== 'Circulation')
+      .filter((z) => !isGroundZone(z.zone_type))
       .slice(0, 8)
       .map((z) => (z.ref ? `${z.label} (${z.ref})` : z.label))
       .join(', ') || 'no rooms yet'

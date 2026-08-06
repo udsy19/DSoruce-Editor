@@ -58,6 +58,20 @@ struct Metrics {
     /// nothing that folds may also read this field, or the same floor is
     /// counted twice.
     unassigned_area: f64,
+    /// Wasted floor as a percentage of NIA — **waste's own name**.
+    ///
+    /// Efficiency is deliberately NOT the place this lives. `efficiency_pct` is
+    /// usable/NIA, a benchmarked industry definition (BCO 2023 / RICS IPMS /
+    /// JLL, the 70–85% band): the moment waste is folded into it, our number
+    /// stops being comparable with qbiq's or anyone else's and the parity
+    /// benchmark this product is measured against is destroyed. Measured after
+    /// Phase 1, `efficiency_pct` did not move at all when 64 m² was reclassified
+    /// — because circulation was already excluded from usable. Efficiency never
+    /// measured waste; this does.
+    ///
+    /// **Internal only.** The editor's Areas split and the layout score read it;
+    /// no published surface ever does, per the standing fold rule.
+    unassigned_pct: f64,
     /// Indicative fit-out cost (currency units) — see `cost.rs`.
     indicative_cost: f64,
     /// Indicative embodied carbon (kgCO2e) — see `cost.rs`.
@@ -634,6 +648,14 @@ impl Editor {
         // and amenity (reception/pantry/café) ARE usable space, not overhead —
         // excluding them (the old bug) understated efficiency by ~25 pts.
         let usable = usable_area(&self.doc, &areas);
+        let unassigned: f64 = self
+            .doc
+            .zones
+            .iter()
+            .zip(&areas)
+            .filter(|(z, _)| z.zone_type == ZoneType::Unassigned)
+            .map(|(_, a)| *a)
+            .sum();
         let area_per_workstation = if workstations > 0 {
             nia / workstations as f64
         } else {
@@ -659,14 +681,8 @@ impl Editor {
             workstations,
             area_per_workstation,
             efficiency_pct,
-            unassigned_area: self
-                .doc
-                .zones
-                .iter()
-                .zip(&areas)
-                .filter(|(z, _)| z.zone_type == ZoneType::Unassigned)
-                .map(|(_, a)| *a)
-                .sum(),
+            unassigned_area: unassigned,
+            unassigned_pct: if nia > 0.0 { unassigned / nia * 100.0 } else { 0.0 },
             indicative_cost: cost::indicative_cost(&self.doc),
             indicative_carbon: cost::indicative_carbon(&self.doc),
             specified_cost: cost::specified_cost(&self.doc),

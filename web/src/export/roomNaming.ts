@@ -29,6 +29,7 @@
 // ---------------------------------------------------------------------------
 
 import type { DocState } from '../types/doc'
+import { isGroundZone } from '../types/doc'
 
 // ---------------------------------------------------------------------------
 // 1. Display names — deterministic ordinals over duplicate room names
@@ -79,7 +80,7 @@ function roomBaseName(label: string): string {
  */
 export function roomDisplayNames(state: DocState): Map<number, string> {
   const zones = (state.zones ?? [])
-    .filter((z) => z.zone_type !== 'Circulation' && !!(z.label && z.label.trim()))
+    .filter((z) => !isGroundZone(z.zone_type) && !!(z.label && z.label.trim()))
     .sort((a, b) => a.id - b.id)
 
   const groups = new Map<string, { id: number }[]>()

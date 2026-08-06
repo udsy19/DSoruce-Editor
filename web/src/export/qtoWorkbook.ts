@@ -25,6 +25,7 @@
 // the reference are marked `DEVIATION:` and explained where they occur.
 
 import type { DocState, DocZone } from '../types/doc'
+import { isGroundZone } from '../types/doc'
 import { zoneArea } from '../util/zoneGeom'
 import { FINISH_SPEC, finishTypeFor, roomTypeLabel } from './finishSchedule'
 import { CIRCULATION_ROOM_ID, planRoomList, type PlanRoom } from './planGraphic'
@@ -221,7 +222,7 @@ function tableRef(c0: string, c1: string, r0: number, r1: number): string {
 function largestCirculationZone(state: DocState): DocZone | null {
   let best: DocZone | null = null
   for (const z of state.zones ?? []) {
-    if (z.zone_type !== 'Circulation') continue
+    if (!isGroundZone(z.zone_type)) continue
     if (!best || zoneArea(z.shape) > zoneArea(best.shape)) best = z
   }
   return best
@@ -250,7 +251,7 @@ export function buildQtoModel(
   // the aggregated "0" row exactly as `planRoomList` does.
   const furnitureRefs = new Map<number, string>(opts.roomRefs ?? [])
   for (const z of zones) {
-    if (z.zone_type === 'Circulation') furnitureRefs.set(z.id, CIRCULATION_ROOM_ID)
+    if (isGroundZone(z.zone_type)) furnitureRefs.set(z.id, CIRCULATION_ROOM_ID)
   }
   const takeoff = buildTakeoffModel(state, { ...opts, roomRefs: furnitureRefs })
 
@@ -272,7 +273,7 @@ export function buildQtoModel(
     if (pr.zoneId == null) {
       areaM2 = 0
       for (const z of zones) {
-        if (z.zone_type === 'Circulation') areaM2 += qtyById.get(z.id)?.areaM2 ?? 0
+        if (isGroundZone(z.zone_type)) areaM2 += qtyById.get(z.id)?.areaM2 ?? 0
       }
     }
     const key = zone ? finishTypeFor(zone) : 'other'

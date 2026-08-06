@@ -162,6 +162,38 @@ export interface DocState {
   selection: number | null
 }
 
+/**
+ * GROUND zones: the surface a plan sits on, not content placed on it.
+ *
+ * `Circulation` and `Unassigned` are one class for almost every question the app
+ * asks. Before this existed, ~30 sites wrote `!== 'Circulation'` to mean "is a
+ * real room" — a string compare `tsc` cannot check. Adding `Unassigned` to the
+ * vocabulary silently widened every one of them: a dead pocket would have
+ * acquired a finish-schedule row, a room name, a drawing-set entry, a QTO line
+ * and an AI "which room?" option, all without a type error.
+ *
+ * Route the question through these predicates, and the next zone type added is
+ * one edit rather than thirty.
+ */
+export const GROUND_ZONES: readonly ZoneType[] = ['Circulation', 'Unassigned']
+
+/** Is this zone the ground the plan sits on (circulation or leftover floor)? */
+export function isGroundZone(t: ZoneType): boolean {
+  return GROUND_ZONES.includes(t)
+}
+
+/**
+ * Is this zone a PROGRAM space — something the brief asked for and a person
+ * occupies? The complement of {@link isGroundZone}.
+ *
+ * Note `Core` is program by this definition: a WC or riser is a real, named,
+ * scheduled room. It is excluded from *usable* area (see the core's
+ * `usable_area`), which is a different question from whether it is a room.
+ */
+export function isProgramZone(t: ZoneType): boolean {
+  return !isGroundZone(t)
+}
+
 /** Default room name per zone type, applied when a room is reclassified. */
 export const ZONE_LABEL: Record<ZoneType, string> = {
   Circulation: 'Circulation',

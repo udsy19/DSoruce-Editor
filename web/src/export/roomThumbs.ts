@@ -13,6 +13,7 @@
 // Deterministic (G4/G5 both diff bytes): no `Date`, no `Math.random`.
 
 import type { DocComponent, DocState, DocZone } from '../types/doc'
+import { isGroundZone } from '../types/doc'
 import { drawSymbol } from '../editor/symbols'
 import { pointInZoneShape, zoneBBox } from '../util/zoneGeom'
 import { ZONE_META } from '../editor/stats'
@@ -132,7 +133,7 @@ export async function renderRoomThumbnail(
 
   // The aggregated circulation row gets the circulation wash over the corridor
   // network — the same colour language as the master plan.
-  const circZones = (state.zones ?? []).filter((z) => z.zone_type === 'Circulation')
+  const circZones = (state.zones ?? []).filter((z) => isGroundZone(z.zone_type))
   const subject: DocZone[] = zone ? [zone] : id === CIRCULATION_ROOM_ID ? circZones : []
   if (subject.length === 0) {
     // Unknown room: an explicitly empty (but still room-specific) frame.

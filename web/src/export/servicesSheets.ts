@@ -25,6 +25,7 @@
 // so the sheets take the next free slots and the contents list stays in sync.)
 
 import { textWidth } from './pdfDoc'
+import { isGroundZone } from '../types/doc'
 import { canvasToJpeg, planScaleN, renderPrintCanvas } from './printPlan'
 import type { Rgb, PdfJpeg } from './pdfDoc'
 import {
@@ -356,7 +357,7 @@ function roomLabelBoxes(
   const names = roomDisplayNames(state)
   const out: LabelBox[] = []
   for (const z of state.zones ?? []) {
-    if (z.zone_type === 'Circulation' || !z.label) continue
+    if (isGroundZone(z.zone_type) || !z.label) continue
     const ctr = zoneCenter(z.shape)
     const c = map(ctr.x, ctr.y)
     const text = (names.get(z.id) ?? z.label).toUpperCase()

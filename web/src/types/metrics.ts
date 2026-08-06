@@ -20,6 +20,11 @@ export interface Metrics {
   workstations?: number
   area_per_workstation?: number
   efficiency_pct?: number
+  /** Wasted floor (m²) — `ZoneType.Unassigned`. Internal/editor only. */
+  unassigned_area?: number
+  /** Wasted floor as % of NIA — waste's own name, kept OUT of `efficiency_pct`
+   *  so that number stays comparable to the industry benchmark. Never published. */
+  unassigned_pct?: number
   indicative_cost?: number
   /** Σ observed ₹ prices of bank-bound components (specified furniture capex). */
   specified_cost?: number

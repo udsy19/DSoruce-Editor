@@ -96,7 +96,7 @@ export interface ReportModel {
 const DAYLIGHT_RADIUS_M = 5
 
 // Zones that DON'T count as enclosed rooms for the privacy metric (open plan).
-const OPEN_ZONE_TYPES: ReadonlySet<ZoneType> = new Set(['Circulation', 'Workspace'])
+const OPEN_ZONE_TYPES: ReadonlySet<ZoneType> = new Set(['Circulation', 'Unassigned', 'Workspace'])
 
 /** Fixed legend order (qbiq lists rooms first, circulation last). */
 const LEGEND_ORDER: ZoneType[] = [
@@ -207,7 +207,7 @@ function computeAltKpis(input: AlternativeInput): AltKpis {
       work: areaOf(['Workspace', 'ClosedOffice']),
       sharedSpace: areaOf(['Meeting', 'Collaboration']),
       amenities: areaOf(['Amenity']),
-      shared: areaOf(['Circulation', 'Core']),
+      shared: areaOf(['Circulation', 'Unassigned', 'Core']),
     }
 
     const present = new Set((st.zones ?? []).map((z: DocZone) => z.zone_type))

@@ -17,6 +17,7 @@
 // Item Descriptions carry W×L in cm ("Desk W70 X L140"), matching the sample.
 
 import type { DocState, DocComponent, DocWall, DocZone, ZoneType } from '../types/doc'
+import { isGroundZone } from '../types/doc'
 import { pointInZoneShape, zoneArea } from '../util/zoneGeom'
 import { catByCategory } from '../editor/catalog'
 import { roomTypeLabel } from './finishSchedule'
@@ -134,7 +135,7 @@ export function zoneAtPoint(px: number, py: number, zones: DocZone[]): DocZone |
   let foundSpecific = false
   for (const z of zones) {
     if (!pointInZoneShape(z.shape, px, py)) continue
-    const circ = z.zone_type === 'Circulation'
+    const circ = isGroundZone(z.zone_type)
     if (circ && foundSpecific) continue // a specific zone already outranks it
     const area = zoneArea(z.shape)
     if (!circ && !foundSpecific) {

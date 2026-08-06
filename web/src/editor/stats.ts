@@ -19,6 +19,7 @@
 // Currency is ₹ (India-first, matching the material bank + app convention).
 
 import type { DocState, DocWall, DocZone, ZoneType } from '../types/doc'
+import { GROUND_ZONES } from '../types/doc'
 import type { ZoneStat } from '../types/metrics'
 import { zoneArea as zoneShapeArea } from '../util/zoneGeom'
 import { searchBank } from '../materialBank/mock'
@@ -164,7 +165,7 @@ export function buildZones(zoneStats: ZoneStat[]): ZonesBreakdown {
 // every other type. Mirrors the core's `usable_area` (lib.rs): efficiency =
 // usable / NIA, the standard workplace space-efficiency ratio (BCO 2023 / RICS
 // IPMS / JLL), where the loss is circulation aisles + core/service.
-const CIRCULATION_TYPES: ZoneType[] = ['Circulation']
+const CIRCULATION_TYPES: ZoneType[] = [...GROUND_ZONES]
 const CORE_TYPES: ZoneType[] = ['Core']
 
 export interface AreaSplit {

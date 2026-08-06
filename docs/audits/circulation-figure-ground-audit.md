@@ -568,3 +568,63 @@ regression. Phase 2.2 removes ground tags entirely.
 `layout/program.rs:581`. The regex returns `null` and the test dies before asserting anything — a
 parity guard that has been guarding nothing since the split at `c15451b`. One-line fix, deliberately
 left out of a semantic commit; file separately.
+
+---
+
+# Gate spec — re-registrations (recorded BEFORE the gates are written)
+
+## C6 — RE-REGISTERED. The old direction claim was built on a wrong model.
+
+**Withdrawn:** *"`efficiency_pct` decreased or equal vs pre-change; it must not
+increase."*
+
+That assertion assumed reclassification would remove floor from `usable`. It
+never could: `usable_area` already excluded `Circulation`, so the same floor was
+already outside the numerator under its old name. Measured across Phase 1,
+`efficiency_pct` is **61.63 before and 61.63 after** — not "did not increase",
+but *did not move at all*. A gate written to the old wording would pass on a
+tautology and would keep passing if the fold were bypassed entirely.
+
+**Registered instead**, both binding:
+
+1. **Efficiency invariance.** `efficiency_pct` is **byte-exact** across the
+   reclassification on a fixed (plate, program, seed). Not "≤" — *equal*. If it
+   moves, either waste has been folded into a benchmarked industry ratio (the
+   thing we ruled must never happen) or `usable_area`'s membership changed
+   without a decision.
+2. **Fold exactness.** `Σ published Circulation area` **==** `Σ honest
+   (Circulation + Unassigned) area`, to float tolerance, and the published row
+   count equals the honest Circulation + Unassigned count. Verified on the DXF
+   plate: 231.43 + 64.47 = 295.89 published, reproducing the pre-change figure
+   exactly.
+
+**Waste gets its own assertion, under its own name:** `unassigned_pct` is
+non-zero on a plate known to waste floor, and **no published artifact contains
+the string `Unassigned`** in any zone-type or space-type field. That second half
+is the one that actually guards the fold rule, and it is the assertion the
+withdrawn wording was standing in for.
+
+*Registered 2026-08-06, before C6 exists, per the standing rule that a gate
+written after the fix can only confirm the fix.*
+
+## Byte-identity proofs — harness requirement, promoted from a near-miss
+
+Any byte-identity proof **must assert its inputs are non-empty (or above a
+minimum plausible size) before comparing.** Two empty files are byte-identical
+and prove nothing; the Phase 1 `evaluate()` proof reported "BYTE-IDENTICAL ✓,
+md5 d41d8cd9…" — the md5 of nothing — because the probe had failed to compile.
+It was caught only because the check happened to print byte counts.
+
+The requirement is now: `[ -s before ] && [ -s after ] && diff -q`, with the
+byte counts printed in the evidence. The cost is one shell test; the failure it
+prevents is a vacuous proof wearing a checkmark, which is the same species as the
+vacuous invariant this workstream already fixed once.
+
+**Second instance in one audit cycle** of *a check that reports coverage it does
+not have*: (i) `walking_area_is_unified_no_white_floor`, whose residual filter
+would have gone vacuous; (ii) `suggestProgram.test.mjs`, a parity guard that has
+crashed since its constant moved, its history claiming coverage it stopped
+providing. A third instance earns a section in `.claude/rules/gate-independence.md`
+— the pattern is *"a check whose subject moved out from under it, still green or
+still listed"*, and it is distinct from the producer-metadata family because
+nothing here is trusting the producer; the check simply lost its grip.

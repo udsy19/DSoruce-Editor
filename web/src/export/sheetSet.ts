@@ -10,6 +10,7 @@
 // SAME plan drawn twice, keyed on DocWall.generated.
 
 import { PAGE_W, PAGE_H, PdfPage, PdfJpeg, Rgb, buildMultiPagePdfBytes, textWidth } from './pdfDoc'
+import { isGroundZone } from '../types/doc'
 import { renderPrintCanvas, canvasToJpeg, planScaleN, WallSeg } from './printPlan'
 import {
   Page,
@@ -833,7 +834,7 @@ function roomLabels(
   const names = roomDisplayNames(state)
   let n = 0
   for (const z of state.zones ?? []) {
-    if (z.zone_type === 'Circulation') continue
+    if (isGroundZone(z.zone_type)) continue
     n++
     const c = zoneCenter(z.shape)
     const pt = map(c.x, c.y)
@@ -1442,7 +1443,7 @@ function roomDims(
   ink: InkSink,
 ): void {
   for (const z of state.zones ?? []) {
-    if (z.zone_type === 'Circulation') continue
+    if (isGroundZone(z.zone_type)) continue
     const s = z.shape // Rect or RectRing — both centred at (x,y) with outer w×h
     if (s.kind === 'Poly') continue // boundary-conforming (Circulation-only): no orthogonal dim string
     const x0 = s.x - s.w / 2
