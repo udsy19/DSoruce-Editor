@@ -32,6 +32,7 @@ import { PLAN_LEGEND_CHIPS, WORKBOOK_CHROME } from './qbiqPalette'
 import { buildTakeoffModel, type TakeoffFurnitureRow, type TakeoffOptions } from './takeoff'
 import { buildXlsx, colName, pxToEmu, type Cell, type SheetSpec, type StyleSpec } from './workbook'
 import { triggerDownload } from './png'
+import { ACCENT_AMBER } from '../editor/planStyle'
 
 // ---------------------------------------------------------------------------
 // The core quantity surface — the shape `Editor.quantities()` returns.
@@ -973,7 +974,7 @@ export async function renderBrandMarkPng(): Promise<Uint8Array> {
   if (!ctx) throw new Error('2d context unavailable')
   ctx.fillStyle = '#FFFFFF'
   ctx.fillRect(0, 0, LOGO_W, LOGO_H)
-  ctx.fillStyle = '#E8A13C'
+  ctx.fillStyle = ACCENT_AMBER
   ctx.fillRect(10, 24, 8, 36)
   ctx.fillStyle = '#1C2126'
   ctx.font = '700 26px Helvetica, Arial, sans-serif'

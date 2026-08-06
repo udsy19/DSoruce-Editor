@@ -7,7 +7,10 @@
   --ink: #1a1d21;
   --ink-2: #5c6670;
   --hairline: #e6e8ec;
-  --accent: #e8a13c;
+  /* Value is SET AT RUNTIME by main.ts from planStyle's ACCENT_AMBER — this
+     page is standalone (no external stylesheet, a deploy constraint), so it
+     cannot reference --accent-amber. The declaration below is a fallback for
+     a bare-CSS render only; the one source is still planStyle.ts. */
   --page: #ffffff;
   --font-ui: 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
   --font-brand: 'Schibsted Grotesk', var(--font-ui);

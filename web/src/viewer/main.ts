@@ -20,6 +20,7 @@ import '@fontsource/hanken-grotesk/500.css'
 import '@fontsource/hanken-grotesk/600.css'
 import '@fontsource/schibsted-grotesk/700.css'
 import './viewer.css'
+import { ACCENT_AMBER } from '../editor/planStyle'
 
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
@@ -332,3 +333,7 @@ load().catch((e: unknown) => {
   hint('')
   notice(`<b>Could not open this model.</b><br />${e instanceof Error ? e.message : String(e)}`)
 })
+
+// The viewer is a standalone page and cannot reference the app's token sheet, so
+// the accent's ONE source reaches it here rather than being restated in CSS.
+document.documentElement.style.setProperty('--accent', ACCENT_AMBER)

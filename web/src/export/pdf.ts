@@ -525,6 +525,11 @@ export function renderPrintCanvas(
           rotation: c.rotation,
           mirror: c.mirror,
           seats: c.seats || seatsForSize(c.category, c.w, c.h),
+          // NO IMPLIED SEATING ON PAPER (R6). Real `Chair` components are drawn
+          // as their own glyphs beside the desk or table they serve, so an
+          // implied chair here would ink the same seat twice and put seating on
+          // a deliverable the Furniture Inventory does not bill.
+          implySeats: false,
           selected: false,
         },
         { stroke: PRINT_STROKE, detail: PRINT_DETAIL, accent: PRINT_STROKE },

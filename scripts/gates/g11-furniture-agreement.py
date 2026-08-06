@@ -79,7 +79,12 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
 import gatelib as G  # noqa: E402
 
-# --- the plan renderer's fit, re-derived here (pdf.ts renderPrintCanvas) ------
+# --- the plan renderer's fit, re-derived here -------------------------------
+# MIRRORS planGraphic.ts::renderHighlightedPlan, which is what produces
+# out/plan.png (qtoWorkbook imports it for the Plan sheet). It previously
+# named pdf.ts::renderPrintCanvas, which is a DIFFERENT renderer serving the
+# A3 sheet — anyone re-deriving this transform from that pointer would have
+# been reading the wrong source. Same fit constant today; different owner.
 PAD_PX = 48
 
 # Visibility floor — see CALIBRATION above.

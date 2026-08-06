@@ -29,6 +29,7 @@ import {
   frameLook,
   type ClearanceGrid,
 } from './composition'
+import { ACCENT_AMBER } from '../editor/planStyle'
 
 /**
  * DELIVERABLE 3 — the branded walkthrough video.
@@ -1305,7 +1306,7 @@ function displayTexture(mark: ImageBitmap, w = 1024, h = 576): THREE.CanvasTextu
   const mw = w * 0.66
   const mh = (mw * mark.height) / mark.width
   ctx.drawImage(mark, (w - mw) / 2, (h - mh) / 2 - h * 0.04, mw, mh)
-  ctx.fillStyle = '#E8A13C'
+  ctx.fillStyle = ACCENT_AMBER
   ctx.fillRect((w - mw) / 2, (h + mh) / 2 + h * 0.03, mw, Math.max(4, h * 0.018))
   const t = new THREE.CanvasTexture(c)
   t.colorSpace = THREE.SRGBColorSpace
@@ -1477,7 +1478,7 @@ export async function renderTitleCard(
   ctx.drawImage(bmp, px, py, mw, mh)
 
   // The accent rule: the pixels G7 looks for, and the card's spine.
-  ctx.fillStyle = '#E8A13C'
+  ctx.fillStyle = ACCENT_AMBER
   ctx.fillRect(px - mw * 0.06, py + mh * 1.14 + height * 0.035, mw * 1.12, Math.round(height * 0.017))
 
   ctx.textAlign = 'center'
