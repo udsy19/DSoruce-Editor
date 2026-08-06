@@ -24,8 +24,9 @@
 // (servicesSheets self-numbers as A.(startNo+i+1); pass startNo=numbered.length
 // so the sheets take the next free slots and the contents list stays in sync.)
 
-import { canvasToJpeg, planScaleN, renderPrintCanvas, textWidth } from './pdf'
-import type { Rgb, PdfJpeg } from './pdf'
+import { textWidth } from './pdfDoc'
+import { canvasToJpeg, planScaleN, renderPrintCanvas } from './printPlan'
+import type { Rgb, PdfJpeg } from './pdfDoc'
 import {
   Page,
   MARGIN,

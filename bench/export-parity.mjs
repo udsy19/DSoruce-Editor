@@ -22,7 +22,16 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8')
 
 const table = read('web/src/editor/planStyle.ts')
-const pdf = read('web/src/export/pdf.ts')
+// The print palette moved to printPlan.ts when pdf.ts was split under R1.
+// This anchor MUST follow it: pdf.ts now holds only sheet chrome and the two
+// download actions, so a check pointed there would be reading a file that can
+// no longer contain a zone colour — green, and measuring nothing (P4/Face-14).
+const printPlan = read('web/src/export/printPlan.ts')
+// The ZONE KEY is sheet composition, and stayed in pdf.ts. Two anchors,
+// because the split put the palette and the legend in different files —
+// one `pdf` read would now be right for half these checks and vacuous for
+// the other half.
+const pdfSheet = read('web/src/export/pdf.ts')
 const paint = read('web/src/editor/paint.ts')
 
 let fails = 0
@@ -38,15 +47,15 @@ const zoneBlock = table.match(/export const ZONE: Record<[^>]*> = \{([\s\S]*?)\n
 const assertedHexes = [...(zoneBlock?.[1] ?? '').matchAll(/#[0-9a-fA-F]{6}/g)].map((m) =>
   m[0].toLowerCase(),
 )
-const copied = assertedHexes.filter((h) => pdf.toLowerCase().includes(h))
+const copied = assertedHexes.filter((h) => printPlan.toLowerCase().includes(h))
 check(
   'export restates no zone colour',
   copied.length === 0,
-  `pdf.ts contains ${copied.join(', ')} — it must read ZONE, not repeat it`,
+  `printPlan.ts contains ${copied.join(', ')} — it must read ZONE, not repeat it`,
 )
 check(
   'export derives PRINT_ZONE_FILL from ZONE',
-  /PRINT_ZONE_FILL[\s\S]{0,200}Object\.entries\(ZONE\)/.test(pdf),
+  /PRINT_ZONE_FILL[\s\S]{0,200}Object\.entries\(ZONE\)/.test(printPlan),
   'PRINT_ZONE_FILL should be built from the table',
 )
 
@@ -56,7 +65,7 @@ check(
 // loop also contains, so deleting the fill guard still passed. A parity check
 // that passes when the parity is broken is worse than none: it certifies the
 // bug. Anchor the assertion to the code path it is about.
-const fillLoop = pdf.match(/if \(zoneFill\) \{[\s\S]*?\n {2}\}/)
+const fillLoop = printPlan.match(/if \(zoneFill\) \{[\s\S]*?\n {2}\}/)
 check(
   'sheet honours groundZones (circulation unfilled)',
   !!fillLoop && /groundZones\.includes\(z\.zone_type\)\) continue/.test(fillLoop[0]),
@@ -71,12 +80,12 @@ check(
 // 3. Weights. Both paths take tiers from the ladder.
 check(
   'sheet takes wall weight from the ladder',
-  /strokePx\('wall'/.test(pdf),
+  /strokePx\('wall'/.test(printPlan),
   'the sheet hardcodes wall weights instead of reading strokePx',
 )
 check(
   'sheet scales the ladder uniformly (ratios preserved)',
-  /PRINT_WEIGHT_SCALE/.test(pdf),
+  /PRINT_WEIGHT_SCALE/.test(printPlan),
   'a per-tier print adjustment would corrupt the measured ratios',
 )
 
@@ -87,7 +96,7 @@ check(
 // Anchored to the GEOMETRY (a half-thickness perpendicular offset), not to
 // formatting. A regex over exact whitespace fails on a prettier run and tells
 // you nothing about the drawing.
-const wallSection = pdf.slice(pdf.indexOf('TWO-FACE WALLS'))
+const wallSection = printPlan.slice(printPlan.indexOf('TWO-FACE WALLS'))
 check(
   'sheet draws two-face walls, not a centreline stroke',
   /const hw = \(w\.thickness/.test(wallSection) && /closePath/.test(wallSection),
@@ -95,7 +104,7 @@ check(
 )
 check(
   'sheet carries the wall fill (hatch) from the profile',
-  /wallFill\.kind === 'hatch'/.test(pdf),
+  /wallFill\.kind === 'hatch'/.test(printPlan),
   'the Rayon hatch stops at the screen and never reaches paper',
 )
 
@@ -103,17 +112,17 @@ check(
 //    sheet must carry one, and it must derive from the document.
 check(
   'sheet prints a zone key',
-  /ZONE KEY/.test(pdf),
+  /ZONE KEY/.test(pdfSheet),
   'the paper profile prints almost no room names — without a key the sheet is unreadable',
 )
 check(
   'the zone key derives from the document, not a fixed list',
-  /for \(const z of state\.zones[\s\S]{0,320}zoneKinds\.push/.test(pdf),
+  /for \(const z of state\.zones[\s\S]{0,320}zoneKinds\.push/.test(pdfSheet),
   'a hardcoded key would show swatches for zones the plan does not contain',
 )
 check(
   'the zone key omits ground zones',
-  /groundZones\.includes\(z\.zone_type\)\) continue \/\/ ground has no swatch/.test(pdf),
+  /groundZones\.includes\(z\.zone_type\)\) continue \/\/ ground has no swatch/.test(pdfSheet),
   'circulation has no fill on the sheet, so a swatch for it would explain nothing',
 )
 
@@ -127,6 +136,8 @@ check(
 {
   const DELIVERABLES = [
     'web/src/export/pdf.ts',
+    'web/src/export/pdfDoc.ts',
+    'web/src/export/printPlan.ts',
     'web/src/export/sheet.ts',
     'web/src/export/report.ts',
     'web/src/export/sheetSet.ts',

@@ -27,20 +27,8 @@ import type { DocState, DocZone, ZoneType } from '../types/doc'
 import type { Metrics, ZoneStat } from '../types/metrics'
 import { distToPoly } from '../editor/paint'
 import { pointInZoneShape } from '../util/zoneGeom'
-import {
-  PAGE_W,
-  PAGE_H,
-  ContentOp,
-  PdfPage,
-  PdfJpeg,
-  Rgb,
-  buildMultiPagePdfBytes,
-  renderPrintCanvas,
-  canvasToJpeg,
-  PRINT_ZONE_FILL,
-  textWidth,
-  pdfSafeText,
-} from './pdf'
+import { PAGE_W, PAGE_H, ContentOp, PdfPage, PdfJpeg, Rgb, buildMultiPagePdfBytes, textWidth, pdfSafeText } from './pdfDoc'
+import { renderPrintCanvas, canvasToJpeg, PRINT_ZONE_FILL } from './printPlan'
 import { Page, MARGIN, RES, ACCENT, hex2rgb, pageHeader, logoJpeg } from './sheet'
 import { triggerDownload } from './png'
 import { ACCENT_AMBER } from '../editor/planStyle'

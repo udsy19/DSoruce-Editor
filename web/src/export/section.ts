@@ -26,7 +26,8 @@
 // (already defined in sheetSet.ts). Add the two "Sections … A.0N" rows to the
 // contents list to match.
 
-import { PAGE_W, PAGE_H, canvasToJpeg, planScaleN } from './pdf'
+import { PAGE_W, PAGE_H } from './pdfDoc'
+import { canvasToJpeg, planScaleN } from './printPlan'
 import {
   Page,
   MARGIN,

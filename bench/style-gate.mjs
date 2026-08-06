@@ -36,6 +36,13 @@ const GUARDED = [
   ['web/src/editor/symbols.ts', RULES_ALL],
   // Joined the guarded list as part of fixing it (standing policy): a file found
   // carrying a zone->colour mapping gets guarded, not just corrected.
+  // pdf.ts was split under R1: pdfDoc.ts is the palette-free byte writer,
+  // printPlan.ts owns PRINT_ZONE_FILL and the print inks, pdf.ts keeps the sheet
+  // chrome and the two actions. The guard follows the PALETTE, not the filename.
+  // All three stay guarded — a colour appearing in the writer or the chrome is
+  // just as wrong, and leaving them unguarded would make the split a way OUT.
+  ['web/src/export/printPlan.ts', ['hex', 'rgba']],
+  ['web/src/export/pdfDoc.ts', ['hex', 'rgba']],
   ['web/src/export/pdf.ts', ['hex', 'rgba']],
 ]
 

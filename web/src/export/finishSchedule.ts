@@ -35,8 +35,8 @@
 // ('schedule' is a new SheetKind — add it to the SheetKind union, or reuse
 // 'furniture' if you would rather not widen the type.)
 
-import { PAGE_W, PAGE_H, textWidth, pdfSafeText } from './pdf'
-import type { PdfJpeg } from './pdf'
+import { PAGE_W, PAGE_H, textWidth, pdfSafeText } from './pdfDoc'
+import type { PdfJpeg } from './pdfDoc'
 import {
   Page,
   MARGIN,

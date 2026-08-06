@@ -9,19 +9,8 @@
 // and construction (existing grey + new blue + furniture + D01/W1 tags) are the
 // SAME plan drawn twice, keyed on DocWall.generated.
 
-import {
-  PAGE_W,
-  PAGE_H,
-  PdfPage,
-  PdfJpeg,
-  Rgb,
-  buildMultiPagePdfBytes,
-  renderPrintCanvas,
-  canvasToJpeg,
-  planScaleN,
-  textWidth,
-  WallSeg,
-} from './pdf'
+import { PAGE_W, PAGE_H, PdfPage, PdfJpeg, Rgb, buildMultiPagePdfBytes, textWidth } from './pdfDoc'
+import { renderPrintCanvas, canvasToJpeg, planScaleN, WallSeg } from './printPlan'
 import {
   Page,
   MARGIN,
