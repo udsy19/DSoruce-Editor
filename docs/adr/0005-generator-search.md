@@ -747,6 +747,12 @@ Each was learned from a live mistake in this campaign.
     pixel buffer, which produced plausible-looking output that was sampling the
     wrong pixels entirely, and were discarded rather than reasoned from.
 
+    *And, within a day of this face being written, from its own author:* a
+    falsification worktree created with `git worktree add --detach HEAD` to prove
+    a NEW gate check fires — while that check was still UNCOMMITTED. The gate
+    reported "no drift" because the worktree contained no such gate. The null
+    result was about the harness, again.
+
     A null result is the easiest thing in the world to believe, because it asks
     nothing of you. Before reporting "no effect", prove the instrument was
     connected — perturb something you KNOW must move, and watch it move.

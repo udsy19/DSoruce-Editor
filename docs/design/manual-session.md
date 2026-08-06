@@ -4,8 +4,18 @@ Everything in the UI/UX overhaul is shipped and verified except two things I can
 human at the screen: the **3D panel states** and the **naive-user walkthrough**. This document is
 the script for both, plus the tone check and a complete change log.
 
-Run the app with `./run.sh`, or against the session server on **:5199** (not 5173 — other worktrees
-hold it). Before believing anything you see: `scripts/verify-preflight.sh 5199 <identifier> <module>`.
+Run the app with `./run.sh`. **Do not use :5173 OR :5199** — both were held by other worktrees
+during the three-branch merge, and a `vite --strictPort` from a foreign branch answers normally while
+serving someone else's code. Pick a port nothing else holds, then prove what you are looking at:
+
+```bash
+cd web && pnpm exec vite --port 5401 --strictPort      # any free port
+scripts/verify-preflight.sh 5401 <identifier> src/<module>    # NB: Vite's root IS web/, so `src/…`
+```
+
+The pre-flight refused a foreign worktree three times during this campaign, including once when a
+server's cwd had drifted to `/`. It is thirty seconds and it is the difference between grading this
+tree and grading a branch that no longer exists.
 
 ---
 

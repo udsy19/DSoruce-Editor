@@ -1002,6 +1002,20 @@ One green tree from three divergent branches. Full account:
       `.claude/rules/gate-independence.md`, "an agent must never perform or
       simulate a trusted-human event".
 
+- [x] **Audit round — two independent agents against an already-green board.**
+      Validation found nothing broken (production build succeeds; `GATE_SELFTEST=1`
+      still catches the deliberate liar) and one caveat worth keeping: **`pnpm build`
+      does not build the wasm**, so only `make build` exercises the Rust→wasm chain.
+      Checking found four real problems in work already reported done — a miscounted
+      `implySeats` call site (five, not four), `--accent-amber-rgb` as a second
+      unpinned source for the amber value, a stale docblock, and design docs citing
+      a deleted module. All fixed; `style-gate` gains `DERIVED_RGB`.
+- [ ] **Manual session** (`docs/design/manual-session.md`) — 3D panel states, the
+      naive-user walkthrough, and the tone check. **Needs a human at the screen**
+      by the document's own reasoning: headless driving crashed the WebGL context
+      twice and a crashed context answers queries while rendering nothing. Its port
+      guidance has been corrected (it named :5199, which is now a foreign worktree).
+
 ### Track L — known gaps, declared
 
 - **No sensor watches the editor canvas for unbilled seating.** G11 grades the

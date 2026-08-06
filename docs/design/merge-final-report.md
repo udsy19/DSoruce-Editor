@@ -131,6 +131,55 @@ happened to catch it once.
     split commit moved two anchors, proved the move load-bearing, and missed a
     third.
 
+## The audit round — two agents against a 12/12 board
+
+Run after the board was already green, deliberately independent of each other and
+of this report.
+
+**Validation** (does it actually work): Rust 157 by name with zero compiler
+warnings, typecheck clean, **production build succeeds**, 8 bench boards green,
+gate board 12/12, wasm target clean, no flakiness across two full runs — and
+`GATE_SELFTEST=1` still catches the deliberate liar (12/13, `FAIL: 1 gate(s)
+red`). Nothing broken.
+
+Its most useful output was a caveat, not a failure: **`pnpm build` does not build
+the wasm.** It is `tsc --noEmit && vite build` consuming the committed
+`web/src/wasm/`, so a green production build proves nothing about the Rust→wasm
+chain — only `make build` does. Anyone validating a Rust change with `pnpm build`
+alone is grading stale bindings.
+
+**Checking** (is the report true): four real problems in work already reported
+done.
+
+1. **A miscount.** "Every other consumer already sets `implySeats: false`" named
+   four call sites. There are **five** — `import/drawingRender.ts` inherited the
+   default, and `normalize.ts` classifies imported blocks as real `Chair`
+   components, so the DWG-import canvas carried the same double-draw. On an
+   import view that is worse than anywhere else: it shows the customer furniture
+   their own DXF does not contain.
+2. **A second, unpinned source for the amber value.** `rgba()` cannot take a hex,
+   so `--accent-amber-rgb` must exist; MIRRORS pinned only the hex, and seven
+   live sites hang off the decimal through `--accent-selection-rgb`. A hex-only
+   rebrand would have left all seven on the old amber. Face 10 surviving inside
+   the campaign built to eliminate it — and `accent-univalence.mjs` asserted in a
+   comment that MIRRORS pinned both, which was false. Closed by `DERIVED_RGB`.
+3. A `sheetlib.mjs` docblock naming `pdf.ts` four lines above code reading
+   `pdfDoc.ts`.
+4. Design docs citing `furniture.ts` as current — and the ROADMAP claim "three
+   stale comments re-pointed" was true of CODE and silent about docs. The
+   unscoped negative, from the person who wrote the convention into the report.
+
+**And the fix's own falsification was invalid first.** The worktree proving
+`DERIVED_RGB` was created from `HEAD`, which did not contain the still-uncommitted
+check — so "it did not fire" was measuring a tree without the code in it. Face 19,
+committed by its author within a day of writing it. The isolated re-run is in the
+commit message.
+
+The lesson is the one this repo keeps relearning: **a green board is evidence
+about the checks that ran, not about the code.** Twelve gates and 1034 checks did
+not see a miscounted call site or an unpinned colour, because nothing was watching
+for either.
+
 ## Landing
 
 `integration/all` → `main` as a merge commit. Branch deletion is
