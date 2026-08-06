@@ -449,6 +449,11 @@ pub fn score(doc: &Document, program: &Program) -> LayoutScore {
             entry_adjacency: 0.0,
             total: 0.0,
             placed_desks,
+            // Nothing was placed, so no floor was "wasted" in the sense this
+            // term measures — an empty plate is not a plan that squandered its
+            // area, it is the absence of a plan. Reporting a penalty here would
+            // imply a plan existed and scored badly.
+            unassigned_penalty: 0.0,
             feasible,
         };
     }
