@@ -198,3 +198,26 @@ the comment I added pushed the gate past the 900-char slice — the guard report
 **a source-slicing assertion is a positional assumption, and positions move.**
 
 Probe kept at `docs/evidence/circulation-audit/B4-corridor-on-sheet-probe.mjs`.
+
+## B5 — 2.6 legend parity across all three surfaces · **DONE**
+
+Three independent legend implementations, found by the audit in three different
+states: app panel listed Circulation, `pdf.ts` correctly excluded ground,
+`report.ts` listed it deliberately ("qbiq lists rooms first, circulation last").
+A legend is the ONLY identification a sheet carries, so three surfaces
+disagreeing about what a plan contains is worse than any one being wrong.
+
+`report.ts::LEGEND_ORDER` drops `'Circulation'`. `'Unassigned'` is absent for a
+second, independent reason — it never reaches a published surface at all, so if
+it ever appears there the fold was bypassed.
+
+`legendParity.test.mjs` is a CENSUS, not three assertions: each surface is
+program-only **and** the app and report legends must list the identical set.
+
+| sabotage | result |
+|---|---|
+| `report.ts` re-adds Circulation | **RED** |
+| `pdf.ts` stops skipping ground | **RED** |
+| app `legendEntries` stops excluding ground | **RED** |
+
+All three surfaces now agree: 6 program entries.

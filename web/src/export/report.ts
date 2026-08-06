@@ -98,7 +98,25 @@ const DAYLIGHT_RADIUS_M = 5
 // Zones that DON'T count as enclosed rooms for the privacy metric (open plan).
 const OPEN_ZONE_TYPES: ReadonlySet<ZoneType> = new Set(['Circulation', 'Unassigned', 'Workspace'])
 
-/** Fixed legend order (qbiq lists rooms first, circulation last). */
+/**
+ * Fixed legend order — PROGRAM ZONES ONLY.
+ *
+ * `'Circulation'` was last in this list, with a comment reading "qbiq lists
+ * rooms first, circulation last". The measurement says otherwise: the reference
+ * legend identifies FACILITIES, and circulation is the paper they sit on — it
+ * carries no swatch because it carries no fill. A ground swatch keyed to white
+ * explains nothing, and it told the reader the plan contains a thing it does not
+ * draw.
+ *
+ * `'Unassigned'` is absent for a second, independent reason: it never reaches a
+ * published surface at all (the core's `published_zone_type` folds it into
+ * Circulation). If it ever appears here, the fold was bypassed.
+ *
+ * Three legends exist — this one, the app panel's `legendEntries`, and `pdf.ts`'s
+ * ZONE KEY — and `legendParity.test.mjs` asserts they list the SAME set. Three
+ * surfaces disagreeing about what a plan contains is worse than any one of them
+ * being wrong.
+ */
 const LEGEND_ORDER: ZoneType[] = [
   'Workspace',
   'ClosedOffice',
@@ -106,7 +124,6 @@ const LEGEND_ORDER: ZoneType[] = [
   'Collaboration',
   'Amenity',
   'Core',
-  'Circulation',
 ]
 
 /** qbiq-aligned display name for each app ZoneType (used in the plan legend). */
