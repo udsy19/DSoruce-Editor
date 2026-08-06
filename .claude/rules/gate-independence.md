@@ -327,6 +327,76 @@ any generated report: if the producer also writes the verdict, the verdict is a
 claim, not a measurement.
 
 
+## A scalar is not geometry — settle shape disputes with tables
+
+**The surface: a classification or identity argument decided from one summary
+number.** Three instances in a single audit cycle, each pointing the wrong way,
+each corrected the moment somebody printed a table instead.
+
+| # | the scalar | what it said | what a table said |
+|---|---|---|---|
+| 1 | per-pocket distance transform, computed *inside* each pocket | ~150 m² of leftover floor is too narrow to be circulation | 64 m². The DT was truncated at each pocket's own boundary; the classifier measures clearance over the whole walkable mask, which is the space a person actually has. Off by ~2×. |
+| 2 | "the 80 m² upper-right **wing**", plus one max-inscribed-width of 4.4 m | an 80 m² room-shaped void is being billed as corridor | compactness 0.085 over 41 vertices spanning 32.8 m — *less* compact than a 2 × 40 m corridor. A wall-following ribbon. The prose label and the scalar agreed with each other and were both wrong. |
+| 3 | "residual pockets overlap rooms, so the tie-break is load-bearing" | reverting `zone_index_at`'s ground tie-break will move the workstation count | zero failures. Residual pockets are strictly disjoint by construction; the tie-break never fires. |
+
+In all three the scalar was *correctly computed*. It was the wrong measurement,
+or a measurement of the wrong population, and nothing about the number itself
+said so. A max-inscribed width cannot distinguish a 4 m-wide blob from a 4 m-wide
+spot in a ribbon; an area cannot distinguish a corridor from a clearing; a
+truncated DT is a different quantity from the one the classifier uses.
+
+**The rule.** When a dispute is about *what a shape is* — corridor vs clearing,
+room vs residue, whether two things are the same object — produce the **table**:
+one row per instance, with the descriptors that can actually separate the classes
+(area AND perimeter AND compactness AND vertex count AND bbox aspect), computed
+the way the system under test computes them. One number, or a prose noun, is a
+hypothesis. It may be right; it may not be checkable.
+
+**Corollary — a prose label is a scalar.** "The wing", "the corridor", "the dead
+corner" are compressions with the same failure mode, and they are more dangerous
+because they read as observation rather than inference. Instance 2 was a label
+the author (an agent) wrote and the reviewer (a human) then reasoned from; the
+error survived a round-trip through both because neither had looked at the shape.
+
+## The falsification round is the closing move — and it must include the enabling step
+
+**The surface: a commit that adds a guard, whose guard is itself unguarded.**
+
+A falsification pair built around a *feature* can leave the *step that makes the
+feature meaningful* completely untested, and the suite stays green.
+
+**Worked case.** A shape conjunct was added to a classifier, with the correct
+pair: a compact pocket must be rejected (watched RED before the conjunct existed,
+green after) and a corridor-shaped one must survive (falsified by driving the
+threshold until it failed, since a true red was structurally unavailable — that
+asymmetry is normal and should be reported, not papered over). Both fired.
+
+The conjunct only means anything because the shape is measured on an
+RDP-**simplified** boundary: raw, a staircase-traced corridor scores 0.095 and a
+smooth one of identical footprint scores 0.142, so the threshold would have been
+deciding verdicts on tracing resolution. **Disabling the simplification entirely
+left all 168 tests green.** The fix had shipped with no guard at all — not a
+guard that rotted, a guard that was never written — and only a third sabotage,
+run because the round was being done exhaustively rather than to a checklist,
+found it.
+
+**The rule.** Any commit claiming to add or repair a guard closes with a
+**sabotage round**: disable each part of the mechanism in turn — the assertion,
+the threshold, **and every enabling transform the assertion depends on** — and
+confirm each produces a red. A part whose removal changes nothing is not
+conservative; it is unguarded, and the suite is asserting coverage it does not
+have. Sabotage runs against a disposable copy (see above), and the null results
+are reported, not just the fires: *"disabling X left the suite green"* is the
+most valuable line the round produces.
+
+**Family.** This joins *a check whose subject moved out from under it* — the
+vacuous residual filter, and a parity guard that crashed for two months while
+listed as passing. They are not the same defect (one is a guard that lost its
+grip; this is a guard that was never attached) but they are one family:
+**green boards that do not guard what they claim.** The unified question is the
+same one this file opens with — what positive evidence establishes that this
+check would fail if the thing it checks were broken?
+
 ## Reporting convention: scope every negative claim
 
 An Orchestrator aggregates agent reports, and **an unscoped negative aggregates into a global one.**

@@ -149,8 +149,43 @@ export function deleteProject(id: string): Promise<void> {
 
 /** Merge a patch into a project's draft (shallow), preserving the rest of the
  *  record. The wizard steps write their working state through this. */
-export async function updateDraft(id: string, patch: Partial<ProjectDraft>): Promise<ProjectRecord> {
-  const cur = await getProject(id)
-  if (!cur) throw new Error(`No project with id ${id}`)
-  return updateProject(id, { draft: { ...cur.draft, ...patch } })
+/**
+ * Serialises the read-modify-write below, per project id.
+ *
+ * `updateDraft` reads the record, merges a patch, and writes it back — with an
+ * `await` between the read and the write. Two calls that overlap in that window
+ * interleave classically: B reads the pre-A draft, A writes, then B writes its
+ * stale snapshot over A. Last write wins, and last write did not see the first.
+ *
+ * **This is not theoretical — it silently discarded uploaded floor plates.** The
+ * Space step writes `{drawing}` on upload and a separate persist effect writes
+ * `{areaPolygon, markers, heal, keepExisting}` on any state change. Confirming
+ * the inferred boundary re-renders and fires the second while the first is still
+ * in flight; the drawing is dropped from the record, and the Generate step —
+ * correctly refusing to invent a result — reports "There's no floor plate to
+ * fit." The user's upload is gone with no error anywhere.
+ *
+ * There was already a local mitigation at one call site (preserving `[]`/`null`
+ * identity so the effect would not fire during the awaited write). That fixed
+ * the instance and left the class: ANY two overlapping draft writes lose data.
+ * Chaining per id fixes the class, and costs one map.
+ */
+const draftWrites = new Map<string, Promise<unknown>>()
+
+export function updateDraft(id: string, patch: Partial<ProjectDraft>): Promise<ProjectRecord> {
+  const run = async (): Promise<ProjectRecord> => {
+    const cur = await getProject(id)
+    if (!cur) throw new Error(`No project with id ${id}`)
+    return updateProject(id, { draft: { ...cur.draft, ...patch } })
+  }
+  // Chain onto whatever is already in flight for this project, so the read
+  // always sees the previous write. `.catch` keeps one rejected write from
+  // poisoning the queue — each caller still receives its own rejection.
+  const prev = draftWrites.get(id) ?? Promise.resolve()
+  const next = prev.then(run, run)
+  draftWrites.set(
+    id,
+    next.catch(() => undefined),
+  )
+  return next
 }
