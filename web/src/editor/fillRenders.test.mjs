@@ -35,13 +35,25 @@ const webRequire = createRequire(path.join(here, '../../package.json'))
 const esbuildPath = createRequire(webRequire.resolve('vite')).resolve('esbuild')
 const { build } = await import(pathToFileURL(esbuildPath).href)
 
-const out = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'fillrender-')), 'planStyle.mjs')
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'fillrender-'))
+// ONE bundle re-exporting both, so `planStyle` and `paint` share a single module
+// instance. Bundling them separately gives each its own copy of the style table:
+// mutating one has no effect on the other, both runs render identically, and the
+// difference-based guard below silently measures NOTHING. (Caught by the guard
+// firing on known-good code — an instrument that cannot fail is worse than one
+// that does.)
+const entry = path.join(tmp, 'entry.ts')
+fs.writeFileSync(entry, `
+  export * from ${JSON.stringify(path.join(here, 'planStyle.ts'))}
+  export { drawZones } from ${JSON.stringify(path.join(here, 'paint.ts'))}
+`)
+const outAll = path.join(tmp, 'all.mjs')
 await build({
-  entryPoints: [path.join(here, 'planStyle.ts')],
-  outfile: out, bundle: true, format: 'esm', platform: 'neutral',
-  target: 'es2022', logLevel: 'silent',
+  entryPoints: [entry], outfile: outAll, bundle: true, format: 'esm',
+  platform: 'neutral', target: 'es2022', logLevel: 'silent',
 })
-const S = await import(pathToFileURL(out).href)
+const S = await import(pathToFileURL(outAll).href)
+const P = S
 
 /** Records every path/paint op so "did it draw?" is answerable without pixels. */
 function recorder() {
@@ -99,4 +111,120 @@ assert.equal(S.planStyle('paper').corePoche, null,
 assert.equal(S.planStyle('paper').unassignedHatch, null,
   'paper declares an Unassigned hatch — wasted floor must be invisible on a sheet')
 
-console.log(`PASS fillRenders: ${checked} declared fills would draw; paper declares neither poche nor hatch`)
+// ---------------------------------------------------------------------------
+// THE ACTUAL GUARD: does the render PATH emit marks for each declared texture?
+// ---------------------------------------------------------------------------
+//
+// The declaration checks above are necessary and NOT sufficient — proven, not
+// assumed. Re-breaking the LOD ramp (`referencePx = 0` at the three zone call
+// sites, the exact defect that kept the Core poche dead for its whole life)
+// leaves every declaration valid, and the checks above PASS. A guard that
+// inspects the table cannot see a call site that throws the table away.
+//
+// So this runs `drawZones` against a recording context and requires that the
+// texture changes what gets drawn. Differencing, not sampling: the same scene
+// rendered with and without the texture, compared by emitted operations. A stub
+// context suffices — the failure class is "no draw calls at all".
+
+function recordingCtx() {
+  const ops = []
+  const target = {
+    canvas: { width: 900, height: 700 },
+    setLineDash() {}, getLineDash: () => [],
+    // Text metrics: the label path measures before it draws.
+    measureText: (t) => ({ width: String(t).length * 6 }),
+  }
+  return {
+    ops,
+    ctx: new Proxy(target, {
+      get(t, k) {
+        if (k in t) return t[k]
+        if (typeof k === 'symbol') return undefined
+        return (...a) => { ops.push(String(k)); return undefined }
+      },
+      set() { return true },
+    }),
+  }
+}
+
+const view = (ctx) => ({
+  ctx, scale: 20, offset: { x: 0, y: 0 }, presentation: false,
+  toScreen: (x, y) => ({ x: x * 20, y: y * 20 }),
+  toWorld: (x, y) => ({ x: x / 20, y: y / 20 }),
+})
+
+/** One zone of `type`, 8x8 m — comfortably above every size/LOD gate. */
+const fixture = (type) => [{
+  id: 1, zone_type: type, label: type,
+  shape: { kind: 'Rect', x: 10, y: 10, w: 8, h: 8 },
+  component_ids: [], origin: type === 'Unassigned' ? 'Residual' : 'Drawn',
+}]
+const statsFor = () => new Map([[1, { area: 64, capacity: 0 }]])
+
+let pathChecked = 0
+for (const [type, field] of [['Core', 'corePoche'], ['Unassigned', 'unassignedHatch']]) {
+  const editor = S.planStyle('editor')
+  const declared = editor[field]
+  assert.ok(declared, `editor.${field} is not declared — this guard has drifted from the table`)
+
+  // COUNT MARKS, NOT CALLS. `fillWith` emits save/beginPath/rect/clip/restore
+  // BEFORE it consults the LOD ramp, so a texture whose ramp kills it still
+  // raises the raw call count by five while putting no ink on the page. Counting
+  // every call made this guard pass under the exact sabotage it exists to catch.
+  const MARKS = new Set(['stroke', 'fill', 'fillRect', 'strokeRect', 'fillText', 'strokeText'])
+  const marks = (ops) => ops.filter((o) => MARKS.has(o)).length
+
+  const a = recordingCtx()
+  P.drawZones(view(a.ctx), fixture(type), null, statsFor(), new Set())
+  const withTexture = marks(a.ops)
+
+  const saved = editor[field]
+  editor[field] = null
+  const b = recordingCtx()
+  P.drawZones(view(b.ctx), fixture(type), null, statsFor(), new Set())
+  const withoutTexture = marks(b.ops)
+  editor[field] = saved
+
+  assert.ok(
+    withTexture > withoutTexture,
+    `${type}: the declared ${field} emitted NO extra draw operations ` +
+      `(${withTexture} marks with vs ${withoutTexture} without). The texture is declared ` +
+      `and dead — check what the call site passes as fillWith's reference size; ` +
+      `\`hatchLevel(0)\` is 0 and returns before drawing anything.`,
+  )
+  pathChecked++
+}
+assert.equal(pathChecked, 2, 'both zone textures must be exercised through the render path')
+
+// ---------------------------------------------------------------------------
+// GROUND CARRIES NO RESTING NAME — and the selection exception works for BOTH
+// ground types, not just the one that happened to get checked by hand.
+// ---------------------------------------------------------------------------
+const groundFixture = (type) => [{
+  id: 1, zone_type: type, label: type === 'Unassigned' ? 'Unassigned' : 'Corridor',
+  shape: { kind: 'Rect', x: 10, y: 10, w: 8, h: 8 },
+  component_ids: [], origin: type === 'Unassigned' ? 'Residual' : 'Drawn',
+}]
+for (const type of ['Circulation', 'Unassigned']) {
+  const r1 = recordingCtx()
+  const atRest = P.drawZones(view(r1.ctx), groundFixture(type), null, statsFor(), new Set())
+  assert.equal(atRest.length, 0, `${type}: a resting ground zone emitted a tag`)
+
+  const r2 = recordingCtx()
+  const selected = P.drawZones(view(r2.ctx), groundFixture(type), null, statsFor(), new Set([1]))
+  assert.equal(selected.length, 1,
+    `${type}: SELECTED ground zone emitted no tag — the selection exception is broken, ` +
+    'and a corridor you cannot name is a corridor you cannot edit')
+}
+// A program zone is untouched by any of this.
+const prog = P.drawZones(view(recordingCtx().ctx),
+  [{ id: 1, zone_type: 'Meeting', label: 'Boardroom',
+     shape: { kind: 'Rect', x: 10, y: 10, w: 8, h: 8 }, component_ids: [], origin: 'Drawn' }],
+  null, statsFor(), new Set())
+assert.equal(prog.length, 1, 'a program zone lost its resting tag — suppression over-reached')
+
+console.log(
+  `PASS fillRenders: ${checked} declared fills valid; ${pathChecked} exercised through ` +
+  `drawZones and proven to emit marks; ground silent at rest and named on selection ` +
+  `(both types); paper declares neither poche nor hatch`,
+)

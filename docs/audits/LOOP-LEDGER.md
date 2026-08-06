@@ -1,0 +1,106 @@
+# Circulation workstream — run-to-completion ledger
+
+Append-only. One entry per queue item. Handoff artifact if any HALT fires.
+
+Standing rulings in force: `§2` of the loop brief — classifier (Reading B @ 50%,
+τ = 3π/16, RDP at 0.3 m); efficiency never redefined; fold rule; `Residual` is
+generator-only; hatch ink registered met; ground carries no resting tag;
+medial-axis parked; G10 human-written; C1–C10 → G13; BOMA band is context.
+
+---
+
+## A1 — Core poché disposition · **DONE** (`8112d25`, landed prior turn)
+
+**Decision procedure executed.** `research/qbiq-plan-style-spec.json` →
+`wall_poche`: *"There is NO dark poche anywhere in the reference. Walls are drawn
+as thin DOUBLE LINES with unfilled interiors."* The only poché/hatch the spec
+sanctions is between **wall faces** (Rayon grammar). `core` appears in the spec
+exactly once — `"role": "core/service"`, a palette entry — with no texture.
+
+**Verdict: spec SILENT on core-floor poché → editor-only.** Paper gets
+`corePoche: null`; the editor profile keeps it as the documented divergence.
+Not a HALT: no spec entry contradicts both readings.
+
+Consequence recorded: every paper-parity judgment in this workstream — including
+Phase 0's "presentation output is already fully correct" — was measured against a
+render where the poché was dead. Null on paper keeps those judgments valid; the
+alternative branch would have required re-measurement, golden re-capture and a
+C-board note. Ramp fix stays regardless, as ruled.
+
+`corePoche` is now a per-profile field, not a module constant.
+
+## A2 — renders-at-all smoke · **DONE with a gap, closed below**
+
+`web/src/editor/fillRenders.test.mjs`. Every declared fill must be able to draw;
+pins the exact trap (`hatchLevel(0) == 0`).
+
+Falsified prior turn: paper re-declaring `corePoche` → red (spec citation);
+declared hatch at α 0 → red.
+
+**GAP against this brief:** the brief's required sabotage is *re-break the ramp
+(`referencePx = 0`) and watch it red* — the sabotage that reproduces the original
+defect. Not run. Closed in entry **A2b**.
+
+## B1 — 2.2 tag suppression · **DONE with a gap, closed below** (`2b028d3`)
+
+Measured by the `zone_stats` census method, not screenshot counting:
+
+| | tags at rest | of which ground |
+|---|---|---|
+| before | 24 | **17** (9 CIRCULATION, 8 CORRIDOR) |
+| after | **7** | **0** |
+
+Remaining seven: CABIN · BOARDROOM · RECEPTION · TEAM ROOM 1 ·
+OPEN WORKSPACE (1) · CORE 1 · CORE 2 — all program rooms.
+
+Selection exception threaded through the highlight set `drawZoneTags` already
+uses. Verified on the 80.43 m² circulation `Poly` (tag returns on selection).
+
+**GAP against this brief:** the brief requires verifying selection on a corridor
+**AND an unassigned pocket**. Only circulation was checked. Closed in **B1b**.
+
+Pre-existing limit recorded, not a regression: a thin corridor (widest here
+0.6 m × 30.5 m = 11 px) shows no in-plan tag even when selected, because the
+text-fit rule predating this work refuses a name that cannot fit. Still
+selectable (`zone_at` returns it).
+
+## A2b + B1b — gaps closed · **DONE**
+
+**The A2 smoke did not catch its own defect.** Running the brief's required
+sabotage (re-break the ramp, `referencePx = 0`) against the guard as written:
+**PASS**. It inspected the style table — alpha > 0, spacing > 0, `hatchLevel(40)`
+— and a call site that discards the table is invisible to a table inspection.
+The guard for the fifth sighting would not have caught the fifth sighting.
+
+Rewritten to exercise `drawZones` against a recording context, differencing the
+same scene with and without the texture. **Three iterations, each caught by a
+sabotage that should have failed and didn't:**
+
+1. *Two bundles.* `planStyle` and `paint` were bundled separately, so each had
+   its own copy of the style table; mutating one never reached the other, both
+   runs rendered identically, and the difference measured nothing. Caught because
+   the guard fired on known-good code. → single bundle re-exporting both.
+2. *Counting calls, not marks.* `fillWith` emits `save`/`beginPath`/`rect`/
+   `clip`/`restore` **before** consulting the LOD ramp, so a dead texture still
+   raised the call count by five while putting no ink down. The ramp sabotage
+   passed again. → count only `stroke`/`fill`/`fillRect`/`strokeRect`/`fillText`.
+3. Third run: ramp sabotage **RED**, with the diagnostic naming `hatchLevel(0)`.
+
+Falsified, all in disposable worktrees:
+
+| sabotage | result |
+|---|---|
+| `referencePx = 0` (the original defect) | **RED** — "2 marks with vs 2 without" |
+| paper re-declares `corePoche` | **RED** — spec citation |
+| declared hatch at α 0 | **RED** — "would draw invisibly" |
+| `suppressTag` ignores selection | **RED** — "a corridor you cannot name…" |
+| `suppressTag` over-reaches to program | **RED** — "suppression over-reached" |
+
+**B1b:** the selection exception is now asserted for **both** ground types
+(Circulation and Unassigned), not just the circulation poly checked by hand, plus
+a program-zone control proving suppression does not over-reach.
+
+**Instrument discipline note:** three contradictory-then-corrected iterations on
+one guard, each exposed only by running the sabotage. This is the second time
+this cycle that an instrument, not the subject, was the finding. The brief's
+"sabotage every enabling transform" is what produced all three.
