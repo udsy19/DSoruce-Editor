@@ -950,3 +950,66 @@ Not a merge blocker and not `.area-restricted-note`'s problem — using the
 system's declared caution token was the right call for that site. The open
 question is the caution token's HUE, and whether selection and AI-verdict should
 share a channel at all. A Laiout/qbiq-benchmark polish item.
+
+## Track L — Three-branch integration (`main` × `ui-fixes` × `export`)
+
+One green tree from three divergent branches. Full account:
+`docs/design/merge-audit.md` (Phase 0) → `phase1-exit.md` → `phase2-exit.md` →
+`merge-final-report.md`.
+
+- [x] **Phase 0 — forensic audit + prediction register.** Six predictions (P1–P6)
+  written BEFORE the merge, scored after. P3 was **wrong in the informative
+  direction**: style-gate stayed green while `accent-univalence` — value-keyed,
+  added after P3 was written — caught five raw amber literals git auto-merged
+  into `DrawingCanvas.ts` with no conflict marker.
+- [x] **Phase 1 — merge `ui-fixes`.** 23 conflicts + one delete/modify. The
+  governing pattern: ui-fixes edited PRE-SPLIT files main had decomposed, so ~12
+  re-sitings rather than takes-or-drops. `furniture.ts` → `symbols.ts` (R2) was an
+  API change, not a rename. **138 Rust tests by name.**
+- [x] **Phase 2 — merge `export`.** 17 conflicts; a 214-line seating block
+  hand-ported; `glaze_facade` + 13 layout hunks. **157 Rust tests by name.**
+  - [x] SG2 — false positives, not escaped tags: a tag must sit on its own
+        knockout (195 real tags 0.593–0.751, both false positives **0.000**).
+  - [x] E7 occupancy seeding, plus the two corrections the gates forced —
+        soft-weighted furniture, and a ladder ordered by what survives.
+  - [x] `pdf.ts` split under R1 → `pdfDoc` / `printPlan` / `pdf`, with both gate
+        anchors moved in the same commit and the move proven load-bearing.
+  - [x] `quantity.rs` on the DWG plate: 21 glazed bands imply 42 piers = 25.20 m
+        of the 38.35 m solid perimeter; the 13 remaining runs average **1.01 m**,
+        all under `MIN_GLAZED_RUN` = 1.7 m.
+  - [x] Seats/QTO cross-check — found the canvas double-draw no gate could see.
+  - [x] Fonts guard asked every family for weight 400; Schibsted ships 500/700.
+- [x] **Phase 3 (Parts C/D) — close out.** Adversarial round, LibreOffice recalc,
+  the pixdiff debt, four new faces (17–20), landing on main.
+  - [x] **LibreOffice recalc** (G2, live not skipped): bumping a unit price moved
+        the total by exactly the expected **412,620.00**; formula density 100 %.
+  - [x] **pixdiff vs `export`** on the deliverable plan: 4.38 % of pixels, and the
+        diff image shows **every changed pixel on furniture glyphs and door
+        swings** — walls, zone fills, labels and core untouched. Classified
+        intended-(ruled R2).
+  - [x] **Amber, measured exactly rather than approximately.** Amber-valued sites
+        by VALUE in all three encodings: main 15 · ui-fixes 22 · export 38 ·
+        **integration 10**, and all 10 are 3 declarations + 7 comments. **Zero use
+        sites.** See `merge-final-report.md` for why this replaced a cross-branch
+        UI pixdiff rather than supplementing it.
+  - [x] **Adversarial round**: three stale `furniture.ts` comments re-pointed; one
+        over-exposed export un-exported; both touched gates proven to still
+        discriminate in separated arms (the first attempt confounded them).
+- [ ] **The 13-step manual walkthrough** (`docs/design/manual-session.md`) — a
+      HUMAN task on main after landing. No agent substitution is valid; see
+      `.claude/rules/gate-independence.md`, "an agent must never perform or
+      simulate a trusted-human event".
+
+### Track L — known gaps, declared
+
+- **No sensor watches the editor canvas for unbilled seating.** G11 grades the
+  delivered pack; the canvas is not in the pack. The double-draw was found by a
+  hand-written cross-check, which is the honest way to say "found by luck".
+  Recorded OPEN in ADR 0005's trigger/sensor table.
+- **G11's attribution weakness survives its own falsification.** Implied seating
+  measurably inflates ink ratios (p25 +0.24) but no billed instance depended on
+  it (worst 1.52 vs a 0.70 floor). Nothing attributes ink to the glyph that drew
+  it, so a future overlapping glyph reintroduces it.
+- **dwg A.02 carries four 0.15 m windows** — imported/conformed geometry, not
+  `glaze_facade` output (its minimum band is 0.5 m). Pre-existing, not
+  merge-introduced.

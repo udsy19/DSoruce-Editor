@@ -114,7 +114,7 @@ export function baseStampAround(
     // `mirror` false. A DOOR is NOT symmetric (it has a hand), so the flip is a
     // genuine reflection: the editor pose is `rotation` (no +π) with the hand
     // INVERTED (`!mirror`). Both make the merged piece read exactly as the (now
-    // correct) import view — see the derivation in furniture.ts/drawDoor.
+    // correct) import view — see the derivation in symbols.ts `drawDoor`.
     const isDoor = norm.category === 'Door'
     comps.push({
       category: norm.category,

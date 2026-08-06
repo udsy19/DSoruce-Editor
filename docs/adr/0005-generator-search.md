@@ -389,7 +389,7 @@ each budget would optimise the metric we measured at the expense of the one we
 just discovered we do not. The measurement is cheap and the machinery exists;
 that is the next step, not a blind reduction.
 
-## The rules family — one failure mode, sixteen faces
+## The rules family — one failure mode, twenty faces
 
 > **Four faces of one error: something read as evidence outside the conditions
 > that made it evidence.**
@@ -696,6 +696,76 @@ Each was learned from a live mistake in this campaign.
     against violations: a check that cannot distinguish the fix from the defect
     is worse than absent.
 
+17. **A red gate accuses the PRODUCER — verify the accusation before acting on
+    it** (three-branch merge). Twice in one campaign the accuser was wrong.
+    *From:* SG2 reported "2 of 33 schedule tags outside their panel". Three
+    theories about the producer were formed and killed in order — the sheet
+    manifest had not shifted (A02 is still page 4), and the producer has exactly
+    two `drawTagGlyph` call sites, so nothing draws a small tag in the plate. The
+    "tags" were dense INK-coloured linework where an 8 pt ring's sample points
+    each find a mask pixel within +-1 px BY COINCIDENCE, scoring 0.875 and 0.906
+    against a 0.85 floor.
+    *And from:* `[fonts] "Schibsted Grotesk" is imported but did not load`, on
+    every dev page load. The font was fine; `check('12px "X"')` implies weight
+    400 and the family is display-only, at 500 and 700. Phase 1 had recorded this
+    as "timing-sensitive" — a wrong diagnosis that survived because nobody asked
+    the guard to justify itself.
+
+    A gate's red is a HYPOTHESIS with two suspects, and the one nobody suspects
+    is the instrument. Face 16 says sensors can carry the same defects; this says
+    what to DO about it — when a gate fires, spend the first measurement on the
+    gate.
+
+18. **A fix relocates a defect; order remedies by what SURVIVES each one**
+    (three-branch merge). *From:* E7 on the drawing set, in three stages, each
+    revealed only by the next gate.
+    - Seeding furniture into the occupancy list stopped labels erasing desks —
+      and made SG3 red with **4 overlapping label pairs**, because with the desks
+      blocking, strict placement failed and dropped to the narrow always-yields
+      placer.
+    - Weighting furniture as SOFT fixed that and left one label unrecoverable.
+    - Re-recording the baseline then exposed what the digests had hidden: four
+      names drawn **0x**, because the abbreviation was happening in the STRICT
+      rung, not in any of the new code.
+
+    Three "fixes", two of which traded one defect for a worse one. The remedies
+    are not interchangeable and must be ranked by damage before being tried: a
+    name over a desk can be read; a name over another name cannot; a name that
+    was never written is gone. The shipped ladder is that ranking, and rung 2
+    (full name over furniture) sits ABOVE rung 3 (abbreviation in clear space)
+    for exactly that reason.
+
+19. **An unchanged measurement is evidence about the INSTRUMENT first**
+    (three-branch merge). *From:* the G11 falsification. Flipping `implySeats` in
+    `planGraphic.ts` and re-rendering produced **byte-identical** statistics
+    (min 1.52, p25 1.94, median 2.18). Read as a result that would have been
+    "implied seating contributes nothing" — a strong, wrong, publishable claim.
+    It meant the wrong flag had been flipped: the plan's furniture is drawn by
+    `renderPrintCanvas` in `printPlan.ts`, which `planGraphic` reuses. Flipping
+    THAT moved p25 by 0.24.
+    *And from:* two ASCII pixel maps built with stride 4 against a 3-byte-per-
+    pixel buffer, which produced plausible-looking output that was sampling the
+    wrong pixels entirely, and were discarded rather than reasoned from.
+
+    A null result is the easiest thing in the world to believe, because it asks
+    nothing of you. Before reporting "no effect", prove the instrument was
+    connected — perturb something you KNOW must move, and watch it move.
+
+20. **A refactor's blast radius includes every CHECK that reads the file, not
+    only every module that imports it** (three-branch merge). *From:* splitting
+    `pdf.ts` into `pdfDoc` / `printPlan` / `pdf` under R1. The commit was
+    explicitly about moving gate anchors, moved two of them (style-gate,
+    export-parity) with a falsification proving the move was load-bearing — and
+    still missed a third: `sheetlib.templateSpec()` read `PAGE_W`/`PAGE_H` out of
+    `pdf.ts`, one directory over from where I was looking.
+
+    The compiler enumerates importers; it does not enumerate readers. A gate that
+    parses a file by PATH is invisible to every tool that understands the module
+    graph. Grep the checks, not just the code — and note the saving grace:
+    `sourceNumber` treats a missing declaration as an ERROR rather than a skip,
+    so the board went red naming the cause instead of grading against a default.
+    That property is what made this a ten-minute fix instead of a silent hole.
+
 **And a standing requirement that falls out of the same discipline: every
 trigger needs a SENSOR — and a check that cannot run is not a sensor.** A
 Playwright-driven acceptance script in a repo without Playwright is a wish with
@@ -720,9 +790,20 @@ Audited across the campaign:
 | **canvas and exported sheet drift apart** | **`bench/export-parity.mjs`** | **now exists** |
 | **amber escapes its two declared meanings, in any encoding** | **`bench/accent-univalence.mjs`** | **now exists** |
 | **amber reaches deliverable output** | **`bench/export-parity.mjs` paper invariant** | **now exists (2 deferred)** |
+| **linework scores as an opening tag** | **`tags.mjs` MIN_BACKDROP — a tag must sit on its own knockout** | **now exists** |
+| **a gate anchor points at a split-away file** | **`sourceNumber` fails loudly; never a skip** | **exists** |
+| **a label is displaced onto another label, or abbreviated away** | **SG3 + `drawing-set.test.mjs` name recovery** | **exists** |
+| **the canvas draws seating the Inventory does not bill** | *(no sensor — G11 grades the DELIVERABLE, not the editor canvas)* | **OPEN** |
 
 The fourth instance of the family will come. When it does, add it here rather
 than treating it as new.
+
+**One row above is deliberately OPEN.** The editor canvas drew a second, implied
+chair under every desk for the whole of Phase 2 and no gate saw it: G11 grades
+the delivered PACK, and the canvas is not in the pack. It was found by a
+hand-written seats/QTO cross-check, which is the honest way to say "found by
+luck". A defect class that only a human spot-check can see is a missing sensor,
+recorded as such rather than closed by the fix that happened to catch it once.
 
 ### Worked example — the rule applied one level up
 

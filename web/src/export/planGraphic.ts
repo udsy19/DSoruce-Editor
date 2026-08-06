@@ -9,7 +9,7 @@
 // What it draws, bottom to top:
 //   1. the print plan (white ground + CAD furniture symbols) — REUSED from
 //      `renderPrintCanvas` in pdf.ts, walls off, so there is exactly one
-//      furniture symbol library in the codebase (`editor/furniture.ts`)
+//      furniture symbol library in the codebase (`editor/symbols.ts` — R2)
 //   2. the pink circulation wash: the plate minus every enclosed room, drawn at
 //      the reference's own `rgba(255,0,0,25)`
 //   3. the building core in core grey

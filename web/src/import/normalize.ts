@@ -65,7 +65,7 @@ export interface NormalizedComponent {
    * hand recovered from the swing arc (see `recoverDoorPose`). It rides ALONGSIDE
    * the aspect-baked `w/h` (a reflection leaves the bbox unchanged, so the un-swap
    * contract is untouched). Non-doors are left-right symmetric → always `false`.
-   * The renderer reflects the leaf+arc when true (`furniture.ts` `drawDoor`).
+   * The renderer reflects the leaf+arc when true (`symbols.ts` `drawDoor`).
    */
   mirror: boolean
   /** Human-readable label (the bound product name when present, else the block name). */

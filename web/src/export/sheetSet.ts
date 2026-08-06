@@ -402,7 +402,7 @@ export interface OccBox {
  *  label will cross a whole desk before it clips a single character of another
  *  label, and non-zero so that among otherwise equal spots it still prefers the
  *  clear one. */
-export const FURNITURE_WEIGHT = 0.02
+const FURNITURE_WEIGHT = 0.02
 
 /** THE overlap predicate for annotation boxes — one definition, so two sheets
  *  can never disagree about whether two annotations collide. */
