@@ -57,8 +57,14 @@ const drawing = { units: 'm', bounds: [0, 0, 40, 22], layers: [], entities: [], 
 // The core owns this (layout.rs `OPEN_SHARE`). Read it FROM the Rust source so
 // this test fails the moment the two diverge — the previous arrangement was a TS
 // copy plus a comment asserting it matched, which is how it drifted to 0.85.
+// Path corrected 2026-08-06. `OPEN_SHARE` moved to `layout/program.rs` when the
+// generator was split into submodules (c15451b); this kept reading `layout.rs`,
+// the regex returned null, and the test CRASHED on `[1]` before asserting
+// anything. It had been listed as a passing parity guard while guarding nothing
+// — the same species as a vacuous invariant, and worse, because a crashing
+// guard's history claims coverage it stopped providing.
 const rustSrc = readFileSync(
-  path.join(here, '../../../crates/ds-core/src/layout.rs'), 'utf8',
+  path.join(here, '../../../crates/ds-core/src/layout/program.rs'), 'utf8',
 )
 const OPEN_SHARE = Number(/pub const OPEN_SHARE: f64 = ([0-9.]+);/.exec(rustSrc)[1])
 assert.ok(OPEN_SHARE > 0 && OPEN_SHARE <= 1, `OPEN_SHARE parsed from Rust: ${OPEN_SHARE}`)
