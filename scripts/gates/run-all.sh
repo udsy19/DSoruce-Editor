@@ -57,7 +57,7 @@ if command -v lsof >/dev/null 2>&1; then
   fi
 fi
 
-declare -a IDS=(G1 G2 G3 G4 G5 G6 G7 G8 G9 G10 G11 G12)
+declare -a IDS=(G1 G2 G3 G4 G5 G6 G7 G8 G9 G10 G11 G12 G13)
 declare -a CMDS=(
   "python3 $HERE/g1-sheet-structure.py"
   "python3 $HERE/g2-formula-liveness.py"
@@ -71,6 +71,10 @@ declare -a CMDS=(
   "node $HERE/g10-one-action.mjs --base $GATE_BASE"
   "python3 $HERE/g11-furniture-agreement.py"
   "node $HERE/sheets/run-all.mjs --no-produce --as-gate G12 SG1 SG2 SG3 SG4 SG6"
+  # G13 — the circulation board (C1-C10), its own runner folded in as one row,
+  # exactly as the sheet board is. C10 is the naive-user walkthrough and reports
+  # PENDING-HUMAN; it is never counted as passing by either board.
+  "node $HERE/circulation/run-all.mjs --as-gate G13"
 )
 declare -a TITLES=(
   "Sheet structure"

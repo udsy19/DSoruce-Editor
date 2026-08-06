@@ -555,3 +555,41 @@ and is pre-existing. Flagged, not changed.)
 
 **Not done in C2:** the presentation-side-panel mount. The card is one component
 and mounting it there is a second call site, not new logic.
+
+## D1–D3 — the circulation board · **DONE**
+
+`scripts/gates/circulation/run-all.mjs`, C1–C10, folded into
+`scripts/gates/run-all.sh` as **G13** — the `sheets/` precedent exactly: own
+board, one parent row. Reusing G-numbers would have made the parent ambiguous and
+broken `GSELF`'s scoreboard-line matching.
+
+**Mostly delegation, on purpose.** Nine of these properties are already guarded
+by node tests written alongside the changes that introduced them, each with its
+own falsification round. A gate re-implementing those assertions would be a
+SECOND derivation of the same ground truth — the defect this workstream spent
+itself removing. The board runs them under one scoreboard with exit-code
+counting; it does not restate them.
+
+C6 is the one new gate — the re-registered assertion (`foldParity.test.mjs`):
+efficiency re-derived **independently** from the honest rows (not read back from
+the number under test), fold exact in area *and* row count, and no `Unassigned`
+string in any published projection. Non-vacuity asserted: if no seed produced
+unassigned floor the fold assertions would compare two identical sets.
+
+```
+  9/9 passing · 1 pending-human · 31.6 s
+  ALL AUTOMATED CIRCULATION GATES GREEN (9) — 1 awaiting a human.
+  G13 PASS (9 gates, 1 pending-human)
+```
+
+| sabotage | result |
+|---|---|
+| `CSELF=1` (lying gate, exits 0 printing FAIL) | **9/10, FAIL: 1 red** — caught |
+| `groundZones = []` | **C1, C3, C5 RED** (C9 correctly unaffected — it guards the sheet's label branch, not the ground list) |
+| LOD ramp re-broken (`referencePx = 0`) | **C1, C2, C3 RED** through the board |
+
+**C10 never passes.** It reports `PENDING-HUMAN` and is excluded from the
+passing count in both boards. Packet at
+`docs/evidence/circulation-audit/G10-walkthrough.md` with the verdict line blank —
+an agent filling it in would be producing the artifact whose whole worth is that
+a human produced it.
