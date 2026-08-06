@@ -91,8 +91,8 @@ const BUILDING_MIN_M = 3
 const BUILDING_MAX_M = 1000
 
 /**
- * Modal perpendicular gap between parallel, overlapping wall lines — i.e. the
- * drawing's typical wall thickness, in SOURCE units.
+ * Perpendicular gaps between parallel, overlapping wall lines — the population
+ * of candidate wall thicknesses, in SOURCE units.
  *
  * This is the anchor that settles the drawings the door anchor cannot. Several
  * corpus files declare inches and carry 100–1800 wall segments inside a "3.4 m"
@@ -103,7 +103,7 @@ const BUILDING_MAX_M = 1000
  * pairing the longest few hundred finds the assembly thickness without going
  * quadratic over every hatch tick in the drawing.
  */
-function modalWallThickness(segments: [number, number, number, number][]): number | null {
+function wallPairGaps(segments: [number, number, number, number][]): number[] {
   const MAX_SAMPLE = 300
   const longest = segments
     .map((s) => ({ s, len: Math.hypot(s[2] - s[0], s[3] - s[1]) }))
@@ -140,26 +140,7 @@ function modalWallThickness(segments: [number, number, number, number][]): numbe
       gaps.push(gap)
     }
   }
-  return modalWithin(gaps, 0.1)
-}
-
-/**
- * Modal value within a ±5 % relative bin — the most-repeated radius, which on a
- * floor plan is the typical door, not an outlier hinge detail.
- */
-function modalWithin(values: number[], rel = 0.05): number | null {
-  if (values.length === 0) return null
-  let best: number | null = null
-  let bestN = 0
-  for (const v of values) {
-    let n = 0
-    for (const x of values) if (Math.abs(x - v) <= v * rel) n++
-    if (n > bestN) {
-      bestN = n
-      best = v
-    }
-  }
-  return best
+  return gaps
 }
 
 /**
@@ -176,15 +157,15 @@ function modalWithin(values: number[], rel = 0.05): number | null {
  * So the header is a CANDIDATE, and the geometry is the judge. We prefer an
  * anchor that is true by construction over one the file asserts about itself:
  *
- *   1. the modal door-swing arc radius must land in the legal leaf-width band;
- *   2. failing that, the modal gap between parallel wall lines must be a wall
- *      assembly's thickness;
- *   3. failing that, the drawing's long side must be a building.
+ *   1. door-swing arc radii must land in the legal leaf-width band;
+ *   2. gaps between parallel wall lines must be wall-assembly thicknesses;
+ *   3. the drawing's long side must be a building.
  *
- * If the header's unit satisfies the anchor we keep it — a correct header is
- * the common case and must not be second-guessed. Only when it fails do we take
- * the unit that passes. With no anchor at all we keep the header and say so,
- * via `header-unverified`.
+ * Each is a POPULATION, and each candidate unit is scored by what fraction of
+ * each population it makes physical (see below). The header is scored first, so
+ * a correct header — the common case — is kept on ties and never second-guessed.
+ * With no measurable anchor at all we keep the header and say so, via
+ * `header-unverified`.
  */
 function decideUnits(
   insunits: unknown,
@@ -197,39 +178,48 @@ function decideUnits(
   // satisfies several candidates resolves the same way every run.
   const order = [header.label, ...Object.keys(UNIT_SCALE).filter((u) => u !== header.label)]
 
-  // Each anchor is a physical constant the drawing cannot argue with, weighted
-  // by how hard it is to fool. A door swing is unambiguous; a wall gap can be
-  // mimicked by hatch spacing; an extent depends on how much sheet furniture
-  // travelled with the plan.
-  const anchors: [number | null, number, number, UnitsSource, number][] = [
-    [modalWithin(evidence.doorRadii), DOOR_LEAF_MIN_M, DOOR_LEAF_MAX_M, 'door-anchor', 3],
-    [
-      modalWallThickness(evidence.wallSegments),
-      WALL_THICKNESS_MIN_M,
-      WALL_THICKNESS_MAX_M,
-      'wall-anchor',
-      2,
-    ],
-    [evidence.extent, BUILDING_MIN_M, BUILDING_MAX_M, 'extent-anchor', 1],
+  // Each anchor is a POPULATION of measurements, and the question asked of a
+  // candidate unit is what FRACTION of that population it makes physical.
+  //
+  // A modal point estimate was not good enough. Door layers carry hinge arcs,
+  // handle arcs and radiused jambs alongside the leaf swings, and on several
+  // corpus files the most-repeated radius is the hardware, not the door — one
+  // file's modal "door" came out at 1 mm on 34 of 198 samples. Asking instead
+  // "which unit puts the most of these arcs in the legal leaf band?" uses the
+  // whole population, so a minority of hardware cannot outvote the doors.
+  //
+  // Weights reflect how hard each population is to fool: a door swing is
+  // unambiguous; a wall gap can be mimicked by hatch spacing; an extent depends
+  // on how much sheet furniture travelled with the plan.
+  const wallGaps = wallPairGaps(evidence.wallSegments)
+  const populations: [number[], number, number, UnitsSource, number][] = [
+    [evidence.doorRadii, DOOR_LEAF_MIN_M, DOOR_LEAF_MAX_M, 'door-anchor', 3],
+    [wallGaps, WALL_THICKNESS_MIN_M, WALL_THICKNESS_MAX_M, 'wall-anchor', 2],
+    [evidence.extent > 0 ? [evidence.extent] : [], BUILDING_MIN_M, BUILDING_MAX_M, 'extent-anchor', 1],
   ]
 
-  // Consensus, not first-match. Taking the strongest available anchor alone
-  // means one misread measurement decides the whole drawing — and measurements
-  // DO get misread: door layers carry hinge details and leaf rectangles, wall
-  // layers carry hatch. Scoring every candidate unit against every anchor lets
-  // a unit that satisfies doors AND walls AND extent beat one that satisfies
-  // only the strongest, which is the difference between "this reading is
-  // possible" and "this reading is consistent".
+  /** Fraction of a population this unit makes physical, or null if empty. */
+  const support = (vals: number[], s: number, lo: number, hi: number): number | null => {
+    if (vals.length === 0) return null
+    let n = 0
+    for (const v of vals) if (inBand(v, s, lo, hi)) n++
+    return n / vals.length
+  }
+
+  // A unit must make a real share of a population physical to earn its weight.
+  // Below this, the few that landed in band are coincidence.
+  const MIN_SUPPORT = 0.15
+
   let bestLabel: string | null = null
   let bestScore = 0
   let bestSource: UnitsSource = 'header-unverified'
   for (const unit of order) {
     let score = 0
     let strongest: UnitsSource | null = null
-    for (const [measured, lo, hi, source, weight] of anchors) {
-      if (measured == null || !(measured > 0)) continue
-      if (!inBand(measured, UNIT_SCALE[unit], lo, hi)) continue
-      score += weight
+    for (const [vals, lo, hi, source, weight] of populations) {
+      const frac = support(vals, UNIT_SCALE[unit], lo, hi)
+      if (frac == null || frac < MIN_SUPPORT) continue
+      score += weight * frac
       if (strongest === null) strongest = source
     }
     // `order` puts the header first, so a strict > keeps the header on ties.
