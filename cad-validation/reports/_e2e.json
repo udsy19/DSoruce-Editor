@@ -6,7 +6,7 @@
     "walls": 35,
     "keepouts": 0,
     "entries": 5,
-    "generateMs": 74,
+    "generateMs": 79,
     "generated": {
       "capacity": 100,
       "adjacency": 78.54492695824602,
@@ -90,7 +90,7 @@
     "walls": 68,
     "keepouts": 0,
     "entries": 16,
-    "generateMs": 2,
+    "generateMs": 3,
     "generated": {
       "capacity": 25,
       "adjacency": 84.15841584158422,
@@ -132,7 +132,7 @@
     "walls": 16,
     "keepouts": 0,
     "entries": 6,
-    "generateMs": 2,
+    "generateMs": 1,
     "generated": {
       "capacity": 60,
       "adjacency": 92.72727272727275,
@@ -174,7 +174,7 @@
     "walls": 45,
     "keepouts": 0,
     "entries": 2,
-    "generateMs": 425,
+    "generateMs": 452,
     "generated": {
       "capacity": 100,
       "adjacency": 86.90463997288265,
@@ -216,7 +216,7 @@
     "walls": 32,
     "keepouts": 4,
     "entries": 1,
-    "generateMs": 296,
+    "generateMs": 329,
     "generated": {
       "capacity": 100,
       "adjacency": 66.23009040652569,
@@ -258,7 +258,7 @@
     "walls": 11,
     "keepouts": 12,
     "entries": 10,
-    "generateMs": 586,
+    "generateMs": 614,
     "generated": {
       "capacity": 100,
       "adjacency": 84.0077522528515,
@@ -300,7 +300,7 @@
     "walls": 14,
     "keepouts": 12,
     "entries": 28,
-    "generateMs": 651,
+    "generateMs": 706,
     "generated": {
       "capacity": 100,
       "adjacency": 79.1448566241029,
@@ -342,7 +342,7 @@
     "walls": 26,
     "keepouts": 3,
     "entries": 11,
-    "generateMs": 30,
+    "generateMs": 32,
     "generated": {
       "capacity": 100,
       "adjacency": 58.518635466348506,
@@ -384,7 +384,7 @@
     "walls": 5,
     "keepouts": 0,
     "entries": 4,
-    "generateMs": 25,
+    "generateMs": 28,
     "generated": {
       "capacity": 100,
       "adjacency": 83.70382979732904,
@@ -426,7 +426,7 @@
     "walls": 8,
     "keepouts": 0,
     "entries": 3,
-    "generateMs": 1,
+    "generateMs": 0,
     "generated": {
       "capacity": 5,
       "adjacency": 100,
@@ -468,7 +468,7 @@
     "walls": 35,
     "keepouts": 0,
     "entries": 5,
-    "generateMs": 53,
+    "generateMs": 59,
     "generated": {
       "capacity": 100,
       "adjacency": 78.54492695824602,
@@ -510,7 +510,7 @@
     "walls": 11,
     "keepouts": 1,
     "entries": 1,
-    "generateMs": 695,
+    "generateMs": 740,
     "generated": {
       "capacity": 100,
       "adjacency": 85.73235243244565,
@@ -552,7 +552,7 @@
     "walls": 12,
     "keepouts": 12,
     "entries": 23,
-    "generateMs": 109,
+    "generateMs": 117,
     "generated": {
       "capacity": 100,
       "adjacency": 76.31752172787907,
@@ -720,7 +720,7 @@
     "walls": 11,
     "keepouts": 0,
     "entries": 1,
-    "generateMs": 10,
+    "generateMs": 11,
     "generated": {
       "capacity": 100,
       "adjacency": 95.57603686635939,
@@ -804,7 +804,7 @@
     "walls": 11,
     "keepouts": 0,
     "entries": 1,
-    "generateMs": 3,
+    "generateMs": 4,
     "generated": {
       "capacity": 100,
       "adjacency": 100,
@@ -888,7 +888,7 @@
     "walls": 34,
     "keepouts": 0,
     "entries": 10,
-    "generateMs": 15,
+    "generateMs": 17,
     "generated": {
       "capacity": 100,
       "adjacency": 78.9625,
@@ -978,7 +978,7 @@
     "walls": 34,
     "keepouts": 3,
     "entries": 1,
-    "generateMs": 32,
+    "generateMs": 33,
     "generated": {
       "capacity": 100,
       "adjacency": 84.89722199681484,
