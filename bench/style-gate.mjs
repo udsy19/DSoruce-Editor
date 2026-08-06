@@ -51,6 +51,24 @@ const GUARDED = [
 // because it is declared and checked. 14 dead `--zone-*` properties shadowed
 // the TS zone palette with nothing enforcing agreement; this is that lesson.
 const MIRRORS = [['ACCENT_AMBER', '--accent-amber']]
+
+/**
+ * DERIVED COPIES — a CSS custom property restating an existing colour in a
+ * DIFFERENT ENCODING, which must equal the decimal expansion of its source.
+ *
+ * `rgba()` cannot take a hex, so `--accent-amber-rgb: 232, 161, 60` has to exist
+ * as its own declaration; that is unavoidable. What was avoidable is that
+ * NOTHING PINNED IT. MIRRORS covers `ACCENT_AMBER <-> --accent-amber` and stops
+ * there, so the decimal copy was a second, unchecked source for the same value —
+ * and seven live sites hang off it through `--accent-selection-rgb`. Rebranding
+ * `--accent-amber` alone would have left every one of them on the old amber,
+ * silently: ledger face 10, the second source, inside the campaign built to
+ * eliminate it. accent-univalence.mjs even ASSERTED this pair was pinned "by the
+ * style-gate's MIRRORS check" — a comment describing a check that did not exist.
+ *
+ * Found by an adversarial audit of a board that was already 12/12 green.
+ */
+const DERIVED_RGB = [['--accent-amber', '--accent-amber-rgb']]
 const PENDING = [
   // Minimap is EXEMPT from the lineWidth rule, not pending on it. It is the one
   // canvas here that draws in DEVICE px: it never calls setTransform(dpr) and
@@ -183,6 +201,25 @@ for (const [tsName, cssVar] of MIRRORS) {
     violations++
   } else if (ts[1].toLowerCase() !== css[1].toLowerCase()) {
     console.log(`  MIRROR DRIFT: ${tsName}=${ts[1]} but ${cssVar}=${css[1]}`)
+    violations++
+  }
+}
+
+for (const [hexVar, rgbVar] of DERIVED_RGB) {
+  const cssAll = fs.readFileSync(path.join(ROOT, 'web/src/styles.css'), 'utf8')
+  const hex = cssAll.match(new RegExp(`\\${hexVar}:\\s*#([0-9a-fA-F]{6})`))
+  const rgb = cssAll.match(new RegExp(`\\${rgbVar}:\\s*(\\d+)\\s*,\\s*(\\d+)\\s*,\\s*(\\d+)`))
+  if (!hex || !rgb) {
+    console.log(`  DERIVED MISSING: ${hexVar} <-> ${rgbVar}`)
+    violations++
+    continue
+  }
+  const want = [0, 2, 4].map((i) => parseInt(hex[1].slice(i, i + 2), 16))
+  const got = [1, 2, 3].map((i) => Number(rgb[i]))
+  if (want.join() !== got.join()) {
+    console.log(
+      `  DERIVED DRIFT: ${rgbVar} is ${got.join(', ')} but ${hexVar} = #${hex[1]} expands to ${want.join(', ')}`,
+    )
     violations++
   }
 }

@@ -1,6 +1,13 @@
 # Professional Test-Fit Quality — Anatomy Spec + Generator Rework Plan
 
 Status: approved design target for the `layout.rs` rework.
+
+> **Note (three-branch merge).** Every `editor/furniture.ts` reference below is
+> HISTORICAL. That module was replaced by **`web/src/editor/symbols.ts`** under
+> ruling R2, which owns symbol geometry and specifies it in WORLD units rather
+> than screen pixels. The file:line citations were accurate when written and are
+> kept so; do not follow them into the current tree.
+
 Trigger (user, verbatim): *"when creating a test fit plans, why does it not look like a cad
 design... it still feels really broken and its creating something basic. What our testfit
 generates should be the quality of a professional architect who's worked for years."*

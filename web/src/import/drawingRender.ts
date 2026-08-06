@@ -430,6 +430,13 @@ function drawItemSymbol(
       // Seat count from the object's WORLD size, the same rule the core uses —
       // never from its size on screen. Countables are not LOD'd (R2).
       seats: seatsForSize(norm.category, nw, nh),
+      // NO IMPLIED SEATING HERE EITHER (R6). `normalize` classifies imported
+      // blocks as real `Chair` components, and this loop draws every imported
+      // item, so leaving the flag at its default drew a seat ring around an
+      // imported table ON TOP of the chairs the DXF actually contains. Worse on
+      // an import view than anywhere else: it shows the customer furniture their
+      // own drawing does not have.
+      implySeats: false,
       selected,
     },
     { stroke, detail, fill: FURNITURE_FILL, seat: FURNITURE_SEAT, accent: ACCENT },

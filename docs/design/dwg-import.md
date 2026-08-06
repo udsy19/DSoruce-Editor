@@ -71,7 +71,7 @@ flips Y). Non-furniture geometry in `entities`; each block instance is a
 2. **DrawingCanvas** (`web/src/import/DrawingCanvas.ts`) — CAD renderer for a
    `Drawing`: layer/category colors, lineweights, furniture hit-test/select,
    fit-to-view, pan/zoom.
-3. **Furniture symbols** (`web/src/editor/furniture.ts`) — parametric real
+3. **Furniture symbols** (`web/src/editor/symbols.ts`) — parametric real
    furniture line-symbols (bench, task chair, desk, meeting table, sofa, phone
    booth) so **generated** plans also show real furniture, not rectangles.
 

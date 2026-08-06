@@ -3,6 +3,13 @@
 Status: **findings only** (Phase 0). No production code changed by this document.
 Companion: **`docs/design/ui-system.md`** (the design proposal that answers it).
 
+> **Note (three-branch merge).** Every `editor/furniture.ts` reference below is
+> HISTORICAL. That module was replaced by **`web/src/editor/symbols.ts`** under
+> ruling R2, which owns symbol geometry and specifies it in WORLD units rather
+> than screen pixels. The file:line citations were accurate when written and are
+> kept so; do not follow them into the current tree.
+
+
 **Method.** The app was run (`./run.sh`, dev server on :5173) and driven end-to-end in a real browser
 on the real sample plate (`samples/furniture-plan.dwg`, 882 m², 533 components) at two window sizes
 (1440×900 and 1200×688) and two device pixel ratios (1 and 2): create project → upload → Space →

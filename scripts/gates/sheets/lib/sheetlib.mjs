@@ -78,7 +78,7 @@ export function sourceHex(relFile, name) {
  * the gate’s own copy of the spec; `loadGeometry()` holds the harness's
  * geometry.json to it.
  *
- *   pdf.ts        PAGE_W, PAGE_H
+ *   pdfDoc.ts     PAGE_W, PAGE_H
  *   sheet.ts      MARGIN, TITLE_BLOCK_H, RES
  *   sheetSet.ts   PANEL_W
  */

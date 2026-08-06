@@ -992,7 +992,9 @@ One green tree from three divergent branches. Full account:
         **integration 10**, and all 10 are 3 declarations + 7 comments. **Zero use
         sites.** See `merge-final-report.md` for why this replaced a cross-branch
         UI pixdiff rather than supplementing it.
-  - [x] **Adversarial round**: three stale `furniture.ts` comments re-pointed; one
+  - [x] **Adversarial round**: three stale `furniture.ts` comments **in code**
+        re-pointed (the design docs were NOT covered by that pass — a second audit
+        found them and they now carry a historical banner instead); one
         over-exposed export un-exported; both touched gates proven to still
         discriminate in separated arms (the first attempt confounded them).
 - [ ] **The 13-step manual walkthrough** (`docs/design/manual-session.md`) — a

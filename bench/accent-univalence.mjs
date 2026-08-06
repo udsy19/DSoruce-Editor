@@ -40,8 +40,14 @@ const ENCODINGS = [
 ]
 
 /**
- * The ONLY places the raw value may appear: the two declarations that define it,
- * which the style-gate's MIRRORS check already pins to each other.
+ * The ONLY places the raw value may appear: the declarations that define it.
+ *
+ * `--accent-amber` is pinned to `ACCENT_AMBER` by the style-gate's MIRRORS
+ * check, and `--accent-amber-rgb` — a SECOND encoding of the same value, which
+ * `rgba()` forces to exist — is pinned to `--accent-amber` by that gate's
+ * DERIVED_RGB check. This comment previously claimed MIRRORS pinned both; it
+ * pinned one, and the decimal copy was an unchecked second source for two
+ * campaigns. A comment asserting a check is a claim to verify, not documentation.
  *
  * This is a declaration allowlist, not an exemption list. It names where the
  * value is DEFINED, never where it is used — so it cannot grow to accommodate a
