@@ -292,7 +292,7 @@ function assessScale(
     return {
       confidence: 'low',
       reason:
-        'this drawing has no doors or wall pairs to measure, so its size is taken from the file’s own units setting and could not be checked',
+        'This drawing has no doors or wall pairs to measure, so its size is taken from the file’s own units setting and could not be checked.',
     }
   }
 
@@ -312,15 +312,15 @@ function assessScale(
     return {
       confidence: 'low',
       reason:
-        'this drawing has no doors or wall pairs to measure, so its size could not be checked',
+        'This drawing has no doors or wall pairs to measure, so its size could not be checked.',
     }
   }
   const pct = (v: number | null) => (v == null ? 'none' : `${Math.round(v * 100)}%`)
   return {
     confidence: 'low',
     reason:
-      `at the size we read this drawing at, only ${pct(doors)} of its door swings are door-width ` +
-      `and ${pct(walls)} of its wall pairs are wall-thickness — so the scale may be wrong, and every area below with it`,
+      `At the size we read this drawing at, only ${pct(doors)} of its door swings are door-width ` +
+      `and ${pct(walls)} of its wall pairs are wall-thickness, so the scale may be wrong — and every area below with it.`,
   }
 }
 

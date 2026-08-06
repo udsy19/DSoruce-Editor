@@ -787,7 +787,7 @@ export function SpaceStep({
                 that (cad-validation/STATUS.md). */}
             {drawing?.scaleConfidence?.confidence === 'low' && (
               <div className="space-plate-draft" data-testid="scale-confidence-notice" role="status">
-                <strong>Check the scale.</strong> {drawing.scaleConfidence.reason}. Measure a known
+                <strong>Check the scale.</strong> {drawing.scaleConfidence.reason} Measure a known
                 dimension against the plan before trusting the areas below.
               </div>
             )}
