@@ -1116,10 +1116,46 @@ impl WalkClassifier {
         let (c0, c1) = (self.grid.col_of(minx), self.grid.col_of(maxx));
         let (r0, r1) = (self.grid.row_of(miny), self.grid.row_of(maxy));
         let (mut inside, mut wide_n, mut reach_n) = (0usize, 0usize, 0usize);
+
+        // SCANLINE, not point-in-polygon per cell.
+        //
+        // The obvious loop calls `geometry::point_in_polygon` for every cell in
+        // the pocket's bbox, which is O(cells × vertices). Measured: on the
+        // fixture plate that is **44 ms of a 326 ms `generate`** — the merged
+        // pockets carry up to 62 vertices and their bboxes span much of the
+        // plate, so it dominated everything else the classifier does (the grid
+        // build and distance transform together are 8 ms).
+        //
+        // Crossings depend only on the ROW, so computing them once per row and
+        // walking the spans is O(cells + rows × vertices). Same cells, same
+        // answers — the crossing test below is `point_in_polygon`'s, transposed
+        // verbatim: the `(pi.y > py) != (pj.y > py)` half-open rule, the same
+        // interpolation, and the same strict `px < x_cross`, so a cell centre
+        // exactly on an edge falls the same side it always did. Verdicts are
+        // byte-identical across the three plate families; that is the acceptance
+        // test for this change, not the speed.
+        let mut xs: Vec<f64> = Vec::with_capacity(pts.len());
         for r in r0..=r1 {
+            let py = self.grid.cell_center(c0, r).y;
+            xs.clear();
+            let mut j = pts.len() - 1;
+            for i in 0..pts.len() {
+                let (pi, pj) = (pts[i], pts[j]);
+                if (pi.y > py) != (pj.y > py) {
+                    xs.push(pi.x + (py - pi.y) * (pj.x - pi.x) / (pj.y - pi.y));
+                }
+                j = i;
+            }
+            if xs.is_empty() {
+                continue;
+            }
+            xs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
             for c in c0..=c1 {
-                let p = self.grid.cell_center(c, r);
-                if !geometry::point_in_polygon(p.x, p.y, pts) {
+                let px = self.grid.cell_center(c, r).x;
+                // `point_in_polygon` toggles on every crossing strictly to the
+                // right of px; an odd count means inside. Counting is the same
+                // predicate without the per-cell edge walk.
+                if xs.iter().filter(|&&x| px < x).count() % 2 == 0 {
                     continue;
                 }
                 inside += 1;

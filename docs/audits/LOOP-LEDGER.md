@@ -405,3 +405,94 @@ gate board. A battery that cannot detect its own false green is not a battery.
 
 Third promotion of a vigilance failure into harness this workstream, after the
 empty-file assertion and the build-identity probe.
+
+## R2 — perf regression fixed, verdict-preserving · **DONE**
+
+**My parked mechanism was wrong in its specifics, and profiling said so.** I
+attributed the cost to "a 0.15 m grid + distance transform + BFS on every
+generate". Measured:
+
+| | ms |
+|---|---|
+| `generate`, pre-workstream baseline (`425232c`, best-of-3) | **272.5** |
+| `generate`, HEAD before this fix | **326.0** |
+| `WalkClassifier::build` (grid + DT + BFS) | **8.4** — 16% of the delta |
+| `generate` with the whole classify sweep disabled | **273.7** ≈ baseline |
+
+So the sweep cost 52.3 ms and the part I blamed was 8.4 of it. The other ~44 ms
+was `classify_poly` calling `geometry::point_in_polygon` **once per grid cell per
+pocket** — O(cells × vertices), and the merged pockets carry up to 62 vertices
+over bboxes spanning much of the plate.
+
+**Fix: scanline.** Crossings depend only on the row, so compute them once per row
+and walk the spans — O(cells + rows × vertices). The predicate is
+`point_in_polygon`'s transposed verbatim: same half-open `(pi.y > py) != (pj.y >
+py)` rule, same interpolation, same strict `px < x_cross`, so a cell centre
+exactly on an edge falls the same side it always did.
+
+**Acceptance test met first, speed second.** Verdict digest — every residual
+zone's `(type, area)` across all three plate families, 10 cases — captured before
+and after and differenced:
+
+```
+bytes: before=1257  after=1257
+VERDICTS BYTE-IDENTICAL ✓  md5 ae49c475ad91ce15935872facb7c7f0e  rows=56
+```
+
+Non-vacuity asserted in the probe (`rows >= 30`), because two empty digests are
+also byte-identical.
+
+**Result: 326.0 → 286.5 ms**, against a 300 ms budget; full suite **5/5 green**
+(was 3/4). No registered value touched, so no re-registration and no HALT.
+`BUDGET_MS` untouched.
+
+**Lesson, third of its kind this workstream:** a mechanism asserted from
+plausibility rather than measurement pointed at the wrong 8 ms and would have had
+me optimising the grid — the one lever that changes verdicts — while the real
+cost sat in a loop I had not considered. Same family as the scalar-for-geometry
+entries: *profile before you optimise* is that rule wearing performance clothes.
+
+---
+
+# ⛔ HALT-ENV — commit signing unavailable
+
+Fired after R2 was complete and verified. `commit.gpgsign=true` with SSH signing
+through 1Password; the agent is locked:
+
+```
+error: 1Password: failed to fill whole buffer
+fatal: failed to write commit object
+```
+
+Attempted per §1 step 5: once immediately, once after a 60 s wait. Both failed.
+This is the second signing lock this session; the first cleared when the user
+unlocked the app.
+
+## Uncommitted work — explicit inventory
+
+Nothing is lost; all of it is on disk and verified green. Three files:
+
+| file | change | state |
+|---|---|---|
+| `crates/ds-core/src/layout/conform.rs` | R2 — the scanline in `classify_poly` (+40/−2) | **verified**: verdicts byte-identical (md5 `ae49c475…`, 56 rows), 326→286 ms, suite 5/5 |
+| `crates/ds-core/src/layout/tests.rs` | trailing-newline tidy after probe removal | cosmetic |
+| `docs/audits/LOOP-LEDGER.md` | the R2 entry + this HALT entry | documentation |
+
+Verification battery run immediately before the first commit attempt: **38/38
+green**, including the Rust suite (the gate correctly detected `crates/` in the
+change and ran it).
+
+The prepared commit message is in the session transcript; it can be reconstructed
+from the R2 ledger entry above, which carries every number.
+
+## What reopens the loop
+
+Unlock 1Password, then:
+
+```
+git add -A && git commit -F <message>      # the gate re-runs and must be green
+```
+
+Queue position on resume: **R3 = C1** (shared KPI module), then C2, C3, D1–D3,
+E1 verification/E2, F2–F4. R1 (commit gate) and R2 (perf) are done — R2 needs
+only the commit.
