@@ -52,53 +52,61 @@ not have caught the inversion — 38.7 reads as a bad score rather than a vacuou
 
 ## Not yet fixed
 
-### 1. Three files still place nothing
+### 1. Three files still place nothing — all three now diagnosed
 
-`BUSNSS-Offcs-CwSp_AA.dwg` — the one file assessed here as a real bug — is
-**fixed** by the furniture-footprint anchor (`7602805`). It had no door swings at
-all, and the wall band is wide enough (a factor of 12) that inches satisfied 70%
-of its 845 wall gaps; the header then won the tie. Its 105 placed blocks break
-it: 0% human-scale at inches, 100% at metres. It now traces 4 595 m² and places a
-full program. Its scale is still flagged `low` — the wall pairs only reach 18%
-physical — so the size is plausible but unconfirmed, and the UI says so.
-
-
-| File | Plate | Assessment |
+| File | State | Verdict |
 |---|---|---|
-| `BUSNSS-Offcs-Trdtnl_AL.dwg` | 21.5 m² | **unverifiable.** No door arcs, no wall-category entities, and the file has *no layer table at all* — there is nothing to anchor to. Correctly flagged `low` confidence. |
-| `BUSNSS-Offcs-Trdtnl_AM.dwg` | 20.1 m² | **probably correct.** The plate is physical (52% of 446 wall gaps); 20 m² genuinely will not hold a 20-desk program. A clean 5 × 5 m rectangle places 1 desk and a 9.5 × 2.4 m one places 0, so this is near the true floor. |
-| `Office-furniture-blocks.zip/cad33.dwg` | none | **out of scope.** A furniture block library, not a floor plan. Refusing is right; it now says so and blocks the wizard rather than proceeding. |
+| `BUSNSS-Offcs-Trdtnl_AL.dwg` | 21.5 m² plate, 0 desks | **Unverifiable by construction.** No door arcs, no wall-category entities, and the file carries *no layer table at all* — there is nothing to anchor scale to. Correctly flagged `low` confidence, so the user is told the size is unconfirmed rather than shown a number to trust. Nothing to fix without a human supplying a known dimension; the raster path's scale tool is the right escape hatch. |
+| `BUSNSS-Offcs-Trdtnl_AM.dwg` | 20.1 m² plate, 0 desks | **Behaving correctly.** Its plate is physical (52 % of 446 wall pairs are wall-thickness) and 20 m² genuinely will not hold a 20-desk program: a clean 5 × 5 m rectangle places 1 desk and a 9.5 × 2.4 m one places 0, so this sits at the true floor. The generator now reports `feasible: false` rather than a 38/100 score. |
+| `Office-furniture-blocks.zip/cad33.dwg` | no plate | **Out of scope, and now explained.** F7's re-measurement showed why: its 14 949 entities are block *definitions* piled at the origin, while the 8 INSERTs that place them spread across a 324 m sheet. `keepDominantCluster` keeps the origin pile — correct for a floor plan, fatal for a block library, because there is no floor plan in the file. It is a furniture catalogue, not a plan. The wizard now blocks with `no-shell-geometry`, whose message names exactly this case ("…or it may be a furniture library rather than a floor plan"). |
+
+None of the three is an open defect. Two are the system correctly declining, and
+one is a drawing that cannot be scaled without outside information.
 
 ### 2. Five files still import at a wrong scale — but they now say so
 
-`AB`, `AI`, `AE`, `AH`, `muebles varios` still fail the physical check. They are no longer silent:
-each carries `scaleConfidence: 'low'` with the measured percentages, and the Space step shows
-"Check the scale" above the areas. The **detection** is solved (25/25 against the independent gate);
-the **inference** is not.
+`AB`, `AI`, `AE`, `AH`, `muebles varios` still fail the independent physical
+check. They are no longer silent: each carries `scaleConfidence: 'low'` with the
+measured percentages, and the Space step shows "Check the scale" above the areas.
+The **detection** is solved (25/25 agreement with `harness/scaleCheck.mjs`, which
+shares no code with the importer's own grading); the **inference** is not.
 
 ### 3. The packer is NOT the blocker — that earlier diagnosis was wrong
 
-An earlier revision of this document reported that the packer collapses on irregular plates: `AB`'s
-74 m² comb-shaped plate placed zero desks where its own bounding box placed eight.
+An earlier revision of this document reported that the packer collapses on
+irregular plates: `AB`'s 74 m² comb-shaped plate placed zero desks where its own
+bounding box placed eight.
 
-**That measurement was taken against mis-scaled plates.** `AB` was being read at 13 × 9.3 m; it is
-really 133 × 93 m. Once the scale anchors were fixed the same file traces a 10 880 m² plate and
-places a full program at 100% capacity, with no change to the packer at all. Every file in that
-table now places furniture.
+**That measurement was taken against mis-scaled plates.** `AB` was being read at
+13 × 9.3 m; it is really 133 × 93 m. Once the scale anchors were fixed the same
+file traces a 10 880 m² plate and places a full program at 100 % capacity, with
+no change to the packer at all.
 
-Recorded rather than deleted because it is the trap this whole exercise is about: a real, repeatable,
-carefully-measured effect whose *cause* was one layer upstream of where it appeared. Yield does still
-degrade on genuinely irregular plates (`fast-food`: 40 desks on its true outline vs 48 on its bounding
-box, −17%), which is worth its own investigation — but it is a refinement, not a blocker, and the
-boundary-conforming-rooms work should be scoped against fresh measurements.
+Recorded rather than deleted because it is the trap this whole exercise is
+about: a real, repeatable, carefully-measured effect whose *cause* was one layer
+upstream of where it appeared. Yield does still degrade on genuinely irregular
+plates (`fast-food`: 40 desks on its true outline vs 48 on its bounding box,
+−17 %), which is worth its own investigation — but it is a refinement, not a
+blocker, and should be scoped against fresh measurements.
 
-### 4. Remaining from the original findings
+### 4. Closed since
 
-- [F3](findings/F3-no-plate-derived.md) — `derivePlate` still returns a bare `null`; the Space step
-  now explains the failure generically, but a typed reason would let it say *which* stage failed.
-- [F10](findings/F10-zip-and-non-cad-input.md) — `.zip` uploads still unsupported.
-- [F7](findings/F7-cluster-filter-overreach.md) — `keepDominantCluster` now runs *after* scaling
-  (it has an absolute 60 m floor), which changes its behaviour; it has not been re-measured since.
+- [F3](findings/F3-no-plate-derived.md) — `tracePlate` now returns a typed
+  reason; `App.tsx`'s guessed "No wall geometry found" (wrong on 4 of 6 files)
+  is gone.
+- [F7](findings/F7-cluster-filter-overreach.md) — re-measured after the scaling
+  change. The filter is working correctly on real plans (control drops
+  441 e/100 f and lands on the right 38 × 42.4 m; AG, Apartment-1, Two-story and
+  AC likewise) and needs no change. It also surfaced two real bugs, both fixed:
+  corrupt coordinates from LibreDWG's JSON (`3.47e+115`) now rejected at the
+  fallback boundary, and cad33's diagnosis above.
+- [F10](findings/F10-zip-and-non-cad-input.md) — `.zip` archives import
+  directly, via the native `DecompressionStream`.
+- The `programBuckets` discrepancy — both tallies were correct and counting
+  different things, but `bankCategoryForItem` was English-only with a
+  `task-chair` catch-all, so *unrecognised* furniture was indistinguishable from
+  *is a chair* and vanished from the program. Vocabulary extended; the readout
+  now explains an all-zero program rather than leaving it to be reconciled.
 
 ## Reproduce
 
