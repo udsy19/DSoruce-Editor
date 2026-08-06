@@ -138,6 +138,27 @@ const minimalJson = {
   ok(d.entities.length === 2, `entities with no owner list are still emitted (got ${d.entities.length})`)
 }
 
+// Corrupt coordinates must be rejected where they enter, not left for a
+// downstream heuristic to notice. This path exists to recover files whose DXF
+// writer crashed, and those files are damaged: BUSNSS-Offcs-Trdtnl_AC.dwg
+// yields LINE coordinates of 3.47e+115 in LibreDWG's own JSON.
+{
+  const corrupt = {
+    HEADER: { INSUNITS: 6 },
+    OBJECTS: [
+      { object: 'LAYER', handle: [0, 1, 10], name: 'MURO' },
+      { object: 'BLOCK_HEADER', handle: [0, 1, 20], name: '*Model_Space', entities: [H(31), H(32)] },
+      { entity: 'LINE', handle: H(31), layer: H(10), start: [0, 0, 0], end: [20, 0, 0] },
+      // The real shape of the corruption, verbatim from that file.
+      { entity: 'LINE', handle: H(32), layer: H(10), start: [3.475664063979877e115, 0, 0], end: [3.4795447382161538e115, 0, 0] },
+    ],
+  }
+  const d = parseDrawing(dwgJsonToDxf(corrupt))
+  ok(d.entities.length === 1, `the corrupt line is dropped, the good one kept (got ${d.entities.length})`)
+  const maxCoord = Math.max(...d.entities.flatMap((e) => e.pts ?? []).flatMap(([x, y]) => [Math.abs(x), Math.abs(y)]))
+  ok(maxCoord < 1e6, `bounds stay physical (max |coord| ${maxCoord.toExponential(2)})`)
+}
+
 // Degenerate input must not throw — a fallback that crashes is not a fallback.
 for (const [label, input] of [
   ['null', null],

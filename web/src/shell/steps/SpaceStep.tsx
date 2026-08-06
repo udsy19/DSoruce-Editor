@@ -883,6 +883,25 @@ export function SpaceStep({
                   <span className="num">{readouts.program.amenities}</span>
                 </li>
               </ul>
+              {/* "COMPONENTS 9" beside four zeroes reads as a contradiction, and
+                  the two tallies genuinely count different things: COMPONENTS is
+                  every placed block, while the program counts only the ones that
+                  imply a workplace use. Seating is deliberately excluded — a desk
+                  and its chair are one workstation, so counting both would double
+                  it — which is why a drawing of nine chairs and nothing else is
+                  honestly all-zero here. Say that, rather than leave the reader to
+                  reconcile it. */}
+              {readouts.program.offices === 0 &&
+                readouts.program.conference === 0 &&
+                readouts.program.collab === 0 &&
+                readouts.program.amenities === 0 &&
+                readouts.bom.reduce((s, g) => s + g.count, 0) > 0 && (
+                  <p className="space-caveat" data-testid="program-empty-note">
+                    None of this drawing’s blocks imply a workplace use. Seating on its own does not
+                    — a desk and its chair are one workstation — so a plan of chairs, doors or
+                    fixtures counts here as zero even though the components above are real.
+                  </p>
+                )}
             </section>
 
             <section className="space-section" data-testid="space-markers">

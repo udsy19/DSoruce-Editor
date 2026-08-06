@@ -139,19 +139,46 @@ export function bankCategoryForItem(item: FurnitureItem): BankCategory {
   const n = `${item.name} ${item.category}`.toLowerCase()
   const has = (s: string) => n.includes(s)
 
+  // Block names are not always English. The validation corpus in
+  // cad-validation/ is full of `silla` (es, chair), `mesa` (es, table),
+  // `escritorio` (es, desk), `armario` (es, cabinet), `sedia`/`tavolo` (it).
+  // Those matched nothing here and fell through to the `task-chair` default —
+  // which happens to be right for `silla2` and badly wrong for `mesa`, since a
+  // table counts toward Conference and a chair counts toward nothing.
+  // Same failure as the layer vocabulary in dxf.ts, one layer up.
+
   // Lounge seating first: it shares the "chair" token but is a distinct bucket.
-  if (has('club chair') || has('lounge') || has('banquette') || has('sofa') || has('settee'))
+  if (
+    has('club chair') || has('lounge') || has('banquette') || has('sofa') ||
+    has('settee') || has('sillon') || has('sillón') || has('divano') || has('canape')
+  )
     return 'lounge'
   // Task/office seating — "chair" but not the lounge variants handled above.
-  if (has('task chair') || (has('chair') && !has('club') && !has('lounge'))) return 'task-chair'
-  if (has('bench') || has('workstation')) return 'workstation-bench'
-  if (has('desk') || has('pedestal desk')) return 'desk'
-  if (has('side table') || has('coffee')) return 'side-table'
-  if (has('meeting') || has('conference') || has('pedestal table') || (has('table') && !has('side')))
+  if (
+    has('task chair') || (has('chair') && !has('club') && !has('lounge')) ||
+    has('silla') || has('sedia') || has('stuhl') || has('chaise')
+  )
+    return 'task-chair'
+  if (has('bench') || has('workstation') || has('banco') || has('puesto')) return 'workstation-bench'
+  if (has('desk') || has('pedestal desk') || has('escritorio') || has('scrivania') || has('bureau'))
+    return 'desk'
+  if (has('side table') || has('coffee') || has('mesa auxiliar') || has('mesita')) return 'side-table'
+  if (
+    has('meeting') || has('conference') || has('pedestal table') ||
+    (has('table') && !has('side')) || has('mesa') || has('tavolo') || has('tisch')
+  )
     return 'meeting-table'
-  if (has('stool') || has('barstool')) return 'stool'
-  if (has('cabinet') || has('storage') || has('credenza') || has('case')) return 'storage'
-  if (has('planter')) return 'planter'
-  if (has('panel') || has('mullion') || has('partition') || has('screen')) return 'partition'
+  if (has('stool') || has('barstool') || has('taburete') || has('sgabello')) return 'stool'
+  if (
+    has('cabinet') || has('storage') || has('credenza') || has('case') ||
+    has('armario') || has('estante') || has('mueble') || has('armadio')
+  )
+    return 'storage'
+  if (has('planter') || has('maceta') || has('jardinera')) return 'planter'
+  if (
+    has('panel') || has('mullion') || has('partition') || has('screen') ||
+    has('mampara') || has('tabique')
+  )
+    return 'partition'
   return 'task-chair'
 }

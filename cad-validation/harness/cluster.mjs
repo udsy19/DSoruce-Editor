@@ -12,18 +12,17 @@ const { build } = await import(pathToFileURL(esbuildPath).href)
 const out = path.join(os.tmpdir(), `probe-${process.pid}.mjs`)
 await build({ entryPoints: [path.join(here, 'probe/dxfProbe.ts')], outfile: out, bundle: true, format: 'esm', platform: 'node', logLevel: 'silent', nodePaths: [path.join(root,'web/node_modules')] })
 const { parseDrawing } = await import(pathToFileURL(out).href)
+const { loadConverter } = await import(pathToFileURL(path.join(here, 'convert.mjs')).href)
+const convert = await loadConverter(root)
 const CORPUS = JSON.parse(fs.readFileSync(path.join(here, 'corpus.json'), 'utf8'))
 const rows = []
 const pad=(s,n)=>String(s).slice(0,n).padEnd(n)
 console.log(pad('file',40),pad('pre-cluster span (m)',24),pad('post span (m)',20),pad('ents pre>post',16),'dropped')
 for (const e of CORPUS) {
   const dxfPath = path.join(os.tmpdir(), `probe-${process.pid}-${rows.length}.dxf`)
-  let text
-  try {
-    if (e.path.toLowerCase().endsWith('.dwg')) { execFileSync('dwg2dxf',['-o',dxfPath,e.path],{stdio:['ignore','ignore','pipe'],maxBuffer:64<<20,timeout:120000}); text=fs.readFileSync(dxfPath,'utf8') }
-    else text = fs.readFileSync(e.path,'utf8')
-  } catch { rows.push({file:e.label,error:'convert'}); console.log(pad(e.label,40),'convert failed'); fs.rmSync(dxfPath,{force:true}); continue }
-  fs.rmSync(dxfPath,{force:true})
+  const conv = convert(e.path)
+  if (conv.error) { rows.push({file:e.label,error:'convert'}); console.log(pad(e.label,40),'convert failed'); continue }
+  const text = conv.dxf
   let d
   try { d = parseDrawing(text) } catch (err) { rows.push({file:e.label,error:'parse: '+err.message}); console.log(pad(e.label,40),'PARSE FAIL: '+String(err.message).slice(0,60)); continue }
   const p = globalThis.__probe

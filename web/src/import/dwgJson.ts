@@ -45,11 +45,28 @@ const num = (v: unknown, fallback = 0): number => {
   return Number.isFinite(n) ? n : fallback
 }
 
+/**
+ * Beyond any real drawing at any unit — 1e9 source units is 1 000 km even read
+ * as millimetres. Not a tuned threshold: it separates "a drawing" from "not a
+ * number that came from a drawing".
+ *
+ * This path exists to recover files whose DXF writer crashed, and those files
+ * are damaged: `BUSNSS-Offcs-Trdtnl_AC.dwg` yields LINE coordinates of
+ * 3.47e+115 and a thickness of -6.1e+279 in LibreDWG's own JSON. Passing those
+ * through left the drawing's bounds at 1e115 m, and the only thing standing
+ * between that and the rest of the pipeline was `keepDominantCluster` — a
+ * heuristic that exists to drop stray xref copies, not to be the last line of
+ * defence against corrupt input. Reject it where it enters instead.
+ */
+const COORD_LIMIT = 1e9
+
 const xy = (v: unknown): [number, number] | null => {
   if (!Array.isArray(v) || v.length < 2) return null
   const x = Number(v[0])
   const y = Number(v[1])
-  return Number.isFinite(x) && Number.isFinite(y) ? [x, y] : null
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null
+  if (Math.abs(x) > COORD_LIMIT || Math.abs(y) > COORD_LIMIT) return null
+  return [x, y]
 }
 
 const DEG = 180 / Math.PI
