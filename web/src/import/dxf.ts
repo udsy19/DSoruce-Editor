@@ -95,25 +95,76 @@ function insertMatrix(insert: RawEntity, block: RawBlock | undefined): Mat {
 // ---------------------------------------------------------------------------
 
 /** Map an AIA-style layer name + block name to a semantic Category. */
+/**
+ * Layer-name vocabulary, multilingual.
+ *
+ * Real-world CAD is not authored to AIA/NCS in English. Across a 24-file
+ * validation corpus (`cad-validation/`) the wall layers that actually appeared
+ * were `MURO`, `MUROS`, `Muro1`, `MURO-PROY`, `MURO-ACTUALES` (es), `PARED`
+ * (es), `MUR` (fr), `WAND` (de) — none of which the English-only patterns
+ * matched, so 13 of 21 parsed files classified ≥ 70 % of their linework as
+ * `other` and the plate tracer was handed no walls at all.
+ *
+ * Each entry is `[pattern, category]`, tested in order against the UPPERCASED
+ * layer name. Order matters: dimensions and decoration come first because
+ * their names often also contain a building-fabric word (`A-WALL-PATT` is
+ * hatch, not wall; `MURO000F` on a HATCH layer is fill, not fabric).
+ */
+const LAYER_VOCAB: [RegExp, Category][] = [
+  // --- Dimensions (their layers also contain ANNO) ---
+  [/DIM|ACOT|COTA|BEMA/, 'dimension'],
+
+  // --- Decoration and drafting furniture that is NOT building fabric ---
+  // Trees, planting, hatch/fill patterns, cut lines, title blocks, area tags.
+  // These are the "random elements" that wreck wall tracing: one corpus file
+  // carries 5 761 entities on `TREE J 1 100` alone, and hatch layers put dense
+  // parallel linework exactly where a wall detector looks for wall faces.
+  [/^TREE|[-_ ]TREE|VEGET|JARD|PLANT|ARBOL|LANDSCAP/, 'annotation'],
+  [/HATCH|^HAT$|[-_ ]PATT|RELLENO|TRAMA/, 'annotation'],
+  [/^CUT |[-_ ]CUT[-_ ]|^CUT$|SEGMENTED/, 'annotation'],
+  [/ANNO|TTLB|TEXT|TEXTO|AREA-IDEN|AREA\d|SCHD|NPLT|DEFPOINTS|LEYENDA|LEGEND/, 'annotation'],
+
+  // --- Glazing / windows ---
+  [/GLAZ|GLAZING|CURT|CWMG|MULLION|G-WINDOW|VENTAN|FINESTR|FENSTER|FENETRE|JANELA/, 'glazing'],
+
+  // --- Doors ---
+  [/(^|[-_ ])DOOR|PUERTA|PRTA|PORTA|TUER|PORTE|DOOR\d/, 'door'],
+
+  // --- Walls, columns, stairs — the building fabric the plate is traced from ---
+  [/WALL|MURO|MUROS|PARED|PARETE|^MUR[-_ 0-9]?|WAND|CASCO|SHELL/, 'wall'],
+  [/COL(U|UMN)?[-_ 0-9]|^COL$|PILAR|PILLAR|SAULE/, 'wall'],
+  [/RAILING|STAIR|ESCALERA|SCALA|TREPPE|BARANDA/, 'wall'],
+
+  // --- Casework ---
+  // The AIA discipline prefixes (`Q-`, `P-`, `E-`) are anchored to the start of
+  // the name: unanchored they match anywhere, so any layer merely *containing*
+  // "Q-" was silently classified casework (e.g. `ZZQQ-NOTHING`).
+  [/CASE|CASEWORK|CUPBD|SPCQ|^Q-/, 'casework'],
+
+  // --- Fixtures ---
+  [/PLUMB|SANR|SAN-FIX|SAN_FIX|^P-|BANO|BAÑO|ASEO|WC\d/, 'fixture'],
+  [/LITE|EQPM|^E-|LIGHT|ELEC|LUMIN/, 'fixture'],
+
+  // --- Furniture ---
+  [/FURN|MUEBLE|MUEBLES|MUEB|MOBILIARIO|^MOB[-_ 0-9]|^MOB$|MEBEL|ARREDI|MOBILIER|MOBEL/, 'furniture'],
+]
+
+/** Block-name patterns, applied when the layer name says nothing useful. */
+const BLOCK_VOCAB: [RegExp, Category][] = [
+  [/MULLION|GLAZED|CURTAIN|WINDOW|VENTANA/, 'glazing'],
+  [/\bDOOR\b|PUERTA|PORTA/, 'door'],
+  [/CUPBD|CASEWORK|COUNTERTOP|BOOKCASE/, 'casework'],
+  [/SINK|FAUCET|TOILET|FRIDGE|DISHWASHER|OVEN|MICROWAVE|ESPRESSO|INODORO|LAVABO/, 'fixture'],
+  [/SCONCE|TV|SCREEN|LOCKER/, 'fixture'],
+  [/DESK|CHAIR|TABLE|SOFA|SILLA|MESA|ESCRITORIO/, 'furniture'],
+]
+
 function categoryFor(layer: string, blockName = ''): Category {
   const L = (layer || '').toUpperCase()
   const B = (blockName || '').toUpperCase()
 
-  // Dimensions first (their layers also contain ANNO).
-  if (/DIM/.test(L)) return 'dimension'
-  // Annotation / text / title-blocks / area tags.
-  if (/ANNO|TTLB|TEXT|AREA-IDEN|SCHD|NPLT/.test(L)) return 'annotation'
-
-  if (/GLAZ|GLAZING|CURT|CWMG|MULLION|G-WINDOW/.test(L) || /MULLION|GLAZED|CURTAIN/.test(B))
-    return 'glazing'
-  if (/(^|[-_])DOOR/.test(L) || /\bDOOR\b/.test(B)) return 'door'
-  if (/WALL|COL|RAILING|STAIR/.test(L)) return 'wall'
-  if (/CASE|CASEWORK|CUPBD|SPCQ|Q-/.test(L) || /CUPBD|CASEWORK|COUNTERTOP|BOOKCASE/.test(B))
-    return 'casework'
-  if (/PLUMB|SANR|SAN-FIX|SAN_FIX|P-/.test(L) || /SINK|FAUCET|TOILET|FRIDGE|DISHWASHER|OVEN|MICROWAVE|ESPRESSO/.test(B))
-    return 'fixture'
-  if (/LITE|EQPM|E-|LIGHT|ELEC/.test(L) || /SCONCE|TV|SCREEN|LOCKER/.test(B)) return 'fixture'
-  if (/FURN/.test(L)) return 'furniture'
+  for (const [re, cat] of LAYER_VOCAB) if (re.test(L)) return cat
+  for (const [re, cat] of BLOCK_VOCAB) if (re.test(B)) return cat
 
   return 'other'
 }
