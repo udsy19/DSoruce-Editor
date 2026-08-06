@@ -70,6 +70,18 @@ export interface FurnitureItem {
 export interface Drawing {
   /** Source units label, e.g. 'in' | 'mm' | 'm'. */
   units: string
+  /**
+   * How `units` was decided. `$INSUNITS` is metadata the file asserts about
+   * itself and is often wrong, so the importer confirms it against the geometry
+   * (door-swing radii, then overall extent) and records which anchor settled it.
+   *
+   * `'header-unverified'` means the drawing offered no physical anchor and the
+   * header was taken on trust — the one value that must never be presented to
+   * the user as a certainty, since every area, cost and m²/person figure
+   * downstream is denominated in it. Optional so a hand-built `Drawing` (tests,
+   * raster import) need not supply it.
+   */
+  unitsSource?: 'header' | 'door-anchor' | 'extent-anchor' | 'header-unverified'
   /** [minX, minY, maxX, maxY] meters, from the actual geometry (not the sheet). */
   bounds: [number, number, number, number]
   layers: string[]

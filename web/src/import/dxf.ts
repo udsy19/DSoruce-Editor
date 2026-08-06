@@ -22,6 +22,16 @@ import type { Category, DrawEntity, Drawing, FurnitureItem } from './types'
 // Units
 // ---------------------------------------------------------------------------
 
+/** Candidate source units, meters-per-unit. */
+const UNIT_SCALE: Record<string, number> = {
+  in: 0.0254,
+  ft: 0.3048,
+  mm: 0.001,
+  cm: 0.01,
+  dm: 0.1,
+  m: 1,
+}
+
 /** $INSUNITS code → meters-per-unit. Defaults to inches (AutoCAD arch default). */
 function metersPerUnit(insunits: unknown): { scale: number; label: string } {
   switch (Number(insunits)) {
@@ -35,9 +45,163 @@ function metersPerUnit(insunits: unknown): { scale: number; label: string } {
       return { scale: 0.01, label: 'cm' } // centimeters
     case 6:
       return { scale: 1, label: 'm' } // meters
+    case 14:
+      return { scale: 0.1, label: 'dm' } // decimeters
     default:
       return { scale: 0.0254, label: 'in' }
   }
+}
+
+/**
+ * How the drawing's scale was decided. `header` means $INSUNITS was confirmed
+ * against the geometry; `header-unverified` means the drawing offered no
+ * physical anchor and we took the header on trust — the one state that must
+ * never be reported to the user as a certainty.
+ */
+export type UnitsSource = 'header' | 'door-anchor' | 'extent-anchor' | 'header-unverified'
+
+/**
+ * A door swing arc's radius IS the door leaf width, and that is 0.75–1.10 m in
+ * every building code on earth (IBC 1010.1.1, NBC 2016 Part 4, DIN 18101).
+ * Widened to 0.65–1.30 m for cupboard leaves and drafting slop.
+ */
+const DOOR_LEAF_MIN_M = 0.65
+const DOOR_LEAF_MAX_M = 1.3
+
+/**
+ * A building's long side, used only when there are no doors to measure. The
+ * band is deliberately generous: this anchor exists to catch a drawing that is
+ * off by a factor of 25–1000, not to fine-tune a plausible one.
+ */
+const BUILDING_MIN_M = 3
+const BUILDING_MAX_M = 1000
+
+/**
+ * Modal value within a ±5 % relative bin — the most-repeated radius, which on a
+ * floor plan is the typical door, not an outlier hinge detail.
+ */
+function modalWithin(values: number[], rel = 0.05): number | null {
+  if (values.length === 0) return null
+  let best: number | null = null
+  let bestN = 0
+  for (const v of values) {
+    let n = 0
+    for (const x of values) if (Math.abs(x - v) <= v * rel) n++
+    if (n > bestN) {
+      bestN = n
+      best = v
+    }
+  }
+  return best
+}
+
+/**
+ * Decide the drawing's real unit.
+ *
+ * $INSUNITS is metadata written by whoever last saved the DWG, and across the
+ * validation corpus in `cad-validation/` it is frequently wrong: files declaring
+ * millimetres whose doors are 0.855 units wide (i.e. metres — a 1 mm door as
+ * read), and files declaring inches whose doors are 1.125 units wide (again
+ * metres — a 29 mm door). Those drawings imported 25×–1000× too small, which
+ * put every plate candidate under the 1 m² floor (no plate at all) or produced
+ * a 2–7 m² "office" the generator could not place a single desk in.
+ *
+ * So the header is a CANDIDATE, and the geometry is the judge. We prefer an
+ * anchor that is true by construction over one the file asserts about itself:
+ *
+ *   1. the modal door-swing arc radius must land in the legal leaf-width band;
+ *   2. failing that, the drawing's long side must be a building.
+ *
+ * If the header's unit satisfies the anchor we keep it — a correct header is
+ * the common case and must not be second-guessed. Only when it fails do we take
+ * the unit that passes. With no anchor at all we keep the header and say so,
+ * via `header-unverified`.
+ */
+function decideUnits(
+  insunits: unknown,
+  doorRadii: number[],
+  extentSourceUnits: number,
+): { scale: number; label: string; source: UnitsSource } {
+  const header = metersPerUnit(insunits)
+
+  const inBand = (v: number, s: number, lo: number, hi: number) => v * s >= lo && v * s <= hi
+  // Prefer the header's own unit on ties, then larger units, so a drawing that
+  // satisfies several candidates resolves the same way every run.
+  const order = [header.label, ...Object.keys(UNIT_SCALE).filter((u) => u !== header.label)]
+
+  const door = modalWithin(doorRadii)
+  if (door != null && door > 0) {
+    const fits = order.filter((u) => inBand(door, UNIT_SCALE[u], DOOR_LEAF_MIN_M, DOOR_LEAF_MAX_M))
+    if (fits.length > 0) {
+      const label = fits[0]
+      return {
+        scale: UNIT_SCALE[label],
+        label,
+        source: label === header.label ? 'header' : 'door-anchor',
+      }
+    }
+    // Doors exist but match no unit — they are hinge/hardware detail arcs, not
+    // leaves. Fall through rather than trust them.
+  }
+
+  if (extentSourceUnits > 0) {
+    const fits = order.filter((u) =>
+      inBand(extentSourceUnits, UNIT_SCALE[u], BUILDING_MIN_M, BUILDING_MAX_M),
+    )
+    if (fits.length > 0) {
+      const label = fits[0]
+      return {
+        scale: UNIT_SCALE[label],
+        label,
+        source: label === header.label ? 'header' : 'extent-anchor',
+      }
+    }
+  }
+
+  return { ...header, source: 'header-unverified' }
+}
+
+/**
+ * Door-swing radii and the raw extent, in SOURCE units, gathered before any
+ * scale is chosen. Reads top-level entities and block definitions alike, since
+ * on most real plans the door swing lives inside a block.
+ */
+function scaleEvidence(
+  rawEntities: RawEntity[],
+  blocks: Record<string, RawBlock>,
+): { doorRadii: number[]; extent: number } {
+  const doorRadii: number[] = []
+  const xs: number[] = []
+  const ys: number[] = []
+
+  const note = (e: RawEntity) => {
+    if (e.type === 'ARC' && typeof e.radius === 'number' && e.radius > 0) {
+      if (categoryFor(e.layer ?? '') === 'door') doorRadii.push(e.radius)
+    }
+    for (const v of e.vertices ?? []) {
+      if (!Number.isFinite(v.x) || !Number.isFinite(v.y)) continue
+      xs.push(v.x)
+      ys.push(v.y)
+    }
+  }
+
+  for (const e of rawEntities) note(e)
+  for (const b of Object.values(blocks)) for (const e of b.entities ?? []) note(e)
+
+  // Robust extent: the 2nd–98th percentile span, NOT min→max. Real exports
+  // routinely carry a stray xref copy or a stranded vertex kilometres from the
+  // plan — one corpus file spans 323 km on min→max and 17 m on its actual
+  // drawing. A min→max extent hands this anchor an outlier and it then argues
+  // for a unit 1000× off, which is exactly the failure it exists to prevent.
+  const span = (vals: number[]): number => {
+    if (vals.length === 0) return 0
+    const s = [...vals].sort((a, b) => a - b)
+    const lo = s[Math.floor(s.length * 0.02)]
+    const hi = s[Math.min(s.length - 1, Math.floor(s.length * 0.98))]
+    return hi - lo
+  }
+
+  return { doorRadii, extent: Math.max(span(xs), span(ys)) }
 }
 
 // ---------------------------------------------------------------------------
@@ -597,10 +761,19 @@ export function parseDrawing(dxfText: string): Drawing {
     tables?: { layer?: { layers?: Record<string, unknown> } }
   }
 
-  const { scale, label } = metersPerUnit(dxf.header?.$INSUNITS)
-  const root: Mat = [scale, 0, 0, scale, 0, 0] // world inches/mm → meters
   const blocks = dxf.blocks ?? {}
   const rawEntities = dxf.entities ?? []
+
+  // Scale is decided from the geometry, with $INSUNITS as the candidate — see
+  // decideUnits(). This must happen before anything is flattened, because the
+  // root matrix carries the unit→meters scale into every transform.
+  const evidence = scaleEvidence(rawEntities, blocks)
+  const { scale, label, source: unitsSource } = decideUnits(
+    dxf.header?.$INSUNITS,
+    evidence.doorRadii,
+    evidence.extent,
+  )
+  const root: Mat = [scale, 0, 0, scale, 0, 0] // world inches/mm → meters
 
   const layers = Object.keys(dxf.tables?.layer?.layers ?? {})
   const entities: DrawEntity[] = []
@@ -663,5 +836,12 @@ export function parseDrawing(dxfText: string): Drawing {
     bounds[0] = bounds[1] = bounds[2] = bounds[3] = 0
   }
 
-  return { units: label, bounds, layers, entities: kept.entities, furniture: kept.furniture }
+  return {
+    units: label,
+    unitsSource,
+    bounds,
+    layers,
+    entities: kept.entities,
+    furniture: kept.furniture,
+  }
 }
