@@ -421,10 +421,22 @@ export function buildQuotePdfBytes(set: CommercialSet, art: CommercialArtwork = 
   room(4)
   p.box(x, y - 10, QUOTE_TABLE_W, 62, { fill: false, gray: 0.35, width: 1 })
   p.text(x + 10, y + 4, 9, 'WHERE THESE PRICES COME FROM', { bold: true, gray: 0.15 })
+  // The second note is CONDITIONAL, and it has to be. "Every ₹ figure is the
+  // price recorded on the component" is true only when every priced line came
+  // from a binding. Once the rate card is enabled — which it is for the
+  // quotation, or an unspecified plan quotes as 1 priced line out of 42 — that
+  // sentence becomes false for every unbound line, and a provenance box that
+  // misstates its own provenance is worse than no box. Say which prices came
+  // from where, and let the PRICE BASIS column carry it per line.
+  const fromRateCard = Math.max(0, q.pricedLines - q.sourcedLines)
   const notes = [
     `${q.sourcedLines} of ${q.pricedLines} priced line(s) cite a material-bank observation with a basis and a date.`,
-    'Every ₹ figure is the price recorded on the component in the editor document (Editor.assign_product); ' +
-      'this sheet does not hold a second price list.',
+    fromRateCard === 0
+      ? 'Every ₹ figure is the price recorded on the component in the editor document ' +
+        '(Editor.assign_product); this sheet does not hold a second price list.'
+      : `A bound product's ₹ figure is the price recorded on the component (Editor.assign_product). ` +
+        `The remaining ${fromRateCard} line(s) are priced from the published rate card, ` +
+        `whose rates are derived from the core cost model. The PRICE BASIS column states which is which.`,
     'Quantities are the same quantities as the bill of materials — both are read from the same model.',
   ]
   let ny = y + 20

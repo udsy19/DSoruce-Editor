@@ -1910,7 +1910,19 @@ function ExportMenu({
     if (!ec) return
     const state = ec.getState()
     const roomRefs = buildRoomRefs(state.zones ?? [], roomMarkers.current ?? [])
-    void exportCommercialSet(state, qtoOpts(state, roomRefs))
+    // `rateCard: true`, the same flag the takeoff passes. Without it a quotation
+    // for an unspecified plan is almost entirely "RFQ / to be quoted" — measured:
+    // 1 priced line out of 42, because nothing on a freshly generated fit is
+    // bound to a product yet. That is honest but useless as a quotation.
+    //
+    // It does NOT invent anything. A bound product's real bank price still wins
+    // and is still labelled with its own provenance; the rate card only fills
+    // the rest, from `rateCard.ts` — rates derived from the core's own cost
+    // model, with a parity test that parses `cost.rs` and fails on divergence.
+    // Every line carries its basis in the PRICE BASIS column, so "listed mrp ·
+    // 22d" and "rate card" are told apart on the page. A category the card
+    // cannot defend still returns null and stays "to be quoted", never ₹0.
+    void exportCommercialSet(state, { ...qtoOpts(state, roomRefs), rateCard: true })
     setOpen(false)
   }
 
