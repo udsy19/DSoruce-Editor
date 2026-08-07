@@ -247,16 +247,16 @@ export const ZONE: Record<string, { fill: string; line: string }> = {
   // zone falls back to if it is ever drawn as figure (e.g. selected/hovered);
   // the resting plan does not fill it at all.
   Circulation: { fill: '#d8d8d8', line: '#8b8b8b' },
-  Workspace: { fill: '#d9e7f4', line: '#487cad' }, // Laiout "open workspace"
-  Meeting: { fill: '#eae4f6', line: '#6b4ca8' }, // Laiout "meeting"
-  Core: { fill: '#d1f1d5', line: '#49ab56' }, // Laiout "core/service"
-  Amenity: { fill: '#faf4de', line: '#bea137' }, // Laiout "amenity"
-  Collaboration: { fill: '#fae0c3', line: '#c87f2d' }, // Laiout "breakout"
+  Workspace: { fill: '#d1e7fc', line: '#487cad' }, // Laiout "open workspace"
+  Meeting: { fill: '#e1d4fc', line: '#6b4ca8' }, // Laiout "meeting"
+  Core: { fill: '#c7fbcd', line: '#49ab56' }, // Laiout "core/service"
+  Amenity: { fill: '#fcf4d4', line: '#bea137' }, // Laiout "amenity"
+  Collaboration: { fill: '#fbe0c2', line: '#c87f2d' }, // Laiout "breakout"
   // NOT A LAIOUT VALUE. Their captures carry no closed-office role, so this is
   // DSource-original and must never be cited as measured. Hue 350 is the widest
   // gap in the five adopted hues (32/47/128/209/260), placed at the palette's
   // own band (S 60, L 91) so it belongs to the set without impersonating it.
-  ClosedOffice: { fill: '#f6dadf', line: '#b14356' },
+  ClosedOffice: { fill: '#fcd4db', line: '#b14356' },
   // Ground, like Circulation, and DELIBERATELY the same values as it: Phase 1
   // changes what leftover floor is CALLED, not how it looks. Phase 2.1 gives
   // this its own editor-only hatch (the "wasted floor, fix me" affordance);

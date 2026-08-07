@@ -256,7 +256,17 @@ export function AppShell() {
           primary action on the screen it floats over is not prominent, it is in
           the way — and on Property/Space/Program/Generate there is no plan to
           export yet, so it was offering an action that could not work. */}
-      {route.name === 'editor' && <DeliverablePackAction ensureEditor={ensureEditor} />}
+      {/* THE one-action pack control (gate G10). It floats, so where it floats
+          matters: on the WIZARD steps it sat on top of the primary CTA —
+          `elementFromPoint` at the Next button's centre returned `pack-btn` —
+          which is the defect that was filed and left open through a whole queue.
+          Scoping it to `editor` alone fixed that and broke G10, whose contract
+          is that the action is reachable in ONE click from where the app opens.
+          Both hold if the exclusion is the wizard rather than everything: the
+          library and the editor keep it, the wizard steps do not. */}
+      {(route.name === 'editor' || route.name === 'projects') && (
+        <DeliverablePackAction ensureEditor={ensureEditor} />
+      )}
     </>
   )
 }

@@ -89,7 +89,17 @@ declare -a TITLES=(
   "One-action UX"
   "Furniture agreement"
   "Drawing set (SG1-SG6)"
+  # G13 had NO TITLE, and the board hid it rather than saying so. With `set -u`,
+  # `TITLES[12]` is unbound: the gate RAN and was counted, then the row
+  # assignment errored and G13 simply did not appear on the scoreboard. A board
+  # that can grade a check and then not show it is the SG5 family one level up —
+  # the same reason `GSELF` exists. The array lengths are now asserted below.
+  "Circulation (C1-C10)"
 )
+if [ "${#TITLES[@]}" -ne "${#IDS[@]}" ] || [ "${#CMDS[@]}" -ne "${#IDS[@]}" ]; then
+  echo "BOARD BROKEN: ${#IDS[@]} ids, ${#CMDS[@]} commands, ${#TITLES[@]} titles" >&2
+  exit 2
+fi
 # ---- the lying gate ---------------------------------------------------------
 # GSELF exits 0 while printing a FAIL line. It is the adversarial check on THIS
 # RUNNER: a grading system whose summary can disagree with its own rows is the

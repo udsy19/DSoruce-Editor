@@ -888,3 +888,103 @@ Read off `docs/evidence/qbiq-parity-q3/q3-current/F1@fit.png` and `@4x`:
 4. **Desk rows are ragged** — rows end in single unpaired desks.
 5. Q3-B (the area tool) and Q3-D2 (extracting the symbol spec from the reference
    PDF) are **not started**.
+
+## Phase 0.3 — the rubric · **DONE**
+
+`research/rubric-q3.md`, eleven rows, each naming its instrument, scored against
+both populations with the capture set linked. Rows below 4: **furniture symbol
+fidelity (3)**, **circulation legibility (2)**, **plan uses the floor (2)**; zone
+fill S/L was left **unscored** rather than guessed — then measured below. The
+scale caveat is in the header: the spec's ratios and S/L band are the portable
+contract, the reference page's *sparseness* is a 1:266 artifact and not a target
+for an editor at 10–100 px/m.
+
+## Q3-D (partial) — the zone washes were at HALF the reference's chroma
+
+Row 9 was unscored, so it got measured. `research/qbiq-plan-style-spec.json`
+`/palette/zone_fill_targets` is the extracted contract — **saturation 85–100 %
+(mean 86.2), lightness 80–92 % (mean 85.7)**, one muted service outlier allowed.
+Against it, **seven of eight DSource zones failed saturation, most by ~30
+points**:
+
+| zone | was | S | L | now | S | L |
+|---|---|---|---|---|---|---|
+| Workspace | `#d9e7f4` | 55.1 | 90.4 | `#d1e7fc` | 87.8 | 90.4 |
+| Meeting | `#eae4f6` | 50.0 | 92.9 | `#e1d4fc` | 87.0 | 91.0 |
+| Core | `#d1f1d5` | 53.3 | 88.2 | `#c7fbcd` | 86.7 | 88.2 |
+| Amenity | `#faf4de` | 73.7 | 92.5 | `#fcf4d4` | 87.0 | 91.0 |
+| Collaboration | `#fae0c3` | 84.6 | 87.3 | `#fbe0c2` | 87.7 | 87.3 |
+| ClosedOffice | `#f6dadf` | 60.9 | 91.0 | `#fcd4db` | 87.0 | 91.0 |
+| Circulation / Unassigned | `#d8d8d8` | 0.0 | 84.7 | unchanged | | |
+
+**Hues are untouched** — only S and L move into the band, and ground stays
+neutral because ground is the surface the plan sits on, not a programme colour.
+This is why the plan read grey and muddy where the reference reads as crisp
+pastel rooms on white, and nothing in the drawing had to change for it.
+
+`web/src/editor/zoneFillSpec.test.mjs` anchors the band to the **spec file** and
+the values to `planStyle.ts`'s source: neither side is produced by the renderer,
+so the palette cannot certify its own drift. Non-vacuity asserted (≥6 programme
+zones parsed).
+
+## THE BOARD — three findings, and the baseline that separates them
+
+Run against a dev server on **port 5241** for this tree (5173 was held by another
+worktree; the preflight refused, correctly). Baseline established by running the
+board in a disposable worktree at **6833691, the Queue-2 close**.
+
+### 1. G13 was graded and then hidden — the board had 13 ids and 12 titles
+
+`TITLES` was never extended when G13 (the circulation board) was added. Under
+`set -u`, `TITLES[12]` is unbound: the gate RAN, its result was COUNTED, and then
+the row assignment errored so **G13 simply did not appear on the scoreboard**.
+The board printed `9/13 passing` while showing twelve rows.
+
+This is the `GSELF`/SG5 family one level up — a board that can grade a check and
+then not show it. Fixed with the missing title plus a length assertion across
+`IDS`/`CMDS`/`TITLES` that exits 2 rather than dropping a row.
+
+### 2. G12 was RED AT THE QUEUE-2 CLOSE, and the close was recorded as green
+
+Baseline at 6833691: **12/13, `G12 FAIL`**. Not a Queue-3 regression.
+
+Mechanism, and it is this queue's own debt: `sheetlib.mjs::scheduledRooms`
+filtered `z.zone_type !== 'Circulation'` — written when Circulation was the only
+ground there was. Queue 2 added `Unassigned` and made it ground; the drawing set
+correctly stopped naming it (no published artifact may contain the word), and the
+gate went on demanding a schedule row for six zones that nothing is allowed to
+name. `SG4 FAIL: 6 room(s) have no named row on A.09`, against a *correct*
+drawing.
+
+**Exactly the hazard flagged at the time** — *"the fold boundary is where this
+workstream can go quietly wrong"* — realised in the gate rather than the
+producer, and hidden because the board was never read to the bottom.
+
+Fixed by **parsing the ground set out of `lib.rs::published_zone_type`**, the one
+place the fold happens: ground is Circulation plus everything that folds into it.
+Hardcoding the second name would have moved the same defect one release along.
+The parser throws if it finds fewer than two types — a gate that silently narrows
+its own exclusion list is how this shipped. Result: **SG1–SG6 5/5, `G12 PASS
+(603 checks)`**, including SG3 (was 24 failing) and SG6 determinism (was 6/36
+PNGs).
+
+### 3. G10 — a regression I introduced, and the stale-`out/` false reds
+
+`G10 FAIL: no single "Export deliverable pack" control found`. Caused by
+`92e3fd4` (last session), which scoped the pack dock to `route.name === 'editor'`
+to get it off the wizard's Next button. G10 loads the app's landing route and
+looks for the control there. The filed defect was specifically the **wizard**
+CTA, so the exclusion is now the wizard rather than everything: the library and
+the editor keep the control, the wizard steps do not. Verified directly — one
+control on the landing route.
+
+**G6 and G7 also went red on the first run and were NOT regressions.** They were
+grading a stale `out/`: renders and a walkthrough left by an earlier session,
+against freshly written ground truth (`walkthrough.mp4` 19 MB vs the baseline's
+55 MB). `rm -rf out` and a clean run put both back to PASS with identical check
+counts to the baseline (G6 53, G7 19). This is the *"watch the graded artifact is
+the emitted artifact"* family in a new direction — not a later step overwriting,
+but an earlier RUN's leftovers being graded — and it cost two false diagnoses
+before the baseline separated them.
+
+**Board now: 13/13.** Verification battery **42/42**.

@@ -586,11 +586,45 @@ function displayNameByZoneId(zones) {
   return out
 }
 
-/** Every scheduled (non-circulation) room, in the order the sheets take them.
+/**
+ * THE GROUND ZONE TYPES, re-derived from the RUST CORE's own fold rule.
+ *
+ * This gate used to hardcode `z.zone_type !== 'Circulation'`, written when
+ * `Circulation` was the only ground there was. Queue 2 added `Unassigned` —
+ * leftover floor that is a finding, not a programme — and made it ground: the
+ * drawing set correctly stops naming it, and no published artifact may contain
+ * the word at all. The gate did not learn, so it went on demanding a schedule
+ * row for six zones that nothing is allowed to name, and reported
+ * `SG4 FAIL: 6 room(s) have no named row on A.09` against a correct drawing.
+ * The Queue-2 close was recorded as green with this red on the board.
+ *
+ * Hardcoding the second name would only move the same defect one release along,
+ * so the list is PARSED from `lib.rs::published_zone_type` — the single place
+ * the fold happens. Ground is Circulation plus everything that folds INTO it.
+ * That is core source, not the drawing layer, so the gate still does not consume
+ * anything the system under test produced.
+ */
+function groundZoneTypes() {
+  const src = fs.readFileSync(path.join(REPO, 'crates/ds-core/src/lib.rs'), 'utf8')
+  const fn = new RegExp(String.raw`fn published_zone_type\([^)]*\)\s*->\s*ZoneType\s*\{([\s\S]*?)\n\}`).exec(src)
+  if (!fn) throw new Error('cannot find published_zone_type in lib.rs — the fold rule moved')
+  const set = new Set(['Circulation'])
+  for (const m of fn[1].matchAll(/ZoneType::(\w+)\s*=>\s*ZoneType::Circulation/g)) set.add(m[1])
+  if (set.size < 2) {
+    throw new Error(
+      `parsed only ${set.size} ground type(s) from published_zone_type — the parser is broken, ` +
+        'and a gate that silently narrows its own exclusion list is how this defect shipped',
+    )
+  }
+  return set
+}
+
+/** Every scheduled (non-ground) room, in the order the sheets take them.
  *  `label` is the core's own label; `display` is the name the sheets must
  *  print (see `displayNameByZoneId`). */
 export function scheduledRooms(state) {
-  const zones = (state.zones ?? []).filter((z) => z.zone_type !== 'Circulation')
+  const ground = groundZoneTypes()
+  const zones = (state.zones ?? []).filter((z) => !ground.has(z.zone_type))
   const ordered = [...zones].sort((a, b) => a.id - b.id)
   const display = displayNameByZoneId(ordered)
   return ordered.map((z, i) => ({
