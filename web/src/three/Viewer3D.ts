@@ -440,7 +440,19 @@ export class Viewer3D {
   constructor(container: HTMLElement) {
     this.container = container
 
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' })
+    // `preserveDrawingBuffer` is what makes the 3D view EXPORTABLE. Without it
+    // the drawing buffer is cleared at composite, so a `toBlob` issued between
+    // frames reads an empty one: the 3D PNG export shipped a 20 KB, single
+    // colour, 0%-opaque file — a fully transparent image, reproducibly.
+    // `export/png.ts` also snapshots inside a requestAnimationFrame callback,
+    // but that alone only holds while `animate()` keeps re-registering itself;
+    // if this viewer ever becomes render-on-demand the export would silently go
+    // blank again. This flag makes it structural rather than timing-dependent.
+    this.renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      powerPreference: 'high-performance',
+      preserveDrawingBuffer: true,
+    })
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
     this.renderer.shadowMap.enabled = true
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap
