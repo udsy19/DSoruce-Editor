@@ -350,7 +350,16 @@ export function buildElements(state: DocState, nia: number): ElementBreakdown {
     const acc = fb.get(g) ?? { count: 0, co2: 0, cost: 0 }
     acc.count += 1
     acc.co2 += FURN[g].co2
-    acc.cost += (c.product_id && priceMap.get(c.product_id)) || FURN[g].cost
+    // `price_inr` FIRST. types/doc.ts declares it authoritative for money and
+    // says in as many words that "every cost-line constructor reads THIS" —
+    // this was the last one that did not, which made the claim false. A product
+    // bound from the LIVE bank carries its price here and nowhere else:
+    // `priceMap` only holds ids from the local mock bank, so a ₹3,22,700
+    // sideboard fell through to the ₹12,000 category default and the Costs tab
+    // disagreed with the BOM about the same five items (₹7,26,855 there).
+    // Two panels contradicting each other about money is the one discrepancy a
+    // reader is guaranteed to notice.
+    acc.cost += c.price_inr ?? ((c.product_id && priceMap.get(c.product_id)) || FURN[g].cost)
     fb.set(g, acc)
   }
   const furnLines: ElementLine[] = FURN_ORDER.filter((g) => fb.has(g)).map((g) => {
