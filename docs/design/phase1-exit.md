@@ -30,6 +30,19 @@ Run on the merged tree, `integration/all`:
 | symbols.test.mjs | PASS (46) |
 | fonts.test.mjs | PASS |
 | cargo test | **PASS — 138 passed, 138 BY NAME, 0 missing** vs the main∪ui-fixes floor |
+
+> **RETRACTED (R12) — `ladder-check`, `lod-sweep` and `export-parity` were not on
+> any board when this was written.** Their PASS rows above were real readings of a
+> real script, taken by hand; what they were not is a standing verdict. No runner
+> invoked those three: `scripts/verify-all.sh` ran deadspace-core / style-gate /
+> accent-univalence, `scripts/gates/run-all.sh` ran G1-G13, the root
+> `package.json` had one `bench` script pointing at `bench/run.mjs`, and there is
+> no `.github/workflows`. Listing them beside `cargo test` and `style-gate` —
+> which the pre-commit hook does enforce — read as "the tree holds this", and the
+> tree did not. Wired into `scripts/verify-all.sh` in the same change as this
+> retraction, together with `scripts/gates/reconcile.mjs`, which reds on any gate
+> that exists and is never invoked.
+
 | typecheck / build | PASS |
 
 ## Required proofs

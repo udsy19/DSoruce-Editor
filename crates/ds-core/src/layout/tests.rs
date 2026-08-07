@@ -1365,22 +1365,55 @@ fn real_building_plate_spreads_the_program() {
     program.meeting_w = 3.0;
     program.meeting_h = 3.0;
     for seed in 1..=3u64 {
-        // Debug-build guard against algorithmic blowups (the old bbox packer
-        // took seconds here). This plate runs ~150 ms in debug under a busy
-        // parallel suite, so the budget carries contention headroom and the
-        // asserted time is the faster of two runs.
-        const BUDGET_MS: u128 = 300;
+        // GUARD AGAINST ALGORITHMIC BLOWUP — the old bbox packer took *seconds*
+        // on this plate, and this is the test that noticed.
+        //
+        // RETRACTED, by name: `const BUDGET_MS: u128 = 300` with a best-of-two
+        // retry. It was not a guard, it was a coin flip. Observed failing at
+        // 463 / 479 / 575 ms under parallel-worktree load and passing in
+        // isolation at ~150 ms — and this assertion DECIDES COMMITS, because
+        // `.githooks/pre-commit` runs `verify-all.sh`, which runs this suite.
+        // The best-of-two retry made it likelier to pass without making it
+        // deterministic; it only widened the window in which the machine's other
+        // tenants decide whether your commit lands.
+        //
+        // Elapsed time was never the property. WORK is, and work is countable:
+        // `geometry`'s primitives tally their own vertex-weighted operations
+        // (see the work-meter comment in geometry.rs), and the count is a pure
+        // function of (plate, program, seed). Same number on an idle laptop and
+        // on one running twelve worktrees.
+        //
+        // TWO-SIDED, and that is the load-bearing half. A ceiling alone is
+        // satisfied by a meter that stopped counting — delete the `tally()`
+        // calls and `0 < CEILING` passes forever, which is exactly the vacuity
+        // `.claude/rules/gate-independence.md` is about. The floor makes a dead
+        // instrument as loud as a blown-up generator.
+        //
+        // The band is MEASURED, not guessed. Seeds 1/2/3 read 5_347_393 /
+        // 5_382_282 / 5_349_313 ops — a 0.65% spread across the whole seed set,
+        // and byte-identical on repeat runs, because the count is arithmetic and
+        // not a stopwatch. The bounds sit at +-~35% of 5.36 M: far enough out
+        // that ordinary generator work never trips them, far enough in that the
+        // >=10x blowup this test exists to catch cannot hide. A DELIBERATE change
+        // to the generator's cost moves these two numbers in the SAME commit,
+        // with the new measurement quoted right here.
+        const WORK_FLOOR: u64 = 3_500_000;
+        const WORK_CEILING: u64 = 7_300_000;
         let mut doc = real_plate_doc();
-        let t0 = std::time::Instant::now();
+        crate::geometry::reset_work_meter();
         generate(&mut doc, &program, seed, false);
-        let mut ms = t0.elapsed().as_millis();
-        if ms >= BUDGET_MS {
-            doc = real_plate_doc();
-            let t1 = std::time::Instant::now();
-            generate(&mut doc, &program, seed, false);
-            ms = ms.min(t1.elapsed().as_millis());
-        }
-        assert!(ms < BUDGET_MS, "seed {seed}: generate took {ms} ms (debug budget {BUDGET_MS})");
+        let ops = crate::geometry::work_ops();
+        assert!(
+            ops < WORK_CEILING,
+            "seed {seed}: generate did {ops} primitive-geometry ops (ceiling {WORK_CEILING}) \
+             — an algorithmic blowup, not a slow machine"
+        );
+        assert!(
+            ops > WORK_FLOOR,
+            "seed {seed}: generate did only {ops} ops (floor {WORK_FLOOR}) — either the \
+             generator stopped doing the work, or the work meter stopped counting it. \
+             A ceiling with no floor is satisfied by a dead instrument."
+        );
 
         let poly = poly_of(&doc);
         let desks: Vec<_> = doc.components.iter().filter(|c| c.category == "Desk").collect();

@@ -361,13 +361,33 @@ fn violations(doc: &Document) -> Vec<String> {
             m.net_internal_area, owner
         ));
     }
+    // THE ZONES TAB'S ROWS MUST SUM TO NIA. Asserted directly, because the
+    // inversion this replaces could not fail.
+    //
+    // The previous form recovered NIA as `row.area / row.pct_of_nia * 100`. But
+    // `pct_of_nia := row.area / nia * 100`, so that expression is **identically
+    // `nia` for any areas vector whatsoever** — a value compared against itself,
+    // wearing a comment that claimed the opposite ("re-derived from the panel's
+    // own artifact"). Restoring the second NIA owner in `zone_rows` left the
+    // whole suite at 194 green while the Zones tab billed
+    // `Σ row.area 1035.791` against `NIA 930.063` — slices summing to **111.37%
+    // of their own donut**. Multiplying every row area by 3.0 also stayed green.
+    //
+    // RETRACTED BY NAME: the VERIFIER entry claimed this check had been rewritten
+    // to close exactly that sabotage. It reproduced the property it replaced. The
+    // sum is the property; the inversion was never anything else.
+    //
+    // R10 AXES — this guard's falsification varies: the AREAS VECTOR (a second
+    // owner in `zone_rows`; every row scaled), the CAP (a document whose raw sum
+    // exceeds a traced floor), and the PLATE STATE (traced / open / unresolved,
+    // which decides whether the cap applies at all).
     let rows = crate::Editor::for_test(doc.clone()).zone_rows_for_test(false);
-    if let Some(row) = rows.iter().find(|r| r.pct_of_nia > 1e-9 && r.area > 1e-9) {
-        let rows_nia = row.area / row.pct_of_nia * 100.0;
-        if (rows_nia - m.net_internal_area).abs() > 1e-6 * rows_nia.max(1.0) {
+    if !rows.is_empty() {
+        let row_sum: f64 = rows.iter().map(|r| r.area).sum();
+        if (row_sum - m.net_internal_area).abs() > 1e-6 * row_sum.max(1.0) {
             v.push(format!(
-                "the Zones tab and the metrics panel disagree about NIA: \
-                 rows say {rows_nia:.3}, metrics says {:.3}",
+                "the Zones tab's rows sum to {row_sum:.3} but NIA is {:.3} — the \
+                 donut's slices do not sum to its own total",
                 m.net_internal_area
             ));
         }

@@ -65,6 +65,55 @@ run "deadspace (core-derived)" node scripts/gates/deadspace-core.mjs --max-dead 
 run "style-gate" node bench/style-gate.mjs
 run "accent-univalence" node bench/accent-univalence.mjs
 
+# ---------------------------------------------------------------------------
+# R12 — THE THREE GATES THAT GATED NOTHING.
+#
+# ladder-check, lod-sweep and export-parity existed, passed, were falsified and
+# were ledgered — and NO RUNNER INVOKED ANY OF THEM. Four documents recorded
+# `ladder-check` as PASS on a board it had never been on. They cost 51/49/54 ms
+# together; the reason they were not here was that nobody had looked, not that
+# anybody had measured a cost. Each carries its R10 axis statement — the axes its
+# falsification varies — so a future reader can see what it does and does not
+# watch without opening it.
+# ---------------------------------------------------------------------------
+
+# R10 AXES: value (perturb a TIER multiplier — the ratio leaves tolerance) ·
+# clamp (move BASE_STROKE_PX so a tier lands on MIN/MAX and the ladder flattens
+# into a plateau) · membership (delete a measured rung from TIER, or invent one
+# the spec does not measure — both directions, since it iterates the SPEC).
+run "ladder-check" node bench/ladder-check.mjs
+
+# R10 AXES: shape (a step function passes monotonicity and the endpoints; only
+# the max-jump bound separates a ramp from a threshold) · traversal (a lod() that
+# sits at the ends never crossfades) · SUBJECT EXISTENCE (symbols.ts missing is a
+# FAILURE, not a skip — the previous fixture-replay version stayed green with the
+# file deleted, which is the vacuity this rewrite closed).
+run "lod-sweep" node bench/lod-sweep.mjs
+
+# R10 AXES: source (a zone hex RESTATED in the export rather than read from ZONE)
+# · path (the palette moved to printPlan.ts and the legend stayed in pdf.ts — two
+# anchors, because one `pdf` read would be vacuous for half these checks) ·
+# code-path specificity (the groundZones assertion is anchored INSIDE the fill
+# loop; matching the file anywhere passed with the fill guard deleted) ·
+# encoding (the paper amber invariant matches #e8a13c / rgb / 0x, and
+# deliberately NOT the token names, which are references to the one source).
+run "export-parity" node bench/export-parity.mjs
+
+# R12/R8 — THE RECONCILIATION. The check that makes the three above impossible to
+# lose again: it derives every gate on disk from the FILESYSTEM and every
+# invocation from the RUNNERS' SOURCE, and reds on a gate that exists and is
+# never invoked. Without it, deleting any `run` line above silently restores the
+# exact defect this section was written to fix.
+#
+# R10 AXES: invocation (remove a runner's call — the gate is orphaned and named)
+# · population completeness (the classifier is byte-derived and was widened after
+# it missed six sheet gates, G8, G10 and deadspace.py) · board bookkeeping
+# (IDS/CMDS/TITLES lengths re-derived here, not trusted from the board's own
+# assertion) · declaration-vs-disk (a CMD naming a file that no longer exists) ·
+# exemption liveness (each exemption re-tested against the property that
+# justifies it; the quarantined gate is RUN and must still be red).
+run "gate reconciliation" node scripts/gates/reconcile.mjs
+
 # THE LYING STEP (GSELF pattern). A battery that cannot detect its own false
 # green is not a battery. This step exits 1 while printing nothing alarming; the
 # scoreboard below must report it red, and the script must exit non-zero.

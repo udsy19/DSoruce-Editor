@@ -2669,3 +2669,231 @@ carries an axis statement, and **an unverified axis statement is just a comment.
 It verifies the claim by perturbing an axis the guard says it varies — a
 claimed-but-unvaried axis would be a lie in a comment, which is worse than a
 missing guard because it reads as coverage.
+## Q5 — the battery stops being a coin flip; three orphan gates wired; R12 gets teeth
+
+Rust **194 → 195 by name** · verify-all **45 → 49** · goldens **unmoved** ·
+deadspace 9.5% ≤ 10% · reconcile 24 gates on disk, 24 invoked.
+
+### T1 · the 300 ms budget is deleted, not widened
+
+> **RETRACTED by name.** `real_building_plate_spreads_the_program`'s
+> `const BUDGET_MS: u128 = 300` with a best-of-two retry. Observed red at
+> **463 / 479 / 575 ms** under parallel-worktree load, green in isolation at
+> ~150 ms — and `.githooks/pre-commit` runs `verify-all.sh`, so it decided
+> commits. The retry did not make it deterministic; it widened the window in
+> which the machine's other tenants voted.
+
+Option (B): **assert work, not elapsed time.** `geometry` tallies its own
+vertex-weighted primitive ops into a **thread-local** meter, and the test asserts
+a band. Measured 5_347_393 / 5_382_282 / 5_349_313 across seeds 1-3 — a **0.65%
+spread**, byte-identical on repeat runs. Band `3.5 M … 7.3 M` (±~35%).
+
+Three properties, each load-bearing and each stated in the source: **thread-local**
+(`cargo test` is parallel *in one process*; a `static AtomicU64` reproduces the
+coin flip one layer down), **unconditional** (the M1 lesson — a `debug_assert`
+compiled out of release guarded nothing in the only build a user runs), and
+**two-sided** (a ceiling alone is satisfied by a dead instrument).
+
+**It is strictly TIGHTER than what it replaces, not merely deterministic.** F2
+below runs in **208 ms** — the retired 300 ms budget passes it green.
+
+| sabotage | result |
+|---|---|
+| **F2** revert conform.rs's scanline to the "obvious" per-cell `point_in_polygon` (a real optimisation, its own comment measuring 44 ms of a 326 ms generate) | **RED — 9_686_119 ops vs ceiling 7_300_000** (+81%). Elapsed 208 ms: the old budget stays green. |
+| **F3 (enabling step)** delete all 6 `tally()` calls | **RED on the FLOOR — "did only 0 ops (floor 3500000)"** |
+| **F1 (NULL, reported)** 8× `dist_to_polygon` rescan at `grid.rs`'s `slot_fits_plate` | **GREEN.** +5.3% ops (5_347_393 → 5_631_537). Attribution: 73% of the meter is `point_in_polygon`, 24% `point_segment_dist`, and the mass is in **conform**, not the packer. The old wall-clock budget would not have caught it either — this is a 5% regression, not a blowup. |
+
+Two wall-clock assertions existed in the whole Rust suite; both were in this one
+test (`t0`/`t1` of the retry) and both are gone. **`grep Instant::now crates/`
+is now empty.** The meter's own enabling step is guarded by a new test,
+`the_work_meter_is_per_thread_so_a_parallel_suite_cannot_move_it` (6000 ops on a
+worker thread must be invisible here) — Rust 195.
+
+**A second instrument finding, free:** two runs of the *identical* sabotaged tree
+reported `finished in 1.27s` and `2.96s`. 2.3× on one machine, same bytes.
+
+### T2 · R12 — the three gates that gated nothing, wired
+
+All three assert something real and cost 51/49/54 ms. Wired into
+`scripts/verify-all.sh`, each with its R10 axis statement **in the runner**, so
+the axes are readable without opening the gate.
+
+| gate | R10 axes its falsification varies | falsification run | red |
+|---|---|---|---|
+| `ladder-check` | value · clamp · **membership** | delete the `roomEnclosure` rung from `TIER` | `LADDER FAIL: TIER is missing 1 measured rung(s): roomEnclosure` |
+| `lod-sweep` | shape (anti-snap) · traversal · **subject existence** | replace `lod()` with a threshold | `FAIL primary: continuous — no step (max jump 1.0000)` ×2 bands, `LOD FAIL: 4 assertion(s)` |
+| `export-parity` | source · path · **code-path specificity** · encoding | neutralise the `groundZones` guard **inside the fill loop** | `FAIL sheet honours groundZones (circulation unfilled)` |
+
+Nothing deleted: each has a falsifiable subject and a live red.
+
+### T3 · reconcile — the check that makes an orphan impossible
+
+`scripts/gates/reconcile.mjs`. **POPULATION from the filesystem** (byte-derived
+classifier, no roster — a roster would have listed exactly the gates that were
+already orphaned); **INVOCATIONS from the runners' source**. Different artifacts,
+so this is not the D-O mutual-contamination shape. Deletion leaves both sets and
+is closed from the other side by the board-bookkeeping section.
+
+```
+F-ORPHAN  remove `run "ladder-check"` from verify-all.sh, leave the file:
+  FAIL  no orphan gates (24 gate file(s) on disk, 23 invoked)
+          bench/ladder-check.mjs — exists, passes, and NO runner invokes it
+  RECONCILE FAIL: 1 check(s)                                        exit 1
+S1  drop a TITLE      -> FAIL board arrays agree (13 ids · 13 cmds · 12 titles)
+S2  quarantine green  -> FAIL quarantine still red: composition.mjs (exit 0)
+S3  strip deadspace.py's UNTRUSTED banner -> FAIL exemption still justified
+```
+
+**S4, the enabling step, and it fired.** The first classifier matched
+`process.exit(1)` literally and **missed six sheet gates, G8, G10 and
+`deadspace.py`** — every one a real gate with a different exit idiom. Orphaning
+SG3 with the classifier **narrow** gives `ok no orphan gates (16 on disk, all
+invoked)` and `reconcile OK`: **green, with an orphan sitting in the tree.**
+Population completeness is the whole check; the widening is not tidying.
+
+**FALSIFIED — the brief undercounted its own defect.** Three orphans were
+reported; the gate found **five**, plus itself. `bench/assert-build.mjs` and
+`scripts/gates/composition.mjs` were never named. E7's lesson, again: a gate
+written before the fix audits the report.
+
+Two shapes, both two-sided, neither a skip:
+- **NOT_A_BATTERY_GATE** — `assert-build.mjs` (needs a live URL; probe = it still
+  requires `argv[2]`) and `deadspace.py` (**RETRACTED instrument** — its own
+  header reads *UNTRUSTED — DO NOT QUOTE THIS SCRIPT'S NUMBERS*; superseded by
+  `deadspace-core.mjs`; probe = the banner is still there, so a repair forces a
+  decision). **Deletion candidate**: every figure it produced is void.
+- **QUARANTINED** — `composition.mjs` is a real gate and is **RED at HEAD: 10
+  violations across all 5 fixtures** (desk runs of 7-8 rows against the
+  reference's 5; 2.17-3.26 conf rooms per 100 open seats against 8.6). A
+  generator gap, not a gate fault. Wiring it would block every commit on it;
+  deleting it would throw away a measured contract. So reconcile **runs it and
+  asserts it still fails** — the day it goes green, reconcile reds and demands it
+  be wired. *A quarantine nobody re-measures is an orphan with paperwork.*
+
+**Measured, and it shrank the design:** the four exemptions first written for
+`bench/run.mjs`, `runQto.mjs`, `runSearch.mjs` and `fixtures/generate.mjs` were
+**all unnecessary** — none carries a verdict-exit, so the classifier never claims
+them. Deleted rather than kept (no-bloat).
+
+### T4 · four false PASS claims, retracted by name
+
+| document | claimed |
+|---|---|
+| `docs/design/phase1-exit.md:25` | `ladder-check \| PASS — 6 tiers within 0.05%…`, in a **Boards** table beside `cargo test` |
+| `docs/design/phase1-merge-state.md:23` | `style-gate, ladder-check, lod-sweep, export-parity, accent-univalence \| PASS`, under *"Every board green"* |
+| `docs/design/phase2-exit.md:29` | the same five `\| PASS` in the **Phase 2 exit** table |
+| `docs/design/merge-audit.md:192` | `bench/*.mjs gates \| 10 (5 **standing**: style-gate, ladder-check, lod-sweep, export-parity, assert-build)` |
+
+The readings were real; the **standing** was not. Corrected in place. The last is
+its own species: *"standing"* is a claim about a runner and the audit derived it
+from `ls` — of those five, only `style-gate` was invoked by anything.
+
+# BELIEF VERDICT — **NOT BELIEVED**, one survivor, and it was the guard rebuilt to catch it
+
+Eleven sabotages re-run against the repaired board. **Ten red as designed** —
+including A3 (`let buried = false`), last round's survivor, which now reds.
+
+## The survivor — A2, and the rewrite reproduced the defect it replaced
+
+Restoring the second NIA owner in `zone_rows` left `cargo test` at **194** and
+`verify-all --full` at **45/45 green** while the Zones tab billed
+**Σ row.area 1035.791 against NIA 930.063 — Σ pct_of_nia 111.37%.** A donut whose
+slices sum to 111% of its own total.
+
+**The check was a value compared against itself.** It recovered NIA as
+`row.area / row.pct_of_nia * 100`, and `pct_of_nia := row.area / nia * 100` — so
+the expression is **identically `nia` for any areas vector whatsoever.** Falsified
+to the limit: multiplying every row area by **3.0** also left the suite green.
+
+> **RETRACTED BY NAME (R9).** The VERIFIER entry states this check was rewritten
+> *because* the old one "left the whole suite green" under this sabotage, and that
+> *"a check that cannot see the divergence it is named for is not conservative, it
+> is absent."* The rewrite reproduced the property it replaced, wearing a comment
+> claiming the opposite. **One round later, same finding.**
+
+**Fixed:** assert `Σ row.area == nia` directly. The sum *is* the property; the
+inversion was never anything else. Falsified — rows × 3.0 →
+`the Zones tab's rows sum to 2790.188 but NIA is 930.063`. Its R10 axes are
+stated: areas vector · cap · plate state.
+
+**Instrument note from the adversary:** its first A2 probe ran both builds through
+one shared `CARGO_TARGET_DIR` and returned identical numbers for both. That
+identity was **the instrument, not the subject**; it re-ran with isolated target
+dirs before quoting anything.
+
+## R10 — every axis claim tested HELD
+
+deadspace-core MEMBERSHIP (two-sided) · wallnet ORIENTATION (each case
+independently sufficient) · style-gate PATH (move/fork/rename, three diagnostics) ·
+mutate() reach (ALL-USABLE **143**, CAPPED-BASIS **201**, all three plate states) ·
+statsPanel plate STATE · mutatorGuards VALUE (`add_wall(Infinity) returned Ok`) ·
+capacity battery cluster rhythm. **No claimed-but-unvaried axis exists.** The
+survivor was not an axis lie — it was an assertion that cannot fail on any axis.
+
+## NEW — `ladder-check`'s ground truth is a hand-copy of the spec
+
+`MEASURED_PT` is restated in the gate; the gate **never opens
+`qbiq-plan-style-spec.json`**. Deleting the room-enclosure tier **from the spec**
+leaves it `ladder OK — 6 measured tiers` exit 0 while the spec measures 5. V3 moved
+the anchor from the table to a *copy of* the spec. **One side anchored to a copy of
+ground truth is not anchored to ground truth.** Open.
+
+## R11 — no predicted-delta check existed; one now does
+
+`git merge` on an already-integrated tree: **exit 0, "Already up to date.", empty
+diff, clean status** — indistinguishable from a full apply. Zero assertions on
+test count, file set or battery delta existed anywhere. Constructed: no-op →
+**FAIL, 0 of 9 owed, all nine named**; real → **PASS, 194**.
+
+**Used for this integration.** Declared before merging: Rust 194 → **195**,
+battery 45 → **49**, one new file. Verified after: **195 / 49 / `reconcile.mjs`
+present.** The cherry-pick conflicted only on the ledger (both sides appended) and
+the generated wasm (rebuilt from merged source).
+
+## R12 — the board could not detect an orphan; now it can
+
+Removing `accent-univalence` from `verify-all.sh` with the file on disk took the
+denominator **45 → 44** and **nothing objected.** `scripts/gates/reconcile.mjs`
+derives the population from the **filesystem** and the invocations from the
+**runners' source** — different artifacts, so not the mutual-contamination shape.
+
+**Its enabling-step sabotage fired:** the first classifier matched `process.exit(1)`
+literally and missed six sheet gates, G8, G10 and `deadspace.py` — orphaning SG3
+under it reported `no orphan gates (16 on disk, all invoked)`. **Green with an
+orphan in the tree.**
+
+**The gate audited its own brief.** Three orphans were reported; it found **five
+plus itself** — `bench/assert-build.mjs` and `scripts/gates/composition.mjs` were
+never named. `composition.mjs` is **QUARANTINED**: a real gate, red at HEAD
+(10 violations), and reconcile now *runs it and asserts it still fails* — the day
+it goes green, reconcile reds and demands wiring. `deadspace.py`, whose own header
+reads `UNTRUSTED — DO NOT QUOTE THIS SCRIPT'S NUMBERS`, is a **deletion candidate**.
+
+## The battery stops being a coin flip
+
+`real_building_plate_spreads_the_program`'s wall-clock 300 ms budget failed at
+**396 / 304 / 384 ms** in one afternoon, and decides commits. Replaced by a
+**thread-local, vertex-weighted work meter** in `geometry.rs`: seeds 1/2/3 measure
+**5 347 393 / 5 382 282 / 5 349 313** — 0.65% spread, byte-identical on repeat.
+
+Thread-local because `cargo test` is parallel *in one process* and a global counter
+reproduces the non-determinism one layer down. **Unconditional, not
+`#[cfg(test)]`** — the M1 lesson. **Two-sided** — a ceiling alone is satisfied by a
+dead instrument, and the enabling-step sabotage (delete all six `tally()` calls)
+reds on the **floor**.
+
+**The new guard is strictly tighter than the one it replaced:** reverting
+`conform.rs`'s scanline reds at **+81% ops** while running in 208 ms, which the
+retired 300 ms budget passed green. **Null reported:** an 8× rescan at
+`slot_fits_plate` moved it only +5.3% and would not have been caught either way.
+
+Wall-clock assertions remaining in the Rust suite: **zero**.
+
+## Four false PASS claims, retracted by name
+
+`docs/design/phase1-exit.md:25` · `phase1-merge-state.md:23` · `phase2-exit.md:29` ·
+`merge-audit.md:192`. The readings were real; **the standing was not.** The fourth
+is its own species — "standing" is a claim about a runner, and the audit derived it
+from `ls`.
+
+**Board: Rust 195 · battery 49/49 · `VERIFY_SELFTEST=1` still reports 1 of 50 red.**

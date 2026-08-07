@@ -2,6 +2,76 @@
 //! owns pixels-per-meter scaling. Kept free of any browser/JS dependency.
 
 use serde::{Deserialize, Serialize};
+use std::cell::Cell;
+
+// ---------------------------------------------------------------------------
+// THE WORK METER — a deterministic, load-independent complexity proxy.
+//
+// WHY IT EXISTS. `layout::tests::real_building_plate_spreads_the_program` used
+// to guard against algorithmic blowup (the old bbox packer "took seconds here")
+// with a 300 ms WALL-CLOCK budget. That assertion decides commits —
+// `.githooks/pre-commit` runs `verify-all.sh`, which runs the Rust suite — and
+// it failed at 463 ms, 479 ms and 575 ms under parallel-worktree load while
+// passing in isolation at ~150 ms. **A commit-deciding check whose verdict
+// depends on what else the machine is doing is a coin flip.**
+//
+// Elapsed time is not the property; WORK is. So the primitives below tally the
+// work they actually do, and the budget is asserted against that count. The
+// count is a pure function of (plate, program, seed): identical on an idle
+// machine and on one running twelve worktrees.
+//
+// PROPERTIES THIS DESIGN BUYS, each deliberate:
+//
+//   * **THREAD-LOCAL, not global.** `cargo test` runs tests in parallel threads
+//     of ONE process. A `static AtomicU64` would be shared, and every test's
+//     reading would depend on which other tests happened to be running — the
+//     exact non-determinism being removed, reintroduced one layer down.
+//   * **UNCONDITIONAL, not `#[cfg(test)]`.** The M1 lesson, in the ledger: a
+//     `debug_assert` guarding an impossible metric was compiled out of the
+//     release wasm, so the one guard at the source of the defect did not exist
+//     in the only build a user runs. A meter that exists only under `cfg(test)`
+//     measures a different program from the one that ships. Cost is one
+//     `Cell<u64>` add per primitive call; these functions already do more
+//     arithmetic than that.
+//   * **VERTEX-WEIGHTED, not call-counted.** Polygon predicates tally
+//     `poly.len()`, so a blowup that keeps the call count flat while the
+//     polygons grow is still visible.
+//
+// It is NOT a `LayoutDiag` field, and must not become one: `layout::diag` is the
+// generator's own account of what it DECIDED, which
+// `.claude/rules/gate-independence.md` forbids a check from consuming. This
+// counts what the primitive layer BENEATH the generator was actually asked to
+// compute — an instrument, not a claim — and the test that reads it asserts a
+// FLOOR as well as a ceiling, so a meter that quietly stopped counting fails as
+// loudly as a generator that blew up.
+// ---------------------------------------------------------------------------
+
+thread_local! {
+    static WORK_OPS: Cell<u64> = const { Cell::new(0) };
+}
+
+#[inline(always)]
+fn tally(n: usize) {
+    WORK_OPS.with(|c| c.set(c.get().wrapping_add(n as u64)));
+}
+
+/// Zero this thread's work meter. Call immediately before the operation whose
+/// cost you are bounding.
+// `mod geometry` is private in lib.rs, so the plain lib build cannot see the
+// only callers (which are `#[cfg(test)]`) and lints these two as dead. The
+// `tally()` calls in the primitives below are NOT conditional and are what
+// actually ships — this attribute silences a visibility artefact, not a guard.
+#[allow(dead_code)]
+pub fn reset_work_meter() {
+    WORK_OPS.with(|c| c.set(0));
+}
+
+/// Primitive-geometry operations tallied on this thread since the last
+/// [`reset_work_meter`]. See the module comment above for what counts.
+#[allow(dead_code)]
+pub fn work_ops() -> u64 {
+    WORK_OPS.with(|c| c.get())
+}
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct Point {
@@ -39,6 +109,7 @@ pub fn closest_point_on_segment(p: Point, a: Point, b: Point) -> Point {
 /// Shortest distance from point `p` to segment `ab`. Used for wall hit-testing
 /// and slot-clearance checks (`rect_segment_dist`).
 pub fn point_segment_dist(p: Point, a: Point, b: Point) -> f64 {
+    tally(1);
     p.dist(&closest_point_on_segment(p, a, b))
 }
 
@@ -55,6 +126,7 @@ pub const LOOP_SNAP_TOL: f64 = 1e-2;
 
 /// Absolute (unsigned) shoelace area of a polygon, m². 0 for < 3 vertices.
 pub fn polygon_area(poly: &[Point]) -> f64 {
+    tally(poly.len());
     if poly.len() < 3 {
         return 0.0;
     }
@@ -74,6 +146,7 @@ pub fn polygon_area(poly: &[Point]) -> f64 {
 /// a point well inside is far from the boundary). Used to decide whether a wall
 /// lies on the plate's edge.
 pub fn dist_to_polygon(p: Point, poly: &[Point]) -> f64 {
+    tally(poly.len());
     let mut best = f64::MAX;
     for i in 0..poly.len() {
         let (a, b) = (poly[i], poly[(i + 1) % poly.len()]);
@@ -93,6 +166,7 @@ pub fn dist_to_polygon(p: Point, poly: &[Point]) -> f64 {
 }
 
 pub fn point_in_polygon(px: f64, py: f64, poly: &[Point]) -> bool {
+    tally(poly.len());
     if poly.len() < 3 {
         return false;
     }
@@ -129,6 +203,7 @@ fn segments_properly_cross(a1: Point, a2: Point, b1: Point, b2: Point) -> bool {
 
 /// Shortest distance between two segments (0 when they touch or cross).
 pub fn segment_segment_dist(a1: Point, a2: Point, b1: Point, b2: Point) -> f64 {
+    tally(1);
     if segments_properly_cross(a1, a2, b1, b2) {
         return 0.0;
     }
@@ -174,6 +249,7 @@ pub fn rect_segment_dist(cx: f64, cy: f64, w: f64, h: f64, a: Point, b: Point) -
 /// follows an angled/stepped wall exactly (no staircase). `rect_polygon_clip_area`
 /// is this + [`polygon_area`].
 pub fn clip_rect_to_polygon(poly: &[Point], x0: f64, y0: f64, x1: f64, y1: f64) -> Vec<Point> {
+    tally(poly.len());
     let inside = |pass: usize, p: Point| match pass {
         0 => p.x >= x0,
         1 => p.x <= x1,
@@ -532,6 +608,50 @@ mod tests {
             .iter()
             .map(|&(x, y)| Point::new(x, y))
             .collect()
+    }
+
+    /// THE ENABLING STEP for the work meter, guarded rather than assumed.
+    ///
+    /// `layout::tests::real_building_plate_spreads_the_program` asserts a work
+    /// BUDGET where it used to assert a wall-clock budget, and the entire reason
+    /// that is an improvement is that the count does not depend on what else is
+    /// running. `cargo test` runs its tests in parallel threads of ONE process,
+    /// so a global counter would have reproduced the coin flip exactly — same
+    /// non-determinism, one layer down, and every existing test would still have
+    /// passed. Nothing else in the tree would notice that change.
+    ///
+    /// So the isolation is measured: work done on another thread must be
+    /// invisible here, and this thread's own tally must be exactly what this
+    /// thread did.
+    #[test]
+    fn the_work_meter_is_per_thread_so_a_parallel_suite_cannot_move_it() {
+        let poly = l_poly();
+        reset_work_meter();
+        point_in_polygon(5.0, 5.0, &poly); // 6 vertices
+        let mine_before = work_ops();
+        assert_eq!(mine_before, poly.len() as u64, "one 6-gon test should tally 6");
+
+        // A second thread doing a great deal of geometry.
+        let handle = std::thread::spawn(move || {
+            let p = l_poly();
+            reset_work_meter();
+            for i in 0..1000 {
+                point_in_polygon(i as f64 * 0.01, 5.0, &p);
+            }
+            work_ops()
+        });
+        let theirs = handle.join().expect("worker thread panicked");
+        assert_eq!(theirs, 6000, "the worker's own meter counts the worker's work");
+        assert_eq!(
+            work_ops(),
+            mine_before,
+            "another thread's 6000 ops leaked into this thread's meter — the meter is \
+             shared, and every work budget asserted against it is a coin flip again"
+        );
+
+        // And it is a meter, not a monotonic counter: reset means reset.
+        reset_work_meter();
+        assert_eq!(work_ops(), 0);
     }
 
     #[test]

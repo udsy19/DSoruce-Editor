@@ -194,6 +194,15 @@ Other suites:
 
 **No branch's suite is a superset of another's.** The merged tree owes all three.
 
+> **RETRACTED (R12) — "5 standing" counted files, not invocations.** Of the five
+> named, only `style-gate` was invoked by any runner; `ladder-check`, `lod-sweep`
+> and `export-parity` were invoked by none, and `assert-build` is a manual
+> preflight that takes a URL and cannot stand on a battery at all. "Standing" is a
+> claim about a runner, and the audit derived it from `ls`. The three are now
+> wired into `scripts/verify-all.sh`; `assert-build` is exempted by name in
+> `scripts/gates/reconcile.mjs`, which fails if it ever stops requiring its URL.
+
+
 ---
 
 ## 5. Palette reconciliation — a conflict, not a reconciliation
