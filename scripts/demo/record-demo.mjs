@@ -19,7 +19,7 @@
 //   7  Results → the exported files, revealed on screen as a rendered listing
 //
 // Everything lands in out/demo/ (gitignored):
-//   out/demo/dsource-demo.webm   the raw Playwright recording (1920×1080)
+//   out/demo/dsource-demo.webm   the raw Playwright recording (--res hd|qhd|uhd, default qhd)
 //   out/demo/dsource-demo.mp4    H.264 transcode (ffmpeg, when available)
 //   out/demo/exports/            the artifacts the app actually produced
 //   out/demo/results.html        the end-card listing (also filmed)
@@ -72,8 +72,15 @@ const OUT = path.join(REPO, 'out/demo')
 const EXPORTS = path.join(OUT, 'exports')
 const VIDEO_DIR = path.join(OUT, '.video')
 
-const W = 1920
-const H = 1080
+// Capture resolution. QHD by default: the editor is an instrument panel full of
+// 11-13px type and hairline linework, and at 1080p the room labels and the
+// metric rail turn to mush the moment the video is scaled or re-encoded.
+// Everything downstream (the frame-bounds guard, the ffprobe assertion, the mp4
+// transcode) reads these two constants — never hard-code the numbers again.
+const RES = { hd: [1920, 1080], qhd: [2560, 1440], uhd: [3840, 2160] }
+const RES_KEY = arg('--res', 'qhd')
+if (!RES[RES_KEY]) throw new Error(`--res must be one of ${Object.keys(RES).join(' | ')}`)
+const [W, H] = RES[RES_KEY]
 
 // ---------------------------------------------------------------------------
 // checks + loud failures
@@ -231,7 +238,7 @@ async function demoClick(page, sel, { timeout = 20000, what = '', settle = 260 }
   const x = box.x + box.width / 2
   const y = box.y + box.height / 2
   if (x < 0 || y < 0 || x > W || y > H) {
-    throw new StepError(`\`${sel}\` sits outside the 1920×1080 frame at (${x | 0},${y | 0})`)
+    throw new StepError(`\`${sel}\` sits outside the ${W}×${H} frame at (${x | 0},${y | 0})`)
   }
   await glide(page, x, y)
   await beat(page, settle)
@@ -730,7 +737,10 @@ if (haveFfmpeg) {
     'stream=codec_name,width,height:format=duration', '-of', 'default=nw=1', videoPath], { encoding: 'utf8' })
   const dur = Number(probe.match(/duration=([\d.]+)/)?.[1] ?? 0)
   console.log(probe.trim().split('\n').map((l) => `  ${l}`).join('\n'))
-  check(/width=1920/.test(probe) && /height=1080/.test(probe), 'the recording is 1920×1080')
+  check(
+    new RegExp(`width=${W}\\b`).test(probe) && new RegExp(`height=${H}\\b`).test(probe),
+    `the recording is ${W}×${H}`,
+  )
   check(dur > 45, `the recording runs ${dur.toFixed(1)} s`)
   const dec = execFileSync('ffmpeg', ['-v', 'error', '-i', videoPath, '-f', 'null', '-'], {
     encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
@@ -740,8 +750,12 @@ if (haveFfmpeg) {
   if (WANT_MP4) {
     mp4Path = path.join(OUT, 'dsource-demo.mp4')
     fs.rmSync(mp4Path, { force: true })
-    execFileSync('ffmpeg', ['-v', 'error', '-y', '-i', videoPath, '-vf', 'scale=1920:1080:flags=lanczos,fps=30',
-      '-c:v', 'libx264', '-preset', 'slow', '-crf', '20', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', mp4Path],
+    // Transcode at the CAPTURE resolution — scaling to a fixed 1080p here threw
+    // away exactly the detail the higher capture was for. crf 18 (was 20)
+    // because hairline linework and 11px mono are what this film is of.
+    execFileSync('ffmpeg', ['-v', 'error', '-y', '-i', videoPath,
+      '-vf', `scale=${W}:${H}:flags=lanczos,fps=30`,
+      '-c:v', 'libx264', '-preset', 'slow', '-crf', '18', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', mp4Path],
       { stdio: ['ignore', 'pipe', 'pipe'] })
     const mdec = execFileSync('ffmpeg', ['-v', 'error', '-i', mp4Path, '-f', 'null', '-'], {
       encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
