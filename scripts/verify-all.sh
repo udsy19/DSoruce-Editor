@@ -141,6 +141,22 @@ run "export-parity" node bench/export-parity.mjs
 # assertion) · declaration-vs-disk (a CMD naming a file that no longer exists) ·
 # exemption liveness (each exemption re-tested against the property that
 # justifies it; the quarantined gate is RUN and must still be red).
+# R17 AXES: language (a recompute added on EITHER side of the wasm boundary —
+# the R14 census used rustc and could not see web/) · form (an inline `w * h` or
+# a hand-written shoelace that names no symbol; a `grep zoneArea` census
+# reported seven owners where this instrument finds ten) · register drift (a
+# classified site deleted, or a second site added inside an already-classified
+# function) · shape (an m2-returning helper re-exported from util/zoneGeom.ts).
+# Its own detector had a false NEGATIVE — an inline `#[cfg(test)]` made a
+# backward scan swallow two production sites — and grew rather than gaining an
+# exemption; see rustTestRanges.
+# R22 AXES: the generated TS view of the zone domain must match what the core
+# ANSWERS (not what its source looks like). Staleness here is the authored-domain
+# defect wearing a generator, so it is a build failure, not a runtime hope.
+run "zone-domain generated view" node scripts/gen-zone-domain.mjs --check
+
+run "area-census (one area, both languages)" node scripts/gates/area-census.mjs
+
 run "gate reconciliation" node scripts/gates/reconcile.mjs
 
 # THE LYING STEP (GSELF pattern). A battery that cannot detect its own false

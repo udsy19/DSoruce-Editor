@@ -15,6 +15,14 @@
 //            needs affordances a presentation page does not.
 
 import type { ZoneType } from '../types/doc'
+// EXTENSION-FUL ON PURPOSE. `symbols.test.mjs` imports `symbols.ts` directly and
+// lets Node strip the types — no bundler — and `symbols.ts` reaches this file.
+// A TYPE-only import is erased by stripping; a VALUE import is not, so an
+// extensionless one leaves Node resolving `../types/doc` at runtime and the test
+// dies with ERR_MODULE_NOT_FOUND. That is exactly what this line did when it was
+// added: `pnpm typecheck` was green and the node battery was red, because tsc
+// cannot see a module-resolution failure that only exists outside the bundler.
+import { GROUND_ZONES } from '../types/doc.ts'
 
 export type PlanProfile = 'editor' | 'paper'
 
@@ -674,7 +682,7 @@ const PAPER: PlanStyle = {
   labelPrimary: { color: INK, sizePx: 6, weight: 500, upper: true },
   labelSecondary: { color: '#5f6771', sizePx: 5, weight: 400, upper: true },
   labelPolicy: { names: 'service', metrics: false, pillAtRest: false },
-  groundZones: ['Circulation', 'Unassigned'],
+  groundZones: [...GROUND_ZONES],
   groundTint: null, // paper: corridors ARE the paper
   unassignedHatch: null, // paper: and so is wasted floor — the sheet never tells
   unassignedOutline: null,

@@ -998,9 +998,10 @@ impl WalkClassifier {
         let program: Vec<&Zone> = doc
             .zones
             .iter()
-            .filter(|z| {
-                !matches!(z.zone_type, ZoneType::Circulation | ZoneType::Unassigned)
-            })
+            // DERIVED (`is_ground_zone`), not a fourth copy of the same two
+            // names: program zones block, ground does not, and "which types are
+            // ground" is answered by the fold in one place.
+            .filter(|z| !crate::is_ground_zone(z.zone_type))
             .collect();
         let grid = circulation::walkable_grid(doc, &cfg, &program)?;
         let n = grid.cols * grid.rows;

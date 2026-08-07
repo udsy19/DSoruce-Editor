@@ -1,7 +1,11 @@
 // Regression cover for the architectural drawing set (sheetSet.ts).
 //
 //   node scripts/drawing-set.test.mjs                # check against the baseline
-//   node scripts/drawing-set.test.mjs --update       # re-record it (LOOK FIRST)
+//   node scripts/drawing-set.test.mjs --update --why '<attribution>'
+//                                                    # re-record it (LOOK FIRST).
+//                                                    # --why is REQUIRED: an
+//                                                    # unattributed digest is a
+//                                                    # claim nobody can audit.
 //   node scripts/drawing-set.test.mjs --dump <dir>   # write every sheet's digest
 //                                                    # rows, to diff two versions
 //
@@ -51,11 +55,55 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { REPO } from './lib/demo-doc.mjs'
+import { groundZoneTypes } from './gates/sheets/lib/sheetlib.mjs'
 import { renderSheetSet, SHEET_META } from './render-sheets.mjs'
 
 const BASELINE = path.join(REPO, 'scripts/fixtures/drawing-set.baseline.json')
 const CASES = ['seeded', 'dwg']
 const UPDATE = process.argv.includes('--update')
+/**
+ * **A DIGEST IS A CLAIM ABOUT WHAT SHOULD PRINT, AND A CLAIM CARRIES ITS
+ * PROVENANCE.** `--update` alone is refused; every re-record names the fix or
+ * the ruling that moved the ink, and the reason is stamped onto each sheet whose
+ * md5 actually changed. Sheets that did not move keep the reason they already
+ * had.
+ *
+ * This exists because of what re-recording nearly did here. Nineteen failures
+ * stood at base; twelve of them were the test being WRONG (it demanded labels
+ * the `isGroundZone` fold forbids) and the rest traced to landed work. A bare
+ * `--update` would have frozen all nineteen into the expectation as one
+ * undifferentiated blob — laundering a stale predicate into ground truth, and
+ * silently blessing a document that had grown a room. Attribution before
+ * expectation.
+ */
+const WHY = (() => {
+  const i = process.argv.indexOf('--why')
+  return i > 0 && process.argv[i + 1] ? process.argv[i + 1] : null
+})()
+/**
+ * `--why-sheet "<case>:<n>=<reason>"`, repeatable — a PER-SHEET attribution that
+ * overrides `--why` for that one digest.
+ *
+ * One reason for a whole re-record is a summary, and a summary is where two
+ * causes become one blur. This round's nine moved digests had exactly two: seven
+ * from work landed across 73 commits, and two (`seeded` A.01 + A.09) from this
+ * round's area fix, which changed one text op each — `668.5 m²` to `550.6 m²`.
+ * Recording both under one sentence would lose precisely the distinction the
+ * attribution exists to preserve.
+ */
+const WHY_SHEET = (() => {
+  const m = new Map()
+  for (let i = 0; i < process.argv.length; i++) {
+    if (process.argv[i] !== '--why-sheet') continue
+    const spec = process.argv[i + 1] ?? ''
+    const eq = spec.indexOf('=')
+    if (eq <= 0) continue
+    const key = spec.slice(0, eq).trim()
+    const why = spec.slice(eq + 1).trim()
+    if (key && why) m.set(key, why)
+  }
+  return m
+})()
 const DUMP = process.argv.includes('--dump') ? process.argv[process.argv.indexOf('--dump') + 1] : null
 
 // A3 landscape sheet geometry — pdf.ts PAGE_W/PAGE_H, sheet.ts MARGIN/RES/
@@ -378,7 +426,24 @@ function displayGroups(zones) {
  * core state, the label positions from the PDF bytes.
  */
 function checkRoomLabels(caseName, sheetNo, page, state, map) {
-  const zones = (state.zones ?? []).filter((z) => z.zone_type !== 'Circulation')
+  // GROUND IS ONE CLASS, AND THIS FILE HELD THE LAST HAND-WRITTEN COPY.
+  //
+  // This read `z.zone_type !== 'Circulation'` — one type, spelled out. Ruling
+  // `7e394eb` ("Ground is one class: isGroundZone, and the ~30 sites that meant
+  // it") folded `Unassigned` in with `Circulation`, the sheets correctly stopped
+  // naming it, and this predicate was not among the ~30 sites. So the test went
+  // on demanding six labels the fold forbids: `dwg A.01`/`A.02`
+  // `'UNASSIGNED (1)'…'(6)' is drawn 0x`, twelve failures, **the test wrong and
+  // the drawing right**.
+  //
+  // It is not re-spelled here with the second name added — that would move the
+  // same defect one release along. `groundZoneTypes()` PARSES the set out of
+  // `lib.rs::published_zone_type`, the single place the fold happens, and
+  // `sheetlib.mjs` already carried it for the SG gates. The fix existed; it had
+  // simply never reached this file, because this file was in no board's
+  // population (R12, amended).
+  const ground = groundZoneTypes()
+  const zones = (state.zones ?? []).filter((z) => !ground.has(z.zone_type))
   const where = `${caseName} sheet ${sheetNo}`
   let displaced = 0
   const led = []
@@ -553,6 +618,16 @@ async function runCase(name) {
       want.sheets.length === digest.length,
       `${name}: baseline has ${want.sheets.length} sheets, this render has ${digest.length}`,
     )
+    // EVERY RECORDED DIGEST NAMES WHAT MOVED IT. A baseline row without a
+    // `why` is an expectation nobody can audit — and re-recording is exactly
+    // where an unexamined change becomes ground truth. Checked on the RECORDED
+    // side, so a bare `--update` that dropped the reasons is red on the next
+    // run rather than quietly authoritative.
+    ok(
+      want.sheets.every((w) => typeof w.why === 'string' && w.why.trim().length >= 12),
+      `${name}: ${want.sheets.filter((w) => !w?.why).length} baseline sheet row(s) carry no attribution — ` +
+        're-record with --why "<what moved the ink>"',
+    )
     for (const d of digest) {
       const w = want.sheets[d.sheet - 1]
       if (!ok(w != null, `${name} sheet ${d.sheet}: the baseline has no row for this sheet`)) continue
@@ -576,9 +651,50 @@ async function runCase(name) {
 }
 
 if (UPDATE) {
+  if (!WHY || WHY.trim().length < 12) {
+    console.error(
+      'REFUSED: --update needs --why "<what moved the ink>".\n' +
+        '  A digest is a claim about what SHOULD print. Re-recording without saying\n' +
+        '  which fix or ruling moved it turns an unexamined change into ground truth,\n' +
+        '  which is how a frozen expectation launders a defect.',
+    )
+    process.exit(2)
+  }
+  // Stamp the reason on the sheets that MOVED; leave the rest with theirs, so a
+  // baseline accumulates a per-sheet history instead of one global timestamp.
+  let moved = 0
+  for (const [name, c] of Object.entries(fresh.cases)) {
+    const before = recorded?.cases?.[name]?.sheets ?? []
+    for (const d of c.sheets) {
+      const prev = before[d.sheet - 1]
+      if (prev && prev.md5 === d.md5) {
+        if (prev.why) d.why = prev.why
+        continue
+      }
+      d.why = WHY_SHEET.get(`${name}:${d.sheet}`) ?? WHY.trim()
+      moved++
+    }
+  }
+  // A --why-sheet naming a digest that did NOT move is an attribution for
+  // something that did not happen. Loud, not silent.
+  const applied = new Set(
+    Object.entries(fresh.cases).flatMap(([n, c]) => c.sheets.map((d) => `${n}:${d.sheet}`)),
+  )
+  const stale = [...WHY_SHEET.keys()].filter((k) => {
+    const [n, sh] = k.split(':')
+    const row = fresh.cases[n]?.sheets?.[Number(sh) - 1]
+    return !applied.has(k) || row?.why !== WHY_SHEET.get(k)
+  })
+  if (stale.length > 0) {
+    console.error(`REFUSED: --why-sheet given for ${stale.join(', ')}, but those digests did not move.`)
+    process.exit(2)
+  }
   fs.mkdirSync(path.dirname(BASELINE), { recursive: true })
   fs.writeFileSync(BASELINE, JSON.stringify(fresh, null, 2) + '\n')
-  console.log(`recorded ${path.relative(REPO, BASELINE)} — ${checks} checks passed on the way`)
+  console.log(
+    `recorded ${path.relative(REPO, BASELINE)} — ${moved} sheet digest(s) moved and were attributed ` +
+      `to "${WHY.trim()}"; ${checks} checks passed on the way`,
+  )
 } else if (failures.length > 0) {
   for (const f of failures) console.error(`  FAIL ${f}`)
   // The scoreboard line keeps its exact shape whatever the colour — SG5 reads it.

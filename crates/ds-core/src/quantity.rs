@@ -536,7 +536,7 @@ pub fn quantities(doc: &Document) -> Quantities {
                 area_m2,
                 area_sqf: area_m2 * SQF_PER_M2,
                 headcount: headcount(z, &doc.components),
-                capacity: z.capacity(),
+                capacity: z.capacity_from_area(area_m2),
             }
         })
         .collect();

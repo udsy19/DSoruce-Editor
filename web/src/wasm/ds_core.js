@@ -278,6 +278,43 @@ export class Editor {
         }
     }
     /**
+     * **THE ground set, as a VALUE across the boundary — not a shape to parse.**
+     *
+     * Every consumer of "which zone types are ground?" used to recover it by
+     * regexing `published_zone_type` for `X => ZoneType::Circulation` match
+     * arms. The adversary defeated that in two ways, both with the semantics
+     * unchanged:
+     *
+     * * **an `if`/`return` instead of a match arm** — `if t == Core { return
+     *   Circulation; }` folds `Core` into ground and the regex sees nothing.
+     *   The whole 50-step battery stayed green with the ground set silently
+     *   one type larger.
+     * * **a prose comment inside the function body** — this repo's own
+     *   convention is heavy inline explanation, and a comment merely NAMING a
+     *   type beside the arrow (`// we deliberately do NOT write
+     *   ZoneType::Meeting => ZoneType::Circulation`) put `Meeting` into the
+     *   parsed set. Size 3 passed the parser's `size < 2` non-vacuity guard,
+     *   because that guard checks the parse's SIZE, not its CORRECTNESS.
+     *
+     * Both are one class: **a form-specific reader standing in for a semantic
+     * property.** The same class produced the `.area()` census, the three TS
+     * spellings, and the `pub fn ` impl-block scan. Grepping for the shape of a
+     * definition is defeated by rewriting the shape; asking for the VALUE is
+     * not. CLAUDE.md prescribes exactly this — *"prefer exporting the value
+     * across the wasm boundary"* — and this is that export.
+     *
+     * Computed by iterating every `ZoneType` through [`is_ground_zone`], so it
+     * is the predicate's own answer rather than a second list to keep in step.
+     * @returns {any}
+     */
+    static ground_zone_types() {
+        const ret = wasm.editor_ground_zone_types();
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
      * **What the last `generate` decided**, for the debug overlay — see
      * `layout/diag.rs`. Empty until `generate` has run in this session.
      *
@@ -722,6 +759,19 @@ export class Editor {
      */
     zone_stats_published() {
         const ret = wasm.editor_zone_stats_published(this.__wbg_ptr);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
+     * **The type space itself, published** — `ZoneType::ALL`, so no consumer
+     * has to author a list of variants to iterate. Three did, and a ninth
+     * variant was invisible to all three at once.
+     * @returns {any}
+     */
+    static zone_type_names() {
+        const ret = wasm.editor_zone_type_names();
         if (ret[2]) {
             throw takeFromExternrefTable0(ret[1]);
         }

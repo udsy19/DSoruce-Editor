@@ -625,7 +625,7 @@ pub fn generate(
                 .zones
                 .iter()
                 .filter(|z| matches!(z.zone_type, ZoneType::Meeting | ZoneType::Collaboration))
-                .map(|z| z.capacity() as f64)
+                .map(|z| z.capacity_from_area(z.area()) as f64)
                 .sum();
             let seat_cap = (plate_area / fill_density_floor(program.strategy)).floor();
             // Actual desks already down (the per-region pass AND its top-up, which

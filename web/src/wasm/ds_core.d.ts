@@ -111,6 +111,36 @@ export class Editor {
      */
     get_cad_json(): string;
     /**
+     * **THE ground set, as a VALUE across the boundary — not a shape to parse.**
+     *
+     * Every consumer of "which zone types are ground?" used to recover it by
+     * regexing `published_zone_type` for `X => ZoneType::Circulation` match
+     * arms. The adversary defeated that in two ways, both with the semantics
+     * unchanged:
+     *
+     * * **an `if`/`return` instead of a match arm** — `if t == Core { return
+     *   Circulation; }` folds `Core` into ground and the regex sees nothing.
+     *   The whole 50-step battery stayed green with the ground set silently
+     *   one type larger.
+     * * **a prose comment inside the function body** — this repo's own
+     *   convention is heavy inline explanation, and a comment merely NAMING a
+     *   type beside the arrow (`// we deliberately do NOT write
+     *   ZoneType::Meeting => ZoneType::Circulation`) put `Meeting` into the
+     *   parsed set. Size 3 passed the parser's `size < 2` non-vacuity guard,
+     *   because that guard checks the parse's SIZE, not its CORRECTNESS.
+     *
+     * Both are one class: **a form-specific reader standing in for a semantic
+     * property.** The same class produced the `.area()` census, the three TS
+     * spellings, and the `pub fn ` impl-block scan. Grepping for the shape of a
+     * definition is defeated by rewriting the shape; asking for the VALUE is
+     * not. CLAUDE.md prescribes exactly this — *"prefer exporting the value
+     * across the wasm boundary"* — and this is that export.
+     *
+     * Computed by iterating every `ZoneType` through [`is_ground_zone`], so it
+     * is the predicate's own answer rather than a second list to keep in step.
+     */
+    static ground_zone_types(): any;
+    /**
      * **What the last `generate` decided**, for the debug overlay — see
      * `layout/diag.rs`. Empty until `generate` has run in this session.
      *
@@ -317,6 +347,12 @@ export class Editor {
      */
     zone_stats_published(): any;
     /**
+     * **The type space itself, published** — `ZoneType::ALL`, so no consumer
+     * has to author a list of variants to iterate. Three did, and a ninth
+     * variant was invisible to all three at once.
+     */
+    static zone_type_names(): any;
+    /**
      * All zones, for rendering. Part of `state()`, but exposed standalone for a
      * cheap re-read after a zone-only edit.
      */
@@ -380,6 +416,7 @@ export interface InitOutput {
     readonly editor_from_snapshot: (a: any) => [number, number, number];
     readonly editor_generate: (a: number, b: any, c: bigint, d: number) => [number, number, number];
     readonly editor_get_cad_json: (a: number) => [number, number];
+    readonly editor_ground_zone_types: () => [number, number, number];
     readonly editor_layout_diag: (a: number) => [number, number, number];
     readonly editor_layout_score: (a: number, b: any) => [number, number, number];
     readonly editor_load_fixture: (a: number, b: number, c: number) => [number, number];
@@ -414,6 +451,7 @@ export interface InitOutput {
     readonly editor_zone_at: (a: number, b: number, c: number) => number;
     readonly editor_zone_stats: (a: number) => [number, number, number];
     readonly editor_zone_stats_published: (a: number) => [number, number, number];
+    readonly editor_zone_type_names: () => [number, number, number];
     readonly editor_zones: (a: number) => [number, number, number];
     readonly open_share: () => number;
     readonly __wbindgen_malloc: (a: number, b: number) => number;

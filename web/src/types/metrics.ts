@@ -69,6 +69,44 @@ export interface ZoneStat {
   seated: number
   pct_of_nia: number
 }
+/**
+ * **THE per-zone floor areas, m², keyed by zone id — the only way an area
+ * enters web/ (R17).**
+ *
+ * The quantity has one definition and it is in Rust: `mod basis` in
+ * `crates/ds-core/src/lib.rs`, which clips each zone to the traced plate,
+ * de-overlaps Workspace fields against the rooms carved out of them, and
+ * applies the overflow cap. Two wasm surfaces publish it —
+ * `zone_stats()`/`zone_stats_published()` as `ZoneStat.area`, and
+ * `quantities()` as `RoomQuantity.areaM2` — and a standing gate proves they
+ * agree per row, so either is authoritative and neither is a second owner.
+ *
+ * The boundary can stop web/ NAMING the Rust definition; it cannot stop web/
+ * RECOMPUTING it from the shapes that `state()` necessarily carries for
+ * drawing. That is exactly what happened: `util/zoneGeom.zoneArea(shape)` was
+ * raw, unclipped and un-de-overlapped, and sheet A.09 billed
+ * `Open Workspace (2)` at 35.0 m² against the workbook's 8.0 on an unedited
+ * fixture. Passing this map is what makes a consumer's area source visible at
+ * the call site — and its absence a compile error rather than a wrong number.
+ */
+export type ZoneAreas = ReadonlyMap<number, number>
+
+/** `ZoneAreas` from `Editor.zone_stats()` / `Editor.zone_stats_published()`. */
+export function zoneAreasFromStats(rows: readonly ZoneStat[]): ZoneAreas {
+  return new Map(rows.map((r) => [r.id, r.area]))
+}
+
+/**
+ * `ZoneAreas` from `Editor.quantities()`'s room rows. Structural in its
+ * parameter (`{ roomId, areaM2 }[]`) rather than importing `Quantities`, so
+ * `types/` keeps the acyclic `program → metrics → doc` chain CLAUDE.md pins.
+ */
+export function zoneAreasFromRooms(
+  rooms: readonly { roomId: number; areaM2: number }[],
+): ZoneAreas {
+  return new Map(rooms.map((r) => [r.roomId, r.areaM2]))
+}
+
 export interface LayoutScore {
   capacity: number
   adjacency: number

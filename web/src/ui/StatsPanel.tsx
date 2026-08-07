@@ -14,6 +14,7 @@ import {
 import { Icon } from './icons'
 import { Donut } from './Donut'
 import { legendEntries } from '../editor/planStyle'
+import { zoneAreasFromStats } from '../types/metrics'
 
 export function StatsPanel({ ec }: { ec: EditorCanvas }) {
   const [tab, setTab] = useState<'Statistics' | 'Regulations'>('Statistics')
@@ -29,7 +30,7 @@ export function StatsPanel({ ec }: { ec: EditorCanvas }) {
   // has exactly one `net_internal_area` and both of its readers go through it,
   // so the panel has no business deriving a fourth.
   const nia = m.net_internal_area ?? zones.totalArea ?? 0
-  const elements = buildElements(ec.getState(), nia)
+  const elements = buildElements(ec.getState(), nia, zoneAreasFromStats(zoneStats))
   const plate = m.plate_state ?? 'traced'
 
   const hasFit = zones.groups.length > 0

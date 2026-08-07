@@ -8,7 +8,7 @@ import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js'
 import type { DocComponent, DocState } from '../types/doc'
 import type { CirculationScore } from '../types/metrics'
 import type { Pt } from '../util/clip'
-import { pointInZoneShape, zoneArea, zoneBBox } from '../util/zoneGeom'
+import { compareZoneExtent, pointInZoneShape, zoneBBox } from '../util/zoneGeom'
 import {
   buildInteriorScene,
   createInteriorLighting,
@@ -653,7 +653,7 @@ function facingWall(
 }
 
 function byAreaDesc(rooms: InteriorRoom[]): InteriorRoom[] {
-  return rooms.slice().sort((a, b) => zoneArea(b.zone.shape) - zoneArea(a.zone.shape))
+  return rooms.slice().sort((a, b) => compareZoneExtent(b.zone.shape, a.zone.shape))
 }
 
 /**
@@ -705,7 +705,7 @@ export function planWalkRoute(
   // ── The circulation spine: the axis every stop is laid out along.
   const circulation = (state.zones ?? [])
     .filter((z) => isGroundZone(z.zone_type))
-    .sort((a, b) => zoneArea(b.shape) - zoneArea(a.shape))[0]
+    .sort((a, b) => compareZoneExtent(b.shape, a.shape))[0]
   const cb = circulation ? zoneBBox(circulation.shape) : null
   const horiz = cb ? cb.maxX - cb.minX >= cb.maxY - cb.minY : true
   /** Pull a point onto the spine's centre line. */

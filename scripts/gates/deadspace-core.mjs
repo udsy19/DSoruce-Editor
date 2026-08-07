@@ -68,6 +68,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
+import { groundZoneTypes } from './sheets/lib/sheetlib.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const REPO = path.resolve(HERE, '../..')
@@ -91,9 +92,17 @@ const wasm = await import(pathToFileURL(path.join(wasmDir, 'ds_core.js')).href)
 wasm.initSync({ module: fs.readFileSync(path.join(wasmDir, 'ds_core_bg.wasm')) })
 const { Editor } = wasm
 
-/** Ground is not programme — see the header. Mirrors `types/doc.ts::isGroundZone`
- *  and the core's fold boundary; both name the same two types. */
-const GROUND = new Set(['Circulation', 'Unassigned'])
+/**
+ * Ground is not programme — see the header.
+ *
+ * This carried `Mirrors types/doc.ts::isGroundZone and the core's fold boundary;
+ * both name the same two types` and was **registered nowhere**, which is the
+ * CLAUDE.md rule verbatim: *a `// mirrors X` comment is a claim to verify, not
+ * documentation.* A gate may not consume a value the system under test produces,
+ * so it does not import the app's constant — it PARSES the core's own fold, the
+ * same anchor `sheetlib.groundZoneTypes()` uses.
+ */
+const GROUND = groundZoneTypes()
 
 /**
  * The OPEN field is not programme either, and this is the load-bearing choice.

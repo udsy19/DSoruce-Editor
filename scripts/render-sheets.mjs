@@ -21,7 +21,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { createRequire } from 'node:module'
 import { pathToFileURL } from 'node:url'
-import { REPO, buildDemoDoc, buildTestFitDoc, buildDwgDoc } from './lib/demo-doc.mjs'
+import { REPO, buildDemoDoc, buildTestFitDoc, buildDwgDoc, zoneAreaPairs } from './lib/demo-doc.mjs'
 
 export const CASES = ['seeded', 'testfit', 'dwg']
 
@@ -113,7 +113,7 @@ export async function renderSheetSet(name = 'seeded', opts = {}) {
   })
   await page.addScriptTag({ content: bundle.outputFiles[0].text })
   const { b64, geometry } = await page.evaluate(
-    async ({ state, drawing, meta, freezeAt }) => {
+    async ({ state, drawing, meta, freezeAt, zoneAreas }) => {
       if (freezeAt) {
         const Real = Date
         const fixed = Real.parse(freezeAt)
@@ -129,12 +129,12 @@ export async function renderSheetSet(name = 'seeded', opts = {}) {
       }
       // Template geometry (pt) — constants, read before anything is drawn.
       const geometry = window.DS.sheetGeometry()
-      const bytes = await window.DS.buildDrawingSetPdf(state, { meta, drawing })
+      const bytes = await window.DS.buildDrawingSetPdf(state, { meta, drawing, zoneAreas: new Map(zoneAreas) })
       let s = ''
       for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i])
       return { b64: btoa(s), geometry }
     },
-    { state: doc.state, drawing: doc.drawing ?? null, meta: SHEET_META, freezeAt },
+    { state: doc.state, drawing: doc.drawing ?? null, meta: SHEET_META, freezeAt, zoneAreas: zoneAreaPairs(doc.quantities) },
   )
   await browser.close()
 

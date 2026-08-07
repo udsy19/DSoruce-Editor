@@ -60,9 +60,23 @@ const BASELINE_INTEGRITY = 12
  *         test against a reconstructed pre-mission product: 270.
  *    +13  the product. The 12th sheet (A.10, the paginated schedule) plus dwg's
  *         now-distinct room names.
+ *  283 → **329**, and the route matters more than the number, because this
+ *  assertion was RED for the whole 73-commit window between and nobody looked
+ *  (the fixture was in no board's population — R12 amended). Decomposed, and
+ *  every leg MEASURED by running it, not inferred:
+ *    +56  283 → **339 at base HEAD 49502e5**. Product growth across 73 commits,
+ *         accumulated unwatched. This leg is NOT decomposed further: doing so
+ *         honestly needs a bisect nobody has run, and claiming a breakdown I did
+ *         not measure is the thing this comment exists to prevent.
+ *    −12  339 → **327**. The `isGroundZone` fold (ruling `7e394eb`): the dwg
+ *         pack's 6 `Unassigned` zones × A.01 + A.02 are 12 room-name checks the
+ *         sheets correctly no longer owe. The test had demanded them anyway,
+ *         which was the 12 base failures.
+ *     +2  327 → **329**. One per case: every recorded baseline row must carry a
+ *         `why`. Measured by deleting the assertion and re-running (327).
  *  A DECREASE remains a defect: a silently vanished check reports a passing
  *  number that means less than it did. Keep the strict equality. */
-const BASELINE_DRAWING_SET = 283
+const BASELINE_DRAWING_SET = 329
 
 function run(cmd, args, env) {
   try {

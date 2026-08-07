@@ -1324,7 +1324,7 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
                 Paper
               </button>
             )}
-            {mode === '3d' && ready && ec && <Scene3D state={ec.getState()} />}
+            {mode === '3d' && ready && ec && <Scene3D state={ec.getState()} zoneAreas={ec.getZoneAreas()} />}
             {mode === 'import' && drawing && (
               <DrawingView
                 drawing={drawing}
@@ -1838,6 +1838,7 @@ function ExportMenu({
       },
       drawing,
       bindings,
+      zoneAreas: ec.getZoneAreas(),
     })
     setOpen(false)
   }

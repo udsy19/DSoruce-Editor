@@ -3565,3 +3565,1104 @@ are separately load-bearing rather than one fix stated twice.
 **Policy deliberately NOT changed:** the hook still skips Rust on a non-Rust
 change. The defect was the silence, not the skip. Floor numbers are quoted from
 `--full` only; that requirement is now in the file's header.
+
+---
+
+# R17/R18 — ONE QUANTITY, TWO LANGUAGES: the census with an instrument that can see
+
+**Baseline confirmed before anything moved:** Rust **196**, battery **49/49**
+(`--full`). The defect is live on that board, with no sabotage and no edit.
+
+## The defect, reproduced three ways on a clean tree
+
+| surface | zone | printed | core basis | ratio |
+|---|---|---|---|---|
+| fixture F1, `zone_stats` vs raw shape | 244 `Open Workspace (2)` | 35.0 m² | **8.0** | **4.38x** |
+| fixture F1 | 245 `Open Workspace (3)` | 17.0 m² | **3.7** | 4.62x |
+| **delivered** `out/sheets/seeded` A.09 + both plan sheets | `Open Workspace` | **668.5 m²** | **550.570** | 1.21x |
+
+The third row is the one that matters: it is not a fixture, it is the pack the
+sheet board grades, and it had been shipping under **12/12 green** for as long as
+that board has existed.
+
+## R17 — the census, and what an instrument that can see finds
+
+The prior round's follow-up census was `grep zoneArea` and reported **seven**
+owners. `scripts/gates/area-census.mjs`, run on the same tree, found **ten**.
+The three it added name nothing a symbol search can match:
+
+* `three/Scene3D.tsx` — a hand-inlined shoelace **plus** rect/ring product in the
+  3D viewer's zone readout. A complete ninth copy of `zoneArea`, printing
+  `35.0 m²` for F1's zone 244 two clicks from a panel printing `8.0`.
+* `editor/paint.ts:653` — `stat?.area ?? s.w * s.h`, the canvas room tag.
+* `editor/paint.ts:570` — the tenth, and the most instructive: a shoelace
+  introduced as a **degeneracy test** and then spent as `stat?.area ?? |a2|/2`.
+
+**A census of a QUANTITY is not a census of a SYMBOL, and the difference was
+three live publishers.** The degeneracy test is now
+`zoneGeom.isDegenerateZoneShape`, a predicate that yields no number.
+
+### The instrument's own false negative, found and grown
+
+The Rust detector first walked BACKWARDS from each hit for the nearest
+`#[cfg(test)]`. An attribute applies to the one item after it, so the
+`#[cfg(test)]` helper at `document.rs:318`, inside `impl Document`, made every
+later line in that block read as test context — silently swallowing
+`merge_zones`'s **two production sites** 146 lines down. Replaced with forward
+brace-matched ranges (`rustTestRanges`). *The instrument grew; it did not gain an
+exemption.*
+
+The first JS shoelace detector was "any `a*b - c*d`" and fired on all 21 2-D
+**rotations** in the tree. Narrowed to the fingerprint that separates them: a
+shoelace's four operands are all coordinates, `cos`/`sin`/`r0`/`fx` are not.
+
+### Disposition
+
+| owner | disposition |
+|---|---|
+| `util/zoneGeom.zoneArea` | **deleted.** Replaced by `compareZoneExtent` (an ORDERING) + `isDegenerateZoneShape` (a PREDICATE). No function in `web/` returns a shape-derived m² any more. |
+| `finishSchedule.ts` (A.09 AREA), `sheetSet.ts` (plan labels), `roomRenders` (minAreaM2 threshold), `editor/stats.ts` (enclosure premium), `Scene3D`, `paint.ts` x2 | migrated to `ZoneAreas` — core-provided, `zone_stats_published()` / `quantities()`, REQUIRED at every call site so absence is a compile error |
+| `export/services.ts` `Room.area` | **dead** — written twice, read nowhere. Deleted. |
+| `planGraphic`, `qtoWorkbook`, `walkthrough` x2, `takeoff.zoneAtPoint` | orderings → `compareZoneExtent`. Deliberately still RAW: `zoneAtPoint` mirrors `Document::zone_index_at`, which ranks by `shape.area()`. |
+| **`cost.rs:185`** | the shipped RECOMPUTE (R14's `Re`). Now reads `area_basis`. Measured before: F5 enclosed Σ **44.5172 vs 43.5596, 2.20% apart**, under a `stats.ts` comment asserting "the two enclosure premiums agree". False when written; the comment is replaced by the mechanism. |
+
+## The finding beyond the brief: `Zone::capacity()`
+
+`capacity()` measured `self.area()` — RAW — while the area printed **in the same
+row** came from the basis. Live at HEAD, on the unedited F1 fixture, on two
+published surfaces at once:
+
+```
+zone_stats  244 { area: 8.0,  capacity: 5 }     quantities 244 { areaM2: 8.0,  capacity: 5 }
+```
+
+Five workstations at a declared 6 m² each, inside eight square metres. The row
+contradicted itself. `capacity_from_area(area)` now takes the quantity instead of
+measuring one; the generator's two sites pass `z.area()` **at the call site**, so
+the raw choice is visible in the source instead of decided for every caller by a
+method. After: `{ area: 8.0, capacity: 1 }` on both surfaces.
+
+**No test moved.** 196 green before and after — the suite had no grip on
+`capacity`'s area input at all.
+
+## The sheet becomes a read surface — SG7
+
+`scripts/gates/sheets/sg7-area-identity.mjs`. Both sides re-derived, from
+different places: expected from `Editor.quantities()` (the core is not the system
+under test; the export layer is), delivered from the PDF bytes via poppler.
+Sheet-vs-workbook is deliberately NOT asserted — that would be presence-matching
+two artifact-derived lists, and it goes green the moment both drift together.
+Rows key on the ZONE ID A.09 prints in its own `ID` column.
+
+**Written first, watched fail first**, against the sheets already on disk from
+the pre-fix build: `SG7 FAIL (71 checks, 3 failing)`. After re-render:
+`SG7 PASS (231 checks)`.
+
+## Falsifications RUN
+
+**area-census** (disposable worktree `/tmp/q9-falsify`, baseline green first):
+
+| | sabotage | result |
+|---|---|---|
+| S1 | inline `z.shape.w * z.shape.h` in `finishSchedule.ts`, naming nothing | **RED** |
+| S2 | reintroduce the `cost.rs` recompute | **RED** |
+| S3 | delete a registered site, leave its register row | **RED** (stale entry) |
+| S4 | re-export an m²-returning helper from `zoneGeom.ts` | **RED** |
+| S5 | a SECOND recompute inside an already-registered function | **RED** (count mismatch) |
+
+**reconcile.mjs** — both new gates unwired: `26 gate file(s) on disk, 24
+invoked`, each named. So the board counts them.
+
+## R16 — T1 and T2, measured rather than inherited
+
+The prior round classified both TAUTOLOGY from **unsatisfiability** evidence
+(panic instrumentation). R16's own separating test is **breaking the mechanism**.
+Run:
+
+| | mechanism broken | result | verdict |
+|---|---|---|---|
+| **T1** `eff_pct > 100+1e-6` | BOTH clamps removed (`> 100` report+assign AND belt `.min(100.0)`) | **196 green** | **TAUTOLOGY** — confirmed. After R14, `efficiency == usable/nia` is a non-negative subset of the scaled basis over that basis's own total; it cannot exceed 1 for any zone set, clamp or no clamp. |
+| **T2** `nia > traced gea` | `net_internal_area`'s Traced arm `sum.min(floor)` → `sum` | **fires**: `NIA 953.030 exceeds a TRACED GEA 930.063`, 4 tests red | **GUARD** — *not* a tautology |
+
+> **RETRACTED BY NAME:** this file's own entry *"**T2** … `gea == floor_area`,
+> `nia == min(Σraw, floor_area)` → **196 green**"*, classifying T2 a tautology.
+> The evidence was correct and the classification was not: unsatisfiability is
+> what a Guard and a Tautology have in common, and R16 says so two sections
+> above where the claim was made.
+
+**T1 deleted; its property rebuilt as `eff-one-basis`** — efficiency re-derived
+from the panel's delivered rows and the document's own `zone_type`. Falsified by
+recreating the M1 shape (feed `usable_area` the unscaled vector): reported
+**62.418%** against the rows' **57.853%**. Note it **never exceeded 100**, so the
+deleted tautology would have stayed silent through the very defect it was named
+for.
+
+**Consequence reported, not fixed:** the producer's `if efficiency_pct > 100.0 +
+1e-6` report in `lib.rs` is therefore an **unsatisfiable branch** — R16's
+corollary, same class as `lib.rs:481-487`. Left in place: it is a release-visible
+error surface, its disposition is a producer decision, and `eff-one-basis` now
+watches the property it stood in for.
+
+## R18 — the conjuncts are a list now
+
+`metrics_can_never_be_impossible` was **one test name over eighteen assertions**,
+and every prior audit walked a list — of tests, of gates, of checks. T1 and T2
+were on none of them. That is the whole mechanism.
+
+Every `push` in `violations` carries a `[conjunct-id]`; `CONJUNCTS` declares each
+with its kind and its justification (**Check** owes the falsification that was
+RUN, **Guard** owes the construction proof);
+`the_basis_conjuncts_are_enumerated` reconciles table against source both ways.
+Board-visible: **`BASIS CONJUNCTS: 18 total — 17 Check, 1 Guard`**.
+
+Falsified: untagged push → RED · undeclared id → RED · declared id whose push is
+deleted → RED · scan reaching nothing → RED (non-vacuity floor).
+
+**Sweep for the same anatomy.** One other Rust test carries ≥12 asserts
+(`a_generated_testfit_produces_a_coherent_quantity_surface`, 13) — a scenario
+test whose conjuncts are single-line asserts with individual messages, auditable
+on one screen. The JS harness's `check(label, cond)` shape is **already
+R18-compliant in a different form**: every conjunct prints its own PASS/FAIL
+line. `violations` was the outlier because it collects into a vec asserted once.
+
+## R15 completed — the surface census, derived from the exports
+
+`every_published_surface_is_classified` scans `lib.rs`'s own
+`#[wasm_bindgen] impl Editor` block. **55 exports · 29 publish a value · 30
+classified — 19 IN battery, 11 EXEMPT with the reason stated in the table.**
+`snapshot` / `from_snapshot` (save-reopen) and `qto_schedule` / `wall_types`
+(export) are now IN — they were **named** as in-battery while absent.
+
+It caught four unclassified publishers on its first run (`add_wall`,
+`add_component`, `add_keepout`, `add_zone`) — which is the gate doing its job
+before any adversary got to it.
+
+**It is a bookkeeping gate and it says so in its own doc comment:** it proves the
+list is complete and classified; it does not prove the `IN` surfaces are well
+tested. Falsified three ways — new unclassified publisher → RED · a classified
+export renamed → RED · **stale-row arm ISOLATED** (a row naming a name that was
+never an export, every real export still classified) → RED with its own message.
+
+## Scoped claims (R17's second half)
+
+* **area-census scope, stated by the gate on every run:** Rust
+  `crates/ds-core/src` (14 production fns, 30 test hits) · JS/TS repo-wide minus
+  `node_modules|target|dist|wasm` (9 production fns, 7 test/gate hits). It does
+  **not** see Python, dynamically-constructed member access, or an area arriving
+  through a numeric round-trip. Those are named in the file.
+* **"no area owner remains in web/"** is scoped to that instrument. The
+  complement is SG7, which reads no source at all.
+* **"no test moved when `capacity` was fixed"** is scoped to `cargo test -p
+  ds-core` at 196.
+
+## Board
+
+**Rust 196 → 198** (`the_basis_conjuncts_are_enumerated`,
+`every_published_surface_is_classified`) · battery **49/49 → 50/50**
+(`area-census`) · sheet board **SG1–SG6 → SG1–SG7**. No golden moved; the
+generator was deliberately left on raw areas and `golden_generate_output_is_frozen`
+is green.
+
+## The board is NOT clean, and the red predates this round
+
+`node scripts/gates/sheets/run-all.mjs` → **6/7. `SG5 FAIL (29 checks, 5
+failing)`.** SG1 216 · SG2 24 · SG3 315 · SG4 36 · SG6 16 · **SG7 231**, all
+PASS. The five SG5 failures split cleanly, and both halves were measured rather
+than assumed:
+
+**Three were G9, and G9 was right.** `G9 FAIL: case artifacts are STALE — the
+oldest is 1.7 min older than web/src/util/zoneGeom.ts, so this round-trip grades
+a workbook a PREVIOUS generator wrote.` I edited a source file AFTER the board's
+producer step ran. That is the "watch the graded artifact is the emitted
+artifact" guard doing exactly its job on me. `node scripts/export-pack.mjs` then
+**`G9 PASS (24 checks)`**.
+
+**Two were `scripts/drawing-set.test.mjs`, and it was ALREADY RED AT BASE.**
+Run at `49502e5` in a clean worktree: **`drawing-set FAIL (339 checks)`, 19
+failures**, including `dwg sheet A.02: 'UNASSIGNED (3)'…'(6)' is drawn 0x` and
+frozen-digest drift on seeded 4/6 and dwg 3/4/5/6/11. The `FAIL`-line sets diff
+to exactly two additions in this tree:
+
+```
+> FAIL seeded sheet 3: content digest changed      (A.01 — room labels)
+> FAIL seeded sheet 11: content digest changed     (A.09 — the AREA column)
+```
+
+**Both are sheets whose area values this round deliberately corrected — that is
+the fix landing on paper**, and dwg 3/4/11 moved their `now` digest for the same
+reason while already failing. **Deliberately NOT re-recorded with `--update`:**
+the fixture is red for a pre-existing reason (the unnamed `UNASSIGNED` rooms),
+and re-recording would freeze that defect into the expectation. It is the next
+session's work, and it must be split — diagnose the `UNASSIGNED` labels first,
+re-record second.
+
+**Consequence for every previous board reading in this file.** SG5 asserts
+`drawing-set.test.mjs passes` and `still runs 283 checks`. The test is red at 339
+at base, so **both assertions failed at base too — SG5 has been red, and the
+sheet board has not been 7/7 (or 6/6) at any point this round could observe.**
+Not measured directly at base, because SG5 invokes `run-all.sh`, which needs a
+live dev server; it is deduced from the measured base state of the fixture SG5
+reads, and it is stated as a deduction.
+
+**And the reason nobody noticed:** `scripts/drawing-set.test.mjs` is **not in the
+50/50 battery** — `verify-all.sh` globs `web/src/**/*.test.mjs` only — and
+`reconcile.mjs` does not classify it as a gate, so its 26-on-disk/26-invoked
+census does not cover it. Its redness was reachable only through SG5, nested
+inside a board that is itself expensive to run. A check whose failure is visible
+down exactly one path is the R12 family again, and the population that needs
+widening is the reconciliation's, not this file's.
+
+**Not done this round, and named:** Step 4 (belief attempt four) and Step 5 (the
+endgame phases P1–P10) were not started. A parallel session committed `49502e5`
+to this file and `scripts/verify-all.sh` mid-run; those files are disjoint from
+this round's and the work is unaffected, but a second writer to this ledger is
+worth knowing about.
+
+---
+
+# R12 AMENDED — the drawing-set round: attribution before expectation
+
+## STEP 1 — all 19 base failures attributed, none by guess
+
+The instrument was the test's own `--dump`, run at three commits: `46908c6`
+(where the baseline was last recorded — and where it still reads
+**`drawing-set PASS (322 checks)`**, so the baseline was honest at its own
+commit), `49502e5` (base), and this tree. Per-sheet op-level diffs, not prose.
+
+| # | failure | cause | class |
+|---|---|---|---|
+| 1–12 | `dwg A.01` + `A.02`: `'UNASSIGNED (1)'…'(6)' drawn 0x` | **the fold ruling `7e394eb`** ("Ground is one class: isGroundZone, and the ~30 sites that meant it"). `drawing-set.test.mjs:381` filtered `z.zone_type !== 'Circulation'` — one type, hand-spelled. The renderer uses `isGroundZone` = `Circulation \| Unassigned`. The dwg pack has **exactly 6** Unassigned zones × 2 sheets = **exactly 12**. seeded has 0 and had no such failure. | **TEST WRONG, DRAWING RIGHT** |
+| 13 | `seeded` sheet 4 (A.02) digest | landed placement work. 189 rows moved with **identical op counts** (281/909/81/2); the only text change is an overall dimension, `38.20 m` → `17.50 m` | landed fix |
+| 14 | `seeded` sheet 6 (A.04) digest | landed services work: `Floor box - power + data` **4 → 10**, TOTAL **176 → 182**, +18 rect | landed fix |
+| 15 | `dwg` sheet 3 (A.01) digest | +`OPEN WORKSPACE (12)` +`1.0 m²` +1 leader | landed fix |
+| 16 | `dwg` sheet 4 (A.02) digest | same new room label | landed fix |
+| 17 | `dwg` sheet 5 (A.03) digest | same new room → services counts 214→215, 89→90, 68→69, 382→385 | landed fix |
+| 18 | `dwg` sheet 6 (A.04) digest | same new room → +1 text | landed fix |
+| 19 | `dwg` sheet 11 (A.09) digest | same new room → a full **9-cell** schedule row (id 265, name, type, CPT/PVC/GYP/MGC, 1.0, 2.75 m) + zebra rect + rule; and zone ids shifted 216/217/220 → 222/223/225 | landed fix |
+| +1 | `seeded` sheet 3 (A.01) digest | **THIS ROUND's area fix** — exactly ONE text op: `668.5 m²` → `550.6 m²` | this round |
+| +2 | `seeded` sheet 11 (A.09) digest | **THIS ROUND's area fix** — exactly ONE text op: `668.5` → `550.6` | this round |
+
+**No missing ink anywhere.** By the brief's own criterion for a live drawing-set
+defect — missing ink, or drift tracing to no landed fix — **none of the 19
+qualifies**, so all were licensed for re-record.
+
+### The finding the attribution surfaced, which is NOT a drawing defect
+
+Five of the seven digest drifts trace to the dwg document gaining one
+`Open Workspace (12)`. Measuring it produced the table, not the scalar:
+
+```
+dwg, non-ground rooms under 3 m²:
+  258–265   0.98 m²  Workspace  0.70 x 1.40   "Open Workspace"   ← EIGHT of them
+  130/138/146  1.43  ClosedOffice  1.30 x 1.10  Phone Booth 1-3  (legitimate)
+   95/97       2.80  Amenity       2.00 x 1.40  Print Point 1-2  (legitimate)
+seeded: 0 such zones — the family is dwg-only (irregular imported plate)
+```
+
+**0.70 × 1.40 m is a desk footprint** ("Desk W70 X L140"). Eight desk-sized
+`Workspace` zones are labelled on two plan sheets and each gets its own priced
+row in the delivered A.09 finish schedule — carpet, skirting, gypsum, a metal
+ceiling grid, for 0.98 m².
+
+**It is a DOCUMENT defect, not a DRAWING defect**: the sheets faithfully draw the
+document they are given. So the digests re-record and the defect is named here
+rather than absorbed into an expectation. It is **pre-existing and predates the
+baseline** — `46908c6` already blessed seven of them, as `OPEN WORKSPACE (2)…
+(11)`. Left open deliberately, for the phase that owns residual classification
+(P1/P2); recorded so it cannot be rediscovered as a surprise.
+
+## STEP 2 — re-recorded, and an unattributed re-record is now impossible
+
+`--update` alone is **REFUSED** (exit 2, nothing written — proved by md5). It
+requires `--why`, and `--why-sheet "<case>:<n>=<reason>"` overrides per digest,
+because one reason for nine digests is a summary and a summary is where two
+causes become one blur. A `--why-sheet` naming a digest that did **not** move is
+also refused: an attribution for something that did not happen.
+
+The baseline now carries a `why` on all **24** sheet rows — 2 per-sheet
+(the area fix), 7 landed-work, 15 backfilled as *"unmoved since 46908c6;
+verified at base HEAD that the digest still matched"*. The test asserts every
+recorded row carries one, so a future bare re-record that dropped them is red.
+
+`drawing-set PASS (329 checks)`.
+
+**Falsifications RUN** (disposable worktree; the real baseline never mutated):
+bare `--update` → REFUSED exit 2, baseline byte-identical · `--why-sheet` for an
+unmoved digest → REFUSED, baseline byte-identical · one `why` stripped →
+**`FAIL … 1 baseline sheet row(s) carry no attribution`**.
+
+## STEP 3 — R12 amended: the population is DERIVED, not authored
+
+The defect, stated exactly: `reconcile.mjs`'s population was
+
+```js
+walk(ROOT/'bench').concat(walk(ROOT/'scripts/gates'))
+```
+
+**two directory names, authored once.** Every "no orphan gates" claim it ever
+made was scoped to those two trees, and it never said so.
+`scripts/drawing-set.test.mjs` lives in neither.
+
+Now: **78 asserting files** derived repo-wide (`*.test.*` by name, or a
+verdict-exit idiom by bytes), every one classified — 29 gates · 40 globbed by a
+runner · 8 producers/hand tools · 1 on a named board · **0 unclassified**. The
+scope is printed on every run rather than implied. `lib/`, `adapters/` and
+`fixtures/` are excluded **structurally**, reusing the gate walk's own
+`NON_GATE_DIRS`, so nobody can slip a check past it by naming a file.
+
+A runner's DYNAMIC reach counts, and only while it is real: `verify-all.sh`
+covers `web/src/**/*.test.mjs` because it globs them, and the glob string is read
+out of the runner's source.
+
+**The sweep for siblings found 11 more** — all classified: 4 producers
+(`sheets/render-all`, `render-walkthrough`, `share-plan`, `one-action.e2e`),
+3 hand tools (`capture-fixtures`, `capture-plate-fixture`, `pixdiff.py`),
+1 fixture builder (`sampleDrawing.mjs`), 3 structural (gate `lib/`, bench
+`adapters/`).
+
+`drawing-set.test.mjs` now has **its own row on the sheet board**. That is the
+substantive fix: its redness was previously a sentence inside SG5's failure
+message, and a sentence inside another gate's message is not a board row.
+
+**Falsifications RUN:**
+
+| sabotage | result |
+|---|---|
+| asserting orphan planted in a new `scripts/checks/` directory | **RED** — 79 found, 1 unclassified |
+| a `*.test.mjs` planted outside `web/src` (the exact shape that hid) | **RED** |
+| the `find src -name '*.test.mjs'` glob deleted from verify-all.sh | **RED twice** — the glob claim dies AND all 40 files it covered become unclassified |
+
+That third result is the one worth keeping: **a coverage claim dies with its
+mechanism.**
+
+### The room check was WIDENED, so it had to be proved still live
+
+Replacing `!== 'Circulation'` with the core-derived ground set makes the
+excluded population BIGGER, and a check that excludes more can quietly stop
+noticing. Proved otherwise: with `roomLabels` sabotaged to also skip `Amenity`,
+the check reds by name on seven rooms —
+
+```
+FAIL seeded sheet A.01: 'RECEPTION' is drawn 0x for 1 zone(s)
+FAIL seeded sheet A.01: 'PANTRY' … 'IT / SERVER' … 'STORAGE' … 'WELLNESS ROOM'
+FAIL seeded sheet A.01: 'PRINT POINT 1' … 'PRINT POINT 2'
+```
+
+so the widening tracked the fold rather than blunting the assertion.
+
+### A red that did not reproduce, and what it was
+
+`bash scripts/verify-all.sh --full` came back **`VERIFY FAIL — 1 of 50`,
+`cargo test -p ds-core`**, while the full sheet board was running concurrently
+(a Chromium fleet across three packs). Run alone immediately after: **198
+passed, 0 failed**. Nothing in this round touches Rust.
+
+Recorded rather than waved off, because "it was probably contention" is a
+hypothesis: the finding is that **the battery and the sheet board must not be
+run concurrently**, and a floor number quoted from a run that shared the machine
+with a browser fleet is not comparable to one that did not. Same discipline as
+the `--full` vs default distinction already in `verify-all.sh`'s header — a
+number is only a measurement if you can say what produced it.
+
+### A measurement error of my own, recorded
+
+Restoring the F3 sabotage, I "verified" it with `grep -c "find src -name"` — a
+needle present in **both** the sabotaged and the clean file, since the sabotage
+changed only `*.test.mjs` → `*.spec.mjs`. The probe could not fail, and it
+reported success while the worktree was still sabotaged; the next reconcile run
+is what caught it. Same family as the tooling-layer section of the rules file:
+*a check that cannot distinguish the states it is checking is not a check.*
+
+## SG5's OWN PIN WAS THE LAST RED — and it confirms the deduction directly
+
+First board run after the re-record: **7/8**, one SG5 failure —
+`drawing-set.test.mjs still runs 283 checks — 329 checks now, 283 at the
+baseline`. SG5 pins the fixture's check count so a silently shrinking test is
+caught; its contract is that coverage may GROW, but *"an unexplained change in
+coverage is a defect"* and the delta must be measured.
+
+**This closes last round's deduction with a measurement.** Last round said SG5
+"has been red at base" and stated it as a deduction, because SG5 needs a live
+board to run. It is now direct: at base the fixture ran **339** checks against a
+pin of **283**, so that assertion was red at base independently of the two
+`drawing-set.test.mjs passes` failures. SG5 was red for the whole window, on two
+separate assertions.
+
+283 → 329, every leg run rather than reasoned:
+
+| leg | | how it was measured |
+|---|---|---|
+| **+56** | 283 → **339 at base** | product growth over 73 commits, accumulated while the assertion was red. **Deliberately NOT decomposed further** — an honest breakdown needs a bisect nobody has run, and inventing one is exactly what this pin exists to stop |
+| **−12** | 339 → **327** | the `isGroundZone` fold: 6 dwg `Unassigned` zones × A.01+A.02 = 12 room-name checks the sheets correctly no longer owe |
+| **+2** | 327 → **329** | one per case, the new `why` assertion. Measured by deleting it and re-running: 327 |
+
+`SG5 PASS (29 checks)`, direct run.
+
+## STEP 4 — NOT RUN, and that is the report
+
+Belief attempt four was **not performed**. The standing falsifications all fire —
+area-census (5 sabotages), SG7 (red on the pre-fix artifacts, green after), the
+R18 conjunct reconciliation (4), the R12-amended asserting-file census (3), the
+`--why` refusals (3), the room-label non-vacuity proof (1) — and **that is not an
+adversarial round.** Every one of them tests a mechanism I built, in the way I
+expected it to be tested.
+
+Six consecutive NOT BELIEVED verdicts were produced by somebody looking for the
+class nobody had thought of: in-crate → population → surface → language →
+conjunct → asserting-file. Declaring BELIEVED off my own green board would be the
+producer certifying itself, which is the failure this entire ledger is a record
+of. **No verdict is claimed.**
+
+What a fourth attempt inherits, stated so it is not re-derived:
+
+* the six closed classes above, each with the instrument that closed it;
+* two live, named, unfixed findings — **eight 0.98 m² desk-footprint `Workspace`
+  rooms** reaching the delivered dwg finish schedule, and the **unsatisfiable
+  efficiency clamp** in `lib.rs` (R16's corollary, reported last round);
+* one open question this round did not answer: the drawing-set digest drifted
+  across 73 commits with nobody looking. It is now a board row, but **nothing
+  bounds how long a digest may stay unexamined** — a staleness clock on frozen
+  expectations is the obvious next mechanism, and it does not exist.
+
+## STEP 5 — not started
+
+P1–P10 untouched.
+
+## Board
+
+**Sheet board 8/8 — ALL SHEET GATES GREEN**, 399.5 s:
+
+```
+SG1 216 · SG2 24 · SG3 315 · SG4 36 · SG5 29 · SG6 16 · SG7 231
+drawing-set 329                                    = 1196 checks
+```
+
+`drawing-set.test.mjs`: **PASS (329 checks)**, from **19 failures at base** — and
+it is a board ROW now, not a sentence inside SG5's failure message.
+
+Rust **198** · battery **50/50** (`--full`, run ALONE; see the contention note —
+a number from a run that shared the machine with a browser fleet is not
+comparable to one that did not).
+
+### The history, corrected in plain words
+
+For this round's entire observable window the sheet board was **not** clean. SG5
+was red at base on **two independent assertions** — `drawing-set.test.mjs
+passes` (19 failures) and its check-count pin (339 against 283) — and nobody saw
+either, because the fixture those assertions read was in no board's population.
+The previous entry's opening report led with that red and corrected its own
+earlier summary as *"true and incomplete."* That is the discipline every green
+claim in this file inherits from here: **a green claim names what it does not
+cover.** This one covers the sheet board and the battery, run separately, on
+this tree; it does not cover belief attempt four, which was not run.
+
+---
+
+# R19 — the fold sweep, and two classifications I got wrong the same way twice
+
+## R19 recorded
+
+**The producer never certifies its own work.** Belief verdicts come only from an
+agent that did not build the board. This round's verdict was DISPATCHED, not
+written here — the orchestrator waits for it. Guard verifications and restore
+confirmations use instruments **demonstrated** to discriminate the two states in
+that session, never assumed.
+
+## STEP 1 — the private-definition class, closed in both languages
+
+The class had fired three times: G12's fold boundary; `drawing-set.test.mjs`'s
+private `!= 'Circulation'` (twelve labels demanded that the fold forbids, red for
+73 commits); and — found this round — **Rust had no ground predicate at all.**
+
+`published_zone_type` owned the fold, and "is this ground?" was spelled by hand
+at three production sites: `Document::zone_index_at`, `conform`'s program filter,
+and `is_usable_zone`. TypeScript had `isGroundZone`; Rust had nothing.
+
+| site | disposition |
+|---|---|
+| **`lib.rs` — NEW `is_ground_zone`** | `published_zone_type(t) == Circulation`. **Derived from the fold, not restated beside it**, so a type added to the fold arrives here in the same edit |
+| `lib.rs::is_usable_zone` | `!matches!(t, Circulation \| Core \| Unassigned)` -> `!is_ground_zone(t) && t != Core` |
+| `conform.rs` program filter | `!matches!(...)` -> `!crate::is_ground_zone(z.zone_type)` |
+| `zone.rs::capacity_from_area` | rate table KEPT hand-spelled — an exhaustive match is what makes a new `ZoneType` a compile error, and a derived early-return would trade that for an unreachable branch. Tied instead by a **check**: `capacity_seats_nobody_exactly_where_the_usable_partition_does` |
+| `types/doc.ts::GROUND_ZONES` | **was an UNREGISTERED MIRROR.** Now in `coreParity.test.mjs`, Rust side PARSED (every `X => ZoneType::Circulation` arm of `published_zone_type`, plus Circulation) rather than restated |
+| `planGraphic.ts` NON_ROOM_ZONES · `kpis.ts` OPEN_ZONE_TYPES + `shared:` · `planStyle.ts` groundZones | all restated the pair; now `[...GROUND_ZONES, ...]` |
+
+**Test-side pins deliberately NOT migrated** — `groundFloors.test.mjs` asserts the
+ground set IS `['Circulation','Unassigned']`. That is a pin; deriving it would
+make it a tautology comparing a value with itself.
+
+### Falsification: does a fold change follow automatically?
+
+Sabotage worktree, `Core => ZoneType::Circulation` added to `published_zone_type`:
+
+- **Load-bearing, measured by probe** — `is_ground_zone(Core)` went `false -> true`
+  (`PROBE Core: ground=true usable=false`). Not a no-op sabotage.
+- **The registered mirror REDS:** `X GROUND set (published_zone_type <-> GROUND_ZONES)`.
+- **NULL RESULT, reported:** `cargo test -p ds-core` stayed at **199 green**.
+  Every Rust consumer followed automatically — and *nothing in the Rust suite
+  observed it*. A change that propagates correctly and invisibly is still
+  invisible. Closed with `ground_is_never_usable`, declared a **GUARD** with its
+  construction proof plus a non-vacuity floor, so a partition check over an empty
+  or total set cannot pass for the wrong reason.
+
+Rust **198 -> 200**.
+
+## STEP 2 — the three carried items
+
+### 2. The efficiency clamp: NOT unsatisfiable. A GUARD. **My classification was wrong.**
+
+> **RETRACTED BY NAME:** the previous entry's *"the producer's `if efficiency_pct
+> > 100.0 + 1e-6` report in `lib.rs` is therefore an unsatisfiable branch —
+> R16's corollary, same class as `lib.rs:481-487`"*, and this round's brief,
+> which carried that claim forward as an item to replace.
+
+**It was wrong the same way T2 was wrong one entry earlier**, and I wrote the T2
+correction: both used **unsatisfiability** evidence (removing the clamps left the
+suite green) where R16's separating test is **breaking the mechanism**.
+Unsatisfiability is what a guard and a tautology have in common; it does not
+distinguish them. Third occurrence of this reasoning error in this file.
+
+Run properly — restore M1's exact shape (numerator reads
+`raw_zone_areas_unscaled`, denominator stays capped), retype-all fixture:
+
+```
+M1 ERROR SURFACE: Some("zone areas do not tile the floor: S 953.030 m2 exceeds
+the traced floor 930.063 m2 by 2.5% ... CAPPED ... efficiency 102.469% exceeds
+100 (usable 953.030 / NIA 930.063, plate traced) — capped at 100%")
+```
+
+**102.469% is M1's own number, verbatim.** The branch fires, reports and clamps.
+A guard whose condition is false because the code is correct.
+
+The brief's prescribed falsification — *"force the over-100 state (the retype
+family)"* — is **not reachable**: measured, the retype family now yields
+`eff 100.000%` exactly, by the basis algebra rather than by the clamp. The
+prescription was a hypothesis and the measurement falsified it. **Kept,
+reclassified, evidence recorded in place.**
+
+### 1. The desk-footprint rooms: DIAGNOSED at the owning layer, NOT fixed
+
+Measured — each sliver zone has `component_ids.len() == 1` and an extent equal to
+that one component:
+
+```
+id 258 origin Drawn shape Rect{w:0.70, h:1.40} components 1  ->  Desk 1.40x0.70
+id 259 ... id 260 ...   (8 of them; the other 4 dwg Workspace zones are >= 1.5 m2)
+```
+
+**Owning layer: `crates/ds-core/src/layout/packing.rs:417`** — "Workspace zone
+over the field". On an irregular imported plate a region's *field rect*
+degenerates to exactly one desk footprint. So it is the first of the brief's two
+readings: **furniture promoted to a room**, not a micro-zone needing a schedule
+threshold.
+
+**NOT FIXED, deliberately.** The fix moves `generate()` output, hence
+`golden_generate_output_is_frozen`, headcount bucketing (a desk in no zone falls
+to ground) and every dwg digest again. Landing that half-verified at the end of a
+long session is what R7 exists to prevent. Diagnosis complete, site named; the
+fix is P1/P2's.
+
+### 3. Digest staleness: NOT implemented this round
+
+Held deliberately: it modifies `scripts/gates/sheets/run-all.mjs`, and the
+ADVERSARY was already running that board. Changing a board under the agent
+measuring it corrupts the measurement — the same contention discipline the
+previous entry recorded for the battery. Still open, still named.
+
+## Environment note — the machine ran out of disk mid-round
+
+`ENOSPC` during this write; `/System/Volumes/Data` at **100%, 1.0 GiB free of
+460**. Cause is cumulative disposable worktrees (32 registered) plus `target/`
+(1.7 G) and `out/` (98 M). Removed only the ten I could ATTRIBUTE to this
+mission's earlier sessions (`q4-*` … `q8-*`, all hours old) -> 6.3 GiB free.
+**Deliberately left alone:** `e1-*`, `e2-*`, `e3-*`, `e4-*`, `endgame-int`
+(07:22–08:26 timestamps, a parallel session's live work) and the `.superset`
+worktrees. Deleting a worktree you cannot attribute is destroying somebody's
+work; the falsification-hygiene rule says use a disposable copy, not that every
+copy is yours to dispose of.
+
+---
+
+# BELIEF ATTEMPT FOUR — **NOT BELIEVED.** Seventh consecutive, and the first one I did not write.
+
+**R19 in force: the verdict came from an agent that did not build the board.**
+It ran ~2 400 s, 135 tool calls, delegated further, and returned survivors from
+two independent directions. Everything below is its finding, verified by me and
+then fixed; nothing here is my own certification of my own work.
+
+## Survivor A — I broke the battery and reported green
+
+Adding `import { GROUND_ZONES } from '../types/doc'` to `planStyle.ts` turned a
+**type-only** import into a **value** import. `symbols.test.mjs` imports
+`symbols.ts` directly and lets Node strip types — no bundler — and `symbols.ts`
+reaches `planStyle.ts`. Type-only imports are erased by stripping; value imports
+are not, so Node was left resolving the extensionless `../types/doc` at runtime:
+
+```
+ERR_MODULE_NOT_FOUND  url: .../web/src/types/doc
+VERIFY FAIL — 1 of 50 step(s) red: node editor/symbols.test.mjs
+```
+
+**I verified that change with `pnpm typecheck` and said "typecheck done".** tsc
+cannot see a module-resolution failure that only exists outside the bundler. The
+instrument could not fail on the defect — the same shape as the grep that matched
+both the clean and sabotaged file, two entries earlier.
+
+Fixed: `'../types/doc.ts'`, extension-ful, which is what `symbols.ts:45` already
+does (`'./planStyle.ts'`). Verified by RUNNING the test: `ALL PASS (119)`.
+
+## Survivors G and H — the mirror is defeated by rewriting the definition's SHAPE
+
+Both leave semantics untouched:
+
+| | sabotage | old behaviour |
+|---|---|---|
+| **G** | `if t == Core { return Circulation; }` one line above the match | ground silently gains `Core`; **50/50 steps green**, `coreParity ✓`, `cargo test 200 passed` |
+| **H** | a prose comment inside the body naming a type beside the arrow | `groundZoneTypes() => ['Circulation','Meeting','Unassigned']`; size 3 passes the `size < 2` guard, wrong set returns SILENTLY to `scheduledRooms`, `drawing-set` **PASSED (299)** |
+
+And the two "witnesses" were **the same regex in two files** —
+`coreParity.test.mjs:146` and `sheetlib.mjs:612` — so they could not disagree and
+one `if` defeated both. H's guard checked the parse's **size**, not its
+**correctness**.
+
+### The class, and the class-level fix
+
+G and H are the same failure as the `.area()` census (B), the three TS spellings
+(C) and the `\n    pub fn ` impl scan (D): **a form-specific reader standing in
+for a semantic property.** Three rounds have fixed these one detector at a time.
+Grepping for the shape of a definition is defeated by rewriting the shape.
+
+So: **`Editor.ground_zone_types()`** — a new wasm export that runs every
+`ZoneType` through `is_ground_zone` and returns the predicate's own answer.
+`coreParity` and `sheetlib.groundZoneTypes()` both read the VALUE now. This is
+CLAUDE.md's own prescription (*"prefer exporting the value across the wasm
+boundary"*) applied where a mirror had been tolerated instead.
+
+**Falsified with the exact sabotages that defeated the old readers:**
+
+```
+SABOTAGE G (if/return, identical semantics)
+   coreParity            ✗ GROUND set (core ground_zone_types() ←→ GROUND_ZONES)
+   sheetlib              groundZoneTypes() => ['Circulation','Core','Unassigned']   ← SEES it
+SABOTAGE H (prose comment naming Meeting)
+   sheetlib              groundZoneTypes() => ['Circulation','Unassigned']          ← immune
+   coreParity            ✓ all mirrors match
+```
+
+The value-reader reds on the real change and ignores the cosmetic one. The
+regex did the exact opposite.
+
+## The census was ~25 sites, not ~20 — and the headline miss was named in my own docstring
+
+`is_ground_zone`'s comment listed three hand-spelled sites. I migrated two.
+**`Document::zone_index_at` — listed FIRST — was not.** Migrated now, with:
+
+- `layout/tests.rs:747` — a **fourth, divergent** spelling of the *usable*
+  partition (`!(Circulation | Core)`, omitting `Unassigned`), used as a
+  denominator, so it counted leftover floor as usable → `crate::is_usable_zone`.
+- `three/theme.ts` `NEUTRAL_FLOOR_ZONES`, whose own doc says *"Ground in the plan
+  must be ground in the walkthrough"* → `new Set(GROUND_ZONES)`.
+- `scripts/gates/deadspace-core.mjs` — carried `// Mirrors types/doc.ts::isGroundZone`
+  and was **registered nowhere**: CLAUDE.md's rule verbatim. Now reads
+  `groundZoneTypes()`, i.e. the core's value, which is also the gate-independent
+  source (the system under test there is the drawing layer, not the core).
+
+## 3 of 5 consumers I claimed migrated were UNGUARDED
+
+The adversary narrowed each to `Circulation`-only and ran the boards:
+
+| site | result |
+|---|---|
+| `planGraphic.ts` (3 sites) | **GREEN** — nothing catches it |
+| `kpis.ts` (2 sites) | **GREEN** — nothing catches it |
+| `conform.rs` | **GREEN**, and a panic probe showed why: the `Unassigned` arm is never reached in any of the 200 tests (`classify_residual_zones` runs first). Semantically right, behaviourally inert — the repo's own unsatisfiable-branch family |
+| `planStyle.ts` | RED (2 of 50) |
+| `is_usable_zone` | RED, 195/5, incl. `ground_is_never_usable` |
+
+Migrating a consumer is not the same as guarding it. **Open, and named.**
+
+## "Test-side sets must stay hand-coded" — half right, and the wrong half is where drift lives
+
+Correct for **expectation pins** (`foldParity`, `statsPanel`): deriving them
+would transcribe the producer. **Wrong for population filters**, proven not
+argued: growing the ground set on both registered sides left
+`three/groundFloors.test.mjs` **exit 0** with `theme.ts` still at two, because it
+pins a literal copy of the answer and therefore freezes drift instead of catching
+it. Same shape at `export/legendParity.test.mjs:38`, whose literals *construct*
+the population the legend is fed. **Open.**
+
+## The gate that caught ME
+
+Adding `ground_zone_types()` turned the battery red on
+`every_published_surface_is_classified` — the surface census built last round,
+firing on its author for adding a value-returning export without classifying it.
+That is the mechanism working exactly as designed, on the person who wrote it.
+
+## Board
+
+Rust **200** · battery **50/50** (`--full`, alone). Sheet board not re-run after
+these edits — **not claimed**.
+
+## Still open, carried
+
+1. Eight desk-footprint `Workspace` rooms — diagnosed to `packing.rs:417`, unfixed.
+2. Digest staleness — unimplemented.
+3. `planGraphic.ts` / `kpis.ts` ground consumers — migrated but unguarded.
+4. `groundFloors.test.mjs` / `legendParity.test.mjs` — population filters pinned
+   to literals; they freeze drift.
+5. `conform.rs`'s ground filter — inert; its `Unassigned` arm is unreachable.
+6. The **+56 pin leg** — the adversary was asked to bisect it; not reported.
+
+**Seven correct NOT BELIEVED verdicts. The gate remains the most productive
+component this mission has, and this is the first round where it was structurally
+impossible for me to grade myself.**
+
+---
+
+# R20 / R21 — the value round: guarding is not migrating
+
+## R20 recorded — READ THE VALUE, NOT THE FORM
+
+Any check about a semantic property obtains it by **EVALUATION** — calling the
+system — never by parsing source text. The class has fired four times: the
+`.area()` grep census, the three-then-four TS spellings, the `pub fn` impl scan,
+and the ground regex that a prose comment defeats and a real `if` evades.
+
+Source-parsing detectors may exist as **secondary lints, never as witnesses**.
+And **witnesses sharing an implementation are ONE witness** — independence means
+independent mechanisms, not duplicated files.
+
+Corollary, from my own near-miss: a verification instrument must be able to SEE
+the failure mode it certifies against. `pnpm typecheck` cannot see a bundler
+resolution failure; a grep cannot see semantics. R19's demonstration standard
+applies — show it red on the broken state.
+
+## R21 recorded — EVERY RUN REPORTS ITS COVERAGE, INCLUDING SKIPS
+
+The previous adversary omitted its assigned +56 bisect and reported no omission —
+the same "true and incomplete" shape the completeness discipline already bans for
+boards. Every dispatched run now returns DONE / FOUND / SKIPPED-because per
+assigned item. **A reported skip costs nothing; an unreported one downgrades the
+verdict's scope by exactly that item.**
+
+## STEP 1 — the three unguarded consumers, closed
+
+The adversary's finding was not that the migration was wrong; it was that
+**nothing checked it**. Narrowing `planGraphic.ts`, `kpis.ts` and `conform.rs`
+back to `Circulation`-only left every board GREEN. A consumer that reads the
+right value today is not guarded — the next editor can undo it silently.
+
+`web/src/export/groundConsumers.test.mjs`. **Both sides by evaluation (R20):**
+the expected ground set from `Editor.ground_zone_types()`, the actual behaviour
+from CALLING `planRoomList` and `computeAltKpis` and reading what they produced.
+**Nothing in the file names `Circulation` or `Unassigned`.**
+
+**Falsified — the three narrowings that used to pass:**
+
+| sabotage | result |
+|---|---|
+| `NON_ROOM_ZONES` -> Circulation-only | **RED** — `'Unassigned' … a ground zone was scheduled as a room` |
+| `OPEN_ZONE_TYPES` -> Circulation-only | **RED** — `privacy 75.0% > 62.5% … a desk standing on ground was counted as enclosed` |
+| `shared:` mix -> Circulation-only | **RED** — `shared 32.00 m², expected 48.00` |
+
+**Follow-automatically, proved by moving the fold** — `Amenity` added to the
+published ground set, TS following as `coreParity` demands:
+
+```
+before  ground=[Circulation,Unassigned]        6 rooms  shared 48.0  privacy 62.5%   9 checks
+after   ground=[Circulation,Amenity,Unassigned] 5 rooms  shared 64.0  privacy 50.0%  10 checks   PASS
+```
+
+Every expectation moved and every consumer followed. That is what makes a
+migration permanent rather than merely current.
+
+### One of my own assertions was not discriminating, and the sabotage caught it
+
+The mix check was first written `shared >= groundArea`. Narrowing takes shared
+48 -> 32 m² against a 32 m² floor — **the defect satisfies the bound**. It would
+have passed the exact sabotage it exists to catch. Tightened to equality against
+`GROUND + Core` and re-falsified (32 vs 48, red). R19's demonstration standard
+applied to my own work: a bound the defect satisfies is not a check.
+
+### Trap avoided, and worth recording because CLAUDE.md names it
+
+Bundling the core and the consumers separately gave each its own copy of the wasm
+module; the uninitialised one threw `Cannot read properties of undefined (reading
+'editor_from_snapshot')`, which looks exactly like a broken export. One bundle,
+one graph, one `initSync`.
+
+### `conform.rs` deliberately NOT guarded
+
+Its `Unassigned` arm is unreachable in all 200 tests (`classify_residual_zones`
+runs before any pocket is typed `Unassigned`) — the adversary proved this with a
+panic probe. A guard there would be vacuous, so none was written. **Stated, not
+silently skipped**; if a reachable case exists that is a finding, and the
+adversary has been asked.
+
+### The derived population picked the new guard up by itself
+
+`reconcile.mjs`: **78 -> 79** asserting files, **40 -> 41** globbed by a runner,
+still **0 unclassified**. R12-amended working as designed — a new asserting file
+joined a board's population with no edit to any runner.
+
+## HOUSEKEEPING — attribution at creation, and a janitor that refuses to guess
+
+`scripts/worktree.sh`. The disk hit 100% of 460 GiB with **32 registered
+worktrees** and broke tooling mid-write. Clearing them was not the hard part;
+**attribution** was. At that moment several trees were minutes old and belonged
+to a parallel session, and there was no way to tell a finished falsification from
+live work except by guessing from mtimes.
+
+So attribution is written AT CREATION (`.ds-worktree`: mission, session, name,
+created, base, status), never inferred afterwards. `sweep` removes only trees
+that are BOTH attributed to this mission AND closed.
+
+**An untagged worktree is UNTOUCHABLE — grandfathered, forever, and said out loud
+on every sweep** rather than silently skipped. The trees that predate this script
+cannot be attributed without guessing, and guessing is how you delete somebody
+else's work.
+
+Self-tested: `sweep` keeps an open tagged tree, keeps untagged trees, keeps
+another mission's; `done` closes and removes; `done` on an untagged tree is
+REFUSED.
+
+## Board at dispatch
+
+Rust **200** · battery **50/50** before the new guard (now 51 declared steps) ·
+sheet board **not re-run since these edits, not claimed**.
+
+Attempt five dispatched under R19 + R21. Verdict pending; this entry does not
+predict it.
+
+---
+
+# BELIEF ATTEMPT FIVE — **NOT BELIEVED.** Eighth consecutive. Coverage reported in full (R21).
+
+The adversary re-measured every board at HEAD and found all of them genuinely
+green — `cargo test 200`, `verify-all 51/51`, **sheet board 8/8 (the known-open
+resolves green)**, `drawing-set PASS (329)`, `reconcile 0 unclassified`. Every
+ledger claim it checked reproduced, including the `102.469%` clamp string
+verbatim. Then it drove the round's own defect through the round's own fix.
+
+## THE SURVIVOR — **the authored domain**, and it is NOT closed
+
+`ground_zone_types()` said it iterated "every `ZoneType`". It iterated an
+eight-element **array literal written inside the function**, and `zone.rs`'s
+`ALL_ZONE_TYPES` and `groundConsumers`' `ALL_TYPES` were two more copies.
+
+My own comment claimed the neighbouring exhaustive `match` kept the array
+complete. **It does not** — a non-exhaustive match forces an edit to the MATCH,
+never to the ARRAY. Measured: add `ZoneType::Utility` folding to Circulation,
+fix only what the compiler demands, and
+
+```
+ground_zone_types() = ["Circulation","Unassigned"]     ← the new ground type is absent
+PROBE Utility: ground=true usable=false cap_per_100m2=25
+cargo test 200 passed · typecheck clean · 51/51 green · coreParity ✓ · drawing-set PASS
+```
+
+`Utility` is ground, is non-usable, and `capacity_from_area` **seats 25 people in
+it** — the exact self-contradiction `capacity_seats_nobody_…` is named to catch.
+Both new guards were grading 8 of 9 types in silence. `is_ground_zone(Utility)`
+is `true` in Rust and `false` in TypeScript: **"ONE QUANTITY, TWO LANGUAGES",
+reproduced with the fix installed.**
+
+The R20 fix converted *"the same regex in two files"* into *"the same authored
+array behind five files"* — one witness with a wider blast radius than the regex.
+
+### What I did about it, and what remains — stated precisely
+
+* **Three authored copies → one.** `ZoneType::ALL` on the enum; `ground_zone_types`,
+  `zone_type_names` (new export), `zone.rs`'s test module and
+  `groundConsumers.test.mjs` all consume it. The JS copy is gone: the type space
+  now crosses the boundary as a value.
+* **Two compile-forced signposts** — `index_in_all` and `name` are exhaustive
+  matches, so a new variant cannot build without an edit that points AT the array.
+* **A domain assert placed where it is REACHABLE** — in `is_ground_zone`, which
+  every consumer routes through with types from real documents. Its first home
+  was `index_in_all`, which **nothing calls**: a proof that never runs. Moved,
+  and demonstrated firing: `ZoneType::ALL does not contain Utility`.
+
+**AND THE CLASS IS STILL OPEN.** Re-running the survivor sabotage against all of
+the above: **`200 passed, 0 failed`.** Nothing forces the array itself, and the
+assert only fires once something constructs a zone of the new type — which no
+test does. The honest summary is *three copies reduced to one, with two signposts
+and a reachable assert*, **not** *the class is closed*. The real fix is a
+declarative macro emitting the enum and its variant list from one declaration;
+it is the next session's first work.
+
+## FOUR MORE FROM THE ADVERSARY, all measured, all open
+
+1. **`isGroundZone` is outside the 51-step battery.** Narrow it to
+   `t === 'Circulation'`: `coreParity ✓`, `groundConsumers PASS`, typecheck
+   clean, **51/51 green**. Only `drawing-set.test.mjs` catches it — on the
+   7-minute sheet board, not in the battery.
+2. **`groundConsumers` has three assertions the defect satisfies.** The synthetic
+   fixture gives every zone 16 m², so `shared === size × 16` measures the set's
+   CARDINALITY, never its membership: swapping `Core` for `Amenity` in the mix
+   PASSES; widening `NON_ROOM_ZONES` by two real room types PASSES (6→4 rooms);
+   swapping `Workspace` for `Meeting` in the open set PASSES. And the room check
+   has no upper bound — it never asserts non-ground types ARE listed. I had
+   already caught one non-discriminating assertion here; there were four.
+3. **The surface census misses FREE `#[wasm_bindgen]` exports.** It anchors on
+   `#[wasm_bindgen]\nimpl Editor {`. Three file-scope exports are live and
+   unclassified — `open_share`, `door_depth`, `door_width` — and CLAUDE.md names
+   two of them as *the* prescribed value-export pattern. It should read the
+   generated `ds_core.d.ts`.
+4. **`scripts/worktree.sh` destroyed two of the adversary's live worktrees.**
+   `--force` reached across sessions (DS_MISSION defaults to the branch, so all
+   sessions share it); `new` ran `rm -rf` **before** any tag check; the tag write
+   was unchecked, so an ENOSPC leaves a permanently-untouchable tree; and the
+   closing message described ATTRIBUTED-AND-CLOSED on `--force` runs that had
+   just removed open trees — *the producer certifying its own work, in the
+   janitor*. **All four closed** (session is now the finer key, `new` consults
+   the tag first, the tag write is checked and its failure removes the tree, the
+   message reports what actually ran). It cost the adversary ~7 minutes and an
+   in-flight bisect. My tool, my harm.
+
+## THE +56 BISECT — assigned twice, skipped once, **DONE**
+
+Every commit in `46908c6..49502e5`, 13–20 s each:
+
+| commit | count | Δ |
+|---|---|---|
+| **46908c6** (window base) | **322** | *the pin says 283 here* |
+| **a6c37f5** | 353 FAIL | **+31** |
+| **7e394eb** (the ground ruling) | 334 | **−19** |
+| **7c483c5** | 328 | **−6** |
+| **5242e6b** | 327 | **−1** |
+| **dff17a4** | 339 | **+12** |
+
+Legs sum **+17**, not +56. **The other +39 accumulated BEFORE the window the
+comment names** — SG5's decomposition inferred its window and inferred it wrong.
+
+**Checks were LOST — three times, 26 in total, every one masked by a larger
+increase.** The pin's own closing rule is *"A DECREASE remains a defect."*
+`7e394eb`'s measured effect is **−19**, seven more than the **−12** this ledger
+attributes to that ruling. And the fixture goes red at **`a6c37f5`**, one commit
+BEFORE the ground ruling — so `drawing-set.test.mjs passes` was false for 64
+commits and the count assertion for all 73, and the pin `283` was already wrong
+AT `46908c6`, where the fixture ran 322.
+
+## Board
+
+Rust **200** · battery **51/51** (`--full`, alone) · sheet board **8/8**
+(adversary's direct run, before this entry's edits — **not re-claimed after
+them**).
+
+## Open, in priority order for the next session
+
+1. **The authored domain** — a macro emitting the enum and its variant list from
+   one declaration. Everything else here is a mitigation.
+2. `isGroundZone` narrowing invisible to the battery.
+3. `groundConsumers`' fixture: distinct areas per zone, and the missing upper bound.
+4. The surface census reading `ds_core.d.ts`; three unclassified live exports.
+5. SG5's decomposition comment replaced with the measured table above; the three
+   lost-check commits investigated.
+6. Desk-footprint rooms; digest staleness.
+
+**Eight NOT BELIEVED verdicts, eight real defects on green boards. This one found
+the defect inside the fix for the last one — and the fix for THIS one is, so far,
+a mitigation that I have measured and reported as a mitigation.**
+
+---
+
+# R22 — THE MACRO ROUND: the authored-domain class, CLOSED
+
+> **SUPERSEDES BY NAME (R9):** the previous entry's *"AND THE CLASS IS STILL
+> OPEN … three copies reduced to one, with two signposts and a reachable assert,
+> **not** the class is closed"*. That was the honest report of a mitigation.
+> This entry replaces it: the domain now has one authoring point, and there is
+> nowhere else to type a variant.
+
+## The ladder, and why generation is the floor
+
+A regex read the FORM of the definition; a prose comment defeated it and an
+`if`/`return` evaded it. The fix authored a VALUE — and belief attempt five
+showed **an authored value is form one level deeper**: `ground_zone_types()`
+said it iterated "every `ZoneType`" and iterated an eight-element array literal.
+
+No detector closes that, because the defect is *an author forgetting a list*.
+**So an incomplete enumeration must be not merely detected but UNAUTHORABLE.**
+
+## `zone_domain!` — one declaration, five artifacts
+
+```rust
+zone_domain! {
+    Circulation: ground,   Workspace: program,   Meeting: program,
+    Collaboration: program, Core: service,        ClosedOffice: program,
+    Amenity: program,       Unassigned: ground,
+}
+```
+
+emits the **enum**, **`ZoneType::ALL`**, **`name()`**, **`is_ground()`** and
+**`is_usable()`**. `published_zone_type` is now `if t.is_ground()`;
+`is_ground_zone`/`is_usable_zone` are one-line readers. The class column is what
+the partitions are made of — `service` (a Core is a real scheduled room but not
+usable area) is the distinction that used to be a hand-spelled third name.
+
+**The old authoring paths CEASE TO EXIST** (R14 style): the hand-written `impl
+ZoneType` with its array literal, `index_in_all`, the test module's
+`ALL_ZONE_TYPES`, `groundConsumers`' `ALL_TYPES`, and `types/doc.ts`'s
+`GROUND_ZONES` literal are all deleted.
+
+## The TypeScript half — generated by EVALUATION, staleness is a build failure
+
+TS cannot await wasm mid-frame, so `GROUND_ZONES` was hand-authored — a second
+authoring path, which is the defect. `scripts/gen-zone-domain.mjs` loads the
+compiled core, **calls** `zone_type_names()` and `ground_zone_types()`, and
+writes `web/src/types/zoneDomain.generated.ts`. No Rust source is parsed, so a
+macro, an `if` or a comment cannot mislead it (R20). `--check` is battery step
+**52**: a stale view is a build failure, not a runtime hope.
+
+`coreParity`'s GROUND row is **RETIRED, not rewritten** — both halves it compared
+are generated now, and rewriting it would leave two checks certifying one
+property, which R20 says is one witness with two places to be wrong.
+
+## Falsification — the survivor's own sabotage, end to end
+
+Add `Utility: ground` **through the declaration**, fix only what the compiler
+demands (two match arms), and:
+
+| | before this round | now |
+|---|---|---|
+| compiler demands | 4 Rust + 7 TS `Record` fills; **neither array forced** | 2 arms; **every list regenerated** |
+| `zone_type_names()` | — | `[…,"Unassigned","Utility"]` |
+| `ground_zone_types()` | `["Circulation","Unassigned"]` — **misses it** | `["Circulation","Unassigned","Utility"]` |
+| `capacity_from_area(100)` | **25 people in a non-usable zone** | **0** |
+| generated TS view | (did not exist) | **`FAIL … is STALE`**, with the core's answer printed |
+| after `make wasm` | — | `ground-consumers PASS (12 checks)` — ground 3 types, shared 48→64 m², privacy 62.5→55.6% |
+
+**And there is nowhere else to author a variant**: the enum body is inside the
+macro, so a variant typed anywhere else is not a variant.
+
+## Two process findings from my own work
+
+**A stale artifact nearly became a false negative.** The first read after the
+sabotage showed `ground_zone_types()` still at 8 types and I nearly recorded the
+falsification as failed — the wasm had not actually rebuilt. Forcing the rebuild
+and re-reading gave 9. This is the stale-build class CLAUDE.md names, caught only
+because the number was surprising enough to re-check rather than report.
+
+**The extensionless-value-import break happened AGAIN.** Adding
+`import { GENERATED_GROUND_ZONES } from './zoneDomain.generated'` to `doc.ts`
+reddened `symbols.test.mjs` exactly as `planStyle.ts` did two rounds ago —
+`pnpm typecheck` green both times, because tsc cannot see Node's raw-ESM
+resolution. **Second occurrence of one line-shape.** Fixed in the file AND in the
+generator that emits it, so the generated view cannot reintroduce it. The
+difference from last time: the battery caught it, because I ran the battery.
+
+## Board
+
+Rust **200** · battery **52/52** (`--full`, alone; step 52 is the generated-view
+check). Sheet board not re-run after these edits — **not claimed**.
+
+## Not done this round, and named
+
+Steps 2–4 were not reached: pins-as-manifests (R23) and the 26 recovered-or-
+retired lost checks; the three measured opens (battery blind to `isGroundZone`
+narrowing, `groundConsumers`' symmetric 16 m² fixture, the census's file-scope
+blind spot with three live unclassified exports); the janitor's four sabotages
+re-run against the hardened tool; and **belief attempt six was not dispatched**.
+
+The authored-domain class is closed. Nothing else in this brief is.

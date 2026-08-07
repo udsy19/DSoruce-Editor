@@ -66,7 +66,8 @@ import type {
   SelectedPatch,
   ZoneType,
 } from '../types/doc'
-import type { CirculationScore, LayoutScore, Metrics, ZoneStat } from '../types/metrics'
+import type { CirculationScore, LayoutScore, Metrics, ZoneAreas, ZoneStat } from '../types/metrics'
+import { zoneAreasFromStats } from '../types/metrics'
 import type { PlateProvenance } from '../import/plateQuality'
 import type { CostSchedule } from '../types/qto'
 import type { GenResult, Program } from '../types/program'
@@ -792,6 +793,14 @@ export class EditorCanvas {
     const ed = this.ed as unknown as { zone_stats?: () => unknown }
     if (typeof ed.zone_stats !== 'function') return []
     return (ed.zone_stats() as ZoneStat[]) ?? []
+  }
+  /**
+   * THE per-zone areas for anything in the app that publishes one — sheets,
+   * schedules, the element/cost breakdown (R17). Reads the core; web/ has no
+   * area definition of its own to fall back to, and that is the point.
+   */
+  getZoneAreas(): ZoneAreas {
+    return zoneAreasFromStats(this.getZoneStats())
   }
   getSelected(): DocComponent | null {
     const s = this.getState()

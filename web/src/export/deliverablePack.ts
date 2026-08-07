@@ -21,6 +21,7 @@
 // camera, same scene — only the encoder differs.
 
 import type { DocState } from '../types/doc'
+import { zoneAreasFromRooms } from '../types/metrics'
 import { buildQtoPack, type QtoRenderOptions, type Quantities } from './qtoWorkbook'
 import { renderRoomPack, roomRenderGroundTruth, type RoomRender } from './roomRenders'
 import { renderWalkthrough } from './walkthrough'
@@ -311,6 +312,10 @@ export async function buildDeliverablePack(
   const renders = await renderRoomPack(state, {
     wallSpans: qto.wallSpans as never,
     plate: qto.plate ?? null,
+    // The core's areas, off the same `quantities` the workbook bills from — so
+    // "which room is big enough to photograph" and "how big the workbook says
+    // that room is" cannot be two different opinions.
+    zoneAreas: zoneAreasFromRooms(quantities.rooms),
     onProgress: (key, i, total) =>
       onProgress({
         stage: 'renders',

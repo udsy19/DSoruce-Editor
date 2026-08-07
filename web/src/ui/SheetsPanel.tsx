@@ -96,7 +96,11 @@ export function SheetsPanel({ ec, project, drawing, bindings, onClose }: SheetsP
   // exporter's own field-presence checks (it hides empty lines) still work.
   // `include` = the checked, available sheet ids — the exporter emits only these
   // (see sheetSet.ts DrawingSetOpts.include); omitting a sheet skips its builder.
-  const buildOpts = (): DrawingSetOpts => {
+  // Takes the canvas rather than closing over the nullable one: `zoneAreas` is
+  // the CORE's per-zone areas and there is no web-side fallback to reach for, so
+  // the options cannot be assembled without an editor — which is exactly the
+  // state `publish()` has already excluded.
+  const buildOpts = (canvas: EditorCanvas): DrawingSetOpts => {
     const t = (v: string) => (v.trim() ? v.trim() : undefined)
     return {
       meta: {
@@ -113,6 +117,7 @@ export function SheetsPanel({ ec, project, drawing, bindings, onClose }: SheetsP
       drawing,
       bindings,
       include: SHEET_MANIFEST.filter((s) => s.available && included[s.id]).map((s) => s.id),
+      zoneAreas: canvas.getZoneAreas(),
     }
   }
 
@@ -121,7 +126,7 @@ export function SheetsPanel({ ec, project, drawing, bindings, onClose }: SheetsP
     setBusy(true)
     setNotice(null)
     try {
-      const opts = buildOpts()
+      const opts = buildOpts(ec)
       const filename = `${slug(tb.project)}-drawing-set.pdf`
       await exportDrawingSet(ec.getState(), opts, filename)
       setNotice(`Published ${inclCount} sheet${inclCount === 1 ? '' : 's'} → ${filename}`)

@@ -10,7 +10,7 @@
 // furniture the outlets serve. Nothing here mutates state.
 
 import type { DocState, DocComponent } from '../types/doc'
-import { zoneArea as zoneShapeArea, zoneBBox, zoneCenter } from '../util/zoneGeom'
+import { zoneBBox, zoneCenter } from '../util/zoneGeom'
 
 // ---------------------------------------------------------------------------
 // Derivation constants (grounded so the schedules read like a real MEP set)
@@ -98,11 +98,8 @@ interface Room {
   hw: number // half-width (outer)
   hh: number // half-height (outer)
   ring?: { ihw: number; ihh: number } // RectRing hole half-extents
-  area: number
   label?: string // zone name (for circuit numbering); absent on the plate fallback
 }
-
-const shapeArea = zoneShapeArea
 
 function plateBounds(state: DocState): { minX: number; minY: number; maxX: number; maxY: number } | null {
   let minX = Infinity
@@ -136,7 +133,6 @@ function rooms(state: DocState): Room[] {
         hw: (bb.maxX - bb.minX) / 2,
         hh: (bb.maxY - bb.minY) / 2,
         ring: s.kind === 'RectRing' ? { ihw: s.in_w / 2, ihh: s.in_h / 2 } : undefined,
-        area: shapeArea(s),
         label: z.label || undefined,
       }
     })
@@ -145,7 +141,7 @@ function rooms(state: DocState): Room[] {
   if (!b) return []
   const hw = (b.maxX - b.minX) / 2
   const hh = (b.maxY - b.minY) / 2
-  return [{ cx: (b.minX + b.maxX) / 2, cy: (b.minY + b.maxY) / 2, hw, hh, area: hw * 2 * hh * 2 }]
+  return [{ cx: (b.minX + b.maxX) / 2, cy: (b.minY + b.maxY) / 2, hw, hh }]
 }
 
 // ---------------------------------------------------------------------------

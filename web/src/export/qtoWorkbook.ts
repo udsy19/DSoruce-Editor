@@ -26,7 +26,7 @@
 
 import type { DocState, DocZone } from '../types/doc'
 import { isGroundZone } from '../types/doc'
-import { zoneArea } from '../util/zoneGeom'
+import { compareZoneExtent } from '../util/zoneGeom'
 import { FINISH_SPEC, finishTypeFor, roomTypeLabel } from './finishSchedule'
 import { CIRCULATION_ROOM_ID, planRoomList, type PlanRoom } from './planGraphic'
 import { PLAN_LEGEND_CHIPS, WORKBOOK_CHROME } from './qbiqPalette'
@@ -223,7 +223,7 @@ function largestCirculationZone(state: DocState): DocZone | null {
   let best: DocZone | null = null
   for (const z of state.zones ?? []) {
     if (!isGroundZone(z.zone_type)) continue
-    if (!best || zoneArea(z.shape) > zoneArea(best.shape)) best = z
+    if (!best || compareZoneExtent(z.shape, best.shape) > 0) best = z
   }
   return best
 }

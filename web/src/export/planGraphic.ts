@@ -20,11 +20,11 @@
 // DETERMINISM IS GATED (G4 renders twice and diffs the bytes): no `Date`, no
 // `Math.random`, no iteration over unordered collections, fixed font metrics.
 
-import type { DocComponent, DocState, DocZone } from '../types/doc'
-import { isGroundZone } from '../types/doc'
+import type { DocComponent, DocState, DocZone, ZoneType } from '../types/doc'
+import { GROUND_ZONES, isGroundZone } from '../types/doc'
 import type { CirculationScore } from '../types/metrics'
 import { drawSymbol } from '../editor/symbols'
-import { zoneArea, zoneCenter } from '../util/zoneGeom'
+import { compareZoneExtent, zoneCenter } from '../util/zoneGeom'
 import { renderPrintCanvas } from './printPlan'
 import { componentBox, labelLeader, placeNear, zoneBoxOnSheet, type OccBox } from './sheetSet'
 import { roomDisplayNames } from './roomNaming'
@@ -77,8 +77,10 @@ export interface PlanGraphicResult {
   labels: string[]
 }
 
-/** Zone types that are building fabric / walking space, not a schedulable room. */
-const NON_ROOM_ZONES = new Set(['Circulation', 'Unassigned', 'Core'])
+/** Zone types that are building fabric / walking space, not a schedulable room.
+ *  GROUND + `Core`, DERIVED — a type added to the published fold joins this set
+ *  automatically instead of needing a second edit nobody remembers. */
+const NON_ROOM_ZONES: ReadonlySet<ZoneType> = new Set<ZoneType>([...GROUND_ZONES, 'Core'])
 /** The reference gives all circulation ONE aggregated Inventory row, Room ID 0. */
 export const CIRCULATION_ROOM_ID = '0'
 
@@ -118,7 +120,7 @@ export function planRoomList(state: DocState, roomRefs?: Map<number, string>): P
   const circ = zones.filter((z) => isGroundZone(z.zone_type))
   if (circ.length > 0) {
     let best = circ[0]
-    for (const z of circ) if (zoneArea(z.shape) > zoneArea(best.shape)) best = z
+    for (const z of circ) if (compareZoneExtent(z.shape, best.shape) > 0) best = z
     const c = zoneCenter(best.shape)
     rooms.push({ id: CIRCULATION_ROOM_ID, zoneId: null, label: 'Circulation', x: c.x, y: c.y })
   }

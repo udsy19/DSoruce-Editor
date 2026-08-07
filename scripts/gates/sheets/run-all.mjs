@@ -1,6 +1,6 @@
-// The sheet-gate board — SG1-SG6, with their producer.
+// The sheet-gate board — SG1-SG7 + the drawing-set digest, with their producer.
 //
-//   node scripts/gates/sheets/run-all.mjs               # all six
+//   node scripts/gates/sheets/run-all.mjs               # all seven
 //   node scripts/gates/sheets/run-all.mjs SG1 SG3       # only these
 //   node scripts/gates/sheets/run-all.mjs --no-produce  # grade what is on disk
 //
@@ -32,6 +32,18 @@ const GATES = [
   ['SG4', 'Name uniqueness', 'sg4-name-uniqueness.mjs'],
   ['SG5', 'Board integrity', 'sg5-board-integrity.mjs'],
   ['SG6', 'Determinism + independence', 'sg6-determinism.mjs'],
+  // SG7 joins because A.09's AREA column had never been read by anything. It
+  // shipped `Open Workspace` at 668.5 m² on the seeded pack while the core said
+  // 550.570 — on THIS board, twelve green gates, for as long as the board has
+  // existed. A surface no instrument reads is where a wrong number lives.
+  ['SG7', 'Area identity (sheet == core)', 'sg7-area-identity.mjs'],
+  // NOT an SG gate — the sheet-content digest fixture, which lives in scripts/
+  // and grades the same delivered PDFs. It gets a ROW because it had none: the
+  // only thing that ran it was SG5, which reads its scoreboard line, so its
+  // redness was a sentence inside another gate's failure message rather than a
+  // line on a board. It was red at base for 73 commits and nobody saw it
+  // (R12 amended). `path.join` below resolves the `../../` to scripts/.
+  ['drawing-set', 'Sheet content digest', '../../drawing-set.test.mjs'],
 ]
 
 const argv = process.argv.slice(2)

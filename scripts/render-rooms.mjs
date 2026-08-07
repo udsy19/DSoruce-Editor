@@ -22,7 +22,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { createRequire } from 'node:module'
 import { pathToFileURL } from 'node:url'
-import { REPO, buildDemoDoc } from './lib/demo-doc.mjs'
+import { REPO, buildDemoDoc, zoneAreaPairs } from './lib/demo-doc.mjs'
 
 const argv = process.argv.slice(2)
 const arg = (flag, dflt) => {
@@ -45,7 +45,8 @@ const playwright = await import(pathToFileURL(webRequire.resolve('playwright')).
 const chromium = playwright.chromium ?? playwright.default.chromium
 
 // --- 1. the document, straight out of the Rust core --------------------------
-const { state, wallTypes, plate } = await buildDemoDoc({ seed: SEED })
+const { state, wallTypes, plate, quantities } = await buildDemoDoc({ seed: SEED })
+const zoneAreas = zoneAreaPairs(quantities)
 console.log(
   `doc: ${state.walls.length} walls · ${state.components.length} components · ` +
     `${(state.zones ?? []).length} zones · seed ${SEED}`,
@@ -88,7 +89,7 @@ const gl = await page.evaluate(() => {
 console.log(`gpu: ${gl}`)
 
 const result = await page.evaluate(
-  async ({ state, wallTypes, plate, width, height, exposure, lamp }) => {
+  async ({ state, wallTypes, plate, width, height, exposure, lamp, zoneAreas }) => {
     const b64 = (u8) => {
       let s = ''
       const chunk = 0x8000
@@ -100,7 +101,15 @@ const result = await page.evaluate(
     // The CORE's wall classification — one source for the coloured plan, the
     // 3D fabric and the workbook's wall quantities.
     const wallSpans = window.DS.classifyWalls(state, wallTypes)
-    const pack = await window.DS.renderRoomPack(state, { wallSpans, plate, width, height, exposure, lampIntensity: lamp })
+    const pack = await window.DS.renderRoomPack(state, {
+      wallSpans,
+      plate,
+      width,
+      height,
+      exposure,
+      lampIntensity: lamp,
+      zoneAreas: new Map(zoneAreas),
+    })
     return {
       renders: window.DS.roomRenderGroundTruth(pack),
       stills: pack.map((r) => ({
@@ -120,7 +129,7 @@ const result = await page.evaluate(
       })),
     }
   },
-  { state, wallTypes, plate, width: WIDTH, height: HEIGHT, exposure: EXPOSURE, lamp: LAMP },
+  { state, wallTypes, plate, width: WIDTH, height: HEIGHT, exposure: EXPOSURE, lamp: LAMP, zoneAreas },
 )
 await browser.close()
 

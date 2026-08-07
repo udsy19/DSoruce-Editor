@@ -1,26 +1,88 @@
-// Shape-agnostic zone geometry: center, area, bbox, outline ring, and
-// point-in-shape for a `ZoneShape` (Rect · RectRing · boundary-conforming Poly).
+// Shape-agnostic zone geometry: center, bbox, outline ring, point-in-shape and
+// size ORDERING for a `ZoneShape` (Rect · RectRing · boundary-conforming Poly).
 // One source of truth so every consumer (stats, exports, sheets, costing)
 // handles `Poly` zones identically instead of re-deriving x/w/h per file.
 // Meters, plan convention. Pure TS, no deps.
+//
+// ── THIS MODULE DOES NOT COMPUTE A ROOM'S AREA (R17) ────────────────────────
+//
+// A room's area in m² is a CORE-OWNED quantity with exactly one definition,
+// `crates/ds-core/src/lib.rs`'s `mod basis`. That definition clips each zone to
+// the traced floor plate, de-overlaps Workspace fields against the rooms carved
+// out of them, and applies the overflow cap. A shape's raw extent is none of
+// those things, and on a real plan the two are not close: on the unedited F1
+// fixture, `Open Workspace (2)` measures 35.0 m² raw and 8.0 m² on the basis.
+//
+// This module used to export `zoneArea(shape)`, and eleven call sites read it.
+// Two of them PRINTED it as the room's area: sheet A.09's `AREA m²` column and
+// the room label on every plan sheet. The workbook, reading the core, billed the
+// same room at 8.0 — a 4.4x disagreement inside one delivered pack, on an
+// unedited fixture, under a 49/49 green board, because nothing anywhere read the
+// sheet's area column back.
+//
+// A `grep zoneArea` census of that defect reported seven owners.
+// `scripts/gates/area-census.mjs`, which looks for the QUANTITY rather than the
+// SYMBOL, found ten on the same tree: three more publishers named nothing at all
+// — an inlined shoelace in the 3D viewer's zone readout, and two `?? s.w * s.h`
+// fallbacks in the canvas painter, one of which entered as a degeneracy test and
+// was then spent as an area.
+//
+// So the helper no longer exists. web/ RECEIVES areas — `ZoneAreas`, built from
+// `Editor.zone_stats_published()` or `Editor.quantities()` (see
+// `types/metrics.ts`) — and the only size information derivable from a shape
+// here is an ORDERING, which cannot be printed as a quantity because it is not
+// one. `scripts/gates/area-census.mjs` holds that line in both languages.
 
 import type { ZoneShape } from '../types/doc'
-/** Absolute shoelace area of a polygon ring (first vertex not repeated). */
-function polyArea(pts: [number, number][]): number {
-  let a = 0
-  for (let i = 0; i < pts.length; i++) {
-    const [x0, y0] = pts[i]
-    const [x1, y1] = pts[(i + 1) % pts.length]
-    a += x0 * y1 - x1 * y0
-  }
-  return Math.abs(a) / 2
-}
 
-/** Net enclosed area (m²); rings exclude the hole; polys use shoelace. */
-export function zoneArea(s: ZoneShape): number {
-  if (s.kind === 'Poly') return polyArea(s.pts)
+/**
+ * Unclipped geometric extent of a shape. **PRIVATE, and it stays private** —
+ * exporting it would put a number in m² back into web/, which is the whole
+ * defect. Reachable only through {@link compareZoneExtent}.
+ */
+function shapeExtent(s: ZoneShape): number {
+  if (s.kind === 'Poly') {
+    let a = 0
+    for (let i = 0; i < s.pts.length; i++) {
+      const [x0, y0] = s.pts[i]
+      const [x1, y1] = s.pts[(i + 1) % s.pts.length]
+      a += x0 * y1 - x1 * y0
+    }
+    return Math.abs(a) / 2
+  }
   if (s.kind === 'RectRing') return Math.max(0, s.w * s.h - s.in_w * s.in_h)
   return Math.max(0, s.w * s.h)
+}
+
+/**
+ * Order two zone shapes by size: `<0` when `a` is smaller, `>0` when larger.
+ * A comparator, not a magnitude — `sort`, `max` and "the smallest zone
+ * containing this point" are the legitimate uses, and nothing else is possible.
+ *
+ * **It is deliberately the RAW extent, and it must stay raw**, because the one
+ * ordering that has to agree with the core is `Document::zone_index_at`, which
+ * ranks by `z.shape.area()` — raw. `takeoff.zoneAtPoint` mirrors that rule so
+ * the workbook's Furniture Elements column and the core's headcount bucketing
+ * cannot disagree about which room a desk is in; ordering by clipped areas here
+ * would silently break that agreement to "fix" a number nobody prints.
+ */
+export function compareZoneExtent(a: ZoneShape, b: ZoneShape): number {
+  return shapeExtent(a) - shapeExtent(b)
+}
+
+/**
+ * True when a shape encloses no drawable region — a collapsed polygon, a
+ * zero-width rect, a ring whose hole eats it. A PREDICATE, not a measurement:
+ * renderers need to know whether there is anything to fill or label, and that
+ * question is answerable from geometry alone without producing a quantity.
+ *
+ * It exists so the shoelace kernel stays in this file. `paint.ts` had its own
+ * copy, ostensibly for exactly this test, and the value it computed was then
+ * used as a room's area behind a `??` — which is how a degeneracy guard became
+ * the tenth definition of a published quantity.
+ */
+export function isDegenerateZoneShape(s: ZoneShape): boolean {
+  return shapeExtent(s) < 1e-6
 }
 
 /** Centroid of the shape (rect/ring center; polygon area-weighted centroid). */

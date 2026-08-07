@@ -202,8 +202,19 @@ never relax it.
 **Qbiq output parity pack** — one action emits a 12-sheet formula-wired QTO workbook (embedded plan +
 per-room thumbnails, live pricing), four 4K room renders, a 43 s 1080p walkthrough mp4, and a
 self-hosted `/share/<id>` 3D viewer; all derived from one `Editor` state. Acceptance gates live in
-`scripts/gates/` — **`bash scripts/gates/run-all.sh` is the only trusted signal** (10/10 green).
-Rust: 150 tests.
+`scripts/gates/` — **`bash scripts/gates/run-all.sh` is the only trusted signal** (13 rows,
+G1-G13). The standing verification battery is `bash scripts/verify-all.sh --full` — **50/50**; quote
+a floor only from `--full`, because a skipped step is counted and named. Rust: **198 tests**.
+
+**One quantity, one owner, across BOTH languages** (`.claude/rules/gate-independence.md` + R17).
+A room's area in m² is defined once, in `crates/ds-core/src/lib.rs`'s `mod basis`. `web/` RECEIVES
+it — `ZoneAreas`, from `Editor.zone_stats_published()` / `Editor.quantities()` — and computes it
+nowhere: `util/zoneGeom` exports an ORDERING (`compareZoneExtent`) and a PREDICATE
+(`isDegenerateZoneShape`), never a magnitude. The wasm boundary can stop `web/` NAMING the Rust
+definition; it cannot stop it RECOMPUTING one from the shapes `state()` carries for drawing, and
+ten call sites did. `node scripts/gates/area-census.mjs` is the standing cross-language gate, with
+its scope printed on every run; `sg7-area-identity.mjs` reads the delivered sheet's area column
+back and holds it to the core.
 Parked: multiplayer (designed in `docs/design/multiplayer.md`; a presence milestone was built and
 reverted — recover from commits `3a923ea` + `706c7cf` when resumed). Next: cloud plan sync.
 See `research/08-open-questions.md`.

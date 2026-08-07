@@ -1,4 +1,5 @@
 import type { ZoneType } from '../types/doc'
+import { GROUND_ZONES } from '../types/doc'
 import { SELECTION_ACCENT_HEX } from '../editor/planStyle'
 /**
  * 3D viewer material themes. A theme is a palette that the {@link Viewer3D}
@@ -51,10 +52,7 @@ export interface ViewerTheme {
  * changes is which types get a material allocated — `buildZonePlate` already
  * falls back to `floorBaseMat` for anything unregistered.
  */
-export const NEUTRAL_FLOOR_ZONES: ReadonlySet<ZoneType> = new Set<ZoneType>([
-  'Circulation',
-  'Unassigned',
-])
+export const NEUTRAL_FLOOR_ZONES: ReadonlySet<ZoneType> = new Set<ZoneType>(GROUND_ZONES)
 
 export const THEMES: Record<ThemeId, ViewerTheme> = {
   studio: {

@@ -56,6 +56,7 @@
 use crate::document::Document;
 use crate::model::{Component, Wall};
 use crate::zone::ZoneType;
+use crate::{area_basis, AreaBasis};
 
 // ---------------------------------------------------------------------------
 // Rate tables. `(cost ₹, carbon kgCO2e)` pairs so cost and carbon stay defined
@@ -151,8 +152,6 @@ fn counts(c: &Component) -> bool {
 /// The two headline figures, computed together so they can never structurally
 /// diverge. `(cost ₹, carbon kgCO2e)`.
 fn indicative(doc: &Document) -> (f64, f64) {
-    let plate = doc.plate_polygon();
-    let plate_ref = plate.as_deref();
     let mut cost = 0.0;
     let mut carbon = 0.0;
 
@@ -180,9 +179,27 @@ fn indicative(doc: &Document) -> (f64, f64) {
     cost += doors * DOOR.0;
     carbon += doors * DOOR.1;
 
-    // 4. Enclosed-room premium — per m² of enclosed floor (plate-clipped).
-    for z in doc.zones.iter().filter(|z| is_enclosed(z.zone_type)) {
-        let a = z.area_on(plate_ref);
+    // 4. Enclosed-room premium — per m² of enclosed floor, ON THE BASIS.
+    //
+    // **This was the RECOMPUTE route, and it had already shipped (R17).** It
+    // read `z.area_on(plate_ref)` — plate-clipped, but neither de-overlapped
+    // nor capped — which is a different quantity from the one the Statistics
+    // panel, the Zones tab, the workbook and the takeoff all bill from. R14
+    // made the raw per-zone vector unnameable outside `mod basis`, and a
+    // module boundary stops a consumer NAMING a definition; it cannot stop one
+    // RECONSTRUCTING it from the inputs. A census of symbols could not see this
+    // line, because it is a census of a quantity.
+    //
+    // Measured before the fix, on fixture F5: enclosed Σ 44.5172 m² here
+    // against the basis's 43.5596 — **2.20% apart**, with the panel's own
+    // element breakdown (`web/src/editor/stats.ts`) carrying a comment
+    // asserting that "the two enclosure premiums agree". They did not.
+    let AreaBasis { areas, .. } = area_basis(doc);
+    for (i, z) in doc.zones.iter().enumerate() {
+        if !is_enclosed(z.zone_type) {
+            continue;
+        }
+        let a = areas[i];
         cost += a * ENCLOSURE_PREMIUM.0;
         carbon += a * ENCLOSURE_PREMIUM.1;
     }

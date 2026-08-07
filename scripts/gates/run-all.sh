@@ -4,7 +4,7 @@
 #   bash scripts/gates/run-all.sh                 # all gates
 #   bash scripts/gates/run-all.sh G1 G2 G4        # only these
 #   VERBOSE=1 bash scripts/gates/run-all.sh       # show each gate's stderr notes
-#   node scripts/gates/sheets/run-all.mjs         # the sheet gates SG1-SG6 (own board)
+#   node scripts/gates/sheets/run-all.mjs         # the sheet gates SG1-SG7 (own board)
 #
 # Exits non-zero if any gate fails. A gate whose artifact does not exist yet
 # fails with "artifact missing: <path>" — that is the expected day-one state.
@@ -70,7 +70,7 @@ declare -a CMDS=(
   "python3 $HERE/g9-roundtrip.py"
   "node $HERE/g10-one-action.mjs --base $GATE_BASE"
   "python3 $HERE/g11-furniture-agreement.py"
-  "node $HERE/sheets/run-all.mjs --no-produce --as-gate G12 SG1 SG2 SG3 SG4 SG6"
+  "node $HERE/sheets/run-all.mjs --no-produce --as-gate G12 SG1 SG2 SG3 SG4 SG6 SG7"
   # G13 — the circulation board (C1-C10), its own runner folded in as one row,
   # exactly as the sheet board is. C10 is the naive-user walkthrough and reports
   # PENDING-HUMAN; it is never counted as passing by either board.
@@ -88,7 +88,7 @@ declare -a TITLES=(
   "Round-trip"
   "One-action UX"
   "Furniture agreement"
-  "Drawing set (SG1-SG6)"
+  "Drawing set (SG1-SG4,SG6,SG7)"
   # G13 had NO TITLE, and the board hid it rather than saying so. With `set -u`,
   # `TITLES[12]` is unbound: the gate RAN and was counted, then the row
   # assignment errored and G13 simply did not appear on the scoreboard. A board
@@ -242,7 +242,7 @@ fi
 # a no-op, so older invocations keep working.
 #
 # The sheet gates ARE on the board below, as G12 — but deliberately as
-# `--no-produce SG1 SG2 SG3 SG4 SG6`, NOT the whole sheet board:
+# `--no-produce SG1 SG2 SG3 SG4 SG6 SG7`, NOT the whole sheet board:
 #   * `--no-produce` because step 0b above already rendered the sheets. Letting
 #     G12 render them again would rewrite a graded artifact mid-run.
 #   * SG5 is EXCLUDED because it verifies this very board by invoking

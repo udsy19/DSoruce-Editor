@@ -197,6 +197,123 @@ const population = walk(path.join(ROOT, 'bench'))
   .sort()
 
 // ---------------------------------------------------------------------------
+// 1b. R12 AMENDED — THE ASSERTING-FILE CENSUS, DERIVED FROM THE REPO
+// ---------------------------------------------------------------------------
+//
+// The population above is `walk('bench') + walk('scripts/gates')`: two
+// directory names, authored once. Everything this file says about orphans is
+// therefore scoped to those two trees — and it never said so.
+//
+// `scripts/drawing-set.test.mjs` lives in neither. It renders the whole
+// architectural set and asserts against a frozen digest, it was RED at base with
+// 19 failures, and the only thing that ran it was SG5, nested inside a board
+// that needs a live dev server. It went unnoticed for 73 commits. That is the
+// sixth hiding-place class — **the asserting file outside every population** —
+// and it closes the way the previous five did: by DERIVING the census instead of
+// authoring it.
+//
+// An ASSERTING FILE is any file that can fail a build: a `*.test.*` by name, or
+// any script carrying a verdict-exit idiom. Every one must be reachable from a
+// named runner, or exempt with its reason. Reachability is itself derived — a
+// runner that globs (`find src -name '*.test.mjs'`) covers what the glob covers,
+// and the glob is READ OUT OF THE RUNNER'S SOURCE so deleting it takes the
+// coverage claim with it.
+const REPO_SKIP = new Set([
+  'node_modules', 'target', 'dist', '.git', 'out', 'graphify-out', 'samples',
+  'wasm', '.dev-plans', 'research', 'docs', 'reports', '__pycache__',
+])
+
+function walkRepo(dir, out = []) {
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    // `lib/`, `adapters/`, `fixtures/` are excluded STRUCTURALLY here for the
+    // same reason the gate walk excludes them: a shared helper that carries an
+    // exit idiom is not a check, and nobody should be able to slip one past
+    // this by naming a file.
+    if (REPO_SKIP.has(e.name) || NON_GATE_DIRS.has(e.name) || e.name.startsWith('.')) continue
+    const full = path.join(dir, e.name)
+    if (e.isDirectory()) walkRepo(full, out)
+    else if (/\.(mjs|js|ts|tsx|py|sh)$/.test(e.name)) out.push(full)
+  }
+  return out
+}
+
+/** By NAME (a `*.test.*`) or by BYTES (a verdict-exit idiom). */
+const isAsserting = (p) => {
+  if (/\.test\.[a-z]+$/.test(path.basename(p))) return true
+  const ext = path.extname(p)
+  if (!VERDICT[ext]) return false
+  try {
+    return isCheck(p)
+  } catch {
+    return false
+  }
+}
+
+/**
+ * The runners' DYNAMIC reach. `verify-all.sh` runs every `web/src/**` test
+ * through `find src -name '*.test.mjs'`; that is real coverage, and it is
+ * claimed here only while the glob is still in the runner's source.
+ */
+const GLOBS = [
+  {
+    runner: 'scripts/verify-all.sh',
+    needle: "find src -name '*.test.mjs'",
+    covers: (r) => r.startsWith('web/src/') && r.endsWith('.test.mjs'),
+    why: "verify-all.sh globs them: `find src -name '*.test.mjs'` from web/",
+  },
+]
+const liveGlobs = GLOBS.filter((g) => {
+  const src = fs.existsSync(path.join(ROOT, g.runner)) ? read(path.join(ROOT, g.runner)) : ''
+  return src.includes(g.needle)
+})
+
+/**
+ * Asserting files that are NOT gates and NOT in a globbed battery, each with the
+ * board that runs it. An entry here is a claim that some runner invokes it; the
+ * reconciliation below re-checks that by scanning runner source, so a wrong
+ * claim is red rather than decorative.
+ */
+const ASSERTING_ELSEWHERE = {
+  'scripts/drawing-set.test.mjs':
+    'the architectural drawing set, graded against a per-sheet content digest. It now has its OWN ROW on the sheet board (scripts/gates/sheets/run-all.mjs), so its redness is a scoreboard line rather than a sentence inside SG5\'s failure message — which is how it stayed red at base for 73 commits.',
+}
+
+/**
+ * PRODUCERS AND HAND TOOLS — they carry a verdict-exit because they refuse to
+ * write a bad artifact, which is right; they are not graders. Each entry states
+ * why it cannot be a board row, and the reasons are of exactly two kinds:
+ * it WRITES rather than grades, or it requires arguments no board can supply.
+ */
+const NOT_A_GRADER = {
+  'scripts/sheets/render-all.mjs': 'PRODUCER — renders the 33 sheets the SG gates grade. Invoked by the sheet board and by run-all.sh step 0b.',
+  'scripts/render-walkthrough.mjs': 'PRODUCER — renders the walkthrough mp4 that G7 grades.',
+  'scripts/share-plan.mjs': 'PRODUCER — publishes the GLB + /share/<id> bundle that G8 grades.',
+  'scripts/one-action.e2e.mjs': 'PRODUCER — drives the app\'s one export control to write out/; it is what G10 grades.',
+  'scripts/capture-fixtures.mjs': 'HAND TOOL — re-records capture fixtures. Running it on a board would overwrite the expectations the board grades against.',
+  'scripts/capture-plate-fixture.mjs': 'HAND TOOL — same, for the plate fixture.',
+  'scripts/pixdiff.py': 'HAND TOOL — takes two image paths and prints their difference. No arguments a board could supply; the same shape as bench/assert-build.mjs.',
+  'web/src/import/sampleDrawing.mjs': 'FIXTURE BUILDER — constructs the sample drawing other tests import. It asserts its own output is well-formed; it grades nothing.',
+}
+
+const assertingAll = walkRepo(ROOT)
+  .map(rel)
+  .filter((r) => !RUNNERS.map(rel).includes(r))
+  .filter((r) => isAsserting(path.join(ROOT, r)))
+  .sort()
+
+/** Computed at check time — `invoked` is defined in section 2, below this. */
+const unclassifiedAsserting = () =>
+  assertingAll.filter((r) => {
+    if (population.includes(r)) return false                     // the gate population above
+    if (EXEMPT.has(r)) return false
+    if (liveGlobs.some((g) => g.covers(r))) return false         // a runner globs it
+    if (r in ASSERTING_ELSEWHERE) return false                   // declared, checked below
+    if (r in NOT_A_GRADER) return false                          // producer / hand tool
+    if (invoked(r)) return false                                 // some runner names it
+    return true
+  })
+
+// ---------------------------------------------------------------------------
 // 2. INVOCATIONS — derived from the runners' source
 // ---------------------------------------------------------------------------
 
@@ -215,6 +332,35 @@ console.log('gate reconciliation — every gate that exists is a gate that runs\
 
 const gates = population.filter((p) => !EXEMPT.has(p))
 const orphans = gates.filter((p) => !invoked(p))
+
+// R12 AMENDED — every asserting file in the REPO is classified.
+const assertingUnclassified = unclassifiedAsserting()
+check(
+  assertingUnclassified.length === 0,
+  `every asserting file is in a board's population (${assertingAll.length} found repo-wide)`,
+  assertingUnclassified.map((r) => `${r} — asserts, and no board's population contains it`).join('\n          ') +
+    '\n          Wire it into a runner, or declare it in ASSERTING_ELSEWHERE with the board that runs it.' +
+    '\n          An asserting file nobody runs has never graded a commit, whatever any report says.',
+)
+// The declared ones are re-checked against runner source, not trusted.
+for (const [p_, why] of Object.entries(ASSERTING_ELSEWHERE)) {
+  check(fs.existsSync(path.join(ROOT, p_)), `ASSERTING_ELSEWHERE names a real file: ${p_}`, 'declared but absent')
+  check(invoked(p_), `${p_} is actually invoked by a runner`, `declared as: ${why}`)
+}
+// And the glob claims are live, not historical.
+for (const g of GLOBS) {
+  check(
+    liveGlobs.includes(g),
+    `${g.runner} still globs its battery (${g.needle})`,
+    'the glob is gone, so every file it covered is now unreached — and the coverage claim with it',
+  )
+}
+// Non-vacuity: a census that walks nothing classifies everything perfectly.
+check(
+  assertingAll.length >= 40,
+  `the asserting-file census reaches the tree (${assertingAll.length} files)`,
+  'too few files found — the walk is not reaching the repo, and a reconciliation over an empty population is green for the wrong reason',
+)
 
 if (EXPLAIN) {
   console.log(`  runners scanned (${RUNNERS.length}):`)
@@ -319,4 +465,14 @@ console.log(
     `${Object.keys(NOT_A_BATTERY_GATE).length} exempt (cannot run unattended), ` +
     `${Object.keys(QUARANTINED).length} quarantined and re-measured still red; ` +
     `board declares ${ids.length} rows against ${ids.length} commands and ${titles.length} titles`,
+)
+// The census's own scope, printed rather than implied (R17's scoped-claim rule
+// applies to positive coverage claims too).
+console.log(
+  `  asserting-file census (R12 amended): ${assertingAll.length} file(s) repo-wide that can fail a build — ` +
+    `${population.length} gates, ` +
+    `${assertingAll.filter((r) => liveGlobs.some((g) => g.covers(r))).length} globbed by a runner, ` +
+    `${Object.keys(NOT_A_GRADER).length} producers/hand tools, ` +
+    `${Object.keys(ASSERTING_ELSEWHERE).length} on a named board, 0 unclassified. ` +
+    `Scope: *.mjs|js|ts|tsx|py|sh outside node_modules|target|dist|out|research|docs|reports and outside lib/|adapters/|fixtures/.`,
 )

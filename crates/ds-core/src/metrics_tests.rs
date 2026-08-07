@@ -286,6 +286,63 @@ fn doc_alloc(doc: &mut Document) -> u32 {
 // 2. The invariants
 // ---------------------------------------------------------------------------
 
+/// **R18 — THE CONJUNCTS OF THE BASIS INVARIANT, ENUMERATED.**
+///
+/// `metrics_can_never_be_impossible` is ONE test name over eighteen separate
+/// assertions. `cargo test` reports it as a single line, so the board's number
+/// counted it once, and nothing anywhere counted the conjuncts at all.
+///
+/// That is not bookkeeping. It is how T1 and T2 survived FOUR
+/// assertion-by-assertion audits: **an unenumerated conjunct cannot be audited
+/// by a process that audits lists.** Every previous sweep walked the list of
+/// tests; these were not on it.
+///
+/// So the list exists, every conjunct is CLASSIFIED (R16), and
+/// `the_basis_conjuncts_are_enumerated` reconciles this table against the source
+/// in both directions — a new `push` with an untagged or undeclared id is red,
+/// and a declared id with no push is red. It is the pattern `reconcile.mjs` uses
+/// for gates, applied one level down.
+///
+/// KIND
+///   Check — falsifiable, and carries the falsification that was RUN.
+///   Guard — an identity by CONSTRUCTION. It cannot fail because a mechanism
+///           makes it so, and R16's separating test is to BREAK that mechanism:
+///           a guard becomes falsifiable and reds, a tautology stays green.
+///
+/// A `Tautology` variant deliberately does not exist. R16 rules a tautology an
+/// absent check; the disposition is deletion, and a deleted conjunct is not in
+/// a list of conjuncts. The two that were here are recorded in prose at their
+/// former sites, which is where a future reader looks.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Kind {
+    Check,
+    Guard,
+}
+use Kind::{Check, Guard};
+
+/// `(id, kind, why)` — `why` is the falsification for a Check and the
+/// construction proof for a Guard. Both are claims a reader can go and test.
+const CONJUNCTS: &[(&str, Kind, &str)] = &[
+    ("finite", Check, "every aggregate metric is finite and non-negative. Falsified by any NaN/negative in the basis; it is the oldest conjunct here and the one the 1159% defect walked past."),
+    ("nia-le-traced-gea", Guard, "GUARD, RECLASSIFIED. Under Traced, `net_internal_area` IS `sum.min(doc.floor_area())` and GEA is that same `floor_area()`, so NIA <= GEA holds by construction. MECHANISM BROKEN AND MEASURED: changing the Traced arm to plain `sum` fires it — `NIA 953.030 exceeds a TRACED GEA 930.063` — and reds four tests. A guard, not a tautology."),
+    ("ws-needs-area", Check, "a plan with seats can say how much floor each gets. The `Area/WS 0.0 m²` row from the screenshots."),
+    ("plate-state-known", Check, "the panel branches on this string; an unknown value falls through every branch and renders blank."),
+    ("cap-reported", Check, "a capped basis must SAY it was capped. Falsified by suppressing `overflow` while keeping the cap: 193/3 (R16 round)."),
+    ("one-nia", Check, "`compute_metrics` and `net_internal_area` agree. Falsified by a second NIA owner."),
+    ("rows-complete", Check, "`zone_rows` delivers one row per zone. Falsified by the producer veto it replaced (`if !rows.is_empty()` left the suite at 195 green with an empty donut)."),
+    ("rows-sum-to-nia", Check, "the donut's slices sum to its own total. Falsified by restoring the second NIA owner (194/2) and by scaling every row by 3.0."),
+    ("eff-one-basis", Check, "efficiency's numerator and denominator are one basis — the M1 defect stated as the property rather than as its symptom. Falsification RUN below; see the ledger."),
+    ("row-basis-factor", Check, "one cap factor, per row not per total. Falsified by the compensating pair (191/5) and by misattributing 100 m² inside the shared basis (194/2)."),
+    ("takeoff-complete", Check, "`quantities()` delivers one room per zone."),
+    ("same-zone", Check, "the panel's row i and the takeoff's room i are the same zone."),
+    ("panel-eq-takeoff", Check, "the two published area surfaces agree per row. Was RED at HEAD before R14 (22.968 m² over 24 rooms)."),
+    ("takeoff-basis-factor", Check, "the takeoff is anchored to the document's geometry in its own right, so the pair cannot agree while both drift."),
+    ("takeoff-room-real", Check, "the takeoff bills no room the document does not have."),
+    ("zone-on-surface", Check, "no zone is missing from any of the three surfaces."),
+    ("attribution", Check, "the usable/overhead partition is the same on every surface. Falsified by changing the fold to `Unassigned -> Workspace` (194/2)."),
+    ("sums-agree", Check, "the panel's total and the takeoff's total are one number."),
+];
+
 /// The properties that make a metric a metric. Returns the first violation as a
 /// message, so callers can name the case that produced it.
 fn violations(doc: &Document) -> Vec<String> {
@@ -293,9 +350,9 @@ fn violations(doc: &Document) -> Vec<String> {
     let mut v = Vec::new();
     let finite = |name: &str, x: f64, out: &mut Vec<String>| {
         if !x.is_finite() {
-            out.push(format!("{name} is {x}"));
+            out.push(format!("[finite] {name} is {x}"));
         } else if x < 0.0 {
-            out.push(format!("{name} is negative ({x})"));
+            out.push(format!("[finite] {name} is negative ({x})"));
         }
     };
     finite("floor_area", m.floor_area, &mut v);
@@ -306,15 +363,36 @@ fn violations(doc: &Document) -> Vec<String> {
     finite("unassigned_area", m.unassigned_area, &mut v);
     finite("unassigned_pct", m.unassigned_pct, &mut v);
 
-    if m.efficiency_pct > 100.0 + 1e-6 {
-        v.push(format!("efficiency {:.3}% exceeds 100", m.efficiency_pct));
-    }
+    // `eff-le-100` WAS HERE, and it was a TAUTOLOGY — deleted per R16.
+    //
+    // It read `if m.efficiency_pct > 100.0 + 1e-6`. R16's separating test is to
+    // BREAK THE MECHANISM and see whether the assertion becomes falsifiable.
+    // Both of `compute_metrics`'s clamps were removed — the `> 100` report-and-
+    // assign AND the belt `.min(100.0)` — and the suite stayed **196 green**.
+    // Nothing made it fire, because after R14 `efficiency == usable / nia` is a
+    // non-negative SUBSET of the scaled basis over that basis's own total: it
+    // cannot exceed 1 for any zone set, clamp or no clamp. An identity by
+    // algebra, unfalsifiable by any code change, which is the definition of an
+    // absent check.
+    //
+    // The property it gestured at is real, though, and it is the M1 defect
+    // itself: the numerator and the denominator must come from ONE basis. That
+    // is `eff-one-basis` below — re-derived from the panel's delivered rows and
+    // the document's own zone types, so a `usable_area` fed a different vector
+    // is visible as a number, not as a clamp that hid one.
+    //
+    // THE CLAMP IS THEREFORE AN UNSATISFIABLE BRANCH IN THE PRODUCER
+    // (`lib.rs`, the `if efficiency_pct > 100.0 + 1e-6` report), the same class
+    // as the dead error branch already deleted at `lib.rs:481-487`. Reported,
+    // not deleted here: it is a release-visible error surface, its disposition
+    // is a producer decision, and `eff-one-basis` now watches the property it
+    // was standing in for.
     // NIA ≤ GEA only when GEA is a measurement. Under `open`/`unresolved` the
     // gross figure is a bounding box and the relation carries no meaning — the
     // plate_state field is the assertion in that case.
     if m.plate_state == "traced" && m.net_internal_area > m.gross_external_area + 1e-6 {
         v.push(format!(
-            "NIA {:.3} exceeds a TRACED GEA {:.3}",
+            "[nia-le-traced-gea] NIA {:.3} exceeds a TRACED GEA {:.3}",
             m.net_internal_area, m.gross_external_area
         ));
     }
@@ -322,14 +400,14 @@ fn violations(doc: &Document) -> Vec<String> {
     // is the "Area/WS 0.0 m²" row from the screenshots.
     if m.workstations > 0 && m.area_per_workstation <= 0.0 {
         v.push(format!(
-            "{} workstations but area_per_workstation is {}",
+            "[ws-needs-area] {} workstations but area_per_workstation is {}",
             m.workstations, m.area_per_workstation
         ));
     }
     // The panel branches on this string; an unknown value would fall through
     // every branch and render blank.
     if !matches!(m.plate_state, "traced" | "open" | "unresolved") {
-        v.push(format!("unknown plate_state {:?}", m.plate_state));
+        v.push(format!("[plate-state-known] unknown plate_state {:?}", m.plate_state));
     }
     // The two NIA readers must agree, always. This is the pair that diverged.
     //
@@ -352,12 +430,12 @@ fn violations(doc: &Document) -> Vec<String> {
     let owner = net_internal_area(doc, &areas);
     if raw_sum > owner + 1e-6 && m.metrics_error.is_none() {
         v.push(format!(
-            "the basis was capped ({raw_sum:.3} → {owner:.3}) and metrics_error is null"
+            "[cap-reported] the basis was capped ({raw_sum:.3} → {owner:.3}) and metrics_error is null"
         ));
     }
     if (owner - m.net_internal_area).abs() > 1e-9 {
         v.push(format!(
-            "two NIA values: metrics {:.6} vs owner {:.6}",
+            "[one-nia] two NIA values: metrics {:.6} vs owner {:.6}",
             m.net_internal_area, owner
         ));
     }
@@ -389,7 +467,7 @@ fn violations(doc: &Document) -> Vec<String> {
     // expected count is re-derived from the document, not from the producer.
     if rows.len() != doc.zones.len() {
         v.push(format!(
-            "zone_rows delivered {} rows for a document with {} zones",
+            "[rows-complete] zone_rows delivered {} rows for a document with {} zones",
             rows.len(),
             doc.zones.len()
         ));
@@ -397,9 +475,47 @@ fn violations(doc: &Document) -> Vec<String> {
     let row_sum: f64 = rows.iter().map(|r| r.area).sum();
     if (row_sum - m.net_internal_area).abs() > 1e-6 * row_sum.max(1.0) {
         v.push(format!(
-            "the Zones tab's rows sum to {row_sum:.3} but NIA is {:.3} — the \
+            "[rows-sum-to-nia] the Zones tab's rows sum to {row_sum:.3} but NIA is {:.3} — the \
              donut's slices do not sum to its own total",
             m.net_internal_area
+        ));
+    }
+
+    // **ONE BASIS UNDER THE HEADLINE RATIO** — `eff-one-basis`, the check that
+    // replaces the `eff-le-100` tautology deleted above.
+    //
+    // M1 was not "efficiency exceeded 100". M1 was `usable_area` summing an
+    // UNCLAMPED vector while `net_internal_area` clamped, so `usable / nia`
+    // divided a full sum by a capped one. The number going over 100 was the
+    // symptom, and clamping it removed the symptom and the assertion with it.
+    //
+    // So this asserts the RATIO, re-derived from two places the metric did not
+    // come from: the panel's delivered rows (the areas) and the document's own
+    // `zone_type` through `is_usable_zone` (the partition). If `usable_area` is
+    // ever fed a different vector from the one the rows carry, this is a number
+    // that disagrees — with or without a clamp downstream.
+    let usable_from_rows: f64 = rows
+        .iter()
+        .filter(|r| {
+            doc.zones
+                .iter()
+                .find(|z| z.id == r.id)
+                .is_some_and(|z| crate::is_usable_zone(z.zone_type))
+        })
+        .map(|r| r.area)
+        .sum();
+    let want_eff = if m.net_internal_area > 0.0 {
+        (usable_from_rows / m.net_internal_area * 100.0).min(100.0)
+    } else {
+        0.0
+    };
+    if (m.efficiency_pct - want_eff).abs() > 1e-6 * want_eff.abs().max(1.0) {
+        v.push(format!(
+            "[eff-one-basis] efficiency is reported as {:.6}% but the panel's own \
+             rows over the panel's own NIA give {want_eff:.6}% (usable \
+             {usable_from_rows:.3} / nia {:.3}) — the numerator and the \
+             denominator are not the same basis",
+            m.efficiency_pct, m.net_internal_area
         ));
     }
 
@@ -437,7 +553,7 @@ fn violations(doc: &Document) -> Vec<String> {
         let want = areas[i] * k;
         if (r.area - want).abs() > 1e-6 * want.abs().max(1.0) {
             v.push(format!(
-                "zone row {} area {:.3} is not its own de-overlapped footprint \
+                "[row-basis-factor] zone row {} area {:.3} is not its own de-overlapped footprint \
                  {:.3} × the one basis factor {k:.6} (= {want:.3}) — the basis \
                  carries a per-zone transform, not one shared cap",
                 r.id, r.area, areas[i]
@@ -473,7 +589,7 @@ fn violations(doc: &Document) -> Vec<String> {
     let pub_rows = crate::Editor::for_test(doc.clone()).zone_rows_for_test(true);
     if rooms.len() != doc.zones.len() {
         v.push(format!(
-            "the takeoff delivered {} rooms for a document with {} zones",
+            "[takeoff-complete] the takeoff delivered {} rooms for a document with {} zones",
             rooms.len(),
             doc.zones.len()
         ));
@@ -482,14 +598,14 @@ fn violations(doc: &Document) -> Vec<String> {
         for (i, (r, q)) in rows.iter().zip(&rooms).enumerate() {
             if r.id != q.room_id {
                 v.push(format!(
-                    "panel row {} and takeoff room {} are not the same zone",
+                    "[same-zone] panel row {} and takeoff room {} are not the same zone",
                     r.id, q.room_id
                 ));
                 continue;
             }
             if (r.area - q.area_m2).abs() > 1e-6 * r.area.abs().max(1.0) {
                 v.push(format!(
-                    "zone {}: the panel shows {:.3} m² and the takeoff bills \
+                    "[panel-eq-takeoff] zone {}: the panel shows {:.3} m² and the takeoff bills \
                      {:.3} m² — two owners of one room's area",
                     r.id, r.area, q.area_m2
                 ));
@@ -502,7 +618,7 @@ fn violations(doc: &Document) -> Vec<String> {
             let want = areas[i] * k;
             if (q.area_m2 - want).abs() > 1e-6 * want.abs().max(1.0) {
                 v.push(format!(
-                    "the takeoff bills zone {} at {:.3} m², not its own \
+                    "[takeoff-basis-factor] the takeoff bills zone {} at {:.3} m², not its own \
                      de-overlapped footprint {:.3} × the one basis factor \
                      {k:.6} (= {want:.3})",
                     q.room_id, q.area_m2, areas[i]
@@ -525,7 +641,7 @@ fn violations(doc: &Document) -> Vec<String> {
                 .find(|z| z.id == q.room_id)
                 .map(|z| z.zone_type);
             let Some(doc_type) = doc_type else {
-                v.push(format!("takeoff bills room {} which is not a zone", q.room_id));
+                v.push(format!("[takeoff-room-real] takeoff bills room {} which is not a zone", q.room_id));
                 continue;
             };
             let published = pub_rows.iter().find(|p| p.id == q.room_id);
@@ -536,9 +652,9 @@ fn violations(doc: &Document) -> Vec<String> {
             ];
             for (who, t) in seen {
                 match t {
-                    None => v.push(format!("zone {} is missing from {who}", q.room_id)),
+                    None => v.push(format!("[zone-on-surface] zone {} is missing from {who}", q.room_id)),
                     Some(t) if crate::is_usable_zone(t) != crate::is_usable_zone(doc_type) => v.push(format!(
-                        "zone {}: the document types it {doc_type:?} ({}) and \
+                        "[attribution] zone {}: the document types it {doc_type:?} ({}) and \
                          {who} bills it {t:?} ({}) — the usable/non-usable \
                          partition differs by surface",
                         q.room_id,
@@ -553,7 +669,7 @@ fn violations(doc: &Document) -> Vec<String> {
     let room_sum: f64 = rooms.iter().map(|r| r.area_m2).sum();
     if (room_sum - row_sum).abs() > 1e-6 * row_sum.max(1.0) {
         v.push(format!(
-            "the panel's rows sum to {row_sum:.3} m² and the takeoff's rooms sum \
+            "[sums-agree] the panel's rows sum to {row_sum:.3} m² and the takeoff's rooms sum \
              to {room_sum:.3} m² — a {:.3} m² divergence between two published \
              surfaces over the same document",
             (room_sum - row_sum).abs()
@@ -904,6 +1020,254 @@ fn the_battery_reaches_states_the_two_area_surfaces_could_diverge_in() {
          on it. Uncapped, k == 1 and the panel and the takeoff agree by reading \
          the same numbers — the check would pass with the divergence live, which \
          is exactly what happened for four belief passes"
+    );
+}
+
+/// **R15/R17 — THE PUBLISHED-SURFACE CENSUS, DERIVED FROM THE EXPORTS.**
+///
+/// The battery's coverage claim used to be a sentence: *"the battery now
+/// evaluates every surface the product publishes at every step — metrics, zone
+/// rows, quantities/takeoff, save/reopen, export."* Save/reopen was not in it.
+/// Export was not in it. It covered four of roughly twenty.
+///
+/// A coverage claim that is a sentence is a claim nobody can check, so this
+/// derives the surface list from `lib.rs`'s OWN `#[wasm_bindgen]` exports —
+/// the adversary's method, not the brief's list — and requires every export
+/// that RETURNS A VALUE to be classified. `IN` means the battery evaluates it;
+/// `EXEMPT` states, in the table, why it computes and persists nothing that
+/// could diverge. A new publishing export is red until somebody chooses.
+///
+/// **This is a bookkeeping gate, and it says so.** It proves the list is
+/// complete and classified; it does NOT prove the `IN` surfaces are well
+/// tested. What tests them is `violations` (see CONJUNCTS) for the area
+/// surfaces, and the named test each row cites.
+///
+/// FALSIFICATIONS (disposable worktree, ledgered): add a value-returning
+/// `pub fn` to the `#[wasm_bindgen] impl Editor` block -> RED as unclassified;
+/// rename a classified export -> RED as a stale row.
+#[test]
+fn every_published_surface_is_classified() {
+    // `(export, in_battery, why)`.
+    const SURFACES: &[(&str, bool, &str)] = &[
+        // ---- publishes a computed quantity: IN ----
+        ("metrics", true, "compute_metrics — every conjunct in CONJUNCTS runs on it, 1 200 evaluations."),
+        ("zone_stats", true, "zone_rows(false) — `rows-complete`, `rows-sum-to-nia`, `row-basis-factor`."),
+        ("zone_stats_published", true, "zone_rows(true) — read as `pub_rows` by the `attribution` conjunct."),
+        ("quantities", true, "quantity::quantities — `panel-eq-takeoff`, `takeoff-basis-factor`, `sums-agree`."),
+        ("snapshot", true, "save/reopen. `no_zone_mutator_can_write_a_document_that_cannot_reopen` drives it under mutation; it was NAMED as in-battery while absent."),
+        ("from_snapshot", true, "the reopen half of the same round-trip, constructor form."),
+        ("qto_schedule", true, "the priced hierarchy — `a_generated_testfit_produces_a_coherent_quantity_surface`."),
+        ("layout_score", true, "layout::score — `stress_insights_invariants_over_shape_space`."),
+        ("generate", true, "the generator — `golden_generate_output_is_frozen` pins ten (program, seed) cases."),
+        ("circulation", true, "the circulation evaluator — its own board (G13/C1-C10) plus `circulation::tests`."),
+        ("density_score", true, "layout::score::density_of — same shape-space test."),
+        ("wall_types", true, "quantity::classify_walls — the workbook's wall bills, gate G3."),
+        ("state", true, "the document itself; every mutation test reads it back."),
+        ("plate", true, "plate_points — `partition_conforms_rooms_and_stays_disjoint_on_tilted_plates`."),
+        ("zones", true, "doc.zones verbatim; covered wherever `state` is."),
+        ("merge_zones", true, "returns zone rows; a mutator the battery's `mutate` drives."),
+        ("split_zone", true, "IN — returns the two resulting zone rows; the battery drives splits at the Document layer and the round-trip test reopens the result."),
+        ("load_fixture", true, "the five fixtures ARE the battery's bases — `fixtures_are_the_states_they_claim_to_be`."),
+        // ---- computes nothing, persists nothing: EXEMPT, with the reason ----
+        ("new", false, "EXEMPT — a constructor. No quantity crosses."),
+        ("revision", false, "EXEMPT — a counter, with its own dedicated scan (`every_mutator_bumps_the_revision`)."),
+        ("layout_diag", false, "EXEMPT — debug-overlay diagnostics; never reaches a client artifact."),
+        ("wall_outlines", false, "EXEMPT — render geometry for the canvas, no quantity. `wallnet` has its own tests."),
+        ("fixture_ids", false, "EXEMPT — a static list of names."),
+        ("zone_type_names", true, "IN — publishes `ZoneType::ALL`, the derived type space. `is_ground_zone`'s domain assert fires on any variant missing from it, and `groundConsumers.test.mjs` cross-checks that every ground type is a member."),
+        ("ground_zone_types", true, "IN — `ground_is_never_usable` and `capacity_seats_nobody_exactly_where_the_usable_partition_does` exercise `is_ground_zone`, whose answer this publishes; `coreParity` and `sheetlib` hold TS to the value it returns."),
+        ("get_cad_json", false, "EXEMPT — returns the CAD blob verbatim as it was set."),
+        ("zone_at", false, "EXEMPT — hit-testing. `zone_index_at` is an ordering and yields no quantity."),
+        ("select_at", false, "EXEMPT — hit-testing; returns the id under the cursor and computes no quantity."),
+        // The four the census caught unclassified on its first run. Each returns
+        // a freshly allocated ID — the document's own key, not a derived
+        // quantity — so there is nothing here for two surfaces to disagree
+        // about. Their ARGUMENTS are guarded as a class by
+        // `every_f64_mutator_is_guarded_against_non_finite_input`, and `next_id`
+        // survives the snapshot round-trip so the ids cannot collide.
+        ("add_zone", true, "IN — `both_zone_writers_refuse_an_off_plate_shape` drives it directly; it returns an id, not a quantity."),
+        ("add_wall", false, "EXEMPT — returns an allocated id. The battery mutates walls at the Document layer; `every_f64_mutator_is_guarded_against_non_finite_input` covers its arguments."),
+        ("add_component", false, "EXEMPT — returns an allocated id; same argument guard, and `only_desks_count_as_workstations` covers what a component contributes."),
+        ("add_keepout", false, "EXEMPT — returns an allocated id; keep-outs are generator input, and the golden generate output pins their effect."),
+    ];
+
+    let src = include_str!("lib.rs");
+    let start = src
+        .find("#[wasm_bindgen]\nimpl Editor {")
+        .expect("the wasm_bindgen impl block moved — this census has lost its subject");
+    let block = &src[start..];
+    let mut exports: Vec<&str> = Vec::new();
+    for (idx, _) in block.match_indices("\n    pub fn ") {
+        let after = &block[idx + "\n    pub fn ".len()..];
+        let Some(open) = after.find('(') else { continue };
+        let name = after[..open].trim();
+        if name.is_empty() || name.contains(' ') {
+            continue;
+        }
+        exports.push(name);
+    }
+    assert!(
+        exports.len() >= 40,
+        "the export scan found only {} methods — it is not reaching the impl \
+         block, and a census over an empty population is green for the wrong \
+         reason",
+        exports.len()
+    );
+
+    // A method that returns nothing hands the caller no value to disagree
+    // about; pure mutators are covered as a CLASS by
+    // `every_mutator_bumps_the_revision` and
+    // `no_zone_mutator_can_write_a_document_that_cannot_reopen`.
+    let publishes = |name: &str| -> bool {
+        let Some(idx) = block.find(&format!("\n    pub fn {name}(")) else { return false };
+        let after = &block[idx + 1..];
+        let Some(brace) = after.find(" {") else { return false };
+        let head = &after[..brace];
+        let Some(arrow) = head.find("->") else { return false };
+        let ret = head[arrow + 2..].trim();
+        ret != "Result<(), JsValue>" && ret != "()"
+    };
+
+    let declared: Vec<&str> = SURFACES.iter().map(|(n, _, _)| *n).collect();
+    let mut unclassified: Vec<&str> = Vec::new();
+    let mut publishing = 0usize;
+    for e in &exports {
+        if !publishes(e) {
+            continue;
+        }
+        publishing += 1;
+        if !declared.contains(e) {
+            unclassified.push(e);
+        }
+    }
+    assert!(
+        unclassified.is_empty(),
+        "these wasm exports publish a value and are not classified in SURFACES. \
+         Put each one IN the battery, or declare it EXEMPT with the reason it \
+         computes and persists nothing: {unclassified:?}"
+    );
+    for (name, _, _) in SURFACES {
+        assert!(
+            exports.contains(name),
+            "SURFACES classifies `{name}` but it is not a wasm export any more — \
+             the census is describing a boundary that no longer exists."
+        );
+    }
+    for (name, _, why) in SURFACES {
+        assert!(why.len() > 30, "surface `{name}` carries no reason");
+    }
+
+    let in_battery = SURFACES.iter().filter(|(_, b, _)| *b).count();
+    println!(
+        "PUBLISHED SURFACES: {} exports · {publishing} publish a value · {} classified \
+         — {in_battery} IN battery, {} EXEMPT",
+        exports.len(),
+        SURFACES.len(),
+        SURFACES.len() - in_battery
+    );
+}
+
+/// **R18 — THE CONJUNCT RECONCILIATION.** The enumeration must describe the
+/// source, in both directions.
+///
+/// `metrics_can_never_be_impossible` holds eighteen assertions under one test
+/// name. Four consecutive assertion-by-assertion audits missed two of them,
+/// because every one of those audits walked a LIST — of tests, of gates, of
+/// checks — and an unenumerated conjunct is on no list. This makes the list, and
+/// then refuses to let it drift from the code.
+///
+/// Scanned rather than derived at runtime, because a conjunct that never fires
+/// on the battery's 1 200 evaluations (every Guard, by definition) emits nothing
+/// to count. The source is the only place all eighteen are visible at once.
+///
+/// FALSIFICATIONS, run in a disposable worktree and recorded in the ledger:
+///   * add a `v.push(format!("something wrong"))` with no `[id]` tag  -> RED
+///   * tag one with an id absent from `CONJUNCTS`                     -> RED
+///   * delete a conjunct's push, leaving its `CONJUNCTS` row          -> RED
+#[test]
+fn the_basis_conjuncts_are_enumerated() {
+    let src = include_str!("metrics_tests.rs");
+    let start = src
+        .find("fn violations(doc: &Document)")
+        .expect("violations() moved — this reconciliation has lost its subject");
+    let end = src[start..]
+        .find("\n/// **The conditional clamp")
+        .map(|i| start + i)
+        .expect("the end marker of violations() moved");
+    let body = &src[start..end];
+
+    // Every push in `violations` carries a tag, and the tag is declared.
+    let mut used: Vec<&str> = Vec::new();
+    let mut untagged = 0usize;
+    let mut cursor = 0usize;
+    while let Some(rel) = body[cursor..].find("push(format!(") {
+        let at = cursor + rel;
+        cursor = at + "push(format!(".len();
+        let Some(qrel) = body[cursor..].find('"') else { break };
+        let lit = &body[cursor + qrel + 1..];
+        match lit.strip_prefix('[').and_then(|r| r.find(']').map(|i| &r[..i])) {
+            Some(id) if !id.is_empty() && id.chars().all(|c| c.is_ascii_lowercase() || c == '-') => {
+                used.push(id)
+            }
+            _ => untagged += 1,
+        }
+    }
+    assert_eq!(
+        untagged, 0,
+        "{untagged} violation push(es) in `violations` carry no [conjunct-id]. \
+         An unenumerated conjunct cannot be audited by a process that audits \
+         lists — which is how two tautologies survived four sweeps."
+    );
+    // Non-vacuity: a scan that matches nothing reconciles perfectly.
+    assert!(
+        used.len() >= 15,
+        "the scan found only {} tagged pushes — it is not reaching the body of \
+         `violations`, and a reconciliation over an empty population is green \
+         for the wrong reason",
+        used.len()
+    );
+
+    let declared: Vec<&str> = CONJUNCTS.iter().map(|(id, _, _)| *id).collect();
+    for id in &used {
+        assert!(
+            declared.contains(id),
+            "conjunct `{id}` is asserted in `violations` but is not declared in \
+             CONJUNCTS. Classify it: Check (with the falsification you RAN) or \
+             Guard (with the mechanism whose breaking makes it fire)."
+        );
+    }
+    for id in &declared {
+        assert!(
+            used.contains(id),
+            "CONJUNCTS declares `{id}` but nothing in `violations` asserts it — \
+             the enumeration is describing a test that no longer exists."
+        );
+    }
+    // Ids are unique, and every `why` is a claim rather than a placeholder.
+    let mut seen = std::collections::BTreeSet::new();
+    for (id, _, why) in CONJUNCTS {
+        assert!(seen.insert(*id), "CONJUNCTS declares `{id}` twice");
+        assert!(
+            why.len() > 40,
+            "conjunct `{id}` has no real justification — a Check owes its \
+             falsification, a Guard owes its construction proof"
+        );
+    }
+
+    // THE COUNT IS BOARD-VISIBLE. `cargo test` reports one line for
+    // `metrics_can_never_be_impossible`; this prints what that line covers.
+    let checks = CONJUNCTS.iter().filter(|(_, k, _)| *k == Check).count();
+    let guards = CONJUNCTS.len() - checks;
+    println!(
+        "BASIS CONJUNCTS: {} total — {checks} Check, {guards} Guard \
+         (guards are excluded from check counts, R16)",
+        CONJUNCTS.len()
+    );
+    assert_eq!(
+        CONJUNCTS.len(),
+        18,
+        "the conjunct count moved. That is fine and it is the point — update this \
+         number in the same change, so the board's coverage claim moves with it."
     );
 }
 

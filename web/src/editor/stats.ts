@@ -20,8 +20,7 @@
 
 import type { DocState, DocWall, DocZone, ZoneType } from '../types/doc'
 import { GROUND_ZONES } from '../types/doc'
-import type { ZoneStat } from '../types/metrics'
-import { zoneArea as zoneShapeArea } from '../util/zoneGeom'
+import type { ZoneAreas, ZoneStat } from '../types/metrics'
 import { searchBank } from '../materialBank/mock'
 import { searchOfficeBank } from '../materialBank/office'
 import { ZONE } from './planStyle'
@@ -267,13 +266,6 @@ function buildPriceMap(): Map<string, number> {
 
 const wallLen = (w: DocWall) => Math.hypot(w.b.x - w.a.x, w.b.y - w.a.y)
 
-/** Net area of a zone from its shape, m². Enclosed rooms are `Rect` and lie
- *  fully inside the plate, so unclipped shape area == the core's plate-clipped
- *  area — the two enclosure premiums agree. */
-function zoneArea(z: DocZone): number {
-  return zoneShapeArea(z.shape)
-}
-
 export interface ElementLine {
   label: string
   qty: number
@@ -303,7 +295,7 @@ const ELEMENT_COLOR = {
   lighting: '#e0952b', // amber — lighting
 }
 
-export function buildElements(state: DocState, nia: number): ElementBreakdown {
+export function buildElements(state: DocState, nia: number, zoneAreas: ZoneAreas): ElementBreakdown {
   const groups: ElementGroup[] = []
 
   // 1. Partition Wall — GENERATED interior partitions only (the fit-out
@@ -331,9 +323,18 @@ export function buildElements(state: DocState, nia: number): ElementBreakdown {
 
   // 3. Enclosed-room premium — acoustic ceiling / dedicated HVAC / AV, per m² of
   //    enclosed floor (Meeting / Closed Office). Open plan never incurs it.
+  //
+  //    The area is the CORE's (`ZoneAreas`), and the claim that used to stand
+  //    here — "enclosed rooms are `Rect` and lie fully inside the plate, so
+  //    unclipped shape area == the core's plate-clipped area, the two enclosure
+  //    premiums agree" — was FALSE when it was written. Measured at HEAD on
+  //    fixture F5: `Focus Room 1` 8.4672 m² unclipped against the core's 7.5096,
+  //    and the two premiums 2.20% apart in sum. `cost.rs`'s premium now reads
+  //    the same basis, so they agree because one number reaches both, which is
+  //    a mechanism rather than a sentence about `Rect`s.
   const enclosedArea = (state.zones ?? [])
     .filter((z) => z.zone_type === 'Meeting' || z.zone_type === 'ClosedOffice')
-    .reduce((s, z) => s + zoneArea(z), 0)
+    .reduce((s, z) => s + (zoneAreas.get(z.id) ?? 0), 0)
   if (enclosedArea > 0)
     groups.push(
       makeGroup('Room Fit-out', ELEMENT_COLOR.partition, [

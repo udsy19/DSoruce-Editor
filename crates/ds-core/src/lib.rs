@@ -449,7 +449,7 @@ pub(crate) use basis::raw_zone_areas_unscaled;
 /// keeps its own copy: it answers "how many people does this seat", not "is this
 /// occupiable", and the two questions are only accidentally the same list.
 pub(crate) fn is_usable_zone(t: ZoneType) -> bool {
-    !matches!(t, ZoneType::Circulation | ZoneType::Core | ZoneType::Unassigned)
+    t.is_usable()
 }
 
 fn usable_area(doc: &Document, areas: &[f64]) -> f64 {
@@ -517,10 +517,39 @@ fn compute_metrics(doc: &Document) -> Metrics {
     if let Some(reason) = overflow {
         errors.push(reason);
     }
-    // Not "belt and braces" — this catches any FUTURE divergence between the
-    // numerator and the denominator, which is exactly the failure that shipped.
-    // It clamps as well as reports: a panel showing 100% next to a stated reason
-    // is honest; a panel showing 648% is not, and silence about either is worse.
+    // **A GUARD (R16), and the classification was MEASURED after being got
+    // wrong twice.**
+    //
+    // It catches any FUTURE divergence between the numerator and the
+    // denominator — the failure that shipped as M1. It clamps as well as
+    // reports: a panel showing 100% beside a stated reason is honest; a panel
+    // showing 648% is not, and silence about either is worse.
+    //
+    // The previous round's ledger called this "an unsatisfiable branch (R16's
+    // corollary), same class as lib.rs:481-487" and left it open as a carried
+    // item to delete. **RETRACTED BY NAME — that was wrong, and it was wrong the
+    // same way T2 was wrong one entry earlier.** Both used UNSATISFIABILITY
+    // evidence (removing the clamps left the suite green) where R16's own
+    // separating test is BREAKING THE MECHANISM. Unsatisfiability is what a
+    // guard and a tautology have in common; it does not distinguish them.
+    //
+    // Run properly, in a disposable worktree: restore M1's exact shape — the
+    // numerator reads `raw_zone_areas_unscaled` while the denominator stays
+    // capped — and on the retype-all fixture this branch FIRES, with
+    //
+    //     metrics_error = "… zone areas do not tile the floor: Σ 953.030 m²
+    //     exceeds the traced floor 930.063 m² by 2.5% … · efficiency 102.469%
+    //     exceeds 100 (usable 953.030 / NIA 930.063, plate traced) —
+    //     capped at 100%"
+    //
+    // 102.469% is M1's own number, verbatim. The condition is false today
+    // because `area_basis` scales one vector by one factor and makes efficiency
+    // a subset over its own total — that is a mechanism somebody built, which is
+    // the definition of a guard, not an algebraic accident.
+    //
+    // The gap that IS real: nothing in the suite observes it, so its evidence is
+    // this construction proof rather than a red. That is what R16 says a guard
+    // carries.
     if efficiency_pct > 100.0 + 1e-6 {
         errors.push(format!(
             "efficiency {efficiency_pct:.3}% exceeds 100 (usable {usable:.3} / \
@@ -614,10 +643,35 @@ fn compute_metrics(doc: &Document) -> Metrics {
 /// planner exactly where floor is being wasted is the entire value of the
 /// distinction. So `zone_stats` stays honest and `zone_stats_published` folds.
 pub(crate) fn published_zone_type(t: ZoneType) -> ZoneType {
-    match t {
-        ZoneType::Unassigned => ZoneType::Circulation,
-        other => other,
+    // GENERATED CLASS, not a second list. `ZoneType::is_ground` comes out of
+    // `zone_domain!`'s class column, so "which types fold" and "which types are
+    // ground" are one declaration and cannot drift. This used to be a `match`
+    // naming `Unassigned` — the arm a regex read, a prose comment poisoned, and
+    // an `if`/`return` evaded.
+    if t.is_ground() {
+        ZoneType::Circulation
+    } else {
+        t
     }
+}
+
+/// **Is this zone GROUND — the floor a plan sits on rather than a room on it?**
+///
+/// DERIVED from [`published_zone_type`], not restated beside it. Ground is
+/// exactly "what the client-facing fold turns into circulation, plus
+/// circulation itself", so the two can never disagree: adding a type to the
+/// fold adds it here, in the same edit, with no second site to remember.
+///
+/// **It did not exist, and three production sites spelled it by hand** —
+/// `Document::zone_index_at`, `conform`'s residual filter, and `is_usable_zone`
+/// — each carrying its own `matches!(t, Circulation | Unassigned)`. That is the
+/// private-definition class, and it has now fired three times in this codebase:
+/// once on G12's fold boundary, once in `drawing-set.test.mjs` (whose private
+/// `!= 'Circulation'` demanded twelve labels the fold forbids, red for 73
+/// commits), and here. TypeScript closed it with `isGroundZone`; Rust never
+/// had the predicate at all.
+pub(crate) fn is_ground_zone(t: ZoneType) -> bool {
+    t.is_ground()
 }
 
 /// Area (m²) of `shape ∩ rect`, clipped to the plate — the floor a Workspace
@@ -1153,7 +1207,11 @@ impl Editor {
                 } else if Some(i) == spanning {
                     seated as u32
                 } else {
-                    z.capacity()
+                    // THE SAME AREA THIS ROW PRINTS (R17). It read `z.capacity()`,
+                    // which measured the raw shape, so the row could publish
+                    // `area: 8.0, capacity: 5` — five 6 m² workstations inside
+                    // eight square metres, on the unedited F1 fixture.
+                    z.capacity_from_area(area)
                 };
                 ZoneStat {
                     id: z.id,
@@ -1293,6 +1351,55 @@ impl Editor {
         // the capture harness renders.
         self.diag = fixtures::last_diag();
         Ok(())
+    }
+
+    /// **THE ground set, as a VALUE across the boundary — not a shape to parse.**
+    ///
+    /// Every consumer of "which zone types are ground?" used to recover it by
+    /// regexing `published_zone_type` for `X => ZoneType::Circulation` match
+    /// arms. The adversary defeated that in two ways, both with the semantics
+    /// unchanged:
+    ///
+    /// * **an `if`/`return` instead of a match arm** — `if t == Core { return
+    ///   Circulation; }` folds `Core` into ground and the regex sees nothing.
+    ///   The whole 50-step battery stayed green with the ground set silently
+    ///   one type larger.
+    /// * **a prose comment inside the function body** — this repo's own
+    ///   convention is heavy inline explanation, and a comment merely NAMING a
+    ///   type beside the arrow (`// we deliberately do NOT write
+    ///   ZoneType::Meeting => ZoneType::Circulation`) put `Meeting` into the
+    ///   parsed set. Size 3 passed the parser's `size < 2` non-vacuity guard,
+    ///   because that guard checks the parse's SIZE, not its CORRECTNESS.
+    ///
+    /// Both are one class: **a form-specific reader standing in for a semantic
+    /// property.** The same class produced the `.area()` census, the three TS
+    /// spellings, and the `pub fn ` impl-block scan. Grepping for the shape of a
+    /// definition is defeated by rewriting the shape; asking for the VALUE is
+    /// not. CLAUDE.md prescribes exactly this — *"prefer exporting the value
+    /// across the wasm boundary"* — and this is that export.
+    ///
+    /// Computed by iterating every `ZoneType` through [`is_ground_zone`], so it
+    /// is the predicate's own answer rather than a second list to keep in step.
+    pub fn ground_zone_types() -> Result<JsValue, JsValue> {
+        // `ZoneType::ALL`, not a list written here. The previous version said it
+        // iterated "every ZoneType" and iterated an eight-element literal; a
+        // ninth, ground variant was invisible to it while every board stayed
+        // green. See `ZoneType::ALL` for the run.
+        let ground: Vec<&str> = ZoneType::ALL
+            .iter()
+            .copied()
+            .filter(|t| is_ground_zone(*t))
+            .map(ZoneType::name)
+            .collect();
+        serde_wasm_bindgen::to_value(&ground).map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
+    /// **The type space itself, published** — `ZoneType::ALL`, so no consumer
+    /// has to author a list of variants to iterate. Three did, and a ninth
+    /// variant was invisible to all three at once.
+    pub fn zone_type_names() -> Result<JsValue, JsValue> {
+        let names: Vec<&str> = ZoneType::ALL.iter().copied().map(ZoneType::name).collect();
+        serde_wasm_bindgen::to_value(&names).map_err(|e| JsValue::from_str(&e.to_string()))
     }
 
     /// The fixture ids, in order, so a harness enumerates rather than hard-codes.

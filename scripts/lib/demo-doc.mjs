@@ -79,6 +79,19 @@ export function readDoc(ed) {
 }
 
 /**
+ * `[zoneId, areaM2]` pairs — the CORE's per-zone areas, in the one form that
+ * survives `page.evaluate`'s structured clone. Rebuild in the page with
+ * `new Map(pairs)` and hand it to any exporter's `zoneAreas` option.
+ *
+ * Exists so no headless driver has to know how to derive a room's area. There
+ * is one definition of that quantity and it is in Rust; a driver that computed
+ * its own would be the defect this whole round is about, one layer out.
+ */
+export function zoneAreaPairs(quantities) {
+  return (quantities?.rooms ?? []).map((r) => [r.roomId, r.areaM2])
+}
+
+/**
  * A DIFFERENT brief on the same plate — meeting-heavy rather than desk-heavy.
  * Kept distinct from `DEMO_PROGRAM` on purpose: seed variation alone collapses
  * to two layouts on this plate, so a seed sweep would hand G9 a byte-identical

@@ -4,6 +4,7 @@ import { Minimap, type MinimapHandle, type MinimapProps } from './Minimap'
 import { ViewerToolbar, DEFAULT_SUN, type Quality, type ViewerWithExtras } from './ViewerToolbar'
 import { DEFAULT_THEME, type ThemeId } from './theme'
 import type { DocState } from '../types/doc'
+import type { ZoneAreas } from '../types/metrics'
 import { MONO, UI } from '../ui/type'
 
 /**
@@ -119,7 +120,7 @@ export const PICK_CHIP = {
  * the viewer's `onModeHint` callback, and a click-to-select card (orbit mode)
  * driven by `onPick`.
  */
-export function Scene3D({ state }: { state: DocState }) {
+export function Scene3D({ state, zoneAreas }: { state: DocState; zoneAreas: ZoneAreas }) {
   const hostRef = useRef<HTMLDivElement>(null)
   const viewerRef = useRef<ViewerWithExtras | null>(null)
   const minimapRef = useRef<MinimapHandle>(null)
@@ -204,22 +205,14 @@ export function Scene3D({ state }: { state: DocState }) {
       }
     }
     if (picked.kind === 'zone') {
-      const z = state.zones?.find((x) => x.id === picked.id)
-      let area: number | null = null
-      if (z) {
-        const s = z.shape
-        if (s.kind === 'Poly') {
-          let a2 = 0
-          for (let i = 0; i < s.pts.length; i++) {
-            const [x0, y0] = s.pts[i]
-            const [x1, y1] = s.pts[(i + 1) % s.pts.length]
-            a2 += x0 * y1 - x1 * y0
-          }
-          area = Math.abs(a2) / 2
-        } else {
-          area = s.kind === 'Rect' ? s.w * s.h : s.w * s.h - s.in_w * s.in_h
-        }
-      }
+      // The core's area for this zone, or none.
+      //
+      // This block used to be a hand-inlined shoelace plus a rect/ring product —
+      // a ninth copy of the room-area definition, and one that no search for
+      // `zoneArea` could find because it named nothing. It printed the RAW
+      // extent: 35.0 m² for F1's `Open Workspace (2)` while the Statistics panel
+      // two clicks away printed 8.0 for the same room.
+      const area = picked.id === undefined ? null : zoneAreas.get(picked.id) ?? null
       return {
         title: picked.label || 'Zone',
         subtitle: `${picked.zoneType ?? 'Zone'}${area != null ? ` · ${area.toFixed(1)} m²` : ''}`,
@@ -227,7 +220,7 @@ export function Scene3D({ state }: { state: DocState }) {
       }
     }
     return null
-  }, [picked, state])
+  }, [picked, state, zoneAreas])
 
   return (
     <div ref={hostRef} style={{ width: '100%', height: '100%', position: 'relative' }}>

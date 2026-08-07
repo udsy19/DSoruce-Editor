@@ -1,3 +1,10 @@
+// EXTENSION-FUL. `symbols.test.mjs` imports `symbols.ts` directly and lets Node
+// strip the types — no bundler — and that chain reaches this file. A type-only
+// import is erased by stripping; a VALUE import is not, so an extensionless one
+// leaves Node resolving `./zoneDomain.generated` at runtime and the test dies
+// with ERR_MODULE_NOT_FOUND. **Second time this exact line-shape has broken the
+// battery this session**; `pnpm typecheck` is green either way.
+import { GENERATED_GROUND_ZONES } from './zoneDomain.generated.ts'
 /**
  * The TS mirror of the Rust core's serialized document (serde field names).
  *
@@ -175,7 +182,20 @@ export interface DocState {
  * Route the question through these predicates, and the next zone type added is
  * one edit rather than thirty.
  */
-export const GROUND_ZONES: readonly ZoneType[] = ['Circulation', 'Unassigned']
+/**
+ * The ground set — **RE-EXPORTED FROM THE GENERATED DOMAIN, not authored here.**
+ *
+ * This was `['Circulation', 'Unassigned']`, a hand-written array, and it was a
+ * SECOND AUTHORING PATH for a domain whose one declaration is `zone_domain!` in
+ * `crates/ds-core/src/zone.rs`. Belief attempt five measured what that costs: a
+ * ninth variant declared ground in Rust was ground in Rust and not-ground here,
+ * with 200 tests, 51/51 steps and every board green.
+ *
+ * `zoneDomain.generated.ts` is produced by EVALUATING the compiled core, `make
+ * wasm` regenerates it, and `gen-zone-domain.mjs --check` is a battery step —
+ * so a stale view is a build failure rather than a runtime hope.
+ */
+export const GROUND_ZONES: readonly ZoneType[] = GENERATED_GROUND_ZONES
 
 /** Is this zone the ground the plan sits on (circulation or leftover floor)? */
 export function isGroundZone(t: ZoneType): boolean {

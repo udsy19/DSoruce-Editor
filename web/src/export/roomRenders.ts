@@ -1,11 +1,12 @@
 import type { DocState } from '../types/doc'
+import type { ZoneAreas } from '../types/metrics'
 import { canvasToPngBytes } from './planGraphic'
 import type { WallSpan } from './wallTypes'
 import { buildInteriorScene, type InteriorRoom, type InteriorScene } from '../three/materialTheme'
 import { placeRoomCamera, renderInteriorStill, type StillOpts } from '../three/interiorStill'
 import { buildClearanceGrid, type ClearanceGrid } from './composition'
 import { FINISH_SPEC } from './finishSchedule'
-import { zoneArea } from '../util/zoneGeom'
+import { compareZoneExtent } from '../util/zoneGeom'
 
 /**
  * DELIVERABLE 2 — the per-room hero stills.
@@ -107,15 +108,32 @@ export interface RoomPackOpts extends StillOpts {
   only?: RoomRenderKey[]
   /** Called after each still — progress for a UI. */
   onProgress?: (key: RoomRenderKey, index: number, total: number) => void
+  /**
+   * Core-owned per-zone areas (`Editor.zone_stats_published()` /
+   * `Editor.quantities()`). REQUIRED, because `RoomRenderSpec.minAreaM2` is a
+   * THRESHOLD IN m² and a threshold is a comparison against a quantity, not an
+   * ordering: judging it on raw shape extent rendered rooms the pack bills at
+   * a quarter of the size the spec demands.
+   */
+  zoneAreas: ZoneAreas
 }
 
 /** Resolve a spec to the best room in the document, or null when the test-fit
  *  has nothing of that kind (a 6-desk plan has no conference room). */
-function pickRoom(scene: InteriorScene, spec: RoomRenderSpec, taken: Set<number>): InteriorRoom | null {
+function pickRoom(
+  scene: InteriorScene,
+  spec: RoomRenderSpec,
+  taken: Set<number>,
+  zoneAreas: ZoneAreas,
+): InteriorRoom | null {
   for (const key of spec.prefer) {
     const cands = scene.rooms
-      .filter((r) => r.finishKey === key && zoneArea(r.zone.shape) >= spec.minAreaM2)
-      .sort((a, b) => zoneArea(b.zone.shape) - zoneArea(a.zone.shape))
+      // A room the core has no row for cannot clear an area threshold: -Infinity
+      // drops it rather than letting a missing value read as a big room.
+      .filter((r) => r.finishKey === key && (zoneAreas.get(r.zone.id) ?? -Infinity) >= spec.minAreaM2)
+      // Ordering only, so the raw extent is the right instrument here — it
+      // agrees with the core's ranking and needs no lookup.
+      .sort((a, b) => compareZoneExtent(b.zone.shape, a.zone.shape))
     // Prefer a room no other still has used; fall back to sharing it (the
     // open-plan case) rather than dropping a deliverable.
     const fresh = cands.find((r) => !taken.has(r.zone.id))
@@ -168,7 +186,7 @@ function floorCheckOf(still: ReturnType<typeof renderInteriorStill>): RoomRender
  * Default output is 3840×2160 (the reference pack's size); G6's floor is
  * 1920×1080.
  */
-export async function renderRoomPack(state: DocState, opts: RoomPackOpts = {}): Promise<RoomRender[]> {
+export async function renderRoomPack(state: DocState, opts: RoomPackOpts): Promise<RoomRender[]> {
   const scene = buildInteriorScene(state, {
     wallSpans: opts.wallSpans,
     plate: opts.plate,
@@ -190,7 +208,7 @@ export async function renderRoomPack(state: DocState, opts: RoomPackOpts = {}): 
     const out: RoomRender[] = []
     for (let i = 0; i < specs.length; i++) {
       const spec = specs[i]
-      const room = pickRoom(scene, spec, taken)
+      const room = pickRoom(scene, spec, taken, opts.zoneAreas)
       if (!room) continue
       taken.add(room.zone.id)
       const avoid = shotFrom.get(room.zone.id) ?? []

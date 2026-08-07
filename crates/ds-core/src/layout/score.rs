@@ -27,7 +27,7 @@ pub fn density_of(doc: &Document, plate_poly: Option<&[Point]>) -> f64 {
         .zones
         .iter()
         .filter(|z| matches!(z.zone_type, ZoneType::Meeting | ZoneType::Collaboration))
-        .map(|z| z.capacity() as f64)
+        .map(|z| z.capacity_from_area(z.area()) as f64)
         .sum();
     let seats =
         doc.components.iter().filter(|c| c.category == "Desk").count() as f64 + meeting_seats;

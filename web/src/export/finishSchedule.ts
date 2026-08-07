@@ -49,12 +49,17 @@ import {
 } from './sheet'
 import type { SheetSetMeta } from './sheetSet'
 import type { DocState, DocZone } from '../types/doc'
-import { zoneArea as zoneShapeArea } from '../util/zoneGeom'
+import type { ZoneAreas } from '../types/metrics'
 import { roomDisplayNames } from './roomNaming'
 import { CEILING_HEIGHT } from './services'
 
 export interface FinishScheduleOpts {
   meta: SheetSetMeta
+  /** Core-owned per-zone areas (`Editor.zone_stats_published()` /
+   *  `Editor.quantities()`). REQUIRED: the `AREA m²` column is a published
+   *  quantity, and this schedule used to compute it from the zone shape —
+   *  raw, unclipped, 4.4x off the workbook on an unedited fixture. */
+  zoneAreas: ZoneAreas
   /** First sheet-number index (produces `A.0(startNo+1)`, …). Default 4, so it
    *  can follow a 2-plan set + two default sections; the orchestrator passes
    *  `startNo = numbered.length` to take the next free slots. Continuation
@@ -279,9 +284,6 @@ export function roomTypeLabel(z: DocZone | null): string {
   return TYPE_LABEL[finishTypeFor(z)]
 }
 
-/** Enclosed area (m²) of a zone shape; rings exclude the hole, polys shoelace. */
-const zoneArea = zoneShapeArea
-
 // ---------------------------------------------------------------------------
 // One schedule row — a resolved room ready to draw.
 // ---------------------------------------------------------------------------
@@ -298,7 +300,7 @@ interface Row {
 /** Resolve every non-circulation zone into a schedule row (deterministic order:
  *  by zone id). Circulation is corridor / "walking place" — graphic on the plan,
  *  not a scheduled room — so it is excluded, matching roomLabels/servicesSheets. */
-function scheduleRows(state: DocState): Row[] {
+function scheduleRows(state: DocState, zoneAreas: ZoneAreas): Row[] {
   const zones = (state.zones ?? []).filter((z) => !isGroundZone(z.zone_type))
   const ordered = [...zones].sort((a, b) => a.id - b.id)
   // The schedule prints the same disambiguated name the plans and the workbook
@@ -316,7 +318,11 @@ function scheduleRows(state: DocState): Row[] {
       type: roomTypeLabel(z),
       spec: FINISH_SPEC[key],
       ceilHt: `${CEILING_HEIGHT.toFixed(2)} m`,
-      area: zoneArea(z.shape).toFixed(1),
+      // A zone with no core row prints `NaN`, deliberately. `0.0` is a
+      // plausible-looking number that ships; `NaN` is not, and this column is
+      // read back and compared against the workbook by
+      // `scripts/gates/area-identity.mjs` either way.
+      area: (zoneAreas.get(z.id) ?? NaN).toFixed(1),
     }
   })
 }
@@ -563,7 +569,7 @@ export function finishScheduleSheets(state: DocState, opts: FinishScheduleOpts):
   const start = opts.startNo ?? 4
   const no = (i: number) => `A.${String(start + i + 1).padStart(2, '0')}`
 
-  const rows = scheduleRows(state)
+  const rows = scheduleRows(state, opts.zoneAreas)
   if (rows.length === 0) {
     return [{ page: emptySheet(state, no(0), opts), no: no(0), title: 'Room Finish Schedule', kind: 'finishes' }]
   }

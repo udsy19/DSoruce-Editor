@@ -18,7 +18,7 @@
 
 import type { DocState, DocComponent, DocWall, DocZone, ZoneType } from '../types/doc'
 import { isGroundZone } from '../types/doc'
-import { pointInZoneShape, zoneArea } from '../util/zoneGeom'
+import { compareZoneExtent, pointInZoneShape } from '../util/zoneGeom'
 import { catByCategory } from '../editor/catalog'
 import { roomTypeLabel } from './finishSchedule'
 
@@ -131,20 +131,16 @@ function itemDescription(c: DocComponent): string {
  */
 export function zoneAtPoint(px: number, py: number, zones: DocZone[]): DocZone | null {
   let chosen: DocZone | null = null
-  let chosenArea = 0
   let foundSpecific = false
   for (const z of zones) {
     if (!pointInZoneShape(z.shape, px, py)) continue
     const circ = isGroundZone(z.zone_type)
     if (circ && foundSpecific) continue // a specific zone already outranks it
-    const area = zoneArea(z.shape)
     if (!circ && !foundSpecific) {
       foundSpecific = true // first specific zone displaces circulation
       chosen = z
-      chosenArea = area
-    } else if (chosen === null || area < chosenArea) {
+    } else if (chosen === null || compareZoneExtent(z.shape, chosen.shape) < 0) {
       chosen = z
-      chosenArea = area
     }
   }
   return chosen

@@ -190,7 +190,7 @@ impl Document {
             // nothing and matters the moment that disjointness is relaxed — but
             // it is not what keeps the count at 85 today, and a comment claiming
             // otherwise would be a false claim in the one place nobody re-checks.
-            let circ = matches!(z.zone_type, ZoneType::Circulation | ZoneType::Unassigned);
+            let circ = crate::is_ground_zone(z.zone_type);
             if circ && found_non_circ {
                 continue; // a specific zone already outranks any ground zone
             }

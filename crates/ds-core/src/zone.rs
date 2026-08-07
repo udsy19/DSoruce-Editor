@@ -13,18 +13,95 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Semantic purpose of a region of the floor plate. Drives the pastel fill, the
-/// capacity model, and the Statistics donut bucket. String-tag serde repr so the
-/// TS/AI side speaks the same vocabulary ("Meeting", not `2`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum ZoneType {
-    Circulation,   // corridors / "walking place"      → soft blue
-    Workspace,     // open desk field                   → pale cream/yellow
-    Meeting,       // enclosed meeting room             → pale lavender
-    Collaboration, // breakout / lounge / open collab   → pale green
-    Core,          // WC, stairs, lifts, MEP, service   → light gray
-    ClosedOffice,  // private cellular office           → pale peach/orange
-    Amenity,       // kitchen / cafe / reception        → pale teal
+/// **THE SINGLE AUTHORING POINT FOR THE ZONE DOMAIN (R22).**
+///
+/// One declaration emits the enum, `ZoneType::ALL`, `name()`, the published
+/// fold, and both partitions. There is nowhere else to type a variant.
+///
+/// **The ladder this closes.** A regex read the FORM of the definition and a
+/// prose comment defeated it. The fix authored a VALUE — and belief attempt
+/// five showed an authored value is form one level deeper: `ground_zone_types()`
+/// said it iterated "every `ZoneType`" and iterated an eight-element array
+/// literal. Adding a ninth variant and fixing only what the compiler demanded
+/// left `is_ground_zone(Utility)` true in Rust and false in TypeScript, 25
+/// people seated in a non-usable zone, and every board green.
+///
+/// A detector cannot close that, because the defect is an author forgetting a
+/// list. **The floor is generation: an incomplete enumeration must be not
+/// merely detected but UNAUTHORABLE.** Every list below is emitted from the one
+/// table, so "the array lags the enum" is not a bug you can write.
+///
+/// Each variant declares its CLASS, which is what the partitions are made of:
+///   * `ground`  — the floor a plan sits on. Folds to `Circulation` on every
+///                 published surface, seats nobody, is never usable area.
+///   * `service` — a real, named, scheduled room that is NOT usable area
+///                 (a WC or riser is a room; it is landlord/overhead).
+///   * `program` — a room somebody occupies. Usable area.
+macro_rules! zone_domain {
+    ($( $(#[$meta:meta])* $variant:ident : $class:ident ),+ $(,)?) => {
+        /// Semantic purpose of a region of the floor plate. Drives the pastel
+        /// fill, the capacity model, and the Statistics donut bucket. String-tag
+        /// serde repr so the TS/AI side speaks the same vocabulary ("Meeting",
+        /// not `2`).
+        ///
+        /// **Generated from `zone_domain!` — see it for why.** Do not add a
+        /// variant here; there is no "here" to add it to.
+        #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+        pub enum ZoneType {
+            $( $(#[$meta])* $variant ),+
+        }
+
+        impl ZoneType {
+            /// **Every variant, GENERATED.** Not an array literal that an author
+            /// has to remember to grow — this list and the enum have one source.
+            pub const ALL: &'static [ZoneType] = &[ $( ZoneType::$variant ),+ ];
+
+            /// The name serde and the wasm boundary publish for this variant.
+            pub fn name(self) -> &'static str {
+                match self { $( ZoneType::$variant => stringify!($variant) ),+ }
+            }
+
+            /// GROUND — the floor a plan sits on, generated from the class
+            /// column. `published_zone_type` and `is_ground_zone` both read
+            /// this, so the fold and the predicate cannot disagree.
+            pub(crate) fn is_ground(self) -> bool {
+                match self { $( ZoneType::$variant => zone_domain!(@is_ground $class) ),+ }
+            }
+
+            /// USABLE — occupiable floor: everything that is neither ground nor
+            /// service. The efficiency numerator's membership test.
+            pub(crate) fn is_usable(self) -> bool {
+                match self { $( ZoneType::$variant => zone_domain!(@is_usable $class) ),+ }
+            }
+        }
+    };
+    (@is_ground ground)  => { true };
+    (@is_ground service) => { false };
+    (@is_ground program) => { false };
+    (@is_usable ground)  => { false };
+    (@is_usable service) => { false };
+    (@is_usable program) => { true };
+}
+
+zone_domain! {
+    /// corridors / "walking place" — soft blue
+    Circulation: ground,
+    /// open desk field — pale cream/yellow
+    Workspace: program,
+    /// enclosed meeting room — pale lavender
+    Meeting: program,
+    /// breakout / lounge / open collab — pale green
+    Collaboration: program,
+    /// WC, stairs, lifts, MEP, service — light gray.
+    ///
+    /// `service`, not `program`: a core IS a real scheduled room (so it is not
+    /// ground and it is named on drawings), but it is not USABLE area — that is
+    /// the landlord/overhead half of the efficiency ratio.
+    Core: service,
+    /// private cellular office — pale peach/orange
+    ClosedOffice: program,
+    /// kitchen / cafe / reception — pale teal
+    Amenity: program,
     /// Floor the generator could neither furnish nor justify as circulation:
     /// too narrow to host a code-width path, or sealed off from the walking
     /// network. **A finding, not a program.**
@@ -39,40 +116,11 @@ pub enum ZoneType {
     /// surveyed product (qbiq, Laiout, TestFit, Hypar, CBRE Plans) publishes a
     /// "dead space" category, and neither BOMA Z65.1 nor IPMS defines one —
     /// IPMS "Limited Use Areas" is about headroom and columns, not leftover
-    /// pockets. So every export folds this back into Circulation
-    /// (`fold_unassigned`); only the working surface shows it, where its whole
-    /// job is to say *fix me*.
-    Unassigned,
+    /// pockets. So every export folds this back into Circulation; only the
+    /// working surface shows it, where its whole job is to say *fix me*.
+    Unassigned: ground,
 }
 
-/// How a zone came to exist. The discriminator between a corridor somebody
-/// **designed** and floor the generator **had left over**.
-///
-/// This was a string compare (`label == "Circulation"`) living in one function
-/// in `layout/conform.rs`. That worked only because both sides were written
-/// three lines apart. It was already broken in a way nothing could detect:
-/// zone labels are user-editable and `RoomTools` offers "Circulation" as a
-/// room type, so renaming a drawn `Corridor` to `Circulation` silently
-/// converted network into residual — and the next conform pass would melt it.
-/// Phase 1 would have made that seam load-bearing across five consumers in
-/// four files.
-///
-/// **`Residual` is generator-only.** No UI path and no wasm mutator may set
-/// it; a zone a user draws, retypes or renames is always `Drawn`. That is what
-/// keeps the discriminator meaning what it says.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub enum ZoneOrigin {
-    /// Designed: the drawn corridor network, rooms, the desk field, keep-outs —
-    /// and anything a user creates. The serde default, so a `.dsource` written
-    /// before this field existed loads with every zone `Drawn`, which is the
-    /// truth for those files: they predate the residual classifier.
-    #[default]
-    Drawn,
-    /// Emitted by the generator's residual pass over floor nothing claimed.
-    /// Carries [`ZoneType::Circulation`] or [`ZoneType::Unassigned`] depending
-    /// on whether it can host a code-width path connected to the network.
-    Residual,
-}
 
 /// Footprint shape. `Rect` is the v1 workhorse; `RectRing` models the perimeter
 /// corridor (a rect with a rectangular hole); `Poly` is a boundary-conforming
@@ -221,6 +269,28 @@ fn poly_points(pts: &[[f64; 2]]) -> Vec<crate::geometry::Point> {
     pts.iter().map(|p| crate::geometry::Point::new(p[0], p[1])).collect()
 }
 
+/// room type, so renaming a drawn `Corridor` to `Circulation` silently
+/// converted network into residual — and the next conform pass would melt it.
+/// Phase 1 would have made that seam load-bearing across five consumers in
+/// four files.
+///
+/// **`Residual` is generator-only.** No UI path and no wasm mutator may set
+/// it; a zone a user draws, retypes or renames is always `Drawn`. That is what
+/// keeps the discriminator meaning what it says.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ZoneOrigin {
+    /// Designed: the drawn corridor network, rooms, the desk field, keep-outs —
+    /// and anything a user creates. The serde default, so a `.dsource` written
+    /// before this field existed loads with every zone `Drawn`, which is the
+    /// truth for those files: they predate the residual classifier.
+    #[default]
+    Drawn,
+    /// Emitted by the generator's residual pass over floor nothing claimed.
+    /// Carries [`ZoneType::Circulation`] or [`ZoneType::Unassigned`] depending
+    /// on whether it can host a code-width path connected to the network.
+    Residual,
+}
+
 /// A first-class region of the floor plate. `id` is stable across edits so the
 /// AI and the frontend can address it ("merge 4 and 7"). Everything is meters.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -258,7 +328,20 @@ impl Zone {
     /// Nominal seated capacity by an area rule-of-thumb, per `ZoneType`. This is
     /// a *planning estimate* (area-based); the actual seated count is
     /// `component_ids` filtered to desks. Circulation and Core seat nobody.
-    pub fn capacity(&self) -> u32 {
+    ///
+    /// **It takes the area rather than measuring one (R17), and the parameter is
+    /// the whole point.** This was `capacity(&self)` reading `self.area()` — the
+    /// raw, unclipped shape — while the area printed beside it in the very same
+    /// `ZoneStat` came from the core's basis. Live at HEAD on the unedited F1
+    /// fixture, `Open Workspace (2)` published `area: 8.0, capacity: 5`: five
+    /// workstations at a declared 6 m² each, inside eight square metres. The row
+    /// contradicted itself, and `quantities()` billed the same pair.
+    ///
+    /// A quantity derived from a core-owned quantity has to be handed that
+    /// quantity. The generator still passes `z.area()` at its two sites, and now
+    /// it says so at the call site instead of getting the raw estimate silently
+    /// from a method that decides for it.
+    pub fn capacity_from_area(&self, area: f64) -> u32 {
         let per = match self.zone_type {
             ZoneType::Workspace => 6.0,     // m² per workstation
             ZoneType::Meeting => 2.5,       // m² per seat
@@ -269,9 +352,17 @@ impl Zone {
             // DEFINITION — it is floor the generator failed to use, and giving
             // it a nominal capacity would let waste inflate the headcount the
             // plan claims it can hold.
+            //
+            // This arm is a fourth spelling of `!is_usable_zone`, and it stays
+            // spelled out ON PURPOSE: an exhaustive match is what makes a NEW
+            // `ZoneType` a compile error here rather than a silent 0. Replacing
+            // it with a derived early-return would trade that for an unreachable
+            // branch, which R16 rules decorative coverage. Instead the two are
+            // tied by a CHECK — `capacity_seats_nobody_exactly_where_the_usable_partition_does`
+            // below — which reds if either side moves without the other.
             ZoneType::Circulation | ZoneType::Core | ZoneType::Unassigned => return 0,
         };
-        (self.area() / per).floor().max(0.0) as u32
+        (area / per).floor().max(0.0) as u32
     }
 }
 
@@ -369,6 +460,83 @@ mod tests {
         assert!((s.area() - 46.0).abs() < 1e-9);
     }
 
+    /// **The rate table's zero-set IS the usable partition.**
+    ///
+    /// `capacity_from_area` spells `Circulation | Core | Unassigned => 0` for
+    /// exhaustiveness (a new ZoneType must not compile), so that list is a
+    /// fourth copy of a set `is_usable_zone` already owns. Nothing made them
+    /// move together — and this is the private-definition class, which has now
+    /// fired three times in this codebase. This is the tie.
+    ///
+    /// It is falsifiable in both directions: drop a type from the match's zero
+    /// arm, or from `is_usable_zone`, and it reds.
+    /// The variant domain, DERIVED — `ZoneType::ALL`, whose completeness is
+    /// proved by `index_in_all`. This was a hand-written array here with a
+    /// comment claiming the neighbouring match kept it complete; it did not, and
+    /// a ninth variant left both guards below grading 8 of 9 types in silence.
+    use super::ZoneType as ZT;
+    const ALL_ZONE_TYPES: &[ZoneType] = ZT::ALL;
+
+    /// **GROUND IS NEVER USABLE — a GUARD (R16), with its construction proof.**
+    ///
+    /// It cannot fail today because `is_usable_zone` is literally
+    /// `!is_ground_zone(t) && t != Core`, so the implication is the definition.
+    /// It is recorded as a guard rather than dropped because it is what makes
+    /// the derivation SAFE to rely on: break the derivation — restore
+    /// `!matches!(t, Circulation | Core | Unassigned)` — and this becomes
+    /// falsifiable the instant the fold gains a type.
+    ///
+    /// **Why it is here at all**, stated as the null result that produced it:
+    /// folding `Core` into the published ground set in a sabotage worktree left
+    /// `cargo test` at **199 green**. The change was real — `is_ground_zone(Core)`
+    /// went false → true, measured by probe — and every Rust consumer followed
+    /// automatically, but NOTHING IN THE RUST SUITE OBSERVED IT. The only red
+    /// was the TypeScript mirror (`coreParity`). A change that propagates
+    /// correctly and invisibly is still a change nobody would see on this side.
+    #[test]
+    fn ground_is_never_usable() {
+        for &t in ALL_ZONE_TYPES {
+            assert!(
+                !(crate::is_ground_zone(t) && crate::is_usable_zone(t)),
+                "{t:?} is both ground and usable — the two partitions have come \
+                 apart, which is what `is_usable_zone` deriving from \
+                 `is_ground_zone` exists to prevent"
+            );
+        }
+        // Non-vacuity: the ground set is non-empty and is not everything.
+        let n = ALL_ZONE_TYPES.iter().filter(|t| crate::is_ground_zone(**t)).count();
+        assert!(
+            n > 0 && n < ALL_ZONE_TYPES.len(),
+            "the ground set is {n} of {} types — a partition check over an empty \
+             or total set is green for the wrong reason",
+            ALL_ZONE_TYPES.len()
+        );
+    }
+
+    #[test]
+    fn capacity_seats_nobody_exactly_where_the_usable_partition_does() {
+        for &t in ALL_ZONE_TYPES {
+            let z = Zone {
+                id: 1,
+                zone_type: t,
+                label: String::new(),
+                shape: ZoneShape::Rect { x: 0.0, y: 0.0, w: 10.0, h: 10.0 },
+                component_ids: Vec::new(),
+                group: None,
+                origin: ZoneOrigin::default(),
+            };
+            let seats_nobody = z.capacity_from_area(100.0) == 0;
+            assert_eq!(
+                seats_nobody,
+                !crate::is_usable_zone(t),
+                "{t:?}: capacity_from_area says seats_nobody={seats_nobody}, but \
+                 is_usable_zone says usable={} — the rate table and the usable \
+                 partition disagree about the same set",
+                crate::is_usable_zone(t)
+            );
+        }
+    }
+
     #[test]
     fn capacity_rules() {
         let mk = |t: ZoneType, w: f64, h: f64| Zone {
@@ -381,9 +549,9 @@ mod tests {
             origin: Default::default(),
         };
         // 60 m² Workspace / 6 = 10.
-        assert_eq!(mk(ZoneType::Workspace, 10.0, 6.0).capacity(), 10);
+        assert_eq!(mk(ZoneType::Workspace, 10.0, 6.0).capacity_from_area(60.0), 10);
         // Circulation / Core always 0.
-        assert_eq!(mk(ZoneType::Circulation, 10.0, 6.0).capacity(), 0);
-        assert_eq!(mk(ZoneType::Core, 10.0, 6.0).capacity(), 0);
+        assert_eq!(mk(ZoneType::Circulation, 10.0, 6.0).capacity_from_area(60.0), 0);
+        assert_eq!(mk(ZoneType::Core, 10.0, 6.0).capacity_from_area(60.0), 0);
     }
 }

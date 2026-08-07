@@ -738,13 +738,17 @@ fn real_plate_open_field_dominates_the_program() {
             .zones
             .iter()
             .filter(|z| matches!(z.zone_type, ZoneType::Meeting | ZoneType::Collaboration))
-            .map(|z| z.capacity() as f64)
+            .map(|z| z.capacity_from_area(z.area()) as f64)
             .sum();
         let seats = desks as f64 + meeting_seats;
         // Open desk field vs the rest of the PROGRAMMED (non-circulation,
         // non-core) floor — the qbiq "open dominates usable area" check.
         let ws_area: f64 = doc.zones.iter().filter(|z| z.zone_type == ZoneType::Workspace).map(|z| z.area()).sum();
-        let usable: f64 = doc.zones.iter().filter(|z| !matches!(z.zone_type, ZoneType::Circulation | ZoneType::Core)).map(|z| z.area()).sum();
+        // `crate::is_usable_zone`, not a fourth spelling. This read
+        // `!matches!(t, Circulation | Core)` — omitting `Unassigned` — so it
+        // counted leftover floor as usable and diverged from the partition every
+        // published surface bills from.
+        let usable: f64 = doc.zones.iter().filter(|z| crate::is_usable_zone(z.zone_type)).map(|z| z.area()).sum();
 
         // (a) OPEN-DESK DOMINANT by SEATS: workstations are the majority.
         assert!(
@@ -1030,7 +1034,7 @@ fn largest_wing_is_a_pure_desk_field_rooms_concentrate() {
             assert!(!room_zones.is_empty(), "{:?} seed {seed}: the support program vanished", strat);
 
             // (d) Density in the professional band + walkable + on-plate.
-            let meeting_seats: f64 = doc.zones.iter().filter(|z| matches!(z.zone_type, ZoneType::Meeting | ZoneType::Collaboration)).map(|z| z.capacity() as f64).sum();
+            let meeting_seats: f64 = doc.zones.iter().filter(|z| matches!(z.zone_type, ZoneType::Meeting | ZoneType::Collaboration)).map(|z| z.capacity_from_area(z.area()) as f64).sum();
             let seats = total_desks as f64 + meeting_seats;
             let m2pp = area / seats;
             assert!((8.0..=12.0).contains(&m2pp), "{:?} seed {seed}: {m2pp:.1} m²/seat outside 8–12", strat);
@@ -2443,7 +2447,7 @@ fn seats_and_area(doc: &Document) -> (f64, f64) {
         .zones
         .iter()
         .filter(|z| matches!(z.zone_type, ZoneType::Meeting | ZoneType::Collaboration))
-        .map(|z| z.capacity() as f64)
+        .map(|z| z.capacity_from_area(z.area()) as f64)
         .sum();
     (desks + mseats, geometry::polygon_area(&poly_of(doc)))
 }
@@ -2810,7 +2814,7 @@ fn oriented_fill_insights_are_correct_nia_le_gea_and_pax_is_seated() {
             // seated count on the oversized bbox — confirm the gap is real so
             // this test would catch a regression to area-based pax.
             assert!(
-                doc.zones[idx].capacity() as usize >= placed_desks,
+                doc.zones[idx].capacity_from_area(doc.zones[idx].area()) as usize >= placed_desks,
                 "{name} seed {seed}: area capacity unexpectedly below seated"
             );
         }

@@ -13,6 +13,7 @@
 
 import { Editor } from '../wasm/ds_core'
 import type { DocState, DocZone, ZoneType } from '../types/doc'
+import { GROUND_ZONES } from '../types/doc'
 import type { Metrics, ZoneStat } from '../types/metrics'
 import { pointInZoneShape } from '../util/zoneGeom'
 import { SF_PER_M2 } from '../util/units'
@@ -74,8 +75,10 @@ export interface ReportModel {
 /** Daylit = a workstation within this distance of the exterior (facade). */
 export const DAYLIGHT_RADIUS_M = 5
 
-// Zones that DON'T count as enclosed rooms for the privacy metric (open plan).
-const OPEN_ZONE_TYPES: ReadonlySet<ZoneType> = new Set(['Circulation', 'Unassigned', 'Workspace'])
+// Zones that DON'T count as enclosed rooms for the privacy metric (open plan):
+// GROUND plus the open desk field. DERIVED from `GROUND_ZONES`, so the fold owns
+// which types are ground and this file owns only the `Workspace` part.
+const OPEN_ZONE_TYPES: ReadonlySet<ZoneType> = new Set<ZoneType>([...GROUND_ZONES, 'Workspace'])
 
 /**
  * Fixed legend order — PROGRAM ZONES ONLY.
@@ -203,7 +206,7 @@ export function computeAltKpis(input: AlternativeInput): AltKpis {
       work: areaOf(['Workspace', 'ClosedOffice']),
       sharedSpace: areaOf(['Meeting', 'Collaboration']),
       amenities: areaOf(['Amenity']),
-      shared: areaOf(['Circulation', 'Unassigned', 'Core']),
+      shared: areaOf([...GROUND_ZONES, 'Core']),
     }
 
     const present = new Set((st.zones ?? []).map((z: DocZone) => z.zone_type))

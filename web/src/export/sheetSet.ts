@@ -29,7 +29,8 @@ import type { ReportMeta } from './report'
 import { buildTakeoffModel } from './takeoff'
 import type { TakeoffFurnitureRow, TakeoffSummaryRow } from './takeoff'
 import type { DocState, DocComponent, DocZone } from '../types/doc'
-import { zoneArea as zoneShapeArea, zoneBBox, zoneCenter as zoneShapeCenter } from '../util/zoneGeom'
+import type { ZoneAreas } from '../types/metrics'
+import { zoneBBox, zoneCenter as zoneShapeCenter } from '../util/zoneGeom'
 import type { Drawing } from '../import/types'
 import type { BindingInfo } from '../persist/file'
 import { extractPlate, extractInteriorWalls } from '../import/testfit'
@@ -65,6 +66,17 @@ export interface DrawingSetOpts {
    * 'finishes'.
    */
   include?: string[]
+  /**
+   * Core-owned per-zone areas (`Editor.zone_stats_published()` /
+   * `Editor.quantities()`), zone id -> m². REQUIRED, and required is the point:
+   * the plan-sheet room label and the finish schedule both PRINT an area, and
+   * both used to compute it from the zone shape. Raw shape extent is a
+   * different quantity from the core's plate-clipped, de-overlapped basis — on
+   * the unedited F1 fixture, 35.0 m² against the workbook's 8.0 for the same
+   * room in the same pack. A caller that has no core reader cannot supply this,
+   * which is the intended outcome.
+   */
+  zoneAreas: ZoneAreas
 }
 
 const INK = hex2rgb('#2e343b')
@@ -79,9 +91,6 @@ function todayLabel(): string {
 // ---------------------------------------------------------------------------
 // Geometry helpers
 // ---------------------------------------------------------------------------
-
-/** Enclosed area (m²); rings exclude the hole, polys shoelace. */
-const zoneArea = zoneShapeArea
 
 /** Center point of a zone shape (polygon → area-weighted centroid). */
 const zoneCenter = zoneShapeCenter
@@ -826,6 +835,7 @@ function roomLabels(
   occ: OccBox[],
   bounds: OccBox | null | undefined,
   ink: InkSink,
+  zoneAreas: ZoneAreas,
 ): void {
   // ONE naming rule for the whole deliverable: the plan, the services sheets,
   // the finish schedule and the QTO workbook all print what `roomDisplayNames`
@@ -839,7 +849,10 @@ function roomLabels(
     const c = zoneCenter(z.shape)
     const pt = map(c.x, c.y)
     const name = (names.get(z.id) ?? (z.label || `ROOM ${String(n).padStart(2, '0')}`)).toUpperCase()
-    const area = `${zoneArea(z.shape).toFixed(1)} m²`
+    // The core's number or nothing: a label with no area still names the room,
+    // whereas a label carrying a raw shape extent is a wrong fact on a sheet.
+    const coreArea = zoneAreas.get(z.id)
+    const area = coreArea === undefined ? '' : `${coreArea.toFixed(1)} m²`
     const areaW = textWidth(area, 7.5)
     // The same fit ladder the services sheets use (`roomLabelForms`): try every
     // position for the full name first, and only then a smaller / wrapped /
@@ -923,7 +936,7 @@ function demolitionSheet(state: DocState, opts: DrawingSetOpts, no: string): Pag
 
   p.text(MARGIN + 6, 42, 15, 'DEMOLITION PLAN', { bold: true, gray: 0.1 })
   // A.01 carries no knockout mask of any kind, so its names paint in place.
-  roomLabels(p, state, map, [], plateBox(b), paintNow)
+  roomLabels(p, state, map, [], plateBox(b), paintNow, opts.zoneAreas)
   if (demolished.length === 0) {
     p.text(b.planX + 12, b.planY + b.planH - 14, 9, 'NO DEMOLITION (NEW BUILD)', { gray: 0.4, bold: true })
   }
@@ -1102,7 +1115,7 @@ function constructionSheet(state: DocState, opts: DrawingSetOpts, no: string): C
 
   dimStrings(p, state, map, ink, occ)
   roomDims(p, state, map, occ, ink)
-  roomLabels(p, state, map, occ, plate, ink)
+  roomLabels(p, state, map, occ, plate, ink, opts.zoneAreas)
 
   const openings = openingSchedule(state)
   for (const o of openings) {
@@ -1904,7 +1917,7 @@ export async function buildDrawingSetPdf(state: DocState, opts: DrawingSetOpts):
   // schedule failure never sinks the rest of the set.
   if (want('finishes')) {
     try {
-      for (const s of finishScheduleSheets(state, { meta: opts.meta, startNo: numbered.length })) {
+      for (const s of finishScheduleSheets(state, { meta: opts.meta, startNo: numbered.length, zoneAreas: opts.zoneAreas })) {
         numbered.push({ title: s.title, no: s.no, page: s.page })
       }
     } catch (err) {

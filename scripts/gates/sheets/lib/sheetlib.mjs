@@ -604,16 +604,47 @@ function displayNameByZoneId(zones) {
  * That is core source, not the drawing layer, so the gate still does not consume
  * anything the system under test produced.
  */
-function groundZoneTypes() {
-  const src = fs.readFileSync(path.join(REPO, 'crates/ds-core/src/lib.rs'), 'utf8')
-  const fn = new RegExp(String.raw`fn published_zone_type\([^)]*\)\s*->\s*ZoneType\s*\{([\s\S]*?)\n\}`).exec(src)
-  if (!fn) throw new Error('cannot find published_zone_type in lib.rs — the fold rule moved')
-  const set = new Set(['Circulation'])
-  for (const m of fn[1].matchAll(/ZoneType::(\w+)\s*=>\s*ZoneType::Circulation/g)) set.add(m[1])
-  if (set.size < 2) {
+/**
+ * The core's own ground set, loaded once at module scope (ESM top-level await),
+ * so `groundZoneTypes()` can stay synchronous for `scheduledRooms`.
+ */
+const GROUND_FROM_CORE = await (async () => {
+  const wasmDir = path.join(REPO, 'web/src/wasm')
+  const mod = await import(new URL(`file://${path.join(wasmDir, 'ds_core.js')}`).href)
+  mod.initSync({ module: fs.readFileSync(path.join(wasmDir, 'ds_core_bg.wasm')) })
+  if (typeof mod.Editor.ground_zone_types !== 'function') {
     throw new Error(
-      `parsed only ${set.size} ground type(s) from published_zone_type — the parser is broken, ` +
-        'and a gate that silently narrows its own exclusion list is how this defect shipped',
+      'the wasm core exports no ground_zone_types() — run `make wasm`. A gate ' +
+        'that silently fell back to a hand-written set is the defect this export closes',
+    )
+  }
+  return mod.Editor.ground_zone_types()
+})()
+
+export function groundZoneTypes() {
+  // **THE VALUE, ACROSS THE BOUNDARY — not a regex over the definition's shape.**
+  //
+  // This parsed `published_zone_type` for `X => ZoneType::Circulation` arms, and
+  // the adversary defeated it twice with the semantics unchanged: an `if`/
+  // `return` folding `Core` into ground is invisible to the regex (50 steps
+  // green with the set silently larger), and a prose comment merely NAMING a
+  // type inside the body poisons the parse (`Meeting` joined the set, size 3, so
+  // the `size < 2` non-vacuity guard passed and the wrong set returned).
+  //
+  // Worse, this parser and `coreParity.test.mjs`'s were the SAME REGEX in two
+  // files — not two independent witnesses, so one `if` defeated both.
+  //
+  // `Editor.ground_zone_types()` computes it by running every `ZoneType` through
+  // `is_ground_zone`. It is the predicate's own answer. Reading it is not a
+  // gate-independence violation: the system under test here is the DRAWING
+  // layer, and the core is the independent anchor these gates are supposed to be
+  // held to.
+  const g = GROUND_FROM_CORE
+  const set = new Set(g)
+  if (set.size < 1 || !set.has('Circulation')) {
+    throw new Error(
+      `ground_zone_types() returned ${JSON.stringify(g)} — a ground set without ` +
+        'Circulation is not a ground set, and a gate that accepts one is grading nothing',
     )
   }
   return set

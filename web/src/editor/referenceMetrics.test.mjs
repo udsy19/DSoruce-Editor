@@ -53,6 +53,10 @@ const bundle = async (entry) => {
   return mod
 }
 const { buildZones, buildElements } = await bundle('stats.ts')
+// The REAL `ZoneAreas` constructor, through its own entry point rather than the
+// copy stats.ts bundled — so a check that the panel bills the core's areas is
+// comparing two modules and not one value with itself.
+const { zoneAreasFromStats } = await bundle('../types/metrics.ts')
 
 // --- helpers -----------------------------------------------------------------
 let failures = 0
@@ -86,7 +90,7 @@ const surfaces = (ed) => {
   const state = ed.state()
   const zones = buildZones(zs)
   const nia = zones.totalArea || m.net_internal_area || 0
-  const elements = buildElements(state, nia)
+  const elements = buildElements(state, nia, zoneAreasFromStats(zs))
   const wsSeated = zs.filter((z) => z.zone_type === 'Workspace').reduce((s, z) => s + z.seated, 0)
   return { m, zs, state, zones, elements, wsSeated }
 }

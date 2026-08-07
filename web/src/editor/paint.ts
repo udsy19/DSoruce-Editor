@@ -17,6 +17,7 @@ import {
 } from './planStyle'
 import type { FillStyle } from './planStyle'
 import type { Metrics, ZoneStat } from '../types/metrics'
+import { isDegenerateZoneShape } from '../util/zoneGeom'
 
 /** A point in screen or world space (the function names say which). */
 interface Pt {
@@ -560,18 +561,19 @@ export function drawZones(
           Math.min(bmaxX - bminX, bmaxY - bminY),
         )
       }
-      // Shoelace, for AREA only. The label anchor is the pole of
-      // inaccessibility, not this centroid: on an L-shaped or notched zone the
-      // centroid can sit in the notch, outside the room it is meant to name.
-      let a2 = 0
-      for (let i = 0; i < pts.length; i++) {
-        const [x0, y0] = pts[i]
-        const [x1, y1] = pts[(i + 1) % pts.length]
-        a2 += x0 * y1 - x1 * y0
-      }
+      // The label anchor is the pole of inaccessibility, not a centroid: on an
+      // L-shaped or notched zone the centroid can sit in the notch, outside the
+      // room it is meant to name.
+      //
+      // There was a shoelace here, introduced as a degeneracy test and then
+      // spent as `stat?.area ?? Math.abs(a2) / 2` — a raw, unclipped area on the
+      // canvas whenever the core row was missing, and the TENTH owner of a
+      // quantity that has one definition. Degeneracy is now a predicate that
+      // yields no number, and the area comes from the core or not at all.
       const stat = zoneStats.get(z.id)
-      const area = stat?.area ?? Math.abs(a2) / 2
-      if (area < 6 || Math.abs(a2) < 1e-6) continue
+      if (!stat || isDegenerateZoneShape(z.shape)) continue
+      const area = stat.area
+      if (area < 6) continue
       const c = poleOfInaccessibility(pts.map((pt) => v.toScreen(pt[0], pt[1])))
       const name = z.label.toUpperCase()
       ctx.font = '600 10px "Hanken Grotesk", system-ui, sans-serif'
@@ -649,8 +651,15 @@ export function drawZones(
       // Centered room tag: NAME over "area m² · N pax" (architect's sheet
       // style). Skip when the zone is tiny (< 6 m²) or the tag can't fit;
       // shrink the name one step before giving up.
+      // NO FALLBACK. This read `stat?.area ?? s.w * s.h`, and the fallback was
+      // a whole second definition of a room's area hiding behind a `??`: raw,
+      // unclipped, and 4.4x the core's number on the F1 fixture's
+      // `Open Workspace (2)`. A zone the core has no row for is a zone whose
+      // area this canvas does not know — so it draws the room and not a figure
+      // for it, which is the honest rendering of not knowing.
       const stat = zoneStats.get(z.id)
-      const area = stat?.area ?? s.w * s.h
+      if (!stat) continue
+      const area = stat.area
       if (area < 6 || h < 18) continue
       const name = z.label.toUpperCase()
       const maxW = w - 10
