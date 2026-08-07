@@ -2615,3 +2615,57 @@ success. Caught only because the test count read **185** where a real merge owes
 194. Re-run from the repo root it conflicted on the generated wasm binary alone,
 resolved by rebuilding from the merged Rust source. **A merge that applies nothing
 looks exactly like a merge with no conflicts.**
+
+---
+
+# BELIEF ROUND — opened. Two rules promoted from near-misses.
+
+**The board is repaired but not believed.** Seven of eight findings are closed and
+integrated through the gate (Rust **194**, battery **45**, goldens unmoved, zero
+`--no-verify`), and that is precisely the state in which this project has twice
+declared victory on a board that was lying. Belief is a deliverable, and the
+ADVERSARY issues it — not the green.
+
+## R11 — integration states its expected deltas BEFORE merging, and verifies them after
+
+The cherry-pick that applied **nothing** and reported success — a `cd` in a
+compound command left it running inside the agent's own worktree, where HEAD
+already *was* that commit — was caught only because the test count read **185**
+where a real merge owed **194**.
+
+> **A merge with no conflicts and a merge that applied nothing are
+> indistinguishable without predicted arithmetic.**
+
+"No conflicts" is not evidence of integration; it is the absence of one kind of
+evidence of failure. Every integration now declares its **expected test count,
+file set and battery delta up front**, and the post-merge check is against that
+prediction. `git status` showing clean is exactly what both outcomes look like.
+
+## R12 — a gate exists only if a runner invokes it; a PASS exists only if a run produced it
+
+`bench/ladder-check.mjs`, `bench/lod-sweep.mjs` and export-parity are invoked by
+**no runner at all**: `verify-all.sh` runs deadspace-core / style-gate /
+accent-univalence, `run-all.sh` runs G1–G13, `package.json` has one `bench` script
+that spawns `dwg2dxf`, and there is no `.github/workflows`. **Four documents claim
+`ladder-check` PASS on a board it has never been on** — retracted by name as part
+of this round (R9).
+
+R8 extends: the board reconciles its declared gate list against the runner's
+**actual invocations**, and that reconciliation is itself a check that reds on an
+orphan. The precedent is exact — the IDS/TITLES length mismatch silently swallowed
+G13's row while the board printed `9/13 passing` above twelve of them. A gate that
+exists and is never called is the same defect with the invocation missing instead
+of the row.
+
+## Dispatched
+
+| worktree | agent | deliverable |
+|---|---|---|
+| `/private/tmp/q5-belief` | ADVERSARY | re-run all eight sabotages · verify each rebuilt guard's **claimed R10 axes** rather than its green · construct the R11 no-op-integration failure · audit whether the board can detect an orphan at all · re-measure H2 (the lift-core accounting) so Step 2 has a number |
+| `/private/tmp/q5-orphan` | VERIFIER | the battery's wall-clock 300 ms budget (it decides commits and fails under load) · wire-or-delete the three orphan gates with axis statements · the reconciliation check with an orphan falsification · the four false PASS claims retracted by name |
+
+The ADVERSARY's Part B is the one that matters most: every rebuilt guard now
+carries an axis statement, and **an unverified axis statement is just a comment.**
+It verifies the claim by perturbing an axis the guard says it varies — a
+claimed-but-unvaried axis would be a lie in a comment, which is worse than a
+missing guard because it reads as coverage.
