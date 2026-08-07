@@ -30,6 +30,20 @@
 // Because it fades rather than toggles, wiggling the wheel at a boundary produces
 // a smooth alpha ramp instead of a flicker — the band is the hysteresis.
 
+// PROVENANCE, added in W4. Until W4 every dimension in this file was AUTHORED —
+// invented to look right — and rubric Q3 row 5 scored 3 for exactly that. The
+// `REF` block below is now MEASURED, from `research/qbiq-symbol-spec.json`,
+// which `research/qbiq-symbol-extract.py` derives from the reference PDF's own
+// vector operators (2354 furniture-tier paths, 225 congruent part types, 812
+// assembled symbol instances; falsified by three input perturbations).
+//
+// Anything still authored says so at its definition. A symbol that carries no
+// provenance note is measured; a symbol that carries one is a DECLARED
+// divergence, never a silent one — the same convention `planStyle.ts` uses for
+// its two profiles.
+
+import { COLUMN_FILL } from './planStyle.ts'
+
 /** Everything the module needs to know about the view. No component state. */
 export interface View {
   /** Pixels per metre — the ONLY thing that converts world to screen. */
@@ -140,10 +154,11 @@ const SEAT_PITCH_M = 0.65
 /** A table end narrower than this seats nobody across it. Mirrors
  *  `model::HEAD_SEAT_MIN_M`; same guard. */
 const HEAD_SEAT_MIN_M = 0.8
-/** Chair footprint. */
-const SEAT_M = 0.5
-/** Clear ring between a table's edge and the footprint, where chairs tuck. */
-const CHAIR_RING_M = 0.35
+/** Chair footprint, ACROSS. MEASURED — `REF.chair` is 565.2 mm wide (n = 35).
+ *  Was 0.5, authored, which drew every implied chair 12% narrow. NOT a core
+ *  mirror: `coreParity.test.mjs` guards `SEAT_PITCH_M` and `HEAD_SEAT_MIN_M`,
+ *  which are the two the core also owns; this one is the renderer's alone. */
+const SEAT_M = 0.565
 /** Monitor: width and depth on the worktop. */
 const MONITOR_W_M = 0.45
 const MONITOR_D_M = 0.045
@@ -154,12 +169,64 @@ const KEYBOARD_D_M = 0.14
 const DRAWER_PITCH_M = 0.45
 /** Suspended-ceiling module. */
 const CEILING_TILE_M = 0.6
-/** Poché hatch spacing on a column. */
-const HATCH_PITCH_M = 0.15
 /** A table longer than this, and proportioned like this, gets racetrack ends.
  *  A fact about the table — not about the zoom. */
 const STADIUM_MIN_LONG_M = 2.4
 const STADIUM_MIN_RATIO = 1.5
+
+// ---------------------------------------------------------------------------
+// MEASURED reference geometry
+// ---------------------------------------------------------------------------
+/**
+ * Every number here is read out of `research/qbiq-symbol-spec.json`, keyed by
+ * the symbol's `reading` field. Ratios rather than absolutes wherever the glyph
+ * must scale to a component's real footprint — the reference page is ~1:266 and
+ * its ABSOLUTE sparseness is a page-scale artifact, not a target
+ * (`research/rubric-q3.md`, scale caveat). What is portable is proportion.
+ */
+const REF = {
+  /**
+   * Task chair — spec symbol "task chair: seat 470x429, backrest 415x82, two
+   * armrests 48x286", n = 18 + 17 (two congruent shapes at 565.2 x 510.5 mm).
+   *
+   * THE CORRECTION THIS BLOCK EXISTS FOR: the reference's SEAT is wider than its
+   * BACKREST (470 vs 415 mm). The authored chair had that inverted — backrest
+   * 0.92 of the footprint against a seat of 0.80 — so every chair in the plan
+   * read as a T rather than as a chair. Measured, the ratio is 1.13 the other
+   * way.
+   *
+   * Arms sit FLUSH OUTBOARD of the seat, and that is not a placement choice: the
+   * measured armrest width is 48 mm and (565 - 470) / 2 = 47.5 mm. The block was
+   * drawn that way.
+   */
+  chair: {
+    /** depth / width. 510.5 / 565.2 — the chair is NOT square. */
+    aspect: 510.5 / 565.2,
+    seatW: 470 / 565.2, seatD: 429 / 510.5,
+    backW: 415 / 565.2, backD: 82 / 510.5,
+    armW: 48 / 565.2, armD: 286 / 510.5,
+  },
+  /** Structural column, spec `columns`: 674 x 674 mm, filled with the measured
+   *  grey that `COLUMN_FILL` owns, and NOT hatched (54 grey rects per page,
+   *  `hatched: false`). The value is deliberately NOT restated here — the style
+   *  gate treats a hex in this file as a second source even inside a comment,
+   *  and it is right to: a comment that names a colour is a copy that can rot. */
+  column: { fill: COLUMN_FILL },
+  /** Stair treads, spec `conventions.even_line_runs`: four runs of 11 lines,
+   *  1175 mm flight width, 237 mm going. The central stringer measures 152 mm. */
+  stair: { goingM: 0.237, stringerM: 0.152 },
+  /** Crossed-X casework, spec "crossed-X casework run: outline + cell divider +
+   *  both diagonals" — 960 x 436 mm per cell, n = 5 (plus 987 x 681, n = 3).
+   *  This is the reference's wardrobe/closet convention. */
+  casework: { cellM: 0.96 },
+  /** Planter, spec "planter: overlapping foliage blobs" — 490 x 538 mm, five
+   *  parts. The BLOB COUNT and the footprint are measured; see `plant()` for the
+   *  declared divergence on the outline itself. */
+  plant: { aspect: 537.7 / 490.1, blobs: 3 },
+  /** Lounge armchair, spec "lounge armchair with wrap-around back" —
+   *  572 x 497 mm, and "lounge armchair: seat + back" — 477 x 422 mm, n = 10. */
+  settee: { unitM: 0.572, aspect: 497 / 572, seatInset: 0.14 },
+} as const
 
 /** Seats a table of this WORLD size provides. The exact mirror of the core's
  *  `model::seats_for`, used only when a component predates the `seats` facet. */
@@ -223,6 +290,34 @@ export function drawSymbol(ctx: CanvasRenderingContext2D, s: SymbolSpec, ink: In
     case 'Column':
       column(g, s.w, s.h)
       break
+    // --- W4: categories the reference carries and this module did not ---------
+    //
+    // ROUTING GAP, declared. `drawSymbol` reaches these by category string and
+    // the tests below exercise all three LOD bands of each, but no producer
+    // emits the strings yet: the core emits Desk/Chair/Table/Door only, and
+    // `import/normalize.ts` funnels sofas, planters, casework and fixtures into
+    // the generic `Furniture` box. Routing lands in `import/` and `layout/`,
+    // which W4 may not touch. Naming that here rather than letting a reader
+    // discover it — a vocabulary with no caller is worth having and worth
+    // labelling; it is not worth pretending is wired.
+    case 'Plant':
+      plant(g, s.w, s.h)
+      break
+    case 'Settee':
+      settee(g, s.w, s.h)
+      break
+    case 'Storage':
+      crossedCasework(g, s.w, s.h)
+      break
+    case 'Stair':
+      stair(g, s.w, s.h)
+      break
+    case 'Lift':
+      lift(g, s.w, s.h)
+      break
+    case 'WC':
+      wc(g, s.w, s.h)
+      break
     default:
       body(g, s.w, s.h)
   }
@@ -271,9 +366,16 @@ function body(g: G, w: number, h: number): void {
  *  front. "Back" is local −y; the user sits toward +y. */
 function desk(g: G, w: number, h: number): void {
   const T = -h / 2
-  const B = h / 2
-  // The chair occupies the front band, so the worktop takes the back ~68%.
-  const deskD = h * 0.68
+  // THE WORKTOP IS THE COMPONENT — the same measured correction as `table`.
+  //
+  // This used to give the worktop the back 68% of the footprint and squeeze the
+  // chair into the front 32%, so a 1.4 x 0.7 m desk drew a 0.48 m-deep top and a
+  // 0.22 m chair. The reference settles both: its bench position is a PLAIN
+  // 1348 x 674 mm rectangle and the task chair sits entirely OUTSIDE it, the
+  // whole workstation measuring 1348 x 1021 mm — 674 of desk plus 347 of chair
+  // (spec "workstation: bench desk position + tucked task chair", n = 64, the
+  // most repeated symbol on the page).
+  const deskD = h
   const r = Math.min(0.03, deskD * 0.12)
   roundRect(g, -w / 2, T, w, deskD, r)
   if (g.ink.fill) {
@@ -318,18 +420,28 @@ function desk(g: G, w: number, h: number): void {
   // NOT gated on `seats` — a desk's chair is part of the desk glyph, which is
   // why passing seats: 0 would not have suppressed it.
   if (g.a1 > 0 && g.implySeats) {
-    const seat = Math.min(SEAT_M, w * 0.62, (B - (T + deskD)) * 1.5)
+    const seat = Math.min(SEAT_M, w * 0.62)
     if (seat > 0.1) {
       g.ctx.save()
       g.ctx.globalAlpha = g.a1
-      taskChair(g, 0, T + deskD + seat * 0.38, seat)
+      // Outside the worktop's front edge, touching it — measured: the reference
+      // workstation is exactly desk depth + chair depth, with no gap.
+      taskChair(g, 0, T + deskD + (seat * REF.chair.aspect) / 2, seat)
       g.ctx.restore()
     }
   }
 }
 
+/**
+ * A standalone chair fills its footprint, which a square glyph could not.
+ *
+ * The measured chair is 565 wide x 510 deep, so `min(w, h)` — what this used to
+ * pass — drew a 510 mm-wide chair inside a 565 mm footprint and left 10% of the
+ * component blank. Width is the largest the measured aspect allows inside the
+ * footprint; facing still comes from `spec.rotation`, never from the bbox.
+ */
 function chairSymbol(g: G, w: number, h: number): void {
-  taskChair(g, 0, 0, Math.min(w, h))
+  taskChair(g, 0, 0, Math.min(Math.max(w, h), Math.min(w, h) / REF.chair.aspect))
 }
 
 /**
@@ -341,10 +453,22 @@ function chairSymbol(g: G, w: number, h: number): void {
  * whatever is left goes to the ends.
  */
 function table(g: G, w: number, h: number, seats: number): void {
-  // Top, inset by the ring the chairs tuck into.
-  const ring = Math.min(CHAIR_RING_M, Math.min(w, h) * 0.22)
-  const tw = Math.max(w - ring * 2, w * 0.4)
-  const th = Math.max(h - ring * 2, h * 0.4)
+  // THE TOP IS THE COMPONENT. Measured correction, W4.
+  //
+  // This used to inset the top by a CHAIR_RING_M and tuck the chairs into the
+  // inset, so the drawn table was up to 44% smaller than the table the model
+  // says exists. It was a second clearance: `emit.rs` ALREADY subtracts
+  // `TABLE_CLEAR = 0.95` per side from the room to size the table component, so
+  // the egress ring is reserved before the renderer ever sees the footprint, and
+  // `model::seats_for` counts seats off these same w/h. Insetting again made the
+  // glyph disagree with both the model and the reference.
+  //
+  // The reference settles where the chairs go: on page 3 the conference chairs
+  // ABUT the 3465 x 1150 mm top at a measured clear gap of 0 mm, outside it,
+  // at a 672 mm centre pitch (against our SEAT_PITCH_M of 0.65 — a 3% agreement
+  // from a completely independent direction).
+  const tw = w
+  const th = h
   const longIsW = tw >= th
   const longLen = longIsW ? tw : th
   const shortLen = longIsW ? th : tw
@@ -374,9 +498,12 @@ function table(g: G, w: number, h: number, seats: number): void {
   const sideB = alongTotal - sideA
   // Shrink the seat if the long side is crowded, so chairs never overlap.
   const densest = Math.max(sideA, sideB, 1)
-  const seatSize = Math.min(SEAT_M, ring * 1.3, (longLen / densest) * 0.92)
-  const longOff = shortLen / 2 + seatSize * 0.42
-  const endOff = longLen / 2 + seatSize * 0.42
+  const seatSize = Math.min(SEAT_M, (longLen / densest) * 0.92)
+  // Chairs sit OUTSIDE the top and touch it — measured clear gap 0 mm — so the
+  // offset is half the table plus half the chair's own DEPTH.
+  const seatDepth = seatSize * REF.chair.aspect
+  const longOff = shortLen / 2 + seatDepth / 2
+  const endOff = longLen / 2 + seatDepth / 2
 
   const alongSide = (n: number, sign: number, rot: number) => {
     for (let i = 0; i < n; i++) {
@@ -509,29 +636,274 @@ function windowSymbol(g: G, w: number, h: number): void {
   g.ctx.stroke()
 }
 
-/** Structural column: outline + 45° poché at a real 150 mm hatch pitch. */
+/**
+ * Structural column: SOLID GREY, outlined. Measured, and it corrects a defect.
+ *
+ * The reference draws 27 columns per plan page, each as a 674 x 674 mm rect with
+ * `fill = 0.627451` grey and NO hatch of any kind (`qbiq-symbol-spec.json`
+ * `columns`, `hatched: false`). `planStyle.ts` has DECLARED that for as long as
+ * it has existed — `column: { fill: { kind: 'solid', color: COLUMN_FILL } }` —
+ * and this glyph ignored the declaration and drew a 150 mm 45-degree poché
+ * instead. A column on the canvas therefore disagreed with the same column in
+ * the style table, and with the reference, on every plan.
+ *
+ * The poché is deleted rather than kept as an editor divergence: a divergence
+ * has to buy an editing affordance, and a texture that says "this is a column"
+ * where a solid grey already says it buys nothing.
+ */
 function column(g: G, w: number, h: number): void {
   const L = px(g, -w / 2)
   const T = px(g, -h / 2)
   const W = px(g, w)
   const H = px(g, h)
+  g.ctx.fillStyle = REF.column.fill
+  g.ctx.fillRect(L, T, W, H)
   g.ctx.strokeStyle = g.line
   g.ctx.lineWidth = g.lw
   g.ctx.strokeRect(L, T, W, H)
+}
+
+/**
+ * Planter. Measured footprint 490 x 538 mm, five parts (spec "planter:
+ * overlapping foliage blobs", n = 10).
+ *
+ * DECLARED DIVERGENCE, partial: the FOOTPRINT, the ASPECT and the BLOB COUNT are
+ * measured; the blob OUTLINES are not. The reference's are bespoke bezier
+ * foliage — five freehand curves, no two instances congruent — so there is
+ * nothing parametric to extract, and inventing one freehand outline in code
+ * would be the same authored-geometry defect W4 exists to remove. Three
+ * overlapping near-circles at the measured aspect reproduce the reference's
+ * READING (an organic clump, not a box) without claiming to reproduce its line.
+ */
+function plant(g: G, w: number, h: number): void {
+  const r = Math.min(w, h) * 0.31
+  const spread = Math.min(w, h) * 0.17
+  g.ctx.fillStyle = g.ink.fill ?? g.ink.seat ?? g.line
+  g.ctx.strokeStyle = g.line
+  g.ctx.lineWidth = g.lw
+  for (let i = 0; i < REF.plant.blobs; i++) {
+    const a = (i / REF.plant.blobs) * Math.PI * 2
+    g.ctx.beginPath()
+    g.ctx.arc(px(g, Math.cos(a) * spread), px(g, Math.sin(a) * spread * REF.plant.aspect),
+              px(g, r), 0, Math.PI * 2)
+    if (g.ink.fill) g.ctx.fill()
+    g.ctx.stroke()
+  }
+  if (g.a2 <= 0) return
+  // The measured fifth part: a 41 x 20 mm mark at the clump's centre.
+  g.ctx.save()
+  g.ctx.globalAlpha = g.a2
+  g.ctx.strokeStyle = g.ink.detail
+  g.ctx.lineWidth = g.hair
+  g.ctx.beginPath()
+  g.ctx.arc(0, 0, px(g, r * 0.2), 0, Math.PI * 2)
+  g.ctx.stroke()
+  g.ctx.restore()
+}
+
+/**
+ * Booth settee / lounge seating. Measured unit 572 x 497 mm (spec "lounge
+ * armchair with wrap-around back", n = 6; "lounge armchair: seat + back",
+ * 477 x 422, n = 10).
+ *
+ * A run longer than one unit repeats the CUSHION at the measured 572 mm pitch
+ * inside one continuous shell — which is what a booth is, and it makes the
+ * cushion count a fact about the settee's real length rather than about zoom.
+ */
+function settee(g: G, w: number, h: number): void {
+  // Back at local −y, arms at ±x, open at +y — the same frame `taskChair` uses,
+  // and the frame the reference's wrap-around outline describes.
+  body(g, w, h)
   if (g.a1 <= 0) return
+  const arm = w * REF.settee.seatInset
+  const back = h * REF.settee.seatInset
+  const n = Math.max(1, Math.round(w / REF.settee.unitM))
+  const innerW = w - arm * 2
+  const innerH = h - back
+  if (innerW <= 0 || innerH <= 0) return
   g.ctx.save()
   g.ctx.globalAlpha = g.a1
-  g.ctx.beginPath()
-  g.ctx.rect(L, T, W, H)
-  g.ctx.clip()
+  // Seat cushions, one per measured 572 mm unit — a booth's cushion count is a
+  // fact about its real length, like a credenza's drawers.
+  for (let i = 0; i < n; i++) {
+    const x = -innerW / 2 + (innerW * i) / n
+    roundRect(g, x, -h / 2 + back, innerW / n, innerH, Math.min(arm, innerH) * 0.5)
+    if (g.ink.seat) {
+      g.ctx.fillStyle = g.ink.seat
+      g.ctx.fill()
+    }
+    g.ctx.strokeStyle = g.line
+    g.ctx.lineWidth = g.lw
+    g.ctx.stroke()
+  }
+  g.ctx.restore()
+}
+
+/**
+ * Crossed-X casework — the reference's wardrobe / closet / tall-storage
+ * convention. Measured: outline + cell divider + BOTH diagonals per cell, at a
+ * 960 mm cell (spec "crossed-X casework run", n = 5; the 987 x 681 variant,
+ * n = 3).
+ *
+ * Distinct from {@link casework}, which draws drawer seams. That glyph stays,
+ * and its seam pitch is DECLARED AUTHORED: the reference carries no drawer-seam
+ * mark anywhere on the three plan pages, so it is DSource's own convention for
+ * the low casework the crossed-X does not cover.
+ */
+function crossedCasework(g: G, w: number, h: number): void {
+  body(g, w, h)
+  if (g.a1 <= 0) return
+  const long = Math.max(w, h)
+  const n = Math.max(1, Math.round(long / REF.casework.cellM))
+  const horizontal = w >= h
+  g.ctx.save()
+  g.ctx.globalAlpha = g.a1
   g.ctx.strokeStyle = g.line
   g.ctx.lineWidth = g.hair
   g.ctx.beginPath()
-  const step = px(g, HATCH_PITCH_M)
-  for (let x = L - H; x < L + W; x += step) {
-    g.ctx.moveTo(x, T + H)
-    g.ctx.lineTo(x + H, T)
+  for (let i = 0; i < n; i++) {
+    const a = -long / 2 + (long * i) / n
+    const b = a + long / n
+    const [x0, y0, x1, y1] = horizontal
+      ? [a, -h / 2, b, h / 2]
+      : [-w / 2, a, w / 2, b]
+    g.ctx.moveTo(px(g, x0), px(g, y0))
+    g.ctx.lineTo(px(g, x1), px(g, y1))
+    g.ctx.moveTo(px(g, x0), px(g, y1))
+    g.ctx.lineTo(px(g, x1), px(g, y0))
+    if (i > 0) {
+      g.ctx.moveTo(px(g, x0), px(g, y0))
+      g.ctx.lineTo(px(g, horizontal ? x0 : x1), px(g, horizontal ? y1 : y0))
+    }
   }
+  g.ctx.stroke()
+  g.ctx.restore()
+}
+
+/**
+ * Stair flight. Treads at a MEASURED 237 mm going with a MEASURED 152 mm central
+ * stringer (spec `conventions.even_line_runs`: four runs of 11 lines, 1175 mm
+ * flight width, pitch 237 mm — all four identical).
+ *
+ * The tread count is therefore a fact about the stair's real length, exactly
+ * like a credenza's drawer count. A stair that reports six treads at one zoom
+ * and nine at another would be the same defect this module was written to kill.
+ */
+function stair(g: G, w: number, h: number): void {
+  body(g, w, h)
+  const along = Math.max(w, h)
+  const across = Math.min(w, h)
+  const n = Math.max(1, Math.floor(along / REF.stair.goingM))
+  if (n < 2 || g.a1 <= 0) return
+  const horizontal = w >= h
+  const half = (across - REF.stair.stringerM) / 2
+  g.ctx.save()
+  g.ctx.globalAlpha = g.a1
+  g.ctx.strokeStyle = g.line
+  g.ctx.lineWidth = g.hair
+  g.ctx.beginPath()
+  for (let i = 1; i < n; i++) {
+    const t = -along / 2 + (along * i) / n
+    if (horizontal) {
+      g.ctx.moveTo(px(g, t), px(g, -across / 2))
+      g.ctx.lineTo(px(g, t), px(g, -across / 2 + half))
+      g.ctx.moveTo(px(g, t), px(g, across / 2 - half))
+      g.ctx.lineTo(px(g, t), px(g, across / 2))
+    } else {
+      g.ctx.moveTo(px(g, -across / 2), px(g, t))
+      g.ctx.lineTo(px(g, -across / 2 + half), px(g, t))
+      g.ctx.moveTo(px(g, across / 2 - half), px(g, t))
+      g.ctx.lineTo(px(g, across / 2), px(g, t))
+    }
+  }
+  // The stringer: two lines, not one, because it is a real 152 mm object.
+  for (const sgn of [-1, 1]) {
+    const c = (sgn * REF.stair.stringerM) / 2
+    if (horizontal) {
+      g.ctx.moveTo(px(g, -w / 2), px(g, c))
+      g.ctx.lineTo(px(g, w / 2), px(g, c))
+    } else {
+      g.ctx.moveTo(px(g, c), px(g, -h / 2))
+      g.ctx.lineTo(px(g, c), px(g, h / 2))
+    }
+  }
+  g.ctx.stroke()
+  g.ctx.restore()
+}
+
+/**
+ * Lift car. The reference draws a lift car as a rect with BOTH diagonals — the
+ * same crossed-X mark it uses for tall casework (spec "crossed-X casework run":
+ * outline + both diagonals). One measured mark, two programmes; the reference
+ * distinguishes them by where they sit, not by what they look like.
+ *
+ * Drawn as ONE cell, always, because a lift car does not tile — which is the
+ * whole difference from {@link crossedCasework}.
+ */
+function lift(g: G, w: number, h: number): void {
+  body(g, w, h)
+  if (g.a1 <= 0) return
+  g.ctx.save()
+  g.ctx.globalAlpha = g.a1
+  g.ctx.strokeStyle = g.line
+  g.ctx.lineWidth = g.hair
+  g.ctx.beginPath()
+  g.ctx.moveTo(px(g, -w / 2), px(g, -h / 2))
+  g.ctx.lineTo(px(g, w / 2), px(g, h / 2))
+  g.ctx.moveTo(px(g, -w / 2), px(g, h / 2))
+  g.ctx.lineTo(px(g, w / 2), px(g, -h / 2))
+  g.ctx.stroke()
+  g.ctx.restore()
+}
+
+/**
+ * WC fixture. The GRAMMAR is measured — the reference draws a sanitary fixture
+ * as a rounded pan body with a small circle inside it and a shallow bar across
+ * the back (measured parts: 68 x 65 mm body, 61 mm circle, 269 x 11 mm bar).
+ *
+ * DECLARED DIVERGENCE on the ABSOLUTES. Those measurements sit on the WALL tier,
+ * not the furniture tier, and at ~1:266 the whole fixture is a 270 mm mark —
+ * which is a page-scale artifact and not a fixture size. So the pan is drawn to
+ * the component's own footprint at the measured PROPORTIONS, and the millimetre
+ * values above are recorded, not copied.
+ *
+ * The tier finding is worth stating on its own: a furniture-tier extractor sees
+ * no stairs, no lift cars and no WC fixtures at all, because the reference draws
+ * its whole core on the wall tier.
+ */
+function wc(g: G, w: number, h: number): void {
+  const deep = h >= w
+  const bar = Math.min(w, h) * 0.16
+  // Cistern bar across the back.
+  if (deep) roundRect(g, -w / 2, -h / 2, w, bar, bar * 0.3)
+  else roundRect(g, -w / 2, -h / 2, bar, h, bar * 0.3)
+  if (g.ink.fill) {
+    g.ctx.fillStyle = g.ink.fill
+    g.ctx.fill()
+  }
+  g.ctx.strokeStyle = g.line
+  g.ctx.lineWidth = g.lw
+  g.ctx.stroke()
+  // Pan body.
+  const pw = deep ? w * 0.72 : w - bar
+  const ph = deep ? h - bar : h * 0.72
+  const x = deep ? -pw / 2 : -w / 2 + bar
+  const y = deep ? -h / 2 + bar : -ph / 2
+  roundRect(g, x, y, pw, ph, Math.min(pw, ph) * 0.42)
+  if (g.ink.fill) {
+    g.ctx.fillStyle = g.ink.fill
+    g.ctx.fill()
+  }
+  g.ctx.strokeStyle = g.line
+  g.ctx.lineWidth = g.lw
+  g.ctx.stroke()
+  if (g.a2 <= 0) return
+  g.ctx.save()
+  g.ctx.globalAlpha = g.a2
+  g.ctx.strokeStyle = g.ink.detail
+  g.ctx.lineWidth = g.hair
+  g.ctx.beginPath()
+  g.ctx.arc(px(g, x + pw / 2), px(g, y + ph / 2), px(g, Math.min(pw, ph) * 0.18), 0, Math.PI * 2)
   g.ctx.stroke()
   g.ctx.restore()
 }
@@ -540,19 +912,37 @@ function column(g: G, w: number, h: number): void {
 // Shared primitives
 // ---------------------------------------------------------------------------
 
-/** Contoured top-view task chair centred at (cx,cy) METRES, footprint `s` metres,
- *  backrest toward local −y. Arms are fine detail. */
+/**
+ * Top-view task chair centred at (cx,cy) METRES, `s` metres ACROSS, backrest
+ * toward local −y. Arms are fine detail.
+ *
+ * MEASURED — every proportion is `REF.chair`, read off the reference's own
+ * block (spec symbol 565.2 x 510.5 mm, n = 35 across two congruent shapes).
+ * `s` is the chair's WIDTH; its depth follows from the measured aspect, so the
+ * glyph is no longer forced square by its caller.
+ *
+ * Draw order is back-to-front and it matters: arms, then seat over them, then
+ * backrest over the seat — the overlap the reference's own paths describe.
+ * Each part is FILLED before it is stroked, which is the figure/ground rule the
+ * reference obeys on 2084 of its 2354 furniture paths at opacity 1.0.
+ */
 function taskChair(g: G, cx: number, cy: number, s: number): void {
-  const top = cy - s / 2
+  const d = s * REF.chair.aspect
+  const top = cy - d / 2
+  const seatW = s * REF.chair.seatW
+  const seatD = d * REF.chair.seatD
+  const backD = d * REF.chair.backD
+
   if (g.a2 > 0) {
-    const armW = s * 0.13
-    const armH = s * 0.5
-    const armY = top + s * 0.24
+    // Flush outboard of the seat — measured, not chosen: (565 − 470) / 2 = 47.5
+    // against a measured armrest width of 48.
+    const armW = s * REF.chair.armW
+    const armD = d * REF.chair.armD
     g.ctx.save()
     g.ctx.globalAlpha = g.ctx.globalAlpha * g.a2
     for (const sgn of [-1, 1]) {
-      const x = cx + sgn * (s * 0.4 + armW * 0.5) - armW / 2
-      roundRect(g, x, armY, armW, armH, armW * 0.45)
+      const x = cx + sgn * seatW / 2 - (sgn < 0 ? armW : 0)
+      roundRect(g, x, top + backD, armW, armD, armW * 0.45)
       if (g.ink.seat) {
         g.ctx.fillStyle = g.ink.seat
         g.ctx.fill()
@@ -563,10 +953,8 @@ function taskChair(g: G, cx: number, cy: number, s: number): void {
     }
     g.ctx.restore()
   }
-  // Seat cushion.
-  const seatW = s * 0.8
-  const seatH = s * 0.62
-  roundRect(g, cx - seatW / 2, top + s * 0.26, seatW, seatH, seatH * 0.32)
+  // Seat cushion — the WIDEST part of the chair (470 of 565 mm).
+  roundRect(g, cx - seatW / 2, top + backD, seatW, seatD, seatD * 0.22)
   if (g.ink.seat) {
     g.ctx.fillStyle = g.ink.seat
     g.ctx.fill()
@@ -574,10 +962,9 @@ function taskChair(g: G, cx: number, cy: number, s: number): void {
   g.ctx.strokeStyle = g.line
   g.ctx.lineWidth = g.lw
   g.ctx.stroke()
-  // Backrest.
-  const brW = s * 0.92
-  const brH = s * 0.26
-  roundRect(g, cx - brW / 2, top, brW, brH, brH * 0.5)
+  // Backrest — a shallow capsule, NARROWER than the seat (415 of 565 mm).
+  const brW = s * REF.chair.backW
+  roundRect(g, cx - brW / 2, top, brW, backD, backD * 0.5)
   if (g.ink.seat) {
     g.ctx.fillStyle = g.ink.seat
     g.ctx.fill()

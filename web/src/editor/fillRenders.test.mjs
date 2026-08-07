@@ -46,6 +46,7 @@ const entry = path.join(tmp, 'entry.ts')
 fs.writeFileSync(entry, `
   export * from ${JSON.stringify(path.join(here, 'planStyle.ts'))}
   export { drawZones } from ${JSON.stringify(path.join(here, 'paint.ts'))}
+  export { drawSymbol } from ${JSON.stringify(path.join(here, 'symbols.ts'))}
 `)
 const outAll = path.join(tmp, 'all.mjs')
 await build({
@@ -238,6 +239,72 @@ assert.equal(prog.length, 1, 'a program zone lost its resting tag — suppressio
     /groundZones/.test(body.slice(0, 2500)),
     'renderThumb no longer consults groundZones — the candidate cards will flood ground again',
   )
+}
+
+// ---------------------------------------------------------------------------
+// THE SYMBOL FILL CENSUS — figure/ground, per category
+// ---------------------------------------------------------------------------
+//
+// MEASURED RULE (W4). `research/qbiq-symbol-spec.json`
+// `conventions.figure_ground.census`: of the reference's 2354 furniture-tier
+// paths, **2084 carry an opaque white fill** (`fill_opacity 1.0`) and 270 are
+// stroke-only. A furniture mark there is a filled body with an outline over it —
+// that is what makes a desk read as an object standing ON the zone wash instead
+// of a hollow frame the wash shows through.
+//
+// So: every symbol category must FILL BEFORE IT STROKES. The exemptions are
+// named, with reasons, and the census asserts the exempt set is EXACTLY the set
+// that draws no fill — so a new category that forgets its fill fails here rather
+// than shipping as a transparent outline nobody notices.
+//
+// The population is parsed out of the switch in `symbols.ts`, for the same
+// reason §7 of symbols.test.mjs does it: a hand-kept list certifies a vocabulary
+// that has moved.
+{
+  const src = fs.readFileSync(path.join(here, 'symbols.ts'), 'utf8')
+  const sw = src.slice(src.indexOf('switch (s.category)'), src.indexOf('default:'))
+  const categories = [...sw.matchAll(/case '([A-Za-z]+)':/g)].map((m) => m[1])
+  assert.ok(categories.length >= 12,
+    `only ${categories.length} categories parsed — the census has lost its population`)
+
+  // DECLARED EXEMPTIONS. Each is a mark the reference ALSO draws as pure
+  // line-work, so filling it would be the divergence, not the fix.
+  const LINEWORK_ONLY = {
+    Door: 'a leaf + swing arc; a filled slab would read as a wall',
+    Window: 'the frame-glass-frame triple line; glazing is not opaque',
+    FallCeiling: 'a reflected-ceiling overlay — filling it would hide the furniture beneath it',
+  }
+
+  const ink = { stroke: '#000', detail: '#888', fill: '#fff', seat: '#eee', accent: '#f00' }
+  const unfilled = []
+  for (const category of categories) {
+    const ops = []
+    const ctx = new Proxy({}, {
+      get(_t, k) {
+        if (typeof k === 'symbol') return undefined
+        return (...a) => { ops.push(String(k)); return undefined }
+      },
+      set() { return true },
+    })
+    // 200 px/m: every LOD band fully on, so nothing is missed for being faded.
+    S.drawSymbol(ctx, { category, cx: 0, cy: 0, w: 1.2, h: 0.9, rotation: 0, seats: 4 },
+                 ink, { pxPerM: 200, dpr: 1 })
+    const firstFill = Math.min(
+      ...['fill', 'fillRect'].map((o) => (ops.indexOf(o) < 0 ? Infinity : ops.indexOf(o))))
+    const firstStroke = Math.min(
+      ...['stroke', 'strokeRect'].map((o) => (ops.indexOf(o) < 0 ? Infinity : ops.indexOf(o))))
+    if (firstFill === Infinity) { unfilled.push(category); continue }
+    assert.ok(firstFill < firstStroke,
+      `${category}: strokes before it fills — the outline is drawn under the body, ` +
+      'which is the figure/ground rule inverted (spec conventions.figure_ground)')
+  }
+  assert.deepEqual(unfilled.sort(), Object.keys(LINEWORK_ONLY).sort(),
+    `the line-work-only set has drifted. Got [${unfilled}], declared ` +
+    `[${Object.keys(LINEWORK_ONLY)}]. A category that stopped filling is a hollow ` +
+    'symbol; one that started is an undeclared change to the drawing convention.')
+  console.log(`  symbol fill census: ${categories.length - unfilled.length} of ` +
+              `${categories.length} categories fill before they stroke; ` +
+              `${unfilled.length} declared line-work only (${unfilled.join(', ')})`)
 }
 
 console.log(

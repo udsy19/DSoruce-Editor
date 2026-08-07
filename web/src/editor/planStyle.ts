@@ -393,8 +393,19 @@ export const MINIMAP = {
   boxShadow: '0 2px 10px rgba(0,0,0,0.16)',
 }
 
-/** Reference column fill (spec `palette.column_fill`). */
-const COLUMN_FILL = '#a0a0a0'
+/**
+ * Reference column fill (spec `palette.column_fill`).
+ *
+ * MEASURED, twice, from two independent reads of the same PDF:
+ * `qbiq-plan-style-spec.json` `palette.column_fill`, and
+ * `qbiq-symbol-spec.json` `columns` — 54 grey-filled rects per plan page,
+ * 27 columns drawn twice, all `fill_rgb01 = 0.627451` = this hex, at
+ * 674 x 674 mm, `hatched: false`.
+ *
+ * Exported because `symbols.ts` draws the column glyph and the style gate
+ * forbids it a hex of its own. That is the intended shape: one owner, imported.
+ */
+export const COLUMN_FILL = '#a0a0a0'
 
 export const DECISION_DOT: Record<string, string> = {
   Confirmed: '#2fa36b',

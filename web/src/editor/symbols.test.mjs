@@ -35,6 +35,7 @@ function stubCtx() {
     fill: rec('fill'),
     stroke: rec('stroke'),
     strokeRect: rec('strokeRect'),
+    fillRect: rec('fillRect'),
   }
   return ctx
 }
@@ -163,6 +164,131 @@ check('seatsForSize 4.5x2.5', mod.seatsForSize('Table', 4.5, 2.5), 14)
 check('seatsForSize orientation-invariant', mod.seatsForSize('Table', 2.5, 4.5), 14)
 check('seatsForSize door', mod.seatsForSize('Door', 0.9, 0.15), 0)
 check('seatsForSize degenerate', mod.seatsForSize('Table', 0, 0), 0)
+
+// --- 7. EVERY declared category draws, at three LOD levels ------------------
+//
+// The population is DERIVED from the switch in `drawSymbol`, not typed out here.
+// A hand-written list is a list that goes stale the first time somebody adds a
+// case, and the test then certifies a vocabulary that has moved
+// (`.claude/rules/gate-independence.md`: derive the complete expected set, never
+// presence-match two lists). The property each member is checked against is
+// independent of that parse: does it draw, and does it draw something OTHER than
+// the generic fallback box?
+//
+// "Falling through to the generic box undeclared" is the failure this catches.
+// A `case 'Plant':` whose body was deleted still compiles, still renders, and
+// still looks like furniture — it just silently becomes a rounded rectangle.
+
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const SRC = fs.readFileSync(
+  path.join(path.dirname(fileURLToPath(import.meta.url)), 'symbols.ts'), 'utf8')
+const SWITCH = SRC.slice(SRC.indexOf('switch (s.category)'), SRC.indexOf('default:'))
+const CATEGORIES = [...SWITCH.matchAll(/case '([A-Za-z]+)':/g)].map((m) => m[1])
+
+check('the category population is non-vacuous', CATEGORIES.length >= 12, true)
+
+/** A signature of what actually reached the canvas: the op sequence. */
+const opsFor = (category, pxPerM) => {
+  const ctx = stubCtx()
+  mod.drawSymbol(ctx, { category, cx: 0, cy: 0, w: 1.2, h: 0.9, rotation: 0, seats: 4 },
+                 INK, { pxPerM, dpr: 1 })
+  return ctx.calls.map((c) => c.name).join(',')
+}
+/** The generic fallback, reached by any category the switch does not name. */
+const FALLBACK = (pxPerM) => opsFor('__no_such_category__', pxPerM)
+
+// Three LOD levels, one per band the module declares: below `primary.exit`
+// (no detail), inside the ramp, and above `fine.enter` (everything on). A 0.9 m
+// short side puts those at roughly 8 / 28 / 56 px/m.
+const LODS = [9, 31, 62]
+const MARKS = new Set(['fill', 'stroke', 'strokeRect', 'fillRect'])
+for (const category of CATEGORIES) {
+  for (const k of LODS) {
+    const ops = opsFor(category, k)
+    check(`${category} @${k}px/m emits marks`,
+          ops.split(',').some((o) => MARKS.has(o)), true)
+  }
+  // At full detail every named category must be DISTINGUISHABLE from the box.
+  check(`${category} is not the generic fallback`, opsFor(category, 62) === FALLBACK(62), false)
+}
+
+// --- 8. content is still zoom-invariant for the NEW categories --------------
+// Same invariant as §3, applied to the countables W4 added: a stair's treads and
+// a casework run's cells come from real dimensions, so wherever they are drawn
+// at all, the count is one number.
+// Each of these draws a BODY at every zoom and its detail only above the ramp,
+// so the invariant is stated against the body's own baseline: the counts above
+// it must all be the SAME number, never two.
+for (const [category, spec, expectedDetail] of [
+  ['Stair', { w: 3.0, h: 1.5 }, 2 * 11 + 2],   // 3.0 / 0.237 -> 12 treads (11 risers, 2 lines each) + 2 stringer lines
+  ['Storage', { w: 2.88, h: 0.6 }, 3 * 2 + 2], // 2.88 / 0.96 -> 3 cells, 2 diagonals each + 2 dividers
+  ['Settee', { w: 1.716, h: 0.7 }, 3],         // 1.716 / 0.572 -> 3 cushions
+]) {
+  const at = (k) => {
+    const ctx = stubCtx()
+    mod.drawSymbol(ctx, { category, cx: 0, cy: 0, rotation: 0, ...spec }, INK, { pxPerM: k, dpr: 1 })
+    return ctx.calls.filter((c) => c.name === 'lineTo' || c.name === 'closePath').length
+  }
+  // The baseline is the BODY alone, measured below the primary band rather than
+  // taken as the minimum of the sample — some of these draw their detail at every
+  // zoom in ZOOMS, and `min` would then silently equal the full count.
+  const baseline = at(0.5)
+  const counts = ZOOMS.map(at)
+  const detail = [...new Set(counts.filter((n) => n !== baseline))]
+  check(`${category}: one detail count across all zooms`, detail.length, 1)
+  check(`${category}: the count is world-derived`, detail[0] - baseline, expectedDetail)
+}
+
+// --- 9. the measured chair is not square, and its seat is the widest part ----
+// The two facts `REF.chair` exists to carry, asserted against the DRAWN glyph
+// rather than against the constant — a constant can be right while the code
+// that reads it is not. `taskChair` emits its parts as roundRect paths, whose
+// four `arcTo` corners bracket each part's extent.
+{
+  const ctx = stubCtx()
+  mod.drawSymbol(ctx, { category: 'Chair', cx: 0, cy: 0, w: 0.565, h: 0.51, rotation: 0 },
+                 INK, { pxPerM: 200, dpr: 1 })
+  // Each roundRect starts with moveTo; collect per-part x extents from arcTo.
+  const parts = []
+  for (const c of ctx.calls) {
+    if (c.name === 'moveTo') parts.push([c.args[0], c.args[0], c.args[1], c.args[1]])
+    else if (c.name === 'arcTo' && parts.length) {
+      const p = parts[parts.length - 1]
+      for (const [x, y] of [[c.args[0], c.args[1]], [c.args[2], c.args[3]]]) {
+        p[0] = Math.min(p[0], x); p[1] = Math.max(p[1], x)
+        p[2] = Math.min(p[2], y); p[3] = Math.max(p[3], y)
+      }
+    }
+  }
+  const widths = parts.map((p) => p[1] - p[0]).sort((a, b) => b - a)
+  const depths = parts.map((p) => p[3] - p[2])
+  // The widest part is the SEAT and the next is the BACKREST — the inversion
+  // this module carried before W4 (backrest 0.92 against a seat of 0.80).
+  check('chair: the seat is drawn wider than the backrest', widths[0] > widths[1], true)
+  check('chair: seat/backrest width ratio matches the measured 470/415',
+        Math.abs(widths[0] / widths[1] - 470 / 415) < 0.02, true)
+  // And the glyph is not square: 510.5 / 565.2 = 0.903.
+  const span = Math.max(...parts.map((p) => p[3])) - Math.min(...parts.map((p) => p[2]))
+  const across = Math.max(...parts.map((p) => p[1])) - Math.min(...parts.map((p) => p[0]))
+  check('chair: measured depth/width aspect 0.903', Math.abs(span / across - 510.5 / 565.2) < 0.02, true)
+  check('chair: parts drawn', parts.length >= 4 && depths.length >= 4, true)
+}
+
+// --- 10. the column is GREY-FILLED, not hatched -----------------------------
+// `planStyle.ts` has declared `column.fill = solid COLUMN_FILL` for its whole
+// life while this module drew a poché and no fill at all. Assert the fill
+// reaches the canvas, and that no hatch does.
+{
+  const ctx = stubCtx()
+  mod.drawSymbol(ctx, { category: 'Column', cx: 0, cy: 0, w: 0.674, h: 0.674, rotation: 0 },
+                 INK, { pxPerM: 200, dpr: 1 })
+  const names = ctx.calls.map((c) => c.name)
+  check('column fills before it strokes', names.indexOf('fillRect') < names.indexOf('strokeRect'), true)
+  check('column draws no hatch', names.includes('clip'), false)
+}
 
 console.log(fail === 0 ? `symbols.test.mjs: ALL PASS (${pass})` : `${pass} passed, ${fail} FAILED`)
 process.exit(fail === 0 ? 0 : 1)

@@ -2120,3 +2120,85 @@ is safe; the comment was false. Corrected and pinned. (`derivePlateOutcome` does
 not exist; it is `derivePlate` + `recordPlateOutcome`.)
 
 Verified **44/44** in a clean worktree carrying only these changes.
+
+## W4 — the symbol vocabulary stops being authored
+
+2354 furniture paths → 225 part types → 812 instances → **70 symbols** (≥3×), 28
+named. Falsify: drop 1 path → top symbol 64→63 · merge 2 groups → 812→811 · drop
+the hot part type → 70→67 symbols. Spec byte-identical on re-run (md5 `2c774d52…`).
+
+### Adjacency clustering RETRACTED before it produced a number
+
+eps 0.0 / −0.1 / −0.3 pt → **229 / 1090 / 1219 clusters**, with 0 / 35 / 53 of 106
+desk rects surviving alone. **The bench field is drawn as touching rectangles**, so
+any epsilon that keeps an armrest attached welds forty desks into one "symbol". The
+instance boundary is not in the bytes as adjacency. Shipped instead: congruence
+typing + recurring-rigid-**contact** assembly with same-type relations excluded —
+the one load-bearing modelling choice, stated as such. `SHAPE_TOL_MM = 25` comes
+from a printed sweep, not a choice.
+
+### Two model/drawing disagreements, both found by the overlay
+
+`table()` inset its top by `CHAIR_RING_M` **on top of** the core's
+`TABLE_CLEAR = 0.95` that `emit.rs` already subtracts — the drawn top was **up to
+44% smaller than the table `seats_for` counts**. `ink_iou 0.075 → 0.876`.
+`desk()` gave the worktop the back 68%: a 1.4 × 0.7 m desk drew a **0.48 m** top.
+Reference: the bench position is a plain 1348 × 674 rect with the chair entirely
+outside it, and the workstation (1348 × 1021, n=64) is the most repeated symbol on
+the page.
+
+### The chair was inverted
+
+Measured 565 × 510: seat **470** wide, backrest **415**. Ours: backrest 0.92, seat
+0.80 — backwards, on a forced-square footprint. `ink_iou 0.506 → 0.794`;
+`SEAT_M 0.5 → 0.565`.
+
+### The column ignored a declaration `planStyle.ts` has always carried
+
+`column: { fill: solid COLUMN_FILL }` was declared; the glyph drew a 150 mm poché
+and no fill, on every plan ever produced. Reference: 27 columns/page, 674 × 674,
+`#a0a0a0`, `hatched: false`. `0.395 → 0.922`. Poché **deleted**, not kept — a
+divergence must buy an affordance, and a texture saying "column" beside a grey
+saying "column" buys none.
+
+### The instrument was wrong twice before its numbers were trusted
+
+It measured the **extractor's canonical orientation**, not our glyph — the
+extractor quotients the dihedral group, so the metric must too (Chair
+`0.424 → 0.794`). Centroid alignment, tried as a translation quotient, made
+everything **worse** (`0.794 → 0.599`) and was rejected in favour of registration
+derived from the reference's own largest outline. Falsify check (a) reported a
+**false pass** on its first run (64 → 64) by picking any 5-part group instead of
+one of the top symbol's own.
+
+| category | ink_iou | before | | category | ink_iou | before |
+|---|---|---|---|---|---|---|
+| Column | **0.922** | 0.395 | | Desk | 0.531 | 0.238 |
+| Table | **0.876** | 0.075 | | Settee | 0.562 | 0.288 |
+| Storage | **0.843** | 0.526 | | Plant | 0.370 | 0.206 |
+| Chair | **0.794** | 0.506 | | | | |
+
+**7 improved, 0 regressed.** Pass ≥ 0.60 is stated, not derived; the dilation is
+25 mm = the extractor's own `SHAPE_TOL_MM`, read from the spec rather than retyped.
+
+### Still authored, and now it says so
+
+Planter outlines (bespoke bezier foliage, no two congruent — footprint, aspect and
+blob count measured, outline not; 0.370) · settee flare (0.562) · WC absolutes ·
+drawer seams (**the reference has no drawer-seam mark at all**) · desk
+monitor/keyboard (absent at 1:266, a page-scale artifact, kept as close-zoom LOD).
+
+**Stair / Lift / WC are UNPAIRED for a structural reason:** the reference draws its
+entire core on the **wall tier**, not the furniture tier, so a furniture-tier
+extractor sees no stairs, no lift cars and no fixtures. The *grammar* is measured;
+the absolutes are not.
+
+**Routing gap, declared in the switch:** no producer emits
+`Plant`/`Settee`/`Storage`/`Stair`/`Lift`/`WC` — the core emits Desk/Chair/Table/
+Door and `import/normalize.ts` funnels sofas, planters and fixtures into
+`Furniture`. Routing lives in `import/` and `layout/`, which W4 may not touch.
+
+Figure/ground measured and enforced: **2084 of 2354** reference paths carry an
+opaque white fill. 12 of 15 categories fill before they stroke; 3 declared
+line-work only. `symbols.test.mjs` **46 → 119**. Verified `verify-all` **43/43**
+and `run-all.sh` **13/13** in a clean worktree carrying only these changes.
