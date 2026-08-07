@@ -1,4 +1,13 @@
 :root {
+  /* ---- floating deliverable-pack dock ----
+     One owner for the dock's geometry. `--pack-dock-reserve` is the room any
+     scrolling pane underneath must leave at its end so the dock never covers
+     content: the inset twice (above and below the button) plus the button's
+     own height. Consumed by `.pack-dock` and `.inspector`. */
+  --pack-dock-inset: 18px;
+  --pack-dock-height: 36px;
+  --pack-dock-reserve: calc(var(--pack-dock-inset) * 2 + var(--pack-dock-height));
+
   /* ---- surfaces (light) ---- */
   --app-bg: #f7f8fa;
   --surface: #ffffff;
@@ -712,6 +721,14 @@ button {
   background: var(--surface);
   border-left: 1px solid var(--hairline);
   overflow-y: auto;
+  /* Safe area for the fixed deliverable-pack dock, which sits in this pane's
+     bottom-right corner. Without it the dock covered the last Plan Key row
+     outright — `elementsFromPoint` at the dock's centre returned
+     `.legend-name :: Core / Service`, i.e. a legend entry the reader simply
+     could not see. The inspector is the screen's scroll owner, so reserving
+     the dock's own footprint at the end costs no visible space; it just means
+     the last row can always be scrolled clear. */
+  padding-bottom: var(--pack-dock-reserve);
 }
 .panel-body {
   padding: 16px 15px 22px;
@@ -5926,10 +5943,14 @@ kbd {
    Docked bottom-right: the pack runs for minutes, and a designer has to be able
    to keep working (or at least keep watching) while it does.
 --------------------------------------------------------------------------- */
+/* The dock is FIXED, so it floats over whatever scrolls beneath it. Its inset
+   and height are declared here ONCE and consumed by every pane that has to
+   keep content out from under it (see --pack-dock-reserve on .inspector), so
+   the clearance cannot drift away from the thing it is clearing. */
 .pack-dock {
   position: fixed;
-  right: 18px;
-  bottom: 18px;
+  right: var(--pack-dock-inset);
+  bottom: var(--pack-dock-inset);
   z-index: 60;
   display: flex;
   flex-direction: column;
