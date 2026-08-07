@@ -4,7 +4,7 @@
 //
 //   1. CAPTURE — drive the app's real interior renderer (`web/src/export/
 //      roomRenders.ts` → `web/src/three/{materialTheme,interiorStill}.ts`) over
-//      the seeded demo document from the Rust core, exactly the way
+//      THE DOCUMENT THE DEMO ACTUALLY SHOWS, exactly the way
 //      `scripts/render-rooms.mjs` does. Nothing is re-implemented; the only new
 //      camera here is the aerial cutaway (`Overview_aerial`), which is a plain
 //      `StillCamera` handed to the SAME `renderInteriorStill`.
@@ -12,9 +12,28 @@
 //      (depth / edge / interior-ControlNet) with a materials-and-lighting
 //      prompt, then poll, download and VERIFY the bytes.
 //
+// WHICH BUILDING (`--doc`, default `wizard`) — this pack once shipped renders of
+// the WRONG building: the base stills came from the 40 × 24 m seeded sample
+// (`seed 7 · 97 walls · 206 components`) while every other artifact in the demo
+// is the user's imported DWG plate. The film showed one building and the
+// "renders of it" showed another. `--doc wizard` therefore drives the app's own
+// wizard — Start a project → upload `samples/furniture-plan.dwg` → Program →
+// Generate → "Open in editor" — and lifts the live document straight off
+// `window.__ec`, the same seam `scripts/demo/record-demo.mjs` films. The
+// document is then ASSERTED to be the imported plate (`assertImportedPlate`)
+// before a single pixel is rendered, so a silent fall-back to the sample is a
+// crash rather than a beautiful picture of the wrong office.
+//
+// Like `record-demo.mjs`, this NEVER clicks [data-testid="plate-draft-confirm"]:
+// that writes the plate calibration log, whose value is that a HUMAN produced
+// its rows (ADR 0003 + .claude/rules/gate-independence.md). The flow does not
+// need it, and the run asserts the store is still empty afterwards.
+//
 // Usage:
 //   set -a; . /path/to/replicate.env; set +a          # REPLICATE_API_TOKEN
-//   node scripts/renders/render-plan.mjs
+//   node scripts/renders/render-plan.mjs                         # the real imported plate
+//   node scripts/renders/render-plan.mjs --doc seeded            # the 40x24 sample instead
+//   node scripts/renders/render-plan.mjs --port 5199             # the dev server to drive
 //   node scripts/renders/render-plan.mjs --skip-capture          # reuse base stills
 //   node scripts/renders/render-plan.mjs --only Open_space,Reception
 //   node scripts/renders/render-plan.mjs --views-only            # capture, no Replicate
@@ -31,11 +50,12 @@
 // to disk, logged, or embedded in any artifact.
 
 import fs from 'node:fs'
+import http from 'node:http'
 import path from 'node:path'
 import { createRequire } from 'node:module'
 import { execFileSync } from 'node:child_process'
 import { pathToFileURL } from 'node:url'
-import { REPO, buildDemoDoc } from '../lib/demo-doc.mjs'
+import { REPO, buildDemoDoc, DEMO_PLATE } from '../lib/demo-doc.mjs'
 
 // ── args ─────────────────────────────────────────────────────────────────────
 const argv = process.argv.slice(2)
@@ -50,6 +70,12 @@ const BASE_DIR = path.join(OUT, 'base')
 const VAR_DIR = path.join(OUT, 'var')
 const SHEET = path.resolve(REPO, arg('--sheet', 'out/renders/index.html'))
 const SEED = Number(arg('--seed', '7'))
+const DOC_SOURCE = arg('--doc', 'wizard')
+if (DOC_SOURCE !== 'wizard' && DOC_SOURCE !== 'seeded') {
+  throw new Error(`--doc must be 'wizard' (the imported DWG plate) or 'seeded' (the 40x24 sample)`)
+}
+const PORT = Number(arg('--port', '5199'))
+const PLATE_DWG = path.join(REPO, 'samples/furniture-plan.dwg')
 const WIDTH = Number(arg('--width', '1920'))
 const HEIGHT = Number(arg('--height', '1080'))
 const ONLY = arg('--only', '') ? arg('--only', '').split(',').map((s) => s.trim()) : null
@@ -246,20 +272,301 @@ const noteFor = (view, style) => NOTES[`${view}__${style.replace(/-/g, '_')}`] ?
 
 const promptFor = (view, style) => `${SHELL}. ${view.subject}. ${style.style}.`
 
-// ── stage 1: capture the base stills out of the app's own renderer ───────────
+// ── stage 0: WHICH document ──────────────────────────────────────────────────
 const webRequire = createRequire(path.join(REPO, 'web/package.json'))
+
+async function chromiumModule() {
+  const playwright = await import(pathToFileURL(webRequire.resolve('playwright')).href)
+  return playwright.chromium ?? playwright.default.chromium
+}
+
+/** Shoelace area of a closed ring, m². */
+function ringArea(ring) {
+  let a = 0
+  for (let i = 0; i < ring.length; i++) {
+    const [x1, y1] = ring[i]
+    const [x2, y2] = ring[(i + 1) % ring.length]
+    a += x1 * y2 - x2 * y1
+  }
+  return Math.abs(a) / 2
+}
+
+/**
+ * THE GUARD. The class of defect this exists for is "renders of a different
+ * building than the rest of the demo", and it recurs silently because a wrong
+ * document renders just as prettily as a right one.
+ *
+ * It is anchored on things the producer cannot choose:
+ *   • the plate RING ITSELF, compared vertex-for-vertex against `DEMO_PLATE` —
+ *     the seeded sample's own definition, read from `web/src/editor/
+ *     samplePlan.json`, not from anything this run produced;
+ *   • the ring's shoelace area against the plate's documented extent
+ *     (930.1 m², ADR 0003 §"Verified against a production build", ADR 0004,
+ *     docs/audits/circulation-figure-ground-audit.md) — an external
+ *     specification, not a number this script computed and then believed;
+ *   • the ring's IRREGULARITY. The sample is a 4-vertex rectangle; the imported
+ *     plate is a sawtooth polygon. A rectangle can never satisfy this.
+ * A missing field is a failure, never a skip.
+ */
+const IMPORTED_PLATE = {
+  areaM2: 930.1, // ADR 0003 / ADR 0004 / circulation-figure-ground-audit.md
+  areaTolPct: 3,
+  minVertices: 8,
+  minWalls: 120,
+  minComponents: 150,
+}
+function assertImportedPlate({ state, plate }) {
+  const fail = (why) => {
+    throw new Error(
+      `WRONG BUILDING — ${why}. The demo's other artifacts are the imported ` +
+        `samples/furniture-plan.dwg plate; rendering anything else ships images of a ` +
+        `different office. Re-run without --skip-capture, or pass --doc seeded ` +
+        `deliberately (and the sheet will then say so).`,
+    )
+  }
+  if (!Array.isArray(plate) || plate.length < 3) fail(`the document has no floor plate (${JSON.stringify(plate)?.slice(0, 80)})`)
+  if (plate.length < IMPORTED_PLATE.minVertices) {
+    fail(`the plate has only ${plate.length} vertices — the imported plate is irregular (≥ ${IMPORTED_PLATE.minVertices})`)
+  }
+  const sameAsSample =
+    plate.length === DEMO_PLATE.length &&
+    plate.every((p, i) => Math.abs(p[0] - DEMO_PLATE[i][0]) < 0.01 && Math.abs(p[1] - DEMO_PLATE[i][1]) < 0.01)
+  if (sameAsSample) fail('the plate IS the 40 × 24 m seeded sample rectangle')
+  const area = ringArea(plate)
+  const drift = Math.abs(area - IMPORTED_PLATE.areaM2) / IMPORTED_PLATE.areaM2 * 100
+  if (drift > IMPORTED_PLATE.areaTolPct) {
+    fail(`the plate measures ${area.toFixed(1)} m², ${drift.toFixed(1)}% off the documented ${IMPORTED_PLATE.areaM2} m²`)
+  }
+  if (state.walls.length < IMPORTED_PLATE.minWalls) fail(`only ${state.walls.length} walls (expected ≥ ${IMPORTED_PLATE.minWalls})`)
+  if (state.components.length < IMPORTED_PLATE.minComponents) {
+    fail(`only ${state.components.length} components (expected ≥ ${IMPORTED_PLATE.minComponents})`)
+  }
+  return { areaM2: Number(area.toFixed(1)), vertices: plate.length }
+}
+
+function waitForServer(port, ms = 8000) {
+  const deadline = Date.now() + ms
+  return new Promise((resolve, reject) => {
+    const tick = () => {
+      // `localhost`, not 127.0.0.1 — vite binds ::1 too (record-demo.mjs).
+      const req = http.get({ host: 'localhost', port, path: '/' }, (res) => { res.resume(); resolve() })
+      req.on('error', () => {
+        if (Date.now() > deadline) {
+          reject(new Error(`No dev server on :${port}. Start one with:  cd web && pnpm dev --port ${port} --strictPort`))
+        } else setTimeout(tick, 250)
+      })
+    }
+    tick()
+  })
+}
+
+/**
+ * The REAL document: the app's own wizard, driven exactly as
+ * `scripts/demo/record-demo.mjs` drives it for the film, then read off
+ * `window.__ec` — the live `EditorCanvas` the app itself exposes in dev. Nothing
+ * about the geometry is re-derived here; this is the same wasm `Editor` the
+ * viewer, the workbook and the film are all looking at.
+ */
+async function wizardDoc() {
+  if (!fs.existsSync(PLATE_DWG)) throw new Error(`demo CAD plate missing: ${PLATE_DWG}`)
+  await waitForServer(PORT)
+  const chromium = await chromiumModule()
+  const BASE = `http://localhost:${PORT}`
+  const browser = await chromium.launch({ args: ['--use-angle=metal', '--enable-unsafe-swiftshader'] })
+  const context = await browser.newContext({ viewport: { width: 1680, height: 1050 }, deviceScaleFactor: 1 })
+  const page = await context.newPage()
+  const pageErrors = []
+  page.on('pageerror', (e) => pageErrors.push(e.message))
+
+  const need = async (sel, timeout = 30000) => {
+    const loc = page.locator(sel).first()
+    try {
+      await loc.waitFor({ state: 'visible', timeout })
+    } catch {
+      throw new Error(`wizard: \`${sel}\` never appeared within ${timeout} ms — url ${page.url()}`)
+    }
+    return loc
+  }
+  const waitHash = async (re, ms, what) => {
+    const deadline = Date.now() + ms
+    while (Date.now() < deadline) {
+      if (re.test(page.url())) return page.url()
+      await page.waitForTimeout(200)
+    }
+    throw new Error(`wizard: never reached ${what} (${re}) — url is ${page.url()}`)
+  }
+
+  try {
+    console.log(`wizard: driving ${BASE} → the real imported plate`)
+    await page.goto(`${BASE}/`, { waitUntil: 'domcontentloaded' })
+    await need('[data-testid="project-library"]')
+    // A fresh context has an empty IndexedDB and the library says so. If a
+    // profile were ever reused, an old project's document could be opened here.
+    const empty = await page.locator('[data-testid="project-library-empty"]').count()
+    if (empty !== 1) throw new Error(`wizard: the project library is not empty (empty-marker count ${empty})`)
+
+    await (await need('[data-testid="project-new"]')).click()
+    await need('[data-testid="create-project-form"]')
+    await (await need('[data-testid="create-name"]')).fill('Q3 Tenant Fit-out')
+    await (await need('[data-testid="create-property"]')).fill('One Prestige Tower')
+    await (await need('[data-testid="create-address"]')).fill('12 MG Road, Bengaluru 560001')
+    await (await need('[data-testid="create-floor"]')).fill('L14')
+    await (await need('[data-testid="create-submit"]')).click()
+    await waitHash(/#\/p\/[^/]+\/space/, 30000, 'the Space step')
+
+    await need('[data-testid="space-step"]')
+    await page.setInputFiles('[data-testid="space-upload-input"]', PLATE_DWG)
+    const readouts = page.locator('[data-testid="space-readouts"]')
+    const spaceErr = page.locator('[data-testid="space-error"]')
+    const deadline = Date.now() + 300000
+    for (;;) {
+      if (await readouts.count()) break
+      if (await spaceErr.count()) throw new Error(`wizard: the DWG import failed — ${(await spaceErr.first().innerText()).trim()}`)
+      if (Date.now() > deadline) throw new Error('wizard: the DWG never produced readouts within 300 s')
+      await page.waitForTimeout(400)
+    }
+    const metrics = await page
+      .locator('[data-testid="space-readouts"] .space-metric')
+      .evaluateAll((els) => els.map((e) => e.innerText.replace(/\s+/g, ' ').trim()).filter(Boolean))
+    console.log(`wizard: plate traced — ${metrics.join(' · ') || '(no metric tiles)'}`)
+    // DELIBERATELY NOT CLICKED: [data-testid="plate-draft-confirm"] writes the
+    // human-only plate calibration log (ADR 0003). A driver's CDP input is
+    // `isTrusted`, so the row would be indistinguishable from a real one.
+    const draftOffered = await page.locator('[data-testid="plate-draft-confirm"]').count()
+    console.log(`wizard: plate-draft-confirm present: ${draftOffered ? 'yes — deliberately NOT clicked' : 'no'}`)
+
+    const spaceNext = page.locator('[data-testid="wizard-next"]')
+    if (await spaceNext.isDisabled()) {
+      const why = await page.locator('[data-testid="wizard-next-reason"]').innerText().catch(() => '')
+      throw new Error(`wizard: "Next: Program" stayed disabled — ${why || 'no reason given'}`)
+    }
+    await spaceNext.click()
+
+    await need('[data-testid="program-step"]')
+    await need('[data-testid="program-summary"]')
+    console.log(
+      `wizard: program — ${(await page.locator('[data-testid="program-summary"]').innerText()).replace(/\s+/g, ' ').slice(0, 120)}`,
+    )
+    await (await need('[data-testid="program-next"]')).click()
+
+    await need('[data-testid="generate-step"]')
+    const alts = page.locator('[data-testid="generate-alt"]')
+    const genDeadline = Date.now() + 300000
+    for (;;) {
+      if ((await alts.count()) >= 1) break
+      for (const bad of ['generate-noplate', 'generate-error']) {
+        if (await page.locator(`[data-testid="${bad}"]`).count()) {
+          throw new Error(`wizard: generation refused (${bad}): ${(await page.locator(`[data-testid="${bad}"]`).innerText()).replace(/\s+/g, ' ').slice(0, 200)}`)
+        }
+      }
+      if (Date.now() > genDeadline) throw new Error('wizard: no scored alternatives after 300 s')
+      await page.waitForTimeout(500)
+    }
+    const scores = await page.locator('.generate-alt-score').evaluateAll((els) =>
+      els.map((e) => parseFloat((e.firstChild?.textContent ?? e.textContent).replace(/[^\d.]/g, '')) || 0),
+    )
+    console.log(`wizard: ${await alts.count()} alternatives scored ${scores.join(' / ')} — opening A`)
+    // Let the async Claude soft-goal verdicts land before aiming: they add a row
+    // to every card and reflow the gallery under the click (record-demo.mjs).
+    await page.locator('[data-testid="generate-alt-ai"].is-pending').first().waitFor({ state: 'detached', timeout: 60000 }).catch(() => {})
+    const openSel = '[data-testid="generate-alt"] >> nth=0 >> [data-testid="generate-alt-open"]'
+    await (await need(openSel)).click()
+
+    const EDITOR_RE = /#\/p\/[^/]+\/f\/[^/]+/
+    try {
+      await waitHash(EDITOR_RE, 25000, 'the editor deep-link')
+    } catch {
+      console.log('wizard: no navigation 25 s after "Open in editor" — clicking once more')
+      await (await need(openSel)).click()
+      await waitHash(EDITOR_RE, 60000, 'the editor deep-link')
+    }
+    await need('.canvas-wrap canvas', 40000)
+    console.log(`wizard: editor open at ${page.url().split('#')[1]}`)
+
+    // The live document, off the app's own seam. `ec.ed` is the wasm Editor.
+    const doc = await page.evaluate(async () => {
+      const ec = window.__ec
+      if (!ec) throw new Error('window.__ec is not exposed — is this a dev build?')
+      for (let i = 0; i < 80 && !(ec.getState()?.walls ?? []).length; i++) {
+        await new Promise((r) => setTimeout(r, 250))
+      }
+      const state = ec.getState()
+      let metrics = null
+      try { metrics = ec.ed.metrics() } catch { metrics = null }
+      return {
+        state,
+        wallTypes: ec.ed.wall_types(),
+        plate: ec.ed.plate() ?? null,
+        workstations: metrics?.workstations ?? null,
+        revision: typeof ec.ed.revision === 'function' ? ec.ed.revision() : null,
+      }
+    })
+
+    // We never performed the trusted-human event; this reads the store itself
+    // rather than trusting that we did not.
+    const plateRows = await page.evaluate(
+      () =>
+        new Promise((res) => {
+          const rq = indexedDB.open('dsource')
+          rq.onerror = () => res(-1)
+          rq.onsuccess = () => {
+            const db = rq.result
+            if (!db.objectStoreNames.contains('plateLog')) return res(0)
+            const c = db.transaction('plateLog', 'readonly').objectStore('plateLog').count()
+            c.onsuccess = () => res(c.result)
+            c.onerror = () => res(-1)
+          }
+        }),
+    )
+    if (plateRows !== 0) throw new Error(`wizard: the plate calibration log has ${plateRows} rows — this run must not write it`)
+    console.log('wizard: plate calibration log untouched (0 rows) — no trusted-human event performed')
+    if (pageErrors.length) console.log(`wizard: page errors — ${pageErrors.slice(0, 3).join(' | ')}`)
+
+    return {
+      state: doc.state,
+      wallTypes: doc.wallTypes,
+      plate: doc.plate,
+      source: {
+        kind: 'wizard',
+        file: 'samples/furniture-plan.dwg',
+        candidate: 'A',
+        scores,
+        spaceMetrics: metrics,
+        workstations: doc.workstations,
+      },
+    }
+  } finally {
+    await context.close().catch(() => {})
+    await browser.close().catch(() => {})
+  }
+}
+
+async function loadDoc() {
+  if (DOC_SOURCE === 'seeded') {
+    const { state, wallTypes, plate } = await buildDemoDoc({ seed: SEED })
+    return { state, wallTypes, plate, source: { kind: 'seeded', seed: SEED } }
+  }
+  const doc = await wizardDoc()
+  const measured = assertImportedPlate(doc)
+  console.log(
+    `guard: imported plate confirmed — ${measured.areaM2} m² over ${measured.vertices} vertices, ` +
+      `${doc.state.walls.length} walls · ${doc.state.components.length} components`,
+  )
+  return { ...doc, source: { ...doc.source, ...measured } }
+}
+
+// ── stage 1: capture the base stills out of the app's own renderer ───────────
 
 async function capture(keys) {
   const { build } = await import(
     pathToFileURL(createRequire(webRequire.resolve('vite')).resolve('esbuild')).href
   )
-  const playwright = await import(pathToFileURL(webRequire.resolve('playwright')).href)
-  const chromium = playwright.chromium ?? playwright.default.chromium
+  const chromium = await chromiumModule()
 
-  const { state, wallTypes, plate } = await buildDemoDoc({ seed: SEED })
+  const { state, wallTypes, plate, source } = await loadDoc()
   console.log(
     `doc: ${state.walls.length} walls · ${state.components.length} components · ` +
-      `${(state.zones ?? []).length} zones · seed ${SEED}`,
+      `${(state.zones ?? []).length} zones · source ${source.kind}`,
   )
 
   const bundle = await build({
@@ -370,16 +677,106 @@ async function capture(keys) {
           const spanX = maxX - minX
           const spanZ = maxZ - minZ
           const span = Math.max(spanX, spanZ)
-          const eye = new THREE.Vector3(
-            minX - spanX * 0.34,
-            span * 0.55,
-            maxZ + spanZ * 0.75,
-          )
+          const FOV_X = 62
+          const WALL_TOP_M = 3.2
           const target = new THREE.Vector3(cx, 0.8, cz)
+
+          // THE FRAMING IS MEASURED, NOT ASSUMED. The previous version stood the
+          // eye at fixed multiples of the plate's bbox — a rule tuned on one
+          // rectangular 40 × 24 m plan. On the real irregular ~930 m² plate the
+          // same multipliers left the building filling barely a third of the
+          // frame, and on an unlucky plate they point at sky. So: fix the view
+          // DIRECTION, then PROJECT the plate's own corners through the very
+          // camera `renderInteriorStill` will build (same horizontal FOV, same
+          // aspect, same fovY derivation) and bisect the standoff until the
+          // footprint's extreme point lands at `FILL` of the half-frame.
+          const FILL = 0.9
+          const aspect = width / height
+          const fovY = (2 * Math.atan(Math.tan((FOV_X * Math.PI) / 180 / 2) / aspect) * 180) / Math.PI
+          // Every plate corner at floor AND at wall-top height: a roof-off shot
+          // still has to contain the walls, and the near-corner parapet is what
+          // actually leaves the frame first.
+          const probes = []
+          for (const [px, pz] of ring) for (const py of [0, WALL_TOP_M]) probes.push(new THREE.Vector3(px, py, pz))
+          const camAt = (dir, dist) => {
+            const probe = new THREE.PerspectiveCamera(fovY, aspect, 0.08, 400)
+            probe.position.copy(target).addScaledVector(dir, dist)
+            probe.lookAt(target)
+            probe.updateMatrixWorld(true)
+            probe.updateProjectionMatrix()
+            return probe
+          }
+          const fillAt = (dir, dist) => {
+            const probe = camAt(dir, dist)
+            let worst = 0
+            for (const p of probes) {
+              const n = p.clone().project(probe)
+              // Anything behind the camera projects to a meaningless NDC; at
+              // these standoffs it cannot happen, but treat it as "off frame".
+              if (n.z > 1) return Infinity
+              worst = Math.max(worst, Math.abs(n.x), Math.abs(n.y))
+            }
+            return worst
+          }
+          /** The nearest standoff on this heading at which the whole plate fits. */
+          const fitDist = (dir) => {
+            let lo = span * 0.2
+            let hi = span * 6
+            if (fillAt(dir, hi) > FILL) return null
+            for (let i = 0; i < 40; i++) {
+              const mid = (lo + hi) / 2
+              if (fillAt(dir, mid) > FILL) lo = mid
+              else hi = mid
+            }
+            return hi
+          }
+          /** Fraction of the 16:9 frame the floorplate itself covers. The floor
+           *  ring is planar, so its perspective image is still a simple polygon
+           *  and the shoelace is exact. This is the number that decides the
+           *  heading: "contains the building" is necessary, "and is mostly
+           *  building rather than lawn" is what makes it a hero shot. */
+          const coverage = (dir, dist) => {
+            const probe = camAt(dir, dist)
+            const pts = ring.map(([px, pz]) => new THREE.Vector3(px, 0, pz).project(probe))
+            let a = 0
+            for (let i = 0; i < pts.length; i++) {
+              const p = pts[i]
+              const q = pts[(i + 1) % pts.length]
+              a += p.x * q.y - q.x * p.y
+            }
+            return Math.abs(a) / 2 / 4 // NDC frame is 2 × 2
+          }
+          // Sweep headings around the open side of the plan (looking in over the
+          // workspace, not at the back of a wall run) and keep the one that
+          // covers most frame. A near-square footprint in a 16:9 frame wastes a
+          // third of the picture on the wrong diagonal.
+          const base = Math.atan2(0.86, -0.52)
+          let best = null
+          for (let dAz = -40; dAz <= 40; dAz += 4) {
+            for (const elevDeg of [28, 32, 36, 40]) {
+              const a = base + (dAz * Math.PI) / 180
+              const el = (elevDeg * Math.PI) / 180
+              const dir = new THREE.Vector3(Math.cos(a) * Math.cos(el), Math.sin(el), Math.sin(a) * Math.cos(el))
+              const dist = fitDist(dir)
+              if (dist == null) continue
+              const cov = coverage(dir, dist)
+              if (!best || cov > best.cov) best = { dir, dist, cov, dAz, elevDeg }
+            }
+          }
+          if (!best) throw new Error('aerial: no heading fits the plate in frame')
+          const { dir, dist } = best
+          const fill = fillAt(dir, dist)
+          // A frame the building does not fill is the failure that shipped last
+          // time in its other direction; assert BOTH ends of the bracket.
+          if (!(fill > 0.6 && fill <= 1.0)) {
+            throw new Error(`aerial: framing fit failed — the plate spans ${fill.toFixed(2)} of the half-frame`)
+          }
+          if (best.cov < 0.2) throw new Error(`aerial: the floorplate covers only ${(best.cov * 100).toFixed(0)}% of the frame`)
+          const eye = target.clone().addScaledVector(dir, dist)
           const cam = {
             eye,
             target,
-            fovHorizontalDeg: 62,
+            fovHorizontalDeg: FOV_X,
             placement: 'interior',
             forwardClearanceM: eye.distanceTo(target),
           }
@@ -392,6 +789,9 @@ async function capture(keys) {
           })
           console.log(
             `aerial plate x[${minX.toFixed(1)},${maxX.toFixed(1)}] z[${minZ.toFixed(1)},${maxZ.toFixed(1)}] ` +
+              `${ring.length} verts · heading ${best.dAz >= 0 ? '+' : ''}${best.dAz}° elev ${best.elevDeg}° · ` +
+              `standoff ${dist.toFixed(1)} m · fills ${(fill * 100).toFixed(0)}% of the half-frame · ` +
+              `floorplate covers ${(best.cov * 100).toFixed(0)}% of the frame · ` +
               `eye(${eye.x.toFixed(1)},${eye.y.toFixed(1)},${eye.z.toFixed(1)}) ` +
               `target(${target.x.toFixed(1)},${target.y.toFixed(1)},${target.z.toFixed(1)})`,
           )
@@ -434,16 +834,24 @@ async function capture(keys) {
     written.push({ key: s.key, camera: s.camera, roomLabel: s.roomLabel, ...dim })
   }
   const doc = {
-    seed: SEED,
+    source: source.kind,
+    plateFile: source.file ?? null,
+    seed: source.kind === 'seeded' ? SEED : null,
+    plateAreaM2: source.areaM2 ?? (plate ? Number(ringArea(plate).toFixed(1)) : null),
+    plateVertices: Array.isArray(plate) ? plate.length : 0,
     walls: state.walls.length,
     components: state.components.length,
     zones: (state.zones ?? []).length,
+    workstations: source.workstations ?? null,
   }
   // Stamped BESIDE the stills at the moment they were shot. `crates/ds-core` is
   // live code — a `make wasm` between two runs changes the test-fit — so the
   // provenance travels with the pixels rather than being re-derived later from a
   // core that may since have moved.
-  fs.writeFileSync(path.join(BASE_DIR, 'doc.json'), JSON.stringify({ gpu: gl, doc, stills: written }, null, 2))
+  fs.writeFileSync(
+    path.join(BASE_DIR, 'doc.json'),
+    JSON.stringify({ gpu: gl, doc, source, stills: written }, null, 2),
+  )
   return {
     gpu: gl,
     doc,
@@ -499,7 +907,18 @@ export function imageInfo(buf) {
 
 // ── Replicate ────────────────────────────────────────────────────────────────
 const TOKEN = process.env.REPLICATE_API_TOKEN
-const api = async (url, init = {}) => {
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+
+/**
+ * A 429 IS NOT A FAILED RENDER — it is the server saying "later", and the whole
+ * request is still valid. Treating it as terminal cost this pack 8 of its 15
+ * variations in one run: Replicate throttles prediction creation to 6/min with a
+ * burst of 1 once an account drops under $5 of credit, and every view after the
+ * sixth came back `FAILED — 429` while the sheet quietly rendered a half-empty
+ * deck. Honour the server's own `retry_after`, and only give up after it has
+ * asked us to wait more times than any real backlog would.
+ */
+const api = async (url, init = {}, attempt = 0) => {
   const res = await fetch(url, {
     ...init,
     headers: { Authorization: `Bearer ${TOKEN}`, ...(init.headers ?? {}) },
@@ -507,6 +926,15 @@ const api = async (url, init = {}) => {
   const text = await res.text()
   let json = null
   try { json = JSON.parse(text) } catch { /* non-JSON body — reported below */ }
+  if (res.status === 429 && attempt < 12) {
+    // The server states the wait; the header is the fallback, and a floor of 11 s
+    // clears a 6-per-minute window even when neither is present.
+    const stated = Number(json?.retry_after ?? res.headers.get('retry-after') ?? 0)
+    const wait = Math.max(11, stated + 2) * 1000
+    process.stdout.write(`[429, waiting ${(wait / 1000).toFixed(0)}s] `)
+    await sleep(wait)
+    return api(url, init, attempt + 1)
+  }
   if (!res.ok) throw new Error(`${init.method ?? 'GET'} ${url} → ${res.status}: ${text.slice(0, 400)}`)
   if (!json) throw new Error(`${url} returned a non-JSON body: ${text.slice(0, 200)}`)
   return json
@@ -600,8 +1028,10 @@ if (SHEET_ONLY) {
   const doc = m.doc ?? (fs.existsSync(stamp) ? JSON.parse(fs.readFileSync(stamp, 'utf8')).doc : null)
   fs.writeFileSync(manifestPath, JSON.stringify({ ...m, doc, variations: rows }, null, 2))
   writeContactSheet(rows, { gpu: m.gpu, doc }, m.failures ?? [])
-  console.log(`rebuilt ${SHEET} from ${rows.length} manifest rows`)
-  process.exit(0)
+  const gone = verifyDeck(rows)
+  console.log(`rebuilt ${SHEET} from ${rows.length} manifest rows · ${rows.length - gone.length} verified on disk`)
+  for (const g of gone) console.log(`  MISSING  ${g}`)
+  process.exit(gone.length ? 1 : 0)
 }
 
 let capturedMeta = { gpu: 'reused', doc: null, stills: [] }
@@ -612,8 +1042,21 @@ if (SKIP_CAPTURE) {
     capturedMeta.stills.push({ key: k, ...imageInfo(fs.readFileSync(f)) })
   }
   const stamp = path.join(BASE_DIR, 'doc.json')
-  if (fs.existsSync(stamp)) capturedMeta.doc = JSON.parse(fs.readFileSync(stamp, 'utf8')).doc
-  console.log(`reusing ${keys.length} base stills in ${BASE_DIR}`)
+  // The stamp is provenance, and reusing stills means re-consuming it. A MISSING
+  // stamp is a failure, never a skip: unstamped stills are of an unknown
+  // building, which is exactly the state that shipped the sample-office pack.
+  if (!fs.existsSync(stamp)) throw new Error(`--skip-capture but ${stamp} is missing — the base stills have no provenance`)
+  capturedMeta.doc = JSON.parse(fs.readFileSync(stamp, 'utf8')).doc
+  if (DOC_SOURCE === 'wizard' && capturedMeta.doc?.source !== 'wizard') {
+    throw new Error(
+      `--skip-capture but the stills on disk were captured from '${capturedMeta.doc?.source}', not the imported plate. ` +
+        `Re-capture, or pass --doc seeded deliberately.`,
+    )
+  }
+  console.log(
+    `reusing ${keys.length} base stills in ${BASE_DIR} — ${capturedMeta.doc?.source} · ` +
+      `${capturedMeta.doc?.walls} walls · ${capturedMeta.doc?.components} components`,
+  )
 } else {
   capturedMeta = await capture(keys)
 }
@@ -704,13 +1147,53 @@ fs.writeFileSync(
 )
 
 writeContactSheet(results, capturedMeta, failures)
+
+// The manifest is the PRODUCER'S ACCOUNT of what it wrote; the deck is the
+// bytes. Two rows once claimed 107 KB and 158 KB images that were not on disk —
+// the sheet rendered them as broken frames and the summary line still said
+// "15 variations on disk", because it was counting manifest rows. Re-derive the
+// count from the filesystem, and check each row against the file it names.
+const missing = verifyDeck(results)
 console.log(
-  `\n${predictions} predictions · ${results.length} variations on disk · ${failures.length} failures\n` +
+  `\n${predictions} predictions · ${results.length - missing.length}/${results.length} variations ` +
+    `verified on disk · ${failures.length} prediction failures\n` +
     `  images  ${OUT}\n  sheet   ${SHEET}`,
 )
-if (failures.length) process.exitCode = 1
+for (const m of missing) console.log(`  MISSING  ${m}`)
+if (failures.length || missing.length) process.exitCode = 1
+
+/** Every manifest row re-read from the file it names. Returns the bad ones. */
+function verifyDeck(rows) {
+  const bad = []
+  for (const r of rows) {
+    const file = path.resolve(path.dirname(SHEET), r.file)
+    if (!fs.existsSync(file)) { bad.push(`${r.view} · ${r.style} — ${r.file} does not exist`); continue }
+    const info = imageInfo(fs.readFileSync(file))
+    if (info.kind === 'unknown') bad.push(`${r.view} · ${r.style} — ${r.file} is not an image (${info.bytes} B)`)
+    else if (info.bytes !== r.bytes || info.width !== r.width) {
+      bad.push(`${r.view} · ${r.style} — ${r.file} is ${info.width}×${info.height} ${info.bytes} B, manifest says ${r.width}×${r.height} ${r.bytes} B`)
+    }
+  }
+  return bad
+}
 
 // ── the contact sheet ────────────────────────────────────────────────────────
+
+/** One line naming WHICH BUILDING these pixels are of, read off the stamp that
+ *  travelled with them. The pack once shipped the seeded sample under a caption
+ *  that said "the SAME office plan"; the caption is now derived, not written. */
+function provenance(doc) {
+  if (!doc) return 'document provenance unknown'
+  if (doc.source === 'wizard') {
+    return (
+      `the imported ${doc.plateFile ?? 'DWG'} plate` +
+      (doc.plateAreaM2 ? `, ${doc.plateAreaM2} m² over ${doc.plateVertices} boundary vertices` : '') +
+      (doc.workstations ? `, ${doc.workstations} workstations` : '')
+    )
+  }
+  return `the seeded 40 × 24 m sample office, seed ${doc.seed ?? '?'}`
+}
+
 function writeContactSheet(rows, meta, fails) {
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
   const byView = new Map()
@@ -746,8 +1229,8 @@ function writeContactSheet(rows, meta, fails) {
           <figure class="card base">
             <a href="${esc(baseRel)}"><img src="${esc(baseRel)}" alt="${esc(view.label)} base"></a>
             <figcaption><b>BASE — our 3D geometry</b><code>web/src/three/interiorStill.ts</code>
-            <p>Rendered from the Rust core's document, seed ${SEED}. This is the structure every
-            variation to its right is conditioned on.</p></figcaption>
+            <p>Rendered from the Rust core's document — ${esc(provenance(meta.doc))}. This is the
+            structure every variation to its right is conditioned on.</p></figcaption>
           </figure>
           ${cards}
         </div>
@@ -789,12 +1272,16 @@ function writeContactSheet(rows, meta, fails) {
   .fails { color:#ff9a9a }
 </style></head><body>
 <h1>DSource — photoreal render pack</h1>
-<p class="sub">Every image on this page is the SAME office plan: the base still on the left of each row is
-rendered by the app's own 3D pipeline out of the Rust core's document (seed <span class="num">${SEED}</span>,
-GPU <span class="num">${esc(meta.gpu)}</span>${meta.doc ? `, <span class="num">${meta.doc.walls}</span> walls ·
+<p class="sub">Every image on this page is the SAME office plan — <b>${esc(provenance(meta.doc))}</b>, the
+same document the demo film imports, edits and exports. The base still on the left of each row is
+rendered by the app's own 3D pipeline out of the Rust core's document (GPU
+<span class="num">${esc(meta.gpu)}</span>${meta.doc ? `, <span class="num">${meta.doc.walls}</span> walls ·
 <span class="num">${meta.doc.components}</span> placed components · <span class="num">${meta.doc.zones}</span> zones` : ''}),
 and each variation is that exact frame re-lit by a
 structure-preserving model on Replicate. Prompts and model versions are printed under each image.</p>
+${meta.doc && meta.doc.source !== 'wizard' ? `<p class="sub" style="color:#ff9a9a"><b>NOT THE DEMO'S BUILDING.</b>
+These stills come from the ${esc(meta.doc.source)} sample office, not the imported
+<span class="num">samples/furniture-plan.dwg</span> plate the rest of the demo uses.</p>` : ''}
 ${sections}
 ${failHtml}
 </body></html>`
