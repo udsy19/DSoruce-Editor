@@ -51,6 +51,21 @@ export interface ZoneTag {
   cy: number
   namePx: number
   color: string
+  /** The room's own screen box. Displacement is the FIRST rung of the collision
+   *  ladder, and this is what keeps a displaced label inside the room it names —
+   *  a label that wanders into the neighbouring room is worse than no label. */
+  bounds: { x: number; y: number; w: number; h: number }
+  /** m². Placement is largest-room-first, so this is the sort key. */
+  area: number
+}
+
+/** Screen-space obstacle a room label must not print over — one per drawn
+ *  furniture glyph. See {@link drawZoneTags}. */
+export interface LabelObstacle {
+  x: number
+  y: number
+  w: number
+  h: number
 }
 
 /** Screen-space box of a drawn dimension label (a click target for the inline
@@ -426,18 +441,20 @@ export function drawZones(
         ctx.lineWidth = strokePx('roomEnclosure', v.scale)
         ctx.stroke()
       }
+      // Screen-space ring, computed ONCE: the texture bbox, the pole of
+      // inaccessibility and the tag's own bounds are all derived from it.
+      const sp = pts.map((pt) => v.toScreen(pt[0], pt[1]))
+      let bminX = Infinity
+      let bminY = Infinity
+      let bmaxX = -Infinity
+      let bmaxY = -Infinity
+      for (const q of sp) {
+        bminX = Math.min(bminX, q.x)
+        bminY = Math.min(bminY, q.y)
+        bmaxX = Math.max(bmaxX, q.x)
+        bmaxY = Math.max(bmaxY, q.y)
+      }
       if (texture) {
-        let bminX = Infinity
-        let bminY = Infinity
-        let bmaxX = -Infinity
-        let bmaxY = -Infinity
-        const sp = pts.map((pt) => v.toScreen(pt[0], pt[1]))
-        for (const q of sp) {
-          bminX = Math.min(bminX, q.x)
-          bminY = Math.min(bminY, q.y)
-          bmaxX = Math.max(bmaxX, q.x)
-          bmaxY = Math.max(bmaxY, q.y)
-        }
         fillWith(
           v,
                     texture,
@@ -462,13 +479,24 @@ export function drawZones(
       const stat = zoneStats.get(z.id)
       const area = stat?.area ?? Math.abs(a2) / 2
       if (area < 6 || Math.abs(a2) < 1e-6) continue
-      const c = poleOfInaccessibility(pts.map((pt) => v.toScreen(pt[0], pt[1])))
+      const c = poleOfInaccessibility(sp)
       const name = z.label.toUpperCase()
       ctx.font = '600 10px "Hanken Grotesk", system-ui, sans-serif'
       const cap = stat?.capacity ?? 0
       const metrics: string | null =
         area >= 12 ? `${fmtArea(area)} m²${cap > 0 ? ` · ${cap} pax` : ''}` : null
-      if (!suppressTag) tags.push({ id: z.id, name, metrics, cx: c.x, cy: c.y, namePx: 10, color: pal.line })
+      if (!suppressTag)
+        tags.push({
+          id: z.id,
+          name,
+          metrics,
+          cx: c.x,
+          cy: c.y,
+          namePx: 10,
+          color: pal.line,
+          bounds: { x: bminX, y: bminY, w: bmaxX - bminX, h: bmaxY - bminY },
+          area,
+        })
     } else if (z.shape.kind === 'RectRing') {
       const s = z.shape
       const o = v.toScreen(s.x - s.w / 2, s.y - s.h / 2)
@@ -540,7 +568,18 @@ export function drawZones(
       ctx.font = '500 9.5px "Hanken Grotesk", system-ui, sans-serif'
       if (h < 34 || ctx.measureText(metrics).width > maxW) metrics = null
       const c = v.toScreen(s.x, s.y)
-      if (!suppressTag) tags.push({ id: z.id, name, metrics, cx: c.x, cy: c.y, namePx, color: pal.line })
+      if (!suppressTag)
+        tags.push({
+          id: z.id,
+          name,
+          metrics,
+          cx: c.x,
+          cy: c.y,
+          namePx,
+          color: pal.line,
+          bounds: { x: p.x, y: p.y, w, h },
+          area,
+        })
     }
   }
   if (clipped) ctx.restore()
@@ -623,15 +662,29 @@ function poleOfInaccessibility(
  *    it; at overview zoom our plan was mostly pills. The pill is now an
  *    INTERACTIVE state — `highlight` (hover/selection) only — which keeps the
  *    rule that interactive states are never part of the resting drawing.
- * 2. COLLISION LADDER. Labels are placed largest-room-first and each one takes
- *    the best form that still fits without overlapping a label already placed:
- *      full name + metrics -> name only -> smaller name -> abbreviation -> hide.
- *    Hiding is a legitimate rung, not a failure: an unreadable pile of
- *    overlapping text identifies nothing, and the legend still does.
+ * 2. COLLISION LADDER, ORDERED BY DAMAGE. Labels are placed largest-room-first
+ *    and each takes the best form that clears both the labels already placed
+ *    AND the furniture underneath it:
+ *      (name + metrics) -> name only -> smaller name -> abbreviation -> hide,
+ *    and WITHIN each form, DISPLACEMENT inside the room is tried before the
+ *    form is degraded. Moving a label costs nothing; shortening it destroys
+ *    information, so the cheap rung goes first. Hiding is a legitimate last
+ *    rung, not a failure: an unreadable pile of overlapping text identifies
+ *    nothing, and the legend still does.
  * 3. PROFILE POLICY. `paper` names only service rooms, abbreviated, and lets
  *    the legend identify everything else — which is what the reference does.
+ *
+ * `obstacles` is what makes rung 2 mean anything on a furnished plan. Without
+ * it the ladder de-collides labels against LABELS only, which is why
+ * "MEETING ROOM 2 / 10 m² · 10 pax" printed across its own chairs while every
+ * rung reported a clean fit — the chairs were never in the occupancy at all.
  */
-export function drawZoneTags(v: PaintView, tags: ZoneTag[], highlight?: Set<number>) {
+export function drawZoneTags(
+  v: PaintView,
+  tags: ZoneTag[],
+  highlight?: Set<number>,
+  obstacles: readonly LabelObstacle[] = [],
+) {
   const ctx = v.ctx
   const style = planStyle(v.presentation ? 'paper' : 'editor')
   const policy = style.labelPolicy
@@ -641,40 +694,94 @@ export function drawZoneTags(v: PaintView, tags: ZoneTag[], highlight?: Set<numb
   ctx.textBaseline = 'middle'
 
   // Largest first: a big room losing its name to a small one is the wrong
-  // trade, and placement order is what decides that.
-  const ordered = [...tags].sort((a, b) => (b.metrics ? 1 : 0) - (a.metrics ? 1 : 0))
+  // trade, and placement order is what decides that. Sorting by AREA — the
+  // previous key was `metrics ? 1 : 0`, which only separated rooms that carry
+  // metrics from those that do not and left every large room unordered against
+  // every other large room.
+  const ordered = [...tags].sort((a, b) => b.area - a.area)
   const placed: Array<{ x: number; y: number; w: number; h: number }> = []
-  const hits = (x: number, y: number, w: number, h: number) =>
-    placed.some((r) => Math.abs(r.x - x) * 2 < r.w + w && Math.abs(r.y - y) * 2 < r.h + h)
+
+  // Two populations, two strengths — and the difference is the whole design.
+  //
+  // Another LABEL is a HARD blocker: two names on one spot identify neither.
+  // FURNITURE is a soft COST: an architect's plan does print a room name across
+  // the table in the middle of that room, and the halo keeps it legible. Making
+  // furniture hard was measurably worse than the overlap it fixed — a 12-seat
+  // meeting room lost its name entirely, because on a furnished plan there is
+  // often no furniture-free spot anywhere inside the room.
+  const clearOfLabels = (x: number, y: number, w: number, h: number): boolean => {
+    for (const r of placed) {
+      if (Math.abs(r.x - x) * 2 < r.w + w && Math.abs(r.y - y) * 2 < r.h + h) return false
+    }
+    return true
+  }
+  /** Fraction of the label box covered by furniture. 0 = free of it. */
+  const inkCost = (x: number, y: number, w: number, h: number): number => {
+    let covered = 0
+    for (const o of obstacles) {
+      const ox = Math.min(o.x + o.w / 2, x + w / 2) - Math.max(o.x - o.w / 2, x - w / 2)
+      const oy = Math.min(o.y + o.h / 2, y + h / 2) - Math.max(o.y - o.h / 2, y - h / 2)
+      if (ox > 0 && oy > 0) covered += ox * oy
+    }
+    return covered / (w * h)
+  }
+  // Below this, the halo carries it and the label stays where it reads best.
+  const ACCEPTABLE_COVER = 0.12
 
   for (const t of ordered) {
     const isHot = highlight?.has(t.id) ?? false
     const service = SERVICE_ROOMS.some((r) => t.name.toUpperCase().startsWith(r))
     if (policy.names === 'service' && !service && !isHot) continue
 
-    // The ladder. Each rung is a smaller claim on the drawing than the last.
-    const rungs: Array<{ name: string; px: number; metrics: string | null }> = [
+    // Forms, most informative first. Each is a smaller claim on the drawing.
+    const forms: Array<{ name: string; px: number; metrics: string | null }> = [
       { name: t.name, px: t.namePx, metrics: policy.metrics ? t.metrics : null },
       { name: t.name, px: t.namePx, metrics: null },
       { name: t.name, px: Math.max(8, t.namePx - 2), metrics: null },
       { name: abbreviate(t.name), px: Math.max(8, t.namePx - 2), metrics: null },
     ]
 
-    let chosen: { name: string; px: number; metrics: string | null; w: number; h: number } | null = null
-    for (const r of rungs) {
-      ctx.font = NAME_FONT(r.px)
-      const nameW = ctx.measureText(r.name).width
-      ctx.font = MET_FONT
-      const metW = r.metrics ? ctx.measureText(r.metrics).width : 0
-      const w = Math.max(nameW, metW) + 10
-      const h = r.metrics ? 30 : 16
-      if (!hits(t.cx, t.cy, w, h)) {
-        chosen = { ...r, w, h }
-        break
-      }
+    type Placement = {
+      name: string
+      px: number
+      metrics: string | null
+      w: number
+      h: number
+      x: number
+      y: number
     }
-    if (!chosen) continue // every rung collided — the legend still identifies it
-    placed.push({ x: t.cx, y: t.cy, w: chosen.w, h: chosen.h })
+    let chosen: Placement | null = null
+    /** Best-effort winner when no position clears ACCEPTABLE_COVER. */
+    let fallback: (Placement & { cost: number }) | null = null
+
+    for (const f of forms) {
+      ctx.font = NAME_FONT(f.px)
+      const nameW = ctx.measureText(f.name).width
+      ctx.font = MET_FONT
+      const metW = f.metrics ? ctx.measureText(f.metrics).width : 0
+      const w = Math.max(nameW, metW) + 10
+      const h = f.metrics ? 30 : 16
+
+      // Candidate positions: the anchor (pole of inaccessibility) first, then a
+      // sweep of the room's own box, nearest-to-anchor first — so a label only
+      // moves as far as it has to, and never outside the room it names.
+      for (const pos of labelPositions(t, w, h)) {
+        if (!clearOfLabels(pos.x, pos.y, w, h)) continue
+        const cost = inkCost(pos.x, pos.y, w, h)
+        if (!fallback || cost < fallback.cost) fallback = { ...f, w, h, x: pos.x, y: pos.y, cost }
+        if (cost <= ACCEPTABLE_COVER) {
+          chosen = { ...f, w, h, x: pos.x, y: pos.y }
+          break
+        }
+      }
+      if (chosen) break
+    }
+    // Nothing cleared the furniture threshold, so take the least-covered spot
+    // found across every form rather than dropping the name: a room the reader
+    // cannot name is a worse drawing than a name with a table under it.
+    if (!chosen && fallback) chosen = fallback
+    if (!chosen) continue // every form collided with another LABEL everywhere
+    placed.push({ x: chosen.x, y: chosen.y, w: chosen.w, h: chosen.h })
 
     // Pill ONLY when hot. At rest the label is text on the drawing.
     if (isHot || policy.pillAtRest) {
@@ -684,24 +791,79 @@ export function drawZoneTags(v: PaintView, tags: ZoneTag[], highlight?: Set<numb
       ctx.shadowBlur = 6
       ctx.shadowOffsetY = 1
       ctx.fillStyle = C.pillFill
-      roundRect(ctx, t.cx - chosen.w / 2 - 4, t.cy - pillH / 2, chosen.w + 8, pillH, pillH / 2)
+      roundRect(ctx, chosen.x - chosen.w / 2 - 4, chosen.y - pillH / 2, chosen.w + 8, pillH, pillH / 2)
       ctx.fill()
       ctx.restore()
       ctx.strokeStyle = hexToRgba(t.color, 0.28)
       ctx.lineWidth = CHROME.hairline
-      roundRect(ctx, t.cx - chosen.w / 2 - 4, t.cy - pillH / 2, chosen.w + 8, pillH, pillH / 2)
+      roundRect(ctx, chosen.x - chosen.w / 2 - 4, chosen.y - pillH / 2, chosen.w + 8, pillH, pillH / 2)
       ctx.stroke()
     }
 
-    ctx.fillStyle = t.color
+    // A halo that follows the GLYPHS, not a rect: the plan's own linework runs
+    // under these labels and a rectangular knockout would punch a visible hole
+    // in it. Only drawn at rest — the pill already provides the ground when hot.
+    const nameY = chosen.metrics ? chosen.y - 6 : chosen.y
+    const halo = !(isHot || policy.pillAtRest)
+    ctx.lineJoin = 'round'
+    ctx.miterLimit = 2
+
     ctx.font = NAME_FONT(chosen.px)
-    ctx.fillText(chosen.name, t.cx, chosen.metrics ? t.cy - 6 : t.cy)
+    if (halo) {
+      ctx.strokeStyle = C.surface
+      ctx.lineWidth = CHROME.labelHalo
+      ctx.strokeText(chosen.name, chosen.x, nameY)
+    }
+    ctx.fillStyle = t.color
+    ctx.fillText(chosen.name, chosen.x, nameY)
+
     if (chosen.metrics) {
-      ctx.fillStyle = C.labelSub
       ctx.font = MET_FONT
-      ctx.fillText(chosen.metrics, t.cx, t.cy + 7.5)
+      if (halo) {
+        ctx.strokeStyle = C.surface
+        ctx.lineWidth = CHROME.labelHalo
+        ctx.strokeText(chosen.metrics, chosen.x, chosen.y + 7.5)
+      }
+      ctx.fillStyle = C.labelSub
+      ctx.fillText(chosen.metrics, chosen.x, chosen.y + 7.5)
     }
   }
+}
+
+/**
+ * Candidate anchors for one room label, nearest-first: the pole of
+ * inaccessibility, then a sweep of the room's own box.
+ *
+ * Every candidate is clamped so the whole label box sits inside `t.bounds`.
+ * A label that escapes its room to find clear space is worse than one that
+ * shrinks — it names the wrong room — so displacement is bounded, and when the
+ * box simply cannot fit the room the anchor is the only candidate and the
+ * caller degrades the form instead.
+ */
+function labelPositions(t: ZoneTag, w: number, h: number): Array<{ x: number; y: number }> {
+  const out = [{ x: t.cx, y: t.cy }]
+  const b = t.bounds
+  const padX = w / 2 + 2
+  const padY = h / 2 + 2
+  const minX = b.x + padX
+  const maxX = b.x + b.w - padX
+  const minY = b.y + padY
+  const maxY = b.y + b.h - padY
+  if (minX > maxX || minY > maxY) return out // the room cannot hold this form
+
+  const STEPS = 5
+  for (let iy = 0; iy < STEPS; iy++) {
+    for (let ix = 0; ix < STEPS; ix++) {
+      out.push({
+        x: minX + ((maxX - minX) * ix) / (STEPS - 1),
+        y: minY + ((maxY - minY) * iy) / (STEPS - 1),
+      })
+    }
+  }
+  // Nearest to the anchor first: move as little as possible.
+  const ax = t.cx
+  const ay = t.cy
+  return out.sort((p, q) => (p.x - ax) ** 2 + (p.y - ay) ** 2 - ((q.x - ax) ** 2 + (q.y - ay) ** 2))
 }
 
 // ---- selection / furniture ----

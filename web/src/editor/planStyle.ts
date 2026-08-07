@@ -184,6 +184,15 @@ export const CHROME = {
   handle: 1.5,
   /** Active selection outline — the heaviest chrome mark. */
   selection: 2,
+  /**
+   * Knockout behind a room label, stroked along the GLYPHS before they are
+   * filled. Room tags sit above furniture by the architect's sheet convention,
+   * so the plan's own linework runs underneath them; this is what keeps the
+   * name readable there. Wide enough to separate the letterforms from a desk
+   * outline, narrow enough not to read as a filled chip — the resting label is
+   * text on the drawing, never a pill.
+   */
+  labelHalo: 3,
 } as const
 
 export function strokePx(tier: Tier, _pixelsPerMeter: number): number {

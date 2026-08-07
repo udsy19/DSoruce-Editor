@@ -1608,12 +1608,29 @@ export class EditorCanvas {
     for (const c of st.components) drawComponent(this.host, c, c.id === st.selection)
     this.paintRoomSelection()
     // Room tags sit ABOVE furniture (architect's sheet convention) with a soft
-    // paper halo so they stay legible over desks and linework.
+    // paper halo so they stay legible over desks and linework — and, since the
+    // furniture boxes go in as obstacles, they now MOVE rather than print over
+    // it. Rotation is folded into an axis-aligned extent because the label
+    // occupancy is axis-aligned; that over-claims slightly for a rotated desk,
+    // which is the safe direction to be wrong in.
+    const furniture = st.components.map((c) => {
+      const p = this.toScreen(c.x, c.y)
+      const rot = ((c.rotation ?? 0) * Math.PI) / 180
+      const ca = Math.abs(Math.cos(rot))
+      const sa = Math.abs(Math.sin(rot))
+      return {
+        x: p.x,
+        y: p.y,
+        w: (c.w * ca + c.h * sa) * this.scale,
+        h: (c.w * sa + c.h * ca) * this.scale,
+      }
+    })
     drawZoneTags(
       this.host,
       tags,
       // Hover/selection promotes a label to a pill — the only place pills appear.
       new Set(this.selectedZoneId != null ? [this.selectedZoneId] : []),
+      furniture,
     )
 
     // CAD layer: entities + tool preview + snap indicator + grips.
