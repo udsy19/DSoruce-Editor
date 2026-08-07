@@ -2897,3 +2897,89 @@ is its own species — "standing" is a claim about a runner, and the audit deriv
 from `ls`.
 
 **Board: Rust 195 · battery 49/49 · `VERIFY_SELFTEST=1` still reports 1 of 50 red.**
+
+---
+
+# R13, and the HANDOFF
+
+## R13 — a check rewritten to see a specific divergence is falsified against THAT divergence before it ships
+
+Promoted from the survivor. The tautological NIA check existed **because** its
+predecessor could not see the rows-scaling sabotage — and it reproduced the same
+blindness behind a comment claiming the opposite. It survived because **its
+falsification never ran the motivating sabotage.**
+
+So: every rewrite's ledger entry **names the motivating defect**, and the
+falsification record shows **that defect red under the new check**. And the general
+form gets its own audit — an assertion is suspect if **no input in its domain can
+fail it**. *Assert the property directly* (the sum, not a round-trip through
+derived quantities) is now the default construction; a re-derivation that inverts
+the producer's own formula is the shape to distrust.
+
+## Dispatched (Steps 1–2)
+
+| worktree | agent | deliverable |
+|---|---|---|
+| `/private/tmp/q6-belief2` | ADVERSARY | the NIA sabotage **family** against the direct-sum check — including the motivating sabotage, single-row scaling, deletion, sign flip, and a compensating pair the sum may not see — plus an **algebraic-identity sweep** of every assertion added or rewritten in the last three rounds. Verdict closes or reopens the belief pass. |
+| `/private/tmp/q6-ladder` | VERIFIER | `ladder-check` derives its ladder from one declared source of truth; R13 falsification is **hand-copy drift** — edit the spec, watch it red |
+
+**Nothing from Steps 3–5 merges before the ADVERSARY's entry exists.** That
+sequencing is the point of the round: this is the fourth consecutive pass in which
+a guard that looked green was not.
+
+---
+
+# HANDOFF
+
+**Resume:** read `qbiq-parity-final-mission.md`, then this ledger from
+`# BELIEF VERDICT`, then continue at Step 3.
+
+## Green floor — believed only up to the last adversary run
+
+Rust **195** · battery **49/49** · board **13/13** · zero orphan gates · zero
+wall-clock assertions · `VERIFY_SELFTEST=1` still reports **1 of 50 red** ·
+deadspace **9.5% ≤ 10.0%** (self-ratchet, not the reference band).
+
+## Standing red, by design (R6)
+
+`composition.mjs` — **10 violations across all five fixtures**: desk runs of 7–8
+rows against the reference's 5, and 2.17–3.26 conference rooms per 100 open seats
+against **8.60**. Quarantined: `reconcile.mjs` runs it and asserts it **still
+fails**, so the day it goes green the board demands wiring. It leaves quarantine
+only by W1 landing.
+
+## Next target — Step 3, and it is one change
+
+**Finding 8 + the deadspace band resolve together or not at all**, because both
+turn on one question: *what is a core?* The answer is already specified —
+
+> a **closed face of the non-generated wall network**, **strictly contained** in
+> the traced plate face, carrying **no programme zone and no non-reference
+> programme component**, above an **area floor**, **deduplicated** — and
+> **subtracted from `floor_area()`**, not merely excluded from placement.
+
+Measured: **9.09% over-bill** (1200 m² billed on an 1100 m² floor),
+**byte-identical with the keep-out declared** — the keep-out fixes placement, not
+area. `trace_floor_faces` **already returns the core** (`[1200, 1200, 100, 100]`,
+duplicated per wall side); the information is present and the arithmetic is
+missing. Any fix must dedupe first or it subtracts 200.
+
+W3a's reference extractor already uses that same geometric rule
+(`plate_less_core` 1259.6 of 1426.7 m²), so both sides classify identically by
+construction. **Then** the band is set from the reconciled pair — and if the honest
+gap survives, it lands **red and standing**, not where we are.
+
+## Then
+
+W1 (rhythm in **metres** not row counts, band clamp from the wing's own block
+arithmetic, joint acceptance) → labels back to **≤29** (R5 debt) → W2 (the network;
+**0 connectors** is the measured state and cutting one IS the motivating sabotage
+under R13).
+
+## Still owed under the constitution
+
+W5's remaining journeys and the perf gate — **the work meter is its natural
+instrument** · W4's routing gap (no producer emits the six new symbol categories;
+lives in `import/` and `layout/`, unblocked once W1 settles) · W6 close-out · the
+G10 packet with its blank verdict block, which remains the one item no machine may
+close.
