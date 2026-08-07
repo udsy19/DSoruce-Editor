@@ -698,8 +698,28 @@ try {
   const after3d = await page.screenshot({ clip })
   check(!before3d.equals(after3d), `the 3D viewport re-renders under an orbit (${before3d.length} vs ${after3d.length} bytes)`)
 
-  await demoClick(page, '[data-testid="v3d-top"]', { what: '"Top" view' })
-  await beat(page, 2200)
+  // WALK, not Top. The exterior cameras wash out badly on this plate — the
+  // orbit and top views come back pale cream, because an eye 40 m above a
+  // 600 m ground plane under the sky dome is mostly looking at lit ground, and
+  // the tone mapping is set for an interior. Measured on the delivered frames:
+  // the top view is near-white. The interior is where this renderer is good —
+  // the same geometry through `interiorStill` produces the photoreal base
+  // plates — so the film walks the floor instead of hovering over it.
+  await demoClick(page, '[data-testid="v3d-walk"]', { what: '"Walk" (interior eye height)' })
+  await beat(page, 2600)
+
+  // A slow look around from inside, so the furniture reads at human scale.
+  const wcx = clip.x + clip.width / 2
+  const wcy = clip.y + clip.height / 2
+  await glide(page, wcx, wcy)
+  await page.mouse.down()
+  for (let i = 0; i <= 26; i++) {
+    await page.mouse.move(wcx + i * 9, wcy + Math.sin(i / 7) * 10, { steps: 2 })
+    await page.waitForTimeout(FAST ? 4 : 30)
+  }
+  await page.mouse.up()
+  await beat(page, 2600)
+
   await demoClick(page, '[data-testid="v3d-persp"]', { what: '"Perspective"' })
   await beat(page, 2400)
   await demoClick(page, '[data-testid="mode-2d"]', { what: 'the 2D toggle' })
