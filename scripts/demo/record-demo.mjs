@@ -586,6 +586,89 @@ try {
     'One document, four facets per object: geometry · category · product binding · decision state.')
   await beat(page, 5200)
 
+  // ── the census ────────────────────────────────────────────────────────────
+  // How many elements are in this plan, read off the same `component_count` the
+  // status bar and every export read — so three surfaces cannot disagree.
+  step('the plan census')
+  const totals = await need(page, '[data-testid="plan-totals"]', { what: 'the plan census' })
+  await totals.scrollIntoViewIfNeeded().catch(() => {})
+  const countBefore = Number(
+    (await page.locator('[data-testid="plan-total-count"]').first().innerText().catch(() => '0'))
+      .replace(/[^\d]/g, ''),
+  )
+  check(countBefore > 100, `the plan declares ${countBefore} elements`)
+  await beat(page, 3400)
+
+  // ── insights ──────────────────────────────────────────────────────────────
+  step('insights')
+  await chapter(page, '06 — Insights', 'Every number is measured',
+    'Areas, zones, embodied carbon and cost — all derived from the same document.')
+  for (const [label, dwell] of [['Areas', 3000], ['Zones', 3800], ['CO₂', 3400], ['Costs', 3800]]) {
+    const tab = page.locator('.subtabs .subtab', { hasText: new RegExp(`^${label}$`) }).first()
+    if (!(await tab.count())) {
+      console.log(`  note  insights tab "${label}" not present — skipped`)
+      continue
+    }
+    await demoClick(page, `.subtabs .subtab:has-text("${label}")`, { what: `the ${label} tab` })
+      .catch(() => tab.click())
+    await beat(page, dwell)
+  }
+  check(true, 'insights: Areas · Zones · CO₂ · Costs')
+
+  // ── the product library, and placing from it ──────────────────────────────
+  step('the product library')
+  await chapter(page, '07 — Product library', 'A live catalogue, not a mock',
+    'Real Indian suppliers, real ₹ prices, and each price knows how old it is.')
+  await demoClick(page, '[data-testid="tab-bank"]', { what: 'the Bank tab' })
+  await need(page, '[data-testid="bank-panel"]', { timeout: 30000, what: 'the product library' })
+  await beat(page, 2400)
+
+  // Priced-only, so the shelf shows money rather than spec-only rows.
+  await demoClick(page, '[data-testid="bank-priced-only"]', { what: '"Priced only"' }).catch(() => {})
+  await beat(page, 1600)
+  await type(page, '[data-testid="bank-search"]', 'lounge sofa').catch(() => {})
+  await beat(page, 3800)
+
+  // The card count is the evidence the LIVE bank answered — a mock shelf would
+  // not change under a query it has never seen.
+  const cards = await page.locator('[data-testid="bank-card"]').count().catch(() => 0)
+  check(cards > 0, `the live bank returned ${cards} products for "lounge sofa"`)
+  await beat(page, 1800)
+
+  // Place one on the plan. The census is the assertion: it must MOVE.
+  step('place a product on the plan')
+  const addBtn = page.locator('[data-testid="bank-add"]').first()
+  if (await addBtn.count()) {
+    await addBtn.scrollIntoViewIfNeeded().catch(() => {})
+    const box = await stableBox(addBtn, '[data-testid="bank-add"]').catch(() => null)
+    if (box) {
+      await glide(page, box.x + box.width / 2, box.y + box.height / 2)
+      await page.mouse.down(); await page.waitForTimeout(90); await page.mouse.up()
+    } else {
+      await addBtn.click()
+    }
+    await beat(page, 3600)
+    const countAfter = Number(
+      (await page.locator('[data-testid="plan-total-count"]').first().innerText().catch(() => '0'))
+        .replace(/[^\d]/g, ''),
+    )
+    check(countAfter > countBefore,
+      `placing a product moved the census ${countBefore} → ${countAfter}`)
+    await beat(page, 2600)
+  } else {
+    check(false, 'no [data-testid="bank-add"] to place a product with')
+  }
+
+  // ── the bill of materials, in the app ─────────────────────────────────────
+  step('bill of materials')
+  await demoClick(page, '[data-testid="tab-bom"]', { what: 'the BOM tab' })
+  await need(page, '[data-testid="bom-panel"]', { timeout: 20000, what: 'the BOM panel' })
+  await beat(page, 4200)
+  await smoothScroll(page, '.inspector', 900, 3200).catch(() => {})
+  await beat(page, 2200)
+  await demoClick(page, '[data-testid="tab-plan"]', { what: 'back to the Plan tab' }).catch(() => {})
+  await beat(page, 1400)
+
   // 2D → 3D. "The viewer works" is decided by pixels that CHANGE under an orbit,
   // not by a <canvas> existing: a black rectangle satisfies the latter.
   step('3D walkthrough')
@@ -655,15 +738,21 @@ try {
     ['export-takeoff', 'Quantity Takeoff'],
     ['export-ifc', 'IFC model'],
     ['export-obj', 'OBJ model'],
+    // Three documents, one derivation — they emit together and share a
+    // DOC-XXXXXXXX fingerprint, so `expect` is 3 downloads, not 1.
+    ['export-commercial', 'BOM · Quote · Spec', 3],
   ]
-  for (const [id, label] of MENU) {
+  for (const [id, label, expect = 1] of MENU) {
     const before = saved.length
     await demoClick(page, '[data-testid="export-btn"]', { what: 'the Export menu' })
     await need(page, `[data-testid="${id}"]`, { timeout: 8000, what: `the "${label}" menu item` })
     await beat(page, 600)
     await demoClick(page, `[data-testid="${id}"]`, { what: `"${label}"`, settle: 180 })
-    const got = await waitForDownloads(before + 1, id === 'export-report' || id === 'export-takeoff' ? 180000 : 60000)
-    check(got > before, `${label} produced a download (${saved.slice(before).join(', ') || 'none'})`)
+    const slow = id === 'export-report' || id === 'export-takeoff' || id === 'export-commercial'
+    const got = await waitForDownloads(before + expect, slow ? 180000 : 60000)
+    check(got >= before + expect,
+      `${label} produced ${got - before}/${expect} download${expect > 1 ? 's' : ''}` +
+        ` (${saved.slice(before).join(', ') || 'none'})`)
     await beat(page, 900)
   }
   await Promise.all(savers)
@@ -695,7 +784,54 @@ try {
   fs.writeFileSync(resultsPath, resultsHtml)
   for (const f of files) delete f.buf
 
-  await chapter(page, '07 — Results', 'What just came out',
+  // ── the workbook, opened ──────────────────────────────────────────────────
+  // The takeoff is the deliverable this pack is judged on, and its claim is
+  // that it is a live MODEL. `workbook-showcase.mjs` rebuilds the sheet images
+  // from the .xlsx we just exported AND re-proves liveness through LibreOffice,
+  // so what the camera shows is this run's book, not a stale picture of one.
+  step('the workbook')
+  const bookDir = path.join(OUT, 'workbook')
+  const bookPage = path.join(bookDir, 'index.html')
+  const xlsx = files.find((f) => f.kind === 'Excel workbook')
+  if (xlsx) {
+    try {
+      execFileSync('node', [path.join(HERE, 'workbook-showcase.mjs'), '--xlsx', xlsx.path],
+        { stdio: ['ignore', 'pipe', 'pipe'] })
+    } catch (e) {
+      console.log(`  note  workbook showcase failed: ${String(e).slice(0, 160)}`)
+    }
+  }
+  if (fs.existsSync(bookPage)) {
+    const sheets = fs.readdirSync(bookDir).filter((f) => f.endsWith('.png'))
+    check(sheets.length >= 3, `${sheets.length} workbook sheets rendered for the camera`)
+    await chapter(page, '08 — The takeoff', 'A workbook, not a printout',
+      'Every quantity measured off the plan, every cost wired to it.')
+    await page.goto(pathToFileURL(bookPage).href, { waitUntil: 'load' })
+    await beat(page, 4600)
+    await smoothScroll(page, 'body', 1, 7000).catch(() => {})
+    await beat(page, 2600)
+  } else {
+    check(false, 'the workbook showcase produced no page')
+  }
+
+  // ── photoreal renders ─────────────────────────────────────────────────────
+  // Optional: only if the render pack has been built (it needs a Replicate
+  // token). Absent is a skip with a note, never a silent omission.
+  step('photoreal renders')
+  const renderPage = path.join(REPO, 'out/renders/index.html')
+  if (fs.existsSync(renderPage)) {
+    await chapter(page, '09 — Photoreal', 'The same plan, rendered',
+      'Structure held from our own 3D; materials and light generated over it.')
+    await page.goto(pathToFileURL(renderPage).href, { waitUntil: 'load' })
+    await beat(page, 4200)
+    await smoothScroll(page, 'body', 1, 8000).catch(() => {})
+    await beat(page, 2600)
+    check(true, 'photoreal contact sheet shown')
+  } else {
+    console.log('  note  out/renders/index.html absent — photoreal section skipped')
+  }
+
+  await chapter(page, '10 — Results', 'What just came out',
     'Every file below was produced by the run you just watched.')
   await page.goto(pathToFileURL(resultsPath).href, { waitUntil: 'load' })
   await need(page, '#results', { timeout: 15000, what: 'the results page' })

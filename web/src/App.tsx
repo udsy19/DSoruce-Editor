@@ -37,6 +37,7 @@ import { exportSpacePlanningReport } from './export/report'
 import { exportDrawingSet } from './export/sheetSet'
 import { zoneAtPoint } from './export/takeoff'
 import { exportQtoWorkbook, type Quantities } from './export/qtoWorkbook'
+import { exportCommercialSet } from './export/commercialDocs'
 import {
   buildDeliverablePack,
   detectPackSink,
@@ -1893,6 +1894,26 @@ function ExportMenu({
     setOpen(false)
   }
 
+  /**
+   * Bill of materials + quotation + product specification, as three PDFs.
+   *
+   * They are three PROJECTIONS of one CommercialSet built on the same
+   * `buildTakeoffModel` the workbook above bills from, so they cannot disagree
+   * about how many chairs exist — and every page carries the same DOC-XXXXXXXX
+   * fingerprint over the document census to say so on paper.
+   *
+   * Same `qtoOpts` as the takeoff, deliberately: `CommercialOptions extends
+   * TakeoffOptions`, and a second options builder is exactly how two documents
+   * drift apart.
+   */
+  const exportCommercial = () => {
+    if (!ec) return
+    const state = ec.getState()
+    const roomRefs = buildRoomRefs(state.zones ?? [], roomMarkers.current ?? [])
+    void exportCommercialSet(state, qtoOpts(state, roomRefs))
+    setOpen(false)
+  }
+
   /** Inputs for the takeoff export. */
   function qtoOpts(state: DocState, roomRefs: Map<number, string>) {
     if (!ec) throw new Error('no editor')
@@ -1973,6 +1994,14 @@ function ExportMenu({
                 data-testid="export-takeoff"
               >
                 Quantity Takeoff <span className="hint">Excel · 12 sheets</span>
+              </div>
+              <div
+                className="export-item"
+                role="menuitem"
+                onClick={exportCommercial}
+                data-testid="export-commercial"
+              >
+                BOM · Quote · Spec <span className="hint">PDF · 3 documents</span>
               </div>
             </>
           )}
