@@ -2202,3 +2202,102 @@ Figure/ground measured and enforced: **2084 of 2354** reference paths carry an
 opaque white fill. 12 of 15 categories fill before they stroke; 3 declared
 line-work only. `symbols.test.mjs` **46 → 119**. Verified `verify-all` **43/43**
 and `run-all.sh` **13/13** in a clean worktree carrying only these changes.
+
+## W1 — the facade band WORKS and is NOT LANDED. Two blockers, both measured.
+
+`cap_d[i] = FACADE_BAND_D` (4.04 m, from the adjacency spec) instead of `0` for
+field regions. Patch preserved and verified re-appliable at
+`scratchpad/W1-facade-band.patch`; `crates/` is byte-identical to HEAD.
+
+```
+rooms_unplaced   12 -> 1     (only Pantry, which the reference itself distributes)
+conf per 100     3.26 -> 7.78    mix band GREEN on all five fixtures
+offices per 100  5.43 -> 11.11
+density          9.78 -> 9.87    against the reference's 9.85
+deadspace        9.5% -> 4.7%
+desks            92 -> 90
+```
+
+**Density is the one thing the band improves.** It is reverted anyway, for two
+reasons neither of which is "it didn't help".
+
+### Blocker 1 — the rhythm/density frontier is BINARY, not a curve
+
+A 20-build sweep over (band depth × neighbourhood-aisle width × orphan-row drop).
+**Every** configuration lands in one of two rows:
+
+| populated rows | desks | density | gate |
+|---|---|---|---|
+| 6 | 72–74 | 11.9–12.6 | **PASS** |
+| 7 | **90** | 9.87–10.09 | **FAIL** (run 7) |
+
+90 desks *is* the 7-row count, and 7 rows is *exactly* what the gate rejects.
+Punctuating costs one 2.5 m bench block = **18 desks, 20% of the plan**, taking
+four of five fixtures out of the 8–12 professional band. One point threads both
+(band 3.00 m + 1.95 m aisle → 90 desks, 9.95 m²/p, max run 4, **PASS**) — on a
+**5 cm** margin, at a band depth 26% under the measured 4.04, and at 4.04 no aisle
+width threads it. A coincidence of this cross-section, not a design. Not shipped.
+
+### Blocker 2 — 4.04 m is unaffordable on `real_plate`, and the clamp I reached for was a category error
+
+On `real_plate`'s **12.5 m** wing: **85 → 61 desks**, open field to **41% of
+usable** against the standing `real_building_plate…` **≥55%** contract. Clamping by
+the reference's 0.309 enclosed-boundary share reaches only 44%; our contract holds
+at ≤0.15, a number with no provenance.
+
+> **RETRACTED, and it is CORE's own:** *a share of the plate **boundary** is not a
+> share of a wing **cross-section**.* The reference plate **has no wings** — one
+> hexagon around a central core, which the adjacency spec states in its own
+> limitations. The brief's prescribed clamp (`min_viable_field_depth`) is far too
+> weak: it is satisfied by a **two-row** field, which on a 12.5 m wing is half the
+> desks.
+
+### FALSIFIED — `composition.mjs`'s rhythm verdict is a function of band-count PARITY
+
+Replaying the gate's own `rhythm()` on a *perfectly regular* bench-paired field
+(0.8 m within a pair, 1.7 m between):
+
+```
+4 bands -> max 2 pass    5 -> 5 pass    6 -> 2 pass    7 -> 7 FAIL
+8 bands -> max 2 pass    9 -> 9 FAIL
+```
+
+An **odd** count puts the median on the 1.7 m inter-pair gap; an **even** count
+puts it on the 0.8 m intra-pair gap and every pair aisle then "punctuates". Same
+geometry, opposite verdict. **F5's `max run 5` pass today is this artefact, not a
+better plan.**
+
+I built this gate last commit and falsified it by filling an aisle — a sabotage
+that never varies band-count parity, so it could not see this. **A falsification
+that only perturbs one axis certifies one axis.**
+
+Underneath it, the row contract **is not scale-free**: the reference's 5 rows are
+**6.75 m** at a 1.35 m pitch; our 7 rows are **7.5 m**. 11% over in metres, 40%
+over in rows. The gate compares row *counts* across two different pitches.
+
+### Blocks the landing — and it is the ADVERSARY's H1, independently found
+
+`desk_capacity_never_exceeds_what_the_packer_places` reds under the band:
+*"allocated 84 but placed 65 with only 19 rejections"*. `field_free_slots` walks
+every outer line; `pack_desks`' neighbourhood **spread** strides over pair-lines and
+sweeps only `units_used`. Pre-existing, invisible while the field was
+over-subscribed — **and a room band is exactly what ends that.** The top-up pass
+papers over the outcome (65+25=90); the invariant is still violated.
+
+### NULL, reported
+
+The fill's seat cap charges conference chairs against headcount (the reference
+bills 149 seats against 141 open = its 7 offices, **zero** conference chairs).
+Correcting it took the budget 0 → 34 and the fill placed **one** desk — the plate
+is genuinely full — and that one desk re-bridged the aisle and broke the rhythm.
+Reverted.
+
+### Recommended order for whoever picks this up
+
+1. Fix the capacity/spread divergence (**= ADVERSARY H1**) — the hard blocker,
+   independent of everything else.
+2. Fix `composition.mjs`'s parity defect — until then it cannot distinguish a
+   punctuated field from an even-numbered one, so the rhythm half must not be
+   pursued.
+3. Re-derive the band clamp from the **wing's own block arithmetic**, not a
+   boundary share. Expect to re-register three frozen `real_plate` baselines.
