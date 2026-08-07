@@ -33,6 +33,7 @@ import type { DocState } from '../types/doc'
 import {
   buildTakeoffModel,
   parseItemDescription,
+  DEFAULT_SUPPLIER,
   type TakeoffFurnitureRow,
   type TakeoffOptions,
 } from './takeoff'
@@ -428,9 +429,10 @@ export interface CommercialOptions extends TakeoffOptions {
 }
 
 /** The takeoff's "no bound supplier" placeholder — a spec sheet must not print
- *  it as if it were a company. Kept honest by `commercial.test.mjs`, which
- *  asserts an unbound line's supplier equals this string. */
-const DEFAULT_SUPPLIER_TEXT = 'Can be customized'
+ *  it as if it were a company. IMPORTED, not restated: this used to be a second
+ *  copy of the same literal, and the two had to be edited together or a renamed
+ *  placeholder would silently start printing as a vendor name. */
+const DEFAULT_SUPPLIER_TEXT = DEFAULT_SUPPLIER
 
 const DEFAULT_ADJUSTMENTS: Omit<QuoteAdjustment, 'amount'>[] = [
   { label: 'GST @ 18% (HSN 9403, office furniture)', rate: 0.18, demo: false },

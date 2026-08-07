@@ -136,6 +136,38 @@ export interface ColSpec {
   hidden?: boolean
 }
 
+/**
+ * How a sheet PRINTS — and therefore how it looks in the PDF, on a projector and
+ * on paper.
+ *
+ * This is not cosmetic. Without it a wide sheet is sliced by column across
+ * pages: the shipped 12-sheet takeoff rendered to 50 PDF pages, with
+ * `Main Summary` split so that *Material Category · Material Name · Material ID*
+ * landed on one page and *Unit Type · Quantity · Unit Price · Total cost* on the
+ * next — a takeoff whose printed form omits every quantity and every cost.
+ * `fitToWidth: 1` plus an explicit `printArea` is what stops that.
+ */
+export interface PageSetupSpec {
+  orientation?: 'portrait' | 'landscape'
+  /** OOXML paper code: 9 = A4, 8 = A3. */
+  paperSize?: number
+  /** Squeeze the sheet onto this many pages ACROSS. `fitToHeight: 0` = as many
+   *  pages down as it takes, which is what a long table wants. */
+  fitToWidth?: number
+  fitToHeight?: number
+  /** Explicit percentage scale. Ignored by readers when `fitToWidth` is set. */
+  scale?: number
+  /** A1 range that prints, e.g. `'A1:I25'`. Emitted as `_xlnm.Print_Area`. */
+  printArea?: string
+  /** Rows repeated at the top of every printed page, e.g. `'4:4'`. */
+  printTitleRows?: string
+  /** Columns repeated at the left of every printed page, e.g. `'A:B'`. */
+  printTitleCols?: string
+  horizontalCentered?: boolean
+  /** Inches. Defaults are Excel's own 0.7/0.75. */
+  margins?: { left?: number; right?: number; top?: number; bottom?: number }
+}
+
 export interface SheetSpec {
   name: string
   /** Dense, row-major. `rows[0]` is row 1, `rows[0][0]` is A1. */
@@ -158,6 +190,8 @@ export interface SheetSpec {
   validations?: DataValidationSpec[]
   /** Default row height in points (`<sheetFormatPr>`). */
   defaultRowHeight?: number
+  /** Print/page setup — see {@link PageSetupSpec}. */
+  page?: PageSetupSpec
 }
 
 export interface WorkbookOptions {
@@ -504,6 +538,28 @@ function worksheetXml(s: SheetSpec, sty: StyleTable, drawingRelId: string | null
       ? `<dimension ref="${colName(minC)}${minR}:${colName(maxC)}${maxR}"/>`
       : '<dimension ref="A1"/>'
 
+  // --- page setup -----------------------------------------------------------
+  // `<sheetPr>` must be the FIRST child of <worksheet>, and `fitToPage` there is
+  // what makes `fitToWidth` bind: without it Excel and LibreOffice both ignore
+  // the fit attributes and slice the sheet by column.
+  const pg = s.page
+  const fits = pg != null && (pg.fitToWidth != null || pg.fitToHeight != null)
+  const sheetPr = fits ? '<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>' : ''
+  const printOptions = pg?.horizontalCentered ? '<printOptions horizontalCentered="1"/>' : ''
+  const m = pg?.margins
+  const pageMargins =
+    `<pageMargins left="${m?.left ?? 0.7}" right="${m?.right ?? 0.7}" ` +
+    `top="${m?.top ?? 0.75}" bottom="${m?.bottom ?? 0.75}" header="0.3" footer="0.3"/>`
+  const pageSetup = pg
+    ? '<pageSetup' +
+      (pg.paperSize != null ? ` paperSize="${pg.paperSize}"` : '') +
+      (pg.scale != null && !fits ? ` scale="${pg.scale}"` : '') +
+      (pg.orientation ? ` orientation="${pg.orientation}"` : '') +
+      (pg.fitToWidth != null ? ` fitToWidth="${pg.fitToWidth}"` : '') +
+      (pg.fitToHeight != null ? ` fitToHeight="${pg.fitToHeight}"` : '') +
+      '/>'
+    : ''
+
   // --- sheetViews -----------------------------------------------------------
   const viewAttrs =
     (s.gridlines === false ? ' showGridLines="0"' : '') +
@@ -612,15 +668,19 @@ function worksheetXml(s: SheetSpec, sty: StyleTable, drawingRelId: string | null
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
     '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" ' +
     'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+    sheetPr +
     dimension +
     sheetViews +
     sheetFormatPr +
     cols +
     `<sheetData>${body}</sheetData>` +
-    // Schema order is strict: mergeCells → dataValidations → pageMargins → drawing.
+    // Schema order is strict: sheetPr → … → mergeCells → dataValidations →
+    // printOptions → pageMargins → pageSetup → drawing.
     merges +
     validations +
-    '<pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/>' +
+    printOptions +
+    pageMargins +
+    pageSetup +
     drawing +
     '</worksheet>'
   )
@@ -766,6 +826,19 @@ function relsXml(items: { id: string; type: string; target: string }[]): string 
  * Build a complete .xlsx byte stream. Sheet order is array order; sheet names
  * are sanitised (≤31 chars, no `[]:*?/\`) and must be unique.
  */
+/** `Main Summary` → `'Main Summary'`; a name needing no quotes is left bare. */
+function quoteSheetRef(name: string): string {
+  return /^[A-Za-z_][A-Za-z0-9_.]*$/.test(name) ? name : `'${name.replace(/'/g, "''")}'`
+}
+
+/** `A1:I25` → `$A$1:$I$25`; `4:4` → `$4:$4`; `A:B` → `$A:$B`. Already-absolute
+ *  parts are left alone, so a caller may pass either form. */
+function absolutise(ref: string): string {
+  return ref.replace(/\$?([A-Za-z]+)?\$?(\d+)?/g, (whole, letters, digits) =>
+    whole === '' ? '' : `${letters ? `$${letters}` : ''}${digits ? `$${digits}` : ''}`,
+  )
+}
+
 export function buildXlsx(sheets: SheetSpec[], opts: WorkbookOptions = {}): Uint8Array {
   if (!sheets.length) throw new Error('workbook: at least one sheet is required')
   const enc = new TextEncoder()
@@ -826,6 +899,32 @@ export function buildXlsx(sheets: SheetSpec[], opts: WorkbookOptions = {}): Uint
   const calcPr =
     opts.fullCalcOnLoad === false ? '' : '<calcPr calcId="191029" fullCalcOnLoad="1"/>'
 
+  // Print area and repeated header rows are WORKBOOK-level defined names scoped
+  // to a sheet (`localSheetId`), not worksheet properties — a reader that finds
+  // them only in the worksheet part ignores them. Absolute, sheet-qualified.
+  const definedNames = sheets
+    .flatMap((s, i) => {
+      const out: string[] = []
+      const ref = (r: string) => `${quoteSheetRef(s.name)}!${absolutise(r)}`
+      if (s.page?.printArea) {
+        out.push(
+          `<definedName name="_xlnm.Print_Area" localSheetId="${i}">${esc(
+            ref(s.page.printArea),
+          )}</definedName>`,
+        )
+      }
+      const titles = [s.page?.printTitleCols, s.page?.printTitleRows].filter(Boolean) as string[]
+      if (titles.length) {
+        out.push(
+          `<definedName name="_xlnm.Print_Titles" localSheetId="${i}">${esc(
+            titles.map(ref).join(','),
+          )}</definedName>`,
+        )
+      }
+      return out
+    })
+    .join('')
+
   const workbook =
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
     '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" ' +
@@ -836,6 +935,8 @@ export function buildXlsx(sheets: SheetSpec[], opts: WorkbookOptions = {}): Uint
       .map((n, i) => `<sheet name="${esc(n)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`)
       .join('') +
     '</sheets>' +
+    // Schema order: sheets → … → definedNames → calcPr.
+    (definedNames ? `<definedNames>${definedNames}</definedNames>` : '') +
     calcPr +
     '</workbook>'
 

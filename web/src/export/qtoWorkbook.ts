@@ -31,6 +31,7 @@ import { FINISH_SPEC, finishTypeFor, roomTypeLabel } from './finishSchedule'
 import { CIRCULATION_ROOM_ID, planRoomList, type PlanRoom } from './planGraphic'
 import { PLAN_LEGEND_CHIPS, WORKBOOK_CHROME } from './qbiqPalette'
 import { buildTakeoffModel, type TakeoffFurnitureRow, type TakeoffOptions } from './takeoff'
+import { constructionRate, PRICE_BASIS_LABEL, type RateCategory } from './rateCard'
 import { buildXlsx, colName, pxToEmu, type Cell, type SheetSpec, type StyleSpec } from './workbook'
 import { triggerDownload } from './png'
 import { ACCENT_AMBER } from '../editor/planStyle'
@@ -94,10 +95,15 @@ export interface QtoOptions extends TakeoffOptions {
   /** Brand mark embedded on all 11 data sheets (`renderBrandMarkPng`). */
   logoPng?: Uint8Array | null
   /**
-   * OPT-IN unit-price pre-fill, keyed by the `General` Material/Type Name.
-   * Absent → every unit price ships as `0`, which is the honest default: the
-   * material bank prices furniture, not floor finishes or drywall runs. The
-   * client fills these in and the workbook reprices itself.
+   * Per-project unit-price override, keyed by the `General` Material/Type Name.
+   * Wins over the rate card for the names it mentions; names it omits fall back
+   * to `rateCard.ts`.
+   *
+   * This used to be the ONLY price source, and absent it every unit price and
+   * every total in the book shipped as `0` — the entire commercial half of a
+   * costed document, empty. A takeoff prices measured quantities from a
+   * published rate schedule; that schedule is now the default, is visible on
+   * `General` with its basis, and is editable in place.
    */
   unitPrices?: Record<string, number>
 }
@@ -129,6 +135,9 @@ export interface QtoModel {
   walls: CatalogRow[]
   glass: CatalogRow[]
   doors: CatalogRow[]
+  /** Rate-card prices for the furniture the plan places, one row per distinct
+   *  Item Description. Empty when every furniture line carries a bound price. */
+  furnitureRates: FurnitureRateRow[]
   floor: string | number
   project: string
 }
@@ -139,10 +148,24 @@ export interface CatalogRow {
   id: number
   unit: string
   price: number
+  /** Why `price` is that number — printed in the `General` rate-basis table so
+   *  a reader never has to take a ₹ figure on trust. Empty when the price came
+   *  from a caller-supplied `unitPrices` override. */
+  basis: string
   /** Linear categories (walls, glass partitions) carry their measured run. */
   lengthM?: number
   /** Counted categories (doors) carry their amount. */
   count?: number
+}
+
+/** One row of the `General` furniture rate block — a rate-card price for an
+ *  item description, which the Furniture Inventory looks up. */
+export interface FurnitureRateRow {
+  /** The Item Description, verbatim: `'Table W190 X L290'`. */
+  name: string
+  id: number
+  price: number
+  basis: string
 }
 
 // ---------------------------------------------------------------------------
@@ -169,8 +192,13 @@ const BODY: StyleSpec = { fill: C.bodyFill, align: { wrap: true, v: 'top' }, bor
 const BODY_TEXT: StyleSpec = { ...BODY, numFmt: '@' }
 const BODY_NUM: StyleSpec = { ...BODY, numFmt: '#,##0.00' }
 const BODY_INT: StyleSpec = { ...BODY, numFmt: '0' }
-const BODY_MONEY: StyleSpec = { ...BODY, numFmt: '"₹"#,##0.00' }
+// Money renders at 0 dp: a fit-out takeoff is quoted to the rupee, and `₹0.00`
+// columns are what made the book look unfinished. The stored value is still
+// settled to the paisa by ROUND(...,2) inside each formula.
+const BODY_MONEY: StyleSpec = { ...BODY, numFmt: '"₹"#,##0' }
 const SCALAR: StyleSpec = { ...BODY, numFmt: '0.00', font: { bold: true } }
+/** Long prose — a rate's basis, the scope note. Wrapped, top-aligned, 9 pt. */
+const BODY_WRAP: StyleSpec = { ...BODY, numFmt: '@', font: { size: 9 }, align: { wrap: true, v: 'top' } }
 const LEGEND_LABEL: StyleSpec = {
   fill: '#FCF5F2',
   border: { all: 'thin' },
@@ -195,6 +223,46 @@ const INVENTORY_ROW_PT = 140
 // Small helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * Unit → how many of it make one BASE unit (m for a length, m² for an area, 1
+ * for a count). Written onto the `dropdowns` sheet and read by column G of
+ * every BOM sheet, so the conversion is auditable in the file rather than
+ * compiled into a formula nobody can check.
+ */
+const UNIT_FACTORS: [string, number][] = [
+  ['m', 1],
+  ['cm', 100],
+  ['f', 3.280839895],
+  ['inch', 39.37007874],
+  ['m^2', 1],
+  ['cm^2', 10_000],
+  ['f^2', 10.763910417],
+  ['inch^2', 1550.0031],
+  ['Number', 1],
+]
+
+/**
+ * What this takeoff bills, and — just as importantly — what it does not.
+ *
+ * Without this the book invites a false comparison: the app's own headline
+ * indicative cost is an ALL-IN element model (it folds lighting, small power,
+ * data, HVAC distribution, fire and BMS into a single ₹/m² base-shell rate),
+ * while this workbook can only bill materials it has a measured quantity for.
+ * A reader who sees the two side by side and is not told why they differ will
+ * assume one of them is wrong.
+ */
+const SCOPE_NOTE =
+  'This takeoff bills the five measured material categories above (floor finishes, ceiling ' +
+  'finishes, partitions, glazed fronts, doors) plus loose furniture — i.e. the scope the plan ' +
+  'geometry can measure. It EXCLUDES: lighting, small power and containment, structured data, ' +
+  'HVAC distribution, fire detection and suppression, BMS, sanitaryware, signage, main-contractor ' +
+  'preliminaries, professional fees, GST and contingency. Those are the difference between this ' +
+  'figure and an all-in delivery cost, and on an Indian metro CAT-B floor they are typically ' +
+  'larger than the scope billed here. Rates are indicative market rates for the Indian metro ' +
+  '(Bengaluru / Hyderabad) commercial CAT-B fit-out market, ₹ 2024–25, supply and install — ' +
+  'planning figures, not quotations. Every Unit Price cell above is editable and the whole book ' +
+  'reprices itself.'
+
 /** Deterministic 4-digit Material ID from a name — stable across exports. */
 function materialId(name: string): number {
   let h = 2166136261
@@ -206,6 +274,24 @@ function materialId(name: string): number {
 }
 
 const q = (sheet: string) => `'${sheet}'`
+
+/**
+ * PRESENTATION ROUNDING — 2 dp, applied where a measured number is written into
+ * the model that becomes cells and ground truth.
+ *
+ * `26.5500000000001 m²`, `4.31999999999999 m²` and `285.784200000001 sqft` are
+ * the same quantities as their 2 dp forms and they read as a broken instrument
+ * on a costed document. 2 dp is 1 cm² on an area and 1 cm on a run — finer than
+ * anything the geometry resolves — so nothing measurable is lost, and the number
+ * a data consumer reads finally matches the number the cell displays.
+ *
+ * Money is NOT rounded here: it is a product of a live formula, displayed at 0 dp
+ * by its number format and settled to the paisa by `ROUND(...,2)` inside the
+ * formula, so editing a unit price still reprices exactly.
+ */
+function round2(n: number): number {
+  return Math.round(n * 100) / 100
+}
 
 /** A `General` block's absolute VLOOKUP table range, e.g. `'General'!$B$9:$E$10`. */
 function tableRef(c0: string, c1: string, r0: number, r1: number): string {
@@ -253,7 +339,10 @@ export function buildQtoModel(
   for (const z of zones) {
     if (isGroundZone(z.zone_type)) furnitureRefs.set(z.id, CIRCULATION_ROOM_ID)
   }
-  const takeoff = buildTakeoffModel(state, { ...opts, roomRefs: furnitureRefs })
+  // `rateCard: true`: this is a TAKEOFF, so an unbound component is priced from
+  // the published rate schedule and the line says so. A bound product's real
+  // `price_inr` still wins (ADR 0004) — see `takeoff.ts` `priceOf`.
+  const takeoff = buildTakeoffModel(state, { ...opts, roomRefs: furnitureRefs, rateCard: true })
 
   const byRoom = new Map<string, string[]>()
   for (const r of takeoff.furniture) {
@@ -278,6 +367,10 @@ export function buildQtoModel(
     }
     const key = zone ? finishTypeFor(zone) : 'other'
     const spec = FINISH_SPEC[key]
+    // sqf is derived from the ROUNDED m², not from the raw one, so the two cells
+    // satisfy `sqf == m2 × factor` exactly rather than to within a rounding
+    // residue — G3 checks that relation and it should hold by construction.
+    const m2 = round2(areaM2)
     return {
       id: pr.id,
       zoneId: pr.zoneId,
@@ -291,8 +384,8 @@ export function buildQtoModel(
       subcategory: roomTypeLabel(zone),
       name: pr.label,
       headcount: pr.zoneId == null ? 0 : qr?.headcount ?? 0,
-      areaM2,
-      areaSqf: areaM2 * quantities.sqfPerM2,
+      areaM2: m2,
+      areaSqf: round2(m2 * quantities.sqfPerM2),
       floorMaterial: spec.floor,
       ceilingMaterial: spec.ceiling,
       furnitureElements: (byRoom.get(pr.id) ?? []).join(', '),
@@ -300,48 +393,83 @@ export function buildQtoModel(
   })
 
   // --- General catalog blocks ---------------------------------------------
-  const price = (name: string) => opts.unitPrices?.[name] ?? 0
+  //
+  // A caller-supplied `unitPrices` entry wins; otherwise the rate card supplies
+  // the figure AND the one-line basis that justifies it. A name the card does
+  // not know prices at 0 and says so, rather than silently inventing a rate.
+  const priced = (name: string, category: RateCategory): { price: number; basis: string } => {
+    const override = opts.unitPrices?.[name]
+    if (override != null) return { price: override, basis: 'Project-specific rate supplied at export.' }
+    const r = constructionRate(name, category)
+    return r
+      ? { price: r.inr, basis: r.basis }
+      : { price: 0, basis: 'No published rate for this material — to be quoted.' }
+  }
   const distinct = (vals: string[]) => [...new Set(vals)]
 
   const floors: CatalogRow[] = distinct(rooms.map((r) => r.floorMaterial)).map((name) => ({
     name,
     id: materialId(name),
     unit: 'm^2',
-    price: price(name),
+    ...priced(name, 'Floors'),
   }))
   const ceilings: CatalogRow[] = distinct(rooms.map((r) => r.ceilingMaterial)).map((name) => ({
     name,
     id: materialId(name),
     unit: 'm^2',
-    price: price(name),
+    ...priced(name, 'Ceilings'),
   }))
 
   // All six wall types, legend order, zero-length rows included — G3 checks the
   // General!J/L table against the ground truth in BOTH directions.
+  //
+  // DEVIATION: the unit reads `m^2`, not the reference's `m`. Every wall row's
+  // Quantity is `ceiling height × run` — square metres of ELEVATION — so the
+  // unit price beside it has to be ₹/m², and labelling that column `m` made the
+  // three cells of one row (unit · quantity · unit price) describe two
+  // different dimensions. The measured run itself is still in metres, in its
+  // own `Length (m)` column, which is what G3 reads.
   const walls: CatalogRow[] = quantities.walls.map((w) => ({
     name: w.label,
     id: materialId(w.label),
-    unit: 'm',
-    price: price(w.label),
-    lengthM: w.lengthM,
+    unit: 'm^2',
+    ...priced(w.label, 'Walls'),
+    lengthM: round2(w.lengthM),
   }))
   const glassRun = quantities.walls.find((w) => w.label === 'Glass')?.lengthM ?? 0
   const glass: CatalogRow[] = [
     {
       name: 'Glass Partition',
       id: materialId('Glass Partition'),
-      unit: 'm',
-      price: price('Glass Partition'),
-      lengthM: glassRun,
+      unit: 'm^2',
+      ...priced('Glass Partition', 'Glass Partitions'),
+      lengthM: round2(glassRun),
     },
   ]
   const doors: CatalogRow[] = quantities.doors.map((d) => ({
     name: d.label,
     id: materialId(`Door ${d.label}`),
     unit: 'Number',
-    price: price(d.label),
+    ...priced(d.label, 'Doors'),
     count: d.count,
   }))
+
+  // --- the furniture rate block -------------------------------------------
+  // One row per distinct Item Description that got a rate-card price, so the
+  // Furniture Inventory can VLOOKUP its unit price out of `General` and a
+  // designer repricing chairs edits ONE cell. Bound products never appear here:
+  // their price is the core's and is written as a literal on the line itself.
+  const furnitureRateMap = new Map<string, FurnitureRateRow>()
+  for (const r of [...takeoff.furniture, ...takeoff.openings]) {
+    if (r.priceBasis !== 'rate-card' || furnitureRateMap.has(r.itemDescription)) continue
+    furnitureRateMap.set(r.itemDescription, {
+      name: r.itemDescription,
+      id: materialId(r.itemDescription),
+      price: r.unitPrice,
+      basis: r.priceNote ?? '',
+    })
+  }
+  const furnitureRates = [...furnitureRateMap.values()].sort((a, b) => a.name.localeCompare(b.name))
 
   assertOneRoomType(rooms, takeoff.furniture)
 
@@ -355,6 +483,7 @@ export function buildQtoModel(
     walls,
     glass,
     doors,
+    furnitureRates,
     floor: opts.floor ?? 1,
     project: opts.project ?? 'DSource Test-Fit',
   }
@@ -484,6 +613,9 @@ interface BomRowSpec {
   qty: QtySource
 }
 
+/** The `dropdowns` unit → base-unit factor table that column G converts with. */
+const UNIT_FACTOR_TABLE = `${q('dropdowns')}!$H$2:$I$10`
+
 /** Every body cell of a Main Summary / BOM row, as live formulas. */
 function bomRowCells(spec: BomRowSpec, r: number, invRows: [number, number]): Record<string, Cell> {
   const guard = (body: string) => `IF(ISBLANK(C${r}),"",${body})`
@@ -493,11 +625,11 @@ function bomRowCells(spec: BomRowSpec, r: number, invRows: [number, number]): Re
     const [r0, r1] = invRows
     const inv = q('Inventory')
     qty = guard(
-      `SUMIF(${inv}!$${spec.qty.matCol}$${r0}:$${spec.qty.matCol}$${r1},$C${r},` +
-        `${inv}!$J$${r0}:$J$${r1})`,
+      `ROUND(SUMIF(${inv}!$${spec.qty.matCol}$${r0}:$${spec.qty.matCol}$${r1},$C${r},` +
+        `${inv}!$J$${r0}:$J$${r1}),2)`,
     )
   } else if (spec.qty.kind === 'linear') {
-    qty = guard(`${spec.qty.heightCell}*(${look(spec.qty.lengthCol)})`)
+    qty = guard(`ROUND(${spec.qty.heightCell}*(${look(spec.qty.lengthCol)}),2)`)
   } else {
     qty = guard(look(spec.qty.amountCol))
   }
@@ -506,16 +638,26 @@ function bomRowCells(spec: BomRowSpec, r: number, invRows: [number, number]): Re
     [`C${r}`]: { f: spec.nameRef, style: BODY_TEXT },
     [`D${r}`]: { f: guard(look(spec.idCol)), style: BODY_TEXT },
     [`E${r}`]: { f: guard(look(spec.unitCol)), style: BODY_TEXT },
+    // F: the quantity in its BASE unit (m² / m / count), straight off the
+    // measured geometry.
     [`F${r}`]: { f: qty, style: BODY_NUM },
-    // The ONE hardcoded body cell: a user override slot. Left at 0, the total
-    // falls back to the measured quantity in F (see column I).
-    [`G${r}`]: { v: 0, style: BODY_NUM },
+    // G: the same quantity expressed in the Unit Type shown in E, so switching
+    // a material to f^2 on `General` reconverts the whole book.
+    //
+    // DEVIATION, and the reason this cell changed: the reference ships G as a
+    // literal `0` user-override slot, and it stayed 0 in every exported book —
+    // a column headed "Quantity Amount" reading zero on all 26 rows beside a
+    // correct quantity. Making it the converted quantity gives the column a
+    // meaning, makes the Unit Type dropdowns do something, and leaves the
+    // shipped numbers identical (every default factor is 1, so G == F until a
+    // unit is changed). A user who wants an override still just types over it.
+    [`G${r}`]: {
+      f: guard(`ROUND(F${r}*IFERROR(VLOOKUP(E${r},${UNIT_FACTOR_TABLE},2,FALSE),1),2)`),
+      style: BODY_NUM,
+    },
     [`H${r}`]: { f: guard(look(spec.priceCol)), style: BODY_MONEY },
-    // DEVIATION: the reference bills area rows as H*G, and G ships as a literal
-    // 0 — so editing a floor unit price there moves nothing. Falling back to F
-    // when the override is unset makes every row live, which is the entire
-    // point of the deliverable.
-    [`I${r}`]: { f: guard(`H${r}*IF(G${r}>0,G${r},F${r})`), style: BODY_MONEY },
+    // Billed against the quantity in the unit the price is quoted in.
+    [`I${r}`]: { f: guard(`ROUND(H${r}*G${r},2)`), style: BODY_MONEY },
   }
 }
 
@@ -546,6 +688,7 @@ function bomSheet(
     cells[`${colName(i + 2)}4`] = { v: h, style: HDR }
   })
   specs.forEach((s, i) => Object.assign(cells, bomRowCells(s, 5 + i, invRows)))
+  const last = 4 + Math.max(specs.length, 1)
   return {
     name,
     gridlines: false,
@@ -553,8 +696,37 @@ function bomSheet(
     rowHeights: { 1: 8, 2: 34, 3: 24, 4: 30 },
     cells,
     images: logoImages(logo),
+    page: LANDSCAPE_A4(`A1:I${last}`),
   }
 }
+
+// ---------------------------------------------------------------------------
+// Print setup
+// ---------------------------------------------------------------------------
+//
+// Without this every sheet is sliced by COLUMN across pages. Measured on the
+// shipped book: 50 PDF pages, with `Main Summary` split so that Material
+// Category · Material Name · Material ID printed on one page and Unit Type ·
+// Quantity · Unit Price · Total cost on the next — a takeoff whose printed form
+// contains no quantities and no costs. `fitToWidth: 1` with an explicit print
+// area is the fix; `printTitleRows` repeats the header band so page 3 of the
+// Inventory still says what its columns are.
+
+const LANDSCAPE_A4 = (printArea: string, titles = '4:4') => ({
+  orientation: 'landscape' as const,
+  paperSize: 9,
+  fitToWidth: 1,
+  fitToHeight: 0,
+  printArea,
+  printTitleRows: titles,
+  horizontalCentered: true,
+  margins: { left: 0.35, right: 0.35, top: 0.5, bottom: 0.5 },
+})
+
+const LANDSCAPE_A3 = (printArea: string, titles = '4:4') => ({
+  ...LANDSCAPE_A4(printArea, titles),
+  paperSize: 8,
+})
 
 function logoImages(logo: Uint8Array | null | undefined) {
   if (!logo) return undefined
@@ -593,6 +765,25 @@ export function buildQtoWorkbook(model: QtoModel, opts: QtoOptions = {}): Uint8A
   const T_GLASS = tableRef('O', 'S', 9, gR1)
   const T_DOORS = tableRef('T', 'X', 9, dR1)
 
+  // The two rate blocks live BELOW the five catalog blocks, in columns B..N, so
+  // `General` stays as wide as the reference (A..X) and still prints on one
+  // page across. Every VLOOKUP range above is row-bounded at `*R1`, so nothing
+  // down here can be swept into a catalog lookup.
+  const genBlocksLast = Math.max(fR1, cR1, wR1, gR1, dR1)
+  const FURN_BAND = genBlocksLast + 3
+  const FURN_R0 = FURN_BAND + 2
+  const FURN_R1 = FURN_R0 + Math.max(model.furnitureRates.length, 1) - 1
+  const BASIS_BAND = FURN_R1 + 3
+  const BASIS_R0 = BASIS_BAND + 2
+  // Main Summary bills every catalog row except the Walls table's `Glass`,
+  // which is billed on its own sheet — see `wallSpecs` below.
+  const mainSummarySpecCount =
+    model.floors.length +
+    model.ceilings.length +
+    model.walls.filter((w) => w.name !== 'Glass').length +
+    model.glass.length +
+    model.doors.length
+
   // ---- 1. Plan -----------------------------------------------------------
   const planCells: Record<string, Cell> = {
     Q4: { v: 'Wall type', style: HDR },
@@ -607,7 +798,7 @@ export function buildQtoWorkbook(model: QtoModel, opts: QtoOptions = {}): Uint8A
     planCells[`S${row}`] =
       i < model.walls.length
         ? { f: `${q('General')}!L${9 + i}`, style: { ...LEGEND_LABEL, numFmt: '0.00' } }
-        : { v: model.quantities.doorTotalWidthM, style: { ...LEGEND_LABEL, numFmt: '0.00' } }
+        : { v: round2(model.quantities.doorTotalWidthM), style: { ...LEGEND_LABEL, numFmt: '0.00' } }
   })
   const planImages: NonNullable<SheetSpec['images']> = []
   if (opts.planPng) {
@@ -644,17 +835,33 @@ export function buildQtoWorkbook(model: QtoModel, opts: QtoOptions = {}): Uint8A
     merges: ['Q4:R4'],
     cells: planCells,
     images: planImages.length ? planImages : undefined,
+    // The plan image spans A1:M37 and the legend sits at Q4:S11 — one A3
+    // landscape sheet, no repeated title row (there is no table to continue).
+    page: {
+      orientation: 'landscape',
+      paperSize: 8,
+      fitToWidth: 1,
+      fitToHeight: 1,
+      printArea: 'A1:S38',
+      horizontalCentered: true,
+      margins: { left: 0.35, right: 0.35, top: 0.5, bottom: 0.5 },
+    },
   }
 
   // ---- 2. Furniture Inventory --------------------------------------------
   const fiHeaders = [
     'Cost Code', 'Floor', 'Room ID', 'Room Type', 'Item Description',
-    'Supplier', 'Quantity', 'Unit Price', 'Total Price',
+    'Supplier', 'Quantity', 'Unit Price', 'Total Price', 'Price Basis',
   ]
   const fiCells: Record<string, Cell> = {}
   fiHeaders.forEach((h, i) => {
     fiCells[`${colName(i + 2)}4`] = { v: h, style: HDR }
   })
+  // Rate-card rows reach into the `General` furniture block by name, so
+  // repricing every chair on the floor is one cell edit there. A BOUND product's
+  // price is a literal: it is the core's `price_inr` for that specific product
+  // (ADR 0004) and must not be overwritten by a category rate.
+  const furnTable = `${q('General')}!$B$${FURN_R0}:$E$${FURN_R1}`
   model.furniture.forEach((r, i) => {
     const row = 5 + i
     fiCells[`B${row}`] = { v: r.costCode, style: BODY_TEXT }
@@ -664,18 +871,23 @@ export function buildQtoWorkbook(model: QtoModel, opts: QtoOptions = {}): Uint8A
     fiCells[`F${row}`] = { v: r.itemDescription, style: BODY_TEXT }
     fiCells[`G${row}`] = { v: r.supplier, style: BODY_TEXT }
     fiCells[`H${row}`] = { v: r.quantity, style: BODY_INT }
-    fiCells[`I${row}`] = { v: r.unitPrice, style: BODY_MONEY }
+    fiCells[`I${row}`] =
+      r.priceBasis === 'rate-card'
+        ? { f: `IFERROR(VLOOKUP(F${row},${furnTable},4,FALSE),0)`, style: BODY_MONEY }
+        : { v: r.unitPrice, style: BODY_MONEY }
     fiCells[`J${row}`] = { f: `H${row}*I${row}`, style: BODY_MONEY }
+    fiCells[`K${row}`] = { v: PRICE_BASIS_LABEL[r.priceBasis], style: BODY_TEXT }
   })
   const fiLast = 4 + Math.max(model.furniture.length, 1)
   const furnitureInventory: SheetSpec = {
     name: 'Furniture Inventory',
     gridlines: false,
     freeze: 'A5',
-    cols: { A: 10.67, B: 12, C: 7, D: 10, E: 22, F: 30, G: 20, H: 10, I: 14, J: 15 },
+    cols: { A: 10.67, B: 12, C: 7, D: 10, E: 22, F: 30, G: 20, H: 10, I: 14, J: 15, K: 26 },
     rowHeights: { 1: 8, 2: 34, 3: 24, 4: 30 },
     cells: fiCells,
     images: logoImages(logo),
+    page: LANDSCAPE_A4(`A1:K${fiLast}`),
   }
 
   // ---- 3. Furniture Inventory Summary ------------------------------------
@@ -693,12 +905,18 @@ export function buildQtoWorkbook(model: QtoModel, opts: QtoOptions = {}): Uint8A
     fsCells[`D${row}`] = { v: r.supplier, style: BODY_TEXT }
     // Aggregate live off the per-room sheet: adding a room there re-totals here.
     fsCells[`E${row}`] = { f: `SUMIF(${descRange},C${row},${FI}!$H$5:$H$${fiLast})`, style: BODY_INT }
+    // The BLENDED unit price: Σ line totals ÷ Σ quantity, so `G = E*F` is the
+    // true roll-up even when the same item appears at a bound price in one room
+    // and a rate-card price in another. Reading the FIRST matching row's price
+    // (INDEX/MATCH) silently under- or over-billed every other room the moment
+    // two prices for one description existed.
     fsCells[`F${row}`] = {
-      f: `IFERROR(INDEX(${FI}!$I$5:$I$${fiLast},MATCH(C${row},${descRange},0)),0)`,
+      f: `IFERROR(ROUND(SUMIF(${descRange},C${row},${FI}!$J$5:$J$${fiLast})/E${row},2),0)`,
       style: BODY_MONEY,
     }
     fsCells[`G${row}`] = { f: `E${row}*F${row}`, style: BODY_MONEY }
   })
+  const fsLast = 4 + Math.max(model.summary.length, 1)
   const furnitureSummary: SheetSpec = {
     name: 'Furniture Inventory Summary',
     gridlines: false,
@@ -707,6 +925,7 @@ export function buildQtoWorkbook(model: QtoModel, opts: QtoOptions = {}): Uint8A
     rowHeights: { 1: 8, 2: 34, 3: 24, 4: 30 },
     cells: fsCells,
     images: logoImages(logo),
+    page: LANDSCAPE_A4(`A1:G${fsLast}`),
   }
 
   // ---- 4. Inventory ------------------------------------------------------
@@ -768,6 +987,9 @@ export function buildQtoWorkbook(model: QtoModel, opts: QtoOptions = {}): Uint8A
     rowHeights: invRowHeights,
     cells: invCells,
     images: invImages.length ? invImages : undefined,
+    // A3: thirteen columns including two 28-char finish names and a 48-char
+    // furniture list. On A4 the fit scale makes it unreadable.
+    page: LANDSCAPE_A3(`A1:N${invR1}`),
   }
 
   // ---- 5. General --------------------------------------------------------
@@ -781,9 +1003,9 @@ export function buildQtoWorkbook(model: QtoModel, opts: QtoOptions = {}): Uint8A
     // The height every wall/glass area formula multiplies by comes from the
     // core (`quantities.wallHeightM`), not a hard-coded 3.0 — it is the same
     // number the 3D viewer extrudes walls at.
-    D5: { v: model.quantities.wallHeightM, style: SCALAR }, E5: { v: 'm', style: BODY_TEXT },
+    D5: { v: round2(model.quantities.wallHeightM), style: SCALAR }, E5: { v: 'm', style: BODY_TEXT },
     F5: { v: 2.1, style: SCALAR }, G5: { v: 'm', style: BODY_TEXT },
-    H5: { v: model.quantities.wallHeightM, style: SCALAR }, I5: { v: 'm', style: BODY_TEXT },
+    H5: { v: round2(model.quantities.wallHeightM), style: SCALAR }, I5: { v: 'm', style: BODY_TEXT },
     J5: { v: 1.0, style: SCALAR }, K5: { v: 'm', style: BODY_TEXT },
     B7: { v: 'Floors', style: BAND },
     F7: { v: 'Ceilings', style: BAND },
@@ -838,6 +1060,109 @@ export function buildQtoWorkbook(model: QtoModel, opts: QtoOptions = {}): Uint8A
   const glassWallRow = 9 + model.walls.findIndex((w) => w.name === 'Glass')
   if (glassWallRow >= 9) gen.Q9 = { f: `L${glassWallRow}`, style: BODY_NUM }
 
+  // ---- General: the visible rate card ------------------------------------
+  //
+  // Two tables under the catalog. The first is the furniture rate block the
+  // Furniture Inventory looks up. The second states, for every ₹ figure the
+  // book bills, WHERE that figure comes from — and its Unit Price column is a
+  // FORMULA pointing at the catalog cell above, never a second copy of the
+  // number, so the basis table cannot drift from the rate it explains.
+  gen[`B${FURN_BAND}`] = { v: 'Furniture — rate card (₹ per unit)', style: BAND }
+  const furnHdr = ['Item Description', 'Item ID', 'Unit Type', 'Unit Price', 'Rate basis']
+  furnHdr.forEach((h, i) => {
+    gen[`${colName(i + 2)}${FURN_BAND + 1}`] = { v: h, style: HDR }
+  })
+  model.furnitureRates.forEach((f, i) => {
+    const row = FURN_R0 + i
+    gen[`B${row}`] = { v: f.name, style: BODY_TEXT }
+    gen[`C${row}`] = { v: f.id, style: BODY_INT }
+    gen[`D${row}`] = { v: 'Number', style: BODY_TEXT }
+    gen[`E${row}`] = { v: f.price, style: BODY_MONEY }
+    gen[`F${row}`] = { v: f.basis, style: BODY_WRAP }
+  })
+
+  gen[`B${BASIS_BAND}`] = { v: 'Rate basis — every ₹ figure in this book', style: BAND }
+  // The name goes in the wide column (B), the category in the merged C:D, so
+  // 'Anti-skid vitrified tile (VIT)' and 'Glass Partitions' both fit on one
+  // line at the widths the catalog blocks above already fix.
+  const basisHdr: [string, string][] = [
+    ['B', 'Material / Type Name'],
+    ['C', 'Category'],
+    ['E', 'Unit Price'],
+    ['F', 'Basis & source'],
+  ]
+  basisHdr.forEach(([c, h]) => {
+    gen[`${c}${BASIS_BAND + 1}`] = { v: h, style: HDR }
+  })
+  gen[`D${BASIS_BAND + 1}`] = { v: null, style: HDR }
+  const basisRows: { category: string; row: CatalogRow; priceCell: string }[] = [
+    ...model.floors.map((row, i) => ({ category: 'Floors', row, priceCell: `E${9 + i}` })),
+    ...model.ceilings.map((row, i) => ({ category: 'Ceilings', row, priceCell: `I${9 + i}` })),
+    ...model.walls.map((row, i) => ({ category: 'Walls', row, priceCell: `N${9 + i}` })),
+    ...model.glass.map((row, i) => ({ category: 'Glass Partitions', row, priceCell: `S${9 + i}` })),
+    ...model.doors.map((row, i) => ({ category: 'Doors', row, priceCell: `X${9 + i}` })),
+  ]
+  basisRows.forEach((b, i) => {
+    const row = BASIS_R0 + i
+    gen[`B${row}`] = { v: b.row.name, style: BODY_TEXT }
+    gen[`C${row}`] = { v: `${b.category} · ${b.row.unit}`, style: BODY_TEXT }
+    gen[`D${row}`] = { v: null, style: BODY_TEXT }
+    // A reference, not a restatement: edit the catalog above and this moves.
+    gen[`E${row}`] = { f: b.priceCell, style: BODY_MONEY }
+    gen[`F${row}`] = { v: b.row.basis, style: BODY_WRAP }
+  })
+  const basisLast = BASIS_R0 + Math.max(basisRows.length, 1) - 1
+
+  // ---- what the whole book adds up to ------------------------------------
+  // Live sums across the two halves of the takeoff. This lives on `General`
+  // and NOT as a footer row on `Main Summary`: a `SUM(I5:I29)` inside that
+  // sheet's own cost column is double-counted by anything that totals the
+  // column, including G2's recalc check.
+  const totalRow = basisLast + 2
+  const msRows = 4 + Math.max(mainSummarySpecCount, 1)
+  const MS = q('Main Summary')
+  const FIQ = q('Furniture Inventory')
+  const INV = q('Inventory')
+  gen[`B${totalRow}`] = { v: 'Project total — this takeoff', style: BAND }
+  const totalLines: [string, string][] = [
+    ['Materials & construction (Main Summary)', `SUM(${MS}!$I$5:$I$${msRows})`],
+    ['Loose furniture & FF&E (Furniture Inventory)', `SUM(${FIQ}!$J$5:$J$${fiLast})`],
+    ['Total, scope billed here', `E${totalRow + 1}+E${totalRow + 2}`],
+    ['per m² of billed floor area', `IFERROR(E${totalRow + 3}/SUM(${INV}!$J$5:$J$${invR1}),0)`],
+    ['per sqft of billed floor area', `IFERROR(E${totalRow + 3}/SUM(${INV}!$K$5:$K$${invR1}),0)`],
+  ]
+  totalLines.forEach(([label, formula], i) => {
+    const row = totalRow + 1 + i
+    gen[`B${row}`] = { v: label, style: i === 2 ? { ...BODY_TEXT, font: { bold: true } } : BODY_TEXT }
+    gen[`C${row}`] = { v: null, style: BODY_TEXT }
+    gen[`D${row}`] = { v: null, style: BODY_TEXT }
+    gen[`E${row}`] = { f: formula, style: i === 2 ? { ...BODY_MONEY, font: { bold: true } } : BODY_MONEY }
+    gen[`F${row}`] = { v: null, style: BODY_WRAP }
+  })
+  const totalLast = totalRow + totalLines.length
+
+  const scopeRow = totalLast + 2
+  gen[`B${scopeRow}`] = { v: 'Scope of this takeoff', style: BAND }
+  gen[`B${scopeRow + 1}`] = { v: SCOPE_NOTE, style: BODY_WRAP }
+
+  // Long basis text needs room; the merge lets it run across the (empty)
+  // catalog columns to its right instead of wrapping into a 20-line cell.
+  const basisMerges = [
+    `B${FURN_BAND}:F${FURN_BAND}`,
+    `B${BASIS_BAND}:F${BASIS_BAND}`,
+    `C${BASIS_BAND + 1}:D${BASIS_BAND + 1}`,
+    `B${totalRow}:F${totalRow}`,
+    `B${scopeRow}:F${scopeRow}`,
+    `B${scopeRow + 1}:N${scopeRow + 1}`,
+    ...model.furnitureRates.map((_f, i) => `F${FURN_R0 + i}:N${FURN_R0 + i}`),
+    ...basisRows.flatMap((_b, i) => [`C${BASIS_R0 + i}:D${BASIS_R0 + i}`, `F${BASIS_R0 + i}:N${BASIS_R0 + i}`]),
+    ...totalLines.map((_t, i) => `B${totalRow + 1 + i}:D${totalRow + 1 + i}`),
+  ]
+  const rateRowHeights: Record<number, number> = {}
+  for (let i = 0; i < model.furnitureRates.length; i++) rateRowHeights[FURN_R0 + i] = 42
+  for (let i = 0; i < basisRows.length; i++) rateRowHeights[BASIS_R0 + i] = 42
+  rateRowHeights[scopeRow + 1] = 90
+
   const general: SheetSpec = {
     name: 'General',
     gridlines: false,
@@ -846,22 +1171,39 @@ export function buildQtoWorkbook(model: QtoModel, opts: QtoOptions = {}): Uint8A
       J: 19.67, K: 11.85, L: 10, M: 8, N: 12, O: 19.5, P: 11.85, Q: 10, R: 8, S: 12,
       T: 12.17, U: 12.5, V: 10.17, W: 10, X: 12.67,
     },
-    rowHeights: { 1: 8, 2: 34, 3: 24, 4: 40, 5: 19.5, 6: 10, 7: 19.5, 8: 30 },
-    merges: ['B7:E7', 'F7:I7', 'J7:N7', 'O7:S7', 'T7:X7'],
+    rowHeights: { 1: 8, 2: 34, 3: 24, 4: 40, 5: 19.5, 6: 10, 7: 19.5, 8: 30, ...rateRowHeights },
+    merges: ['B7:E7', 'F7:I7', 'J7:N7', 'O7:S7', 'T7:X7', ...basisMerges],
     cells: gen,
     images: logoImages(logo),
+    // No repeated title row: `General` carries FOUR different tables down the
+    // page (the catalog, the furniture rates, the rate basis, the totals), so
+    // repeating row 8 would head the rate-basis page with the catalog's column
+    // names — a header that lies about the table under it.
+    page: {
+      orientation: 'landscape',
+      paperSize: 8,
+      fitToWidth: 1,
+      fitToHeight: 0,
+      printArea: `A1:X${scopeRow + 1}`,
+      horizontalCentered: true,
+      margins: { left: 0.35, right: 0.35, top: 0.5, bottom: 0.5 },
+    },
     // Wired to the `dropdowns` sheet's ranges rather than inline literals, so
     // the lists are visible, editable and gate-verifiable (Agent A's rec).
     validations: [
+      // Heights are lengths; every BILLED quantity in this book is an area or a
+      // count, so the wall (M) and glass (R) unit cells take the AREA list —
+      // they used to offer cm/m/f/inch beside a quantity measured in m² of
+      // elevation.
       {
         type: 'list',
         formula1: `${q('dropdowns')}!$B$2:$B$5`,
-        sqref: [`M9:M${wR1}`, `R9:R${gR1}`, 'C5', 'E5', 'G5', 'I5', 'K5'],
+        sqref: ['C5', 'E5', 'G5', 'I5', 'K5'],
       },
       {
         type: 'list',
         formula1: `${q('dropdowns')}!$C$2:$C$5`,
-        sqref: [`D9:D${fR1}`, `H9:H${cR1}`],
+        sqref: [`D9:D${fR1}`, `H9:H${cR1}`, `M9:M${wR1}`, `R9:R${gR1}`],
       },
       { type: 'list', formula1: `${q('dropdowns')}!$E$2:$E$2`, sqref: `V9:V${dR1}` },
     ],
@@ -934,12 +1276,31 @@ export function buildQtoWorkbook(model: QtoModel, opts: QtoOptions = {}): Uint8A
       ddCells[`${col}${2 + ri}`] = { v, style: BODY_TEXT }
     })
   })
+  // The conversion table column G of every BOM sheet reads. It lives here, in
+  // the open, rather than baked into a chain of nested IFs: a reader can see
+  // that f^2 is 10.7639 m², and correct it if their local convention differs.
+  // Rows are `<unit, multiples of the base unit>`; the base is m for a length,
+  // m² for an area, and 1 for a count.
+  ddCells.H1 = { v: 'Unit', style: HDR }
+  ddCells.I1 = { v: 'x base (m / m^2 / count)', style: HDR }
+  UNIT_FACTORS.forEach(([unit, factor], i) => {
+    ddCells[`H${2 + i}`] = { v: unit, style: BODY_TEXT }
+    ddCells[`I${2 + i}`] = { v: factor, style: { ...BODY, numFmt: '0.######' } }
+  })
   const dropdowns: SheetSpec = {
     name: 'dropdowns',
     gridlines: false,
-    cols: { A: 19.5, B: 22.5, C: 20.85, D: 22.85, E: 27.5, F: 8.85 },
+    cols: { A: 19.5, B: 22.5, C: 20.85, D: 22.85, E: 27.5, F: 8.85, G: 3, H: 12, I: 24 },
     rowHeights: { 1: 17 },
     cells: ddCells,
+    page: {
+      orientation: 'landscape',
+      paperSize: 9,
+      fitToWidth: 1,
+      fitToHeight: 0,
+      printArea: `A1:I${1 + UNIT_FACTORS.length}`,
+      horizontalCentered: true,
+    },
   }
 
   return buildXlsx([

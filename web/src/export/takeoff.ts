@@ -21,6 +21,7 @@ import { isGroundZone } from '../types/doc'
 import { pointInZoneShape, zoneArea } from '../util/zoneGeom'
 import { catByCategory } from '../editor/catalog'
 import { roomTypeLabel } from './finishSchedule'
+import { furnitureRate, type PriceBasis } from './rateCard'
 
 // ---------------------------------------------------------------------------
 // Model (pure — unit-testable without the xlsx layer)
@@ -34,8 +35,23 @@ export interface TakeoffOptions {
   floor?: string | number
   /** Project name for docProps. */
   project?: string
-  /** Supplier shown when a component has no bound supplier (matches sample). */
+  /** Supplier shown when a component has no bound supplier. */
   supplierFallback?: string
+  /**
+   * OPT-IN: price unbound components from the rate card (`rateCard.ts`) instead
+   * of leaving them at 0.
+   *
+   * OFF by default, and that default is load-bearing. A QUOTATION must never
+   * invent a price — `commercial.ts` builds the BOM/quote/spec with this unset,
+   * so an unbound or bank-`null` item is carried as "to be quoted" (ADR 0004,
+   * `priceSourceOfTruth.test.mjs`). A quantity TAKEOFF is the opposite case:
+   * pricing measured quantities from a published rate schedule is what a
+   * takeoff is for, so `qtoWorkbook.ts` turns it on and labels every line with
+   * {@link TakeoffFurnitureRow.priceBasis}.
+   *
+   * A bound product's `price_inr` always wins. This only ever fills a hole.
+   */
+  rateCard?: boolean
   /** zone.id → user room reference (from a Space-step room marker sitting in
    *  that zone). When present, the Room ID column shows the human ref (e.g.
    *  "502") instead of the generated zone id. Re-resolved per export against
@@ -63,6 +79,12 @@ export interface TakeoffFurnitureRow {
   productName: string | null
   /** Document category the line came from (`Desk`, `Chair`, `Door`, …). */
   category: string
+  /** Where {@link unitPrice} came from — `'bound'` (the core's `price_inr`),
+   *  `'rate-card'` (a market rate), or `'unpriced'` (no figure exists; the
+   *  price is 0 and the line must print as "to be quoted", never as ₹0). */
+  priceBasis: PriceBasis
+  /** The one-line justification for a rate-card price. Null otherwise. */
+  priceNote: string | null
 }
 
 /** One line in the item-summary sheet (aggregated across all rooms). */
@@ -77,6 +99,8 @@ export interface TakeoffSummaryRow {
   productId: string | null
   productName: string | null
   category: string
+  priceBasis: PriceBasis
+  priceNote: string | null
 }
 
 export interface TakeoffModel {
@@ -105,7 +129,18 @@ export interface TakeoffModel {
   }
 }
 
-const DEFAULT_SUPPLIER = 'Can be customized'
+/**
+ * What the Supplier column says when no product is bound.
+ *
+ * It is a STATUS, not a company, and every document that prints it must treat
+ * it as one — `commercial.ts` imports this constant (rather than repeating the
+ * string) precisely so a spec sheet cannot print it as if it were a vendor.
+ *
+ * It used to read "Can be customized", copied from the reference workbook. On a
+ * costed document that reads as an unfilled template; "To be appointed" states
+ * the same fact — procurement has not happened yet — as a project status.
+ */
+export const DEFAULT_SUPPLIER = 'To be appointed'
 
 // The Room Type column is `roomTypeLabel` (finishSchedule.ts) — the SAME
 // derivation the Inventory sheet's Subcategory uses. A private zone_type ->
@@ -211,9 +246,19 @@ export function buildTakeoffModel(state: DocState, opts: TakeoffOptions = {}): T
   // priced through the core reached this cost line unpriced whenever the App map
   // was out of sync — the shape of the Track F bug, and a latent one the branch-2
   // bake-off surfaced (ADR 0004).
-  const priceOf = (c: DocComponent): number => {
+  //
+  // The rate card NEVER overrides this — it is consulted only where the core
+  // holds no price at all, and the row records which of the two it got
+  // (`priceBasis`), so no reader has to guess whether ₹12,000 is a quoted
+  // product or a market rate.
+  const priceOf = (c: DocComponent): { unitPrice: number; basis: PriceBasis; note: string | null } => {
     const p = c.price_inr
-    return p != null && Number.isFinite(p) ? p : 0
+    if (p != null && Number.isFinite(p) && p > 0) return { unitPrice: p, basis: 'bound', note: null }
+    if (opts.rateCard) {
+      const r = furnitureRate(c.category, c.w, c.h)
+      if (r) return { unitPrice: r.inr, basis: 'rate-card', note: r.basis }
+    }
+    return { unitPrice: 0, basis: 'unpriced', note: null }
   }
 
   // Supplier per component: the bound product's real supplier, else its brand,
@@ -244,7 +289,7 @@ export function buildTakeoffModel(state: DocState, opts: TakeoffOptions = {}): T
     const roomId = zone ? (roomRefs?.get(zone.id) ?? zone.id) : 'OS'
     const roomType = roomTypeLabel(zone)
     const desc = itemDescription(c)
-    const unitPrice = priceOf(c)
+    const { unitPrice, basis, note } = priceOf(c)
     const supplier = supplierOf(c)
     const productId = c.product_id ?? null
     const key = `${roomId}|${desc}|${supplier}|${unitPrice}|${productId ?? ''}`
@@ -266,6 +311,8 @@ export function buildTakeoffModel(state: DocState, opts: TakeoffOptions = {}): T
         productId,
         productName: productId ? c.label : null,
         category: c.category,
+        priceBasis: basis,
+        priceNote: note,
       })
     }
   }
@@ -294,6 +341,8 @@ export function buildTakeoffModel(state: DocState, opts: TakeoffOptions = {}): T
         productId: r.productId,
         productName: r.productName,
         category: r.category,
+        priceBasis: r.priceBasis,
+        priceNote: r.priceNote,
       })
     }
   }
