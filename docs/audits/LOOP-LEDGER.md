@@ -1708,3 +1708,210 @@ because an instrument contradicted the brief that commissioned it.
 deadspace 9.5% ≤ 10.0% · `composition.mjs` red off-board by design (run 7 > 5;
 conf 3.26/100 under half of 8.60) · label census 39/205 against a 40 ratchet
 carrying R5 debt back to ≤29.
+
+## W3b — the perimeter rule is real; the one we wrote down is not
+
+`research/qbiq-adjacency-extract.py` reads the reference's room polygons out of the
+PDF's path operators (no raster) and measures who sits next to what. **Anchor:
+wash-path counts by colour reproduce the report's own STATED summary — 7/12, 5/11,
+7/12 offices and conference rooms on pages 3/4/5** — so one wash path is one room,
+proved rather than assumed. The run aborts if that stops being true.
+
+### S3-1's mechanism is confirmed. Its prescription is RETRACTED.
+
+> *"It lines the main field's window wall with alternating offices and conference
+> rooms."* — the S3-1 entry above.
+
+Measured across all three alternatives:
+
+```
+boundary subscription        83.5% / 85.8% / 85.8%   of a 151.9 m perimeter
+Open Space share of facade   55.2% / 60.6% / 56.9%   <- the largest consumer
+enclosed programme share     30.9% / 26.2% / 27.9%
+Office <-> Conf ALTERNATIONS      2 /      1 /      1   on the whole boundary
+Office -> Office transitions      3 /      2 /      2
+```
+
+**There is no alternation.** Offices arrive in **pairs**, conference rooms as
+**singles**, and Office→Office is the commonest enclosed transition on every page.
+The prose label was written by an agent and reasoned from by a human, and neither
+had looked at the shape — the exact failure `gate-independence.md` names under
+*"a prose label is a scalar."*
+
+### Three measured rules replace it
+
+1. **SUBSCRIPTION is the gap.** 84–86% of the reference's boundary is claimed by
+   some room. **Our generator claims 0%.** That, not the mix, is the difference.
+2. **Offices take the facade; conference rooms do not.** Facade incidence
+   **1.00 / 1.00 / 0.57** for Office against **0.25 / 0.18 / 0.33** for Conf Room.
+   Metres-of-boundary hides this (12 conf rooms to 7 offices); incidence does not.
+   Per metre of its own perimeter an office spends 0.27/0.29/0.19 on the facade and
+   presents the **least** circulation face of any kind.
+3. **The band is 4 m.** Median perimeter-room depth **4.04 / 4.04 / 4.03 m** —
+   three plans, one number. 24–43% of the local cross-section.
+
+So `cap_d[i] = 0` becomes *zero for the field's **interior**, 4.04 m of facade band
+on its **edge**, offices first.*
+
+### Q4 was mis-posed, and the instrument said so
+
+"Are service rooms clustered?" has no answer at group level — support 0.52/0.44/0.43
+same-class adjacency against enclosed programme 0.40/0.45/0.49. At kind level it is
+**two opposite behaviours the grouping was averaging away**:
+
+```
+Amenities (WC/STOR./COAT./CLEA./WELL.)  CLUSTERED    room-to-room perimeter .54/.55/.62
+Pantry                                  DISTRIBUTED  same-class adjacency .00/.00/.00
+Comfort Zone                            DISTRIBUTED  same-class adjacency .00/.00/.09
+```
+
+Pantry and Comfort Zone are **never once adjacent to their own kind on any of the
+three plans**. `SpaceKind::Pantry` and the amenity family cannot share a placement
+rule.
+
+### Falsification and sabotage
+
+`--falsify` DROP moved **3/3** of its statistics, SHIFT **2/3**; each sabotage must
+move ≥2 of its *own* three, so one loud result cannot carry a dead one. The first
+SHIFT design moved 1/3 and **exited 1** — that red is why it was redesigned rather
+than tuned away.
+
+Six anchors disabled in a disposable worktree, six reds: scale ×1.25 · legend
+swatches admitted · plate as a 5-gon · tolerance sweep widened 40× · core detection
+off · one real Office wash dropped. **One null reported:** deleting the plate-area
+corroboration stayed GREEN — it guards nothing the scale anchor does not guard
+harder, and it is labelled a corroboration rather than counted as a check.
+
+Tolerance stability: **56 adjacency pairs at 1.0, 2.0 and 4.0 pt — identical**, not
+merely within tolerance.
+
+### Not measurable, stated rather than guessed
+
+**Glazing** — all six plate edges are drawn identically at 0.2903 pt, and **0 of the
+1265 segments** in the style spec's provisional "fine detail" tier lie within 4 pt of
+any plate edge, so that tier is not glazing. Q1 is answered as *exterior-boundary*
+contact; "window" is the brief's word, not the drawing's. **Circulation is not an
+object** (no wash marks corridors; free edge is the proxy). **Doors** are white
+overdraws, not symbols. **Wings** do not exist on this plate — one hexagon around a
+central core — so the band depth's denominator is a local cross-section, not a wing.
+**Nothing is averaged across the three pages**; the A/B/C spread is the error bar.
+**14–16% of the boundary is claimed by nothing** and is not resolved.
+
+## W3a — reference dead space, re-derived from vectors. **The retraction closes, and the target got HARDER.**
+
+`scripts/gates/deadspace.py`'s reference figure of **11.1%** is void and stays void:
+it flooded a raster across the plan's white underlay and measured the wall bounding
+box. The replacement, `research/qbiq-deadspace-extract.py`, reads the drawing instead
+of a picture of it — `page.get_drawings()` hands over the outer wall as six segments
+and every zone wash as a closed path with its own fill. **No `get_pixmap`, no PIL, no
+flood fill, no colour threshold**; colour is only a categorical key into the frozen
+palette.
+
+**Reference = 4.01% dead** (57.2 m² of 1426.7 m²) at radius 3.0 m. Three independent
+anchors, all agreeing:
+
+| anchor | result |
+|---|---|
+| plate polygon vs the report's stated 15,360 USF | 1421.3 m² vs 1427.0 m² — **0.40%** |
+| the page's own graphic scale bar vs the frozen `10/32.5×304.8` | 9.351 m vs 30 ft — **2.3%**, from a feature the desk anchor never touched |
+| wash classifier vs the report's stated summary | **12 Conf Rooms, 7 Offices** — exactly page 6's `12` and `7` |
+
+### The number must not be compared as-is — and this is the finding
+
+**100% of the reference's dead space lies inside a 168.1 m² service core our plans do
+not have.** One cluster, 16.5 × 4.2 m at 82% fill: the lift lobby, confirmed by
+cropping the page — lift cars, two stair runs, WCs. The core is located
+*geometrically* (largest closed ring inside the plate whose bbox overlaps no wash), so
+"the core" is not a prose label doing inference work; at ≥30 m² that rule matches
+exactly one ring, so there was no threshold to tune.
+
+```
+row                  dead m²   plate m²   dead %
+primary                 57.2     1426.7     4.01
+plate_less_core          0.0      1259.6     0.00   <- the comparable row
+```
+
+**Comparing our 9.4% against 4.01% would have understated the gap by more than half.**
+On the comparable row the reference is **0.00%**, holding across radius 2.0–5.0 m and
+every furniture size floor down to 0.5 m². **The gap is our whole 9.4 points, not 5.4.**
+This measurement made the target harder, not easier, which is the outcome an honest
+instrument is for.
+
+### Falsification — four pinned modes, and the null is the one to read
+
+```
+drop-largest-wash   pinned null    +0.00 pp   (Amenities, 56.4 m²)   as pinned
+drop-all-washes     pinned fires   +2.25 pp   (46 paths)             as pinned
+drop-left-furniture pinned fires   +5.60 pp   (765 footprints)       as pinned
+shrink-plate 0.9x   pinned ABORTS  "1151 m² against 1427 m², 19.3% off"
+```
+
+The first falsification was `drop-wash` alone and it did **not** move the number —
+which under the original design would have voided the run. The cause is real: at a 3 m
+radius no *individual* wash is load-bearing, because each room's own furniture already
+covers its floor. **So a wash-extraction bug confined to one room is invisible to this
+measurement.** The *layer* is load-bearing (+2.25 pp), which is what licenses the
+number; the per-room blind spot is recorded rather than discovered later. Each mode's
+verdict is now **pinned**, so a null that starts firing fails as loudly as a fire that
+stops. `shrink-plate` is the enabling-step sabotage — it proves the USF reconciliation
+actually refuses, which is precisely the guard the retracted raster instrument lacked
+(it missed by 72% on this same page and reported anyway).
+
+### Priced differences from `deadspace-core.mjs`, not waved away
+
+Exact polygons vs our AABBs — **identical** (`zones_as_aabb`), a null reported rather
+than omitted. Comfort Zone counted as programme — **identical** either way. Furniture
+identity is "a filled path of plausible size" here vs typed components there; 114 of
+115 unique desk footprints are filled and the answer is stable from 0.02 to 0.5 m².
+`Open Space` is EXCLUDED, the exact analogue of our `Workspace` exclusion.
+
+**No gate band is proposed from this yet.** The comparable pair now exists
+(0.00% vs 9.4%); setting the band is the next session's call, and rubric row 8 stays
+unscored until it is made.
+
+---
+
+# HANDOFF — orchestration in flight
+
+**Resume command:** read the mission constitution, read this ledger from
+`# FINAL PUSH — ORCHESTRATION OPENED`, continue.
+
+## Green floor
+
+Board **13/13** · Rust **184** · `deadspace-core` **9.5% ≤ 10.0%** · battery **43/43
+on the last clean tree**.
+
+## Tree state — DIRTY, deliberately, and this is the orchestration finding
+
+`web/src/import/*` and `research/qbiq-symbol-extract.py` carry **other agents'
+in-flight work**. The commit gate is **tree-wide**, so a parallel agent's red test
+blocks every other workstream's commit — `node import/areaTool.test.mjs` is currently
+2-failing mid-development and refused the adjacency commit.
+
+**That is a real defect in this orchestration design, not an accident:** parallel
+agents that share one working tree serialise at the commit gate no matter how
+carefully their file sets are disjointed. The fix for the next session is **one git
+worktree per agent** (the pattern already used for every sabotage run in this
+project), integrated by the orchestrator. Recorded here so it is not rediscovered.
+
+## Completed and committed
+
+- **W3b adjacency** — the perimeter prescription retracted; subscription (84–86% vs
+  our 0%), offices-take-the-facade (1.00 vs 0.25 incidence), 4.04 m band.
+- **W3a reference deadspace** — comparable row **0.00%**, our gap is the full 9.4 pp.
+
+## In flight, not integrated
+
+| agent | state |
+|---|---|
+| CORE — W1 facade room band | dispatched with the corrected shape (offices-first, 4.04 m, no alternation) |
+| INTERACTION — area tool | tree has `areaTool.test.mjs` **2 failing** mid-development |
+| EXTRACTOR+SURFACE — symbol spec | `research/qbiq-symbol-extract.py` present, unreported |
+| ADVERSARY — sabotage/vacuous/hostile | unreported |
+
+## Next target, shape settled
+
+W1's facade band, then W2's network. W1's acceptance is joint and is already built and
+standing red: `composition.mjs --gate` (run 7 > 5; conf 3.26/100 under half of 8.60)
+**together with** density holding ~9.85 — if seats crater to satisfy the mix, the band
+is not being used. Label ratchet still carries its R5 debt back to ≤29.
