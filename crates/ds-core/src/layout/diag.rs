@@ -91,6 +91,10 @@ pub struct LayoutDiag {
     pub use_oriented_field: bool,
     pub single_region: bool,
     pub rects: Vec<DiagRect>,
+    /// Plate area (m²) no region claims — the maximal-rectangle tiling's
+    /// leftovers along a notched or angled boundary. Enumerated as `residue`
+    /// rects so it can be looked at rather than inferred from a subtraction.
+    pub residue_area: f64,
     pub region_desks: Vec<RegionDesks>,
     /// `desk_target(program, plate_area)` minus frozen — what the plan aimed at.
     pub desk_target: u32,

@@ -395,6 +395,20 @@ pub fn generate(
     for (i, r) in regions.iter().enumerate() {
         diag.rects.push(DiagRect::of(*r, "region", Some(i)));
     }
+    // THE TILING RESIDUE: plate the maximal-rectangle decomposition never
+    // claimed. 122 m² of 930 on the sample plate, and until it is enumerated it
+    // is invisible — it has no region, no plan and no programme, so nothing in
+    // the generator has an opinion about it. Re-decomposed with the REGIONS as
+    // holes, which is the same tool answering the complementary question.
+    if let Some(poly) = plate.as_deref() {
+        if !single_region {
+            let claimed: Vec<geometry::Rect> = regions.to_vec();
+            for r in geometry::decompose_plate(poly, REGION_CELL, 1.0, 2.0, &claimed) {
+                diag.residue_area += r.area();
+                diag.rects.push(DiagRect::of(r, "residue", None));
+            }
+        }
+    }
     for (i, p) in plans.iter().enumerate() {
         diag.rects.push(DiagRect::of(p.field, "field", Some(i)));
         diag.rects.push(DiagRect::of(p.pocket, "pocket", Some(i)));

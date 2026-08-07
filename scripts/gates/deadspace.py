@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 """DEAD SPACE: how much of a floor plan's plate is far from anything drawn on it.
 
+    !!  UNTRUSTED — DO NOT QUOTE THIS SCRIPT'S NUMBERS  !!
+
+    Its plate segmentation is wrong, it was wrong in the two earlier versions
+    too, and the three versions disagree with each other. See
+    "WHY THIS IS UNTRUSTED" below before using or citing anything here.
+
+
     python3 scripts/gates/deadspace.py --png <plan.png> --m-per-px <k> [--radius 3.0]
     python3 scripts/gates/deadspace.py --pdf <report.pdf> --page 3 [--radius 3.0]
 
@@ -28,23 +35,55 @@ WHAT IT MEASURES, from delivered pixels only:
 `radius` defaults to 3.0 m — a bit over two desk pitches, so an ordinary aisle
 never counts and a genuinely empty wing always does.
 
-MEASURED, both subjects, radius 3.0 m:
+WHY THIS IS UNTRUSTED
+=====================
 
-  qbiq reference report page 3          **11.1%** dead   <- the target
-  DSource F1, before the spread         19.4%
-  DSource F1, after the spread          19.0%
+The plate segmentation does not find the building, and the arithmetic says so:
 
-The spread moved it 0.4 points, and that number is the most useful thing this
-instrument has produced. It says the dominant wing's field was NOT what the dead
-space was made of: the plan's empty floor is the 122 m2 of plate that no region
-covers plus two wings whose desk fields are 3.5 m and 2.0 m deep after their room
-bands. Fixing the distribution inside a field cannot reach any of that, and
-without the measurement the visibly better capture would have been reported as
-progress on row 8.
+    plate_px x m_per_px^2  =  1597 m2
+    the plate polygon      =   930 m2   (Editor.layout_diag, core state)
+    the wall bounding box  =  1595 m2
 
-`RATCHET` below is today's number plus a small margin, not the target. It exists
-so the gap cannot widen while the remaining mechanisms are fixed; the target is
-the reference figure above and is recorded in `research/rubric-q3.md`.
+**It was measuring the bounding box.** The editor paints a white rectangle over
+the wall bbox under the plan, the flood fill halted at that colour change, and
+so two thirds of the "dead space" it reported was floor OUTSIDE the building.
+Every number this script produced before 2026-08-07 is a fraction of the wrong
+denominator:
+
+    reference page 3   11.1%      |  DSource F1, spread   19.0%
+    DSource F1, pre    19.4%      |  DSource F1, F1a      19.0%
+
+Those are retracted. They are recorded here so the retraction is legible, not
+because they mean anything.
+
+Flooding on INK instead of on background colour was the obvious fix and it is
+also wrong: the plate boundary is an anti-aliased ~1 px double line at fit zoom,
+the flood leaks through it, and the same plan then measures **0.0% dead** at both
+fit and 2x. Three versions, three answers — 19.0%, an aborted run, 0.0% — on one
+unchanged drawing. Per `CLAUDE.md`: when repeat measurement disagrees, the
+instrument IS the finding; fix it before quoting any of its numbers.
+
+WHAT THE REPLACEMENT LOOKS LIKE
+-------------------------------
+
+The two subjects need different derivations, and pretending one code path serves
+both is what produced this:
+
+  * **Our plans** have a document. Derive the plate from `Editor::plate()` and the
+    programme from component footprints and zone rects, then run the distance
+    transform in world metres. That is core state, which
+    `.claude/rules/gate-independence.md` explicitly permits, and no segmentation
+    is involved at all.
+  * **The reference** has no document, so it stays a pixel measurement — but its
+    plate must come from the page's stated floor area rather than from a flood
+    fill, which removes the failing step rather than tuning it.
+
+`--expect-area` is already wired and is a self-check, not an input: it changes no
+number, it refuses to report one taken over the wrong region. Any replacement
+keeps it and asserts against core state.
+
+RATCHET is retained only so a future version has a slot to fill. It gates nothing
+today because nothing here is trustworthy enough to gate on.
 """
 
 import argparse
@@ -76,13 +115,25 @@ def load_pdf_page(path, page_no, zoom=3.0):
     return np.asarray(img, dtype=np.int16), pix
 
 
-def outside_mask(rgb, bg_tol=12):
-    """Everything reachable from the border without crossing ink or wash."""
+def outside_mask(rgb, ink):
+    """Everything reachable from the frame border without crossing INK.
+
+    **The stopping condition is ink, not "the background colour", and that was a
+    real defect.** The first version flooded across pixels near the border's own
+    colour, so it halted at any colour change — including the editor's white
+    bounding-box rectangle, which is painted under the plan and is NOT the
+    building. Checked by arithmetic: `plate_px × m_per_px²` came to **1597 m²**
+    against a plate whose polygon is **930 m²** and whose wall bounding box is
+    **1594.9 m²**. It was measuring the box. Two thirds of the "dead space" it
+    reported was floor outside the building.
+
+    Ink is the only thing a drawing uses to say "the building stops here", and it
+    is the one classification this instrument already owns, so the flood uses it.
+    """
     h, w, _ = rgb.shape
-    # Page background = the modal border colour.
     border = np.concatenate([rgb[0], rgb[-1], rgb[:, 0], rgb[:, -1]])
     bg = np.median(border, axis=0)
-    near_bg = (np.abs(rgb - bg).max(axis=2) <= bg_tol)
+    near_bg = ~ink
     out = np.zeros((h, w), dtype=bool)
     q = deque()
     for x in range(w):
@@ -162,17 +213,38 @@ def distance_to_ink(ink):
     return d / 3.0
 
 
-def measure(rgb, m_per_px, radius_m):
-    out, bg = outside_mask(rgb)
-    plate = ~out
+def measure(rgb, m_per_px, radius_m, dump=None, expect_area=None):
+    border = np.concatenate([rgb[0], rgb[-1], rgb[:, 0], rgb[:, -1]])
+    bg = np.median(border, axis=0)
+    ink_all = ink_mask(rgb, bg)
+    if ink_all.sum() < 100:
+        raise SystemExit("under 100 ink px — the instrument is the finding, not the plan")
+    out, _ = outside_mask(rgb, ink_all)
+    plate = ~out & ~ink_all
     if plate.sum() < 1000:
         raise SystemExit("plate is under 1000 px — the flood fill found no drawing")
-    ink = ink_mask(rgb, bg) & plate
-    if ink.sum() < 100:
-        raise SystemExit("under 100 ink px — the instrument is the finding, not the plan")
+    ink = ink_all & ~out
+    if expect_area is not None:
+        got = plate.sum() * m_per_px * m_per_px
+        if abs(got - expect_area) > 0.25 * expect_area:
+            raise SystemExit(
+                f"plate measures {got:.0f} m² against an expected {expect_area:.0f} m² — "
+                "the flood fill is not finding the building, and every number below "
+                "would be a fraction of the wrong denominator"
+            )
     dist_px = distance_to_ink(ink)
     dist_m = dist_px * m_per_px
     dead = plate & (dist_m > radius_m)
+    if dump:
+        # WHERE, not just how much. A fraction cannot tell a ring of thin
+        # boundary ribbons from one large empty wing, and those need different
+        # fixes in different files.
+        from PIL import Image
+
+        out = rgb.astype(np.uint8).copy()
+        out[dead] = (np.array([255, 60, 60]) * 0.55 + out[dead] * 0.45).astype(np.uint8)
+        Image.fromarray(out).save(dump)
+        print(f"dead-space map -> {dump}")
     return {
         "plate_px": int(plate.sum()),
         "ink_px": int(ink.sum()),
@@ -192,6 +264,14 @@ def main():
     ap.add_argument("--m-per-px", type=float)
     ap.add_argument("--radius", type=float, default=3.0)
     ap.add_argument("--max-dead", type=float, help="fail above this dead fraction")
+    ap.add_argument("--dump", help="write a PNG showing WHERE the dead space is")
+    ap.add_argument(
+        "--expect-area",
+        type=float,
+        help="known plate area (m²); the run aborts if the flood fill disagrees by >25%%. "
+        "This is a SELF-CHECK on the instrument, not an input to the measurement — "
+        "it changes no number, it only refuses to report one taken over the wrong region.",
+    )
     a = ap.parse_args()
 
     if a.pdf:
@@ -208,7 +288,7 @@ def main():
     else:
         raise SystemExit("give --png or --pdf")
 
-    r = measure(rgb, m_per_px, a.radius)
+    r = measure(rgb, m_per_px, a.radius, dump=a.dump, expect_area=a.expect_area)
     print(
         f"plate {r['plate_px']} px · ink {r['ink_px']} px · "
         f"dead (>{r['radius_m']} m from ink) {r['dead_px']} px = {r['dead_frac']*100:.1f}%"

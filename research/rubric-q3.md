@@ -43,14 +43,15 @@ silently taken.
 | 5 | **Furniture symbol fidelity** | `symbols.test.mjs` (46) + visual read | **3** | **3** | The architecture is right — world units, seats from the model, continuous LOD, and the task chair does draw seat/back/arms. What is missing is the *vocabulary* and the *provenance*: 9 categories, all authored rather than extracted. **Q3-D2 (extract the spec from the reference PDF) is not started**, so nothing here is measured against qbiq's actual geometry. |
 | 6 | **Label / tag collisions** | tag census at the canvas API (`capture-fixtures.mjs`) | **4** | **4** | label-on-label **0**; label-on-furniture **29 / 205**, down from **127 / 211** when tags were pinned to zone centres. Not 5 because of the 29, and because a zone rect wider than the room drawn inside it still lets a tag cross a wall (`OPEN WORKSPACE (2)`). |
 | 7 | **Circulation legibility** | `Editor::layout_diag` (the generator's own account — diagnostic only, never a gate input) + visual read | **2** | **3** | Measured on F1: **2 spines for 3 regions, 0 entry connectors, 0 links, 4 seams**. The network is not connected and there is no entry anchor in the fixture. The spread opened real aisles between desk neighbourhoods, which is the first legible circulation the plan has had, but the drawn network is still not emitted as connected geometry. **Q3-F F2 not done.** |
-| 8 | **Plan uses the floor** | `scripts/gates/deadspace.py` — one pixel-census instrument run on BOTH the qbiq reference PDF and our delivered plan | **2** | **2** | **Reference 11.1% dead space** (>3 m from any ink); **DSource 19.4% → 19.0%** after the neighbourhood spread. The spread fixed distribution INSIDE the dominant field (desks 55% → 84% of its width, seat count unchanged) and moved dead space **0.4 points**, which is the finding: the empty floor is the 122 m² of plate no region covers plus two wings whose fields are 3.5 m and 2.0 m deep after their room bands. Still 2. |
+| 8 | **Plan uses the floor** | **NO TRUSTED INSTRUMENT.** `scripts/gates/deadspace.py` is marked UNTRUSTED — its plate segmentation measured the wall bounding box (1597 m²) instead of the plate polygon (930 m²), and three successive versions gave 19.0% / abort / 0.0% on one unchanged drawing. Every figure it produced is retracted. | **?** | **?** | What IS measured, from core state: the maximal-rectangle tiling leaves **75.5 m² in 10 pieces** unclaimed above a 2 m² floor, and they are boundary ribbons — 8.5×2.0, 9.5×1.5, 1.0×6.5, 1.0×5.0 — not room-shaped pockets. Unscored rather than guessed, per this file's own rule. |
 | 9 | **Zone fill S/L conformance** | `web/src/editor/zoneFillSpec.test.mjs` — band from the spec file, values parsed from `planStyle.ts` source | **5** | **5** | Was unscored, so it got measured, and **seven of eight zones failed saturation** — Workspace at S 55 against the spec's mean of 86. Hues untouched, S/L moved into the band, ground left neutral. |
 | 10 | **Paper sheet completeness** | `scripts/gates/run-all.sh` G1–G11 | **4** | **—** | The board is the instrument and it is green. Not yet re-run per fixture, so the edited population is unscored. |
 | 11 | **Metrics trustworthiness** | `metrics_tests.rs` (8 tests, 1 200 evaluations) + `statsPanel.test.mjs` | **5** | **5** | Was 1 — the panel showed GEA 1 m² beside NIA 138 m² and efficiency 1159%. One NIA owner, a plate that can say "unresolved", and a randomized battery that reaches broken plates. Three-part sabotage round; two parts shipped unguarded and now red under sabotage. |
 
-**Rows below 4: 5, 7, 8.** Rows 7 and 8 are the same root cause — the generator,
-not the renderer — and `deadspace.py` has now quantified the gap to the reference
-(11.1% vs 19.0%) rather than leaving it as a read.
+**Rows below 4: 5, 7.** Row 8 is **unscored** — its instrument was found to be
+measuring the wrong region and its numbers are retracted. Rows 7 and 8 remain the
+same root cause (the generator, not the renderer); what changed is that row 8 no
+longer has a number pretending otherwise.
 
 ---
 
@@ -70,12 +71,14 @@ not the renderer — and `deadspace.py` has now quantified the gap to the refere
 - **Metrics.** 120 seeds × 10 mutations from each of five fixtures. Non-vacuity
   asserted by requiring the population to include both `traced` and `unresolved`
   plates; it prints its census.
-- **Dead space.** One instrument, two subjects: the qbiq reference PDF page and
-  our delivered plan, both measured from pixels — plate by flood fill from the
-  frame, ink by "darker than background or strongly coloured" (a pale wash is
-  floor, not ink), dead by chamfer distance transform. Neither side reads a
-  producer's plate polygon, so the threshold is reference-derived rather than
-  calibrated on the artifact under test.
+- **Dead space — RETRACTED.** One instrument was applied to the reference page
+  and to our plan, with the plate found by flooding from the frame. It found the
+  wall BOUNDING BOX, not the plate: 1597 m² against a 930 m² polygon. Flooding on
+  ink instead leaks through the anti-aliased 1 px boundary and reports 0.0%. Three
+  versions, three answers, one unchanged drawing. The replacement derives our side
+  from core state (plate polygon + component footprints) and keeps pixels only for
+  the reference, whose plate comes from its stated floor area rather than a flood.
+  Nothing from the old instrument is cited anywhere in this file.
 - **`layout_diag` is NOT an instrument in this sense.** It is the generator's own
   account of what it decided, which `.claude/rules/gate-independence.md` forbids a
   gate from consuming. It is how a mechanism gets NAMED; every acceptance number

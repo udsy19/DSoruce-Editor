@@ -1287,3 +1287,71 @@ spot available. Ratchet raised to 40 **with the cause recorded, not as a tuning*
 The metric lumps two different things together — a tag over its own room's table
 (unavoidable and correct) and a tag stranded on an open desk field (avoidable).
 Splitting them is the named next refinement.
+
+## THE DEADSPACE INSTRUMENT IS UNTRUSTED — every number it produced is RETRACTED
+
+**Found while executing F1b's first step: look at the residue before choosing a
+fix.** The instrument was asked to dump WHERE the dead space is rather than only
+how much, and the map showed two large red blocks — one west of the desk field,
+one south-east of the rooms — in places that did not match the 122 m² of tiling
+residue at all. A shape that does not match its supposed cause is a reason to
+check the instrument, so:
+
+```
+plate_px x m_per_px^2  =  1597 m2
+the plate polygon      =   930 m2   (Editor::layout_diag, core state)
+the wall bounding box  =  1595 m2
+```
+
+**It was measuring the bounding box.** The editor paints a white rectangle over
+the wall bbox beneath the plan; the flood fill halted at that colour change; two
+thirds of the reported "dead space" was floor outside the building. Retracted:
+
+| claim | status |
+|---|---|
+| qbiq reference page 3 = 11.1% dead | **RETRACTED** |
+| DSource F1 before the spread = 19.4% | **RETRACTED** |
+| DSource F1 after the spread = 19.0% | **RETRACTED** |
+| DSource F1 after F1a = 19.0% | **RETRACTED** |
+| "the spread moved dead space 0.4 points" | **RETRACTED** — both endpoints were fractions of the wrong denominator |
+
+Flooding on INK instead of on background colour is the obvious fix and is also
+wrong: the plate boundary is an anti-aliased ~1 px double line at fit zoom, the
+flood leaks through it, and the same drawing then measures **0.0% dead** at both
+fit and 2×. Three versions, three answers — **19.0% · aborted · 0.0%** — on one
+unchanged drawing. `CLAUDE.md`: *if the same measurement gives different answers
+on repeat runs, the instrument is the finding; fix it before quoting any of its
+numbers.* The spread is stated here rather than averaged.
+
+`--expect-area` is now wired as a permanent SELF-CHECK: it changes no number, it
+refuses to report one taken over the wrong region. It is what turned this from a
+plausible statistic into a caught defect, and it stays.
+
+**Replacement design, recorded and not yet built.** The two subjects need
+different derivations and pretending one path serves both is what produced this:
+our plans have a document, so the plate comes from `Editor::plate()` and the
+programme from component footprints and zone rects, with the distance transform
+in world metres — core state, which the rules explicitly permit, and no
+segmentation at all; the reference has no document, so it stays pixels, but its
+plate comes from the page's stated floor area rather than a flood fill, which
+removes the failing step instead of tuning it.
+
+**Consequences, stated rather than absorbed:**
+
+- **Rubric row 8 is now UNSCORED**, not 2. It had a number and the number was
+  meaningless.
+- **F1a's "moved dead space by zero"** was quoted in its own ledger entry above.
+  That claim rested on this instrument and is withdrawn; what stands for F1a is
+  its `layout_diag` acceptance, which is core-derived and unaffected —
+  alloc 90/placed 90, both wings declared, zero rejections, 92 desks.
+- **F1b is not started.** What is known about the residue is core-derived and
+  therefore still good: **75.5 m² in 10 pieces** above a 2 m² floor, and the
+  table says what they are — 8.5×2.0, 9.5×1.5, 1.0×6.5, 1.0×5.0, 4.0×1.0 —
+  **boundary ribbons, not room-shaped pockets.** The reference's answer to odd
+  geometry is amenity and lounge; a 1 m ribbon cannot hold either, so the choice
+  between "merge into the neighbouring region" and "name it circulation" has to
+  be made against a working instrument, and there isn't one yet.
+
+The honest order for the next session is: **rebuild the instrument first**, then
+F1b, because F1b's acceptance is a dead-space number and there is currently no
+number to accept against.
