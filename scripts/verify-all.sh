@@ -61,6 +61,7 @@ run "tsc --noEmit" bash -c 'cd web && pnpm typecheck'
 while IFS= read -r t; do
   run "node ${t#web/src/}" node "$t"
 done < <(cd web && find src -name '*.test.mjs' | sed 's|^|web/|' | sort)
+run "deadspace (core-derived)" node scripts/gates/deadspace-core.mjs --max-dead 0.10
 run "style-gate" node bench/style-gate.mjs
 run "accent-univalence" node bench/accent-univalence.mjs
 

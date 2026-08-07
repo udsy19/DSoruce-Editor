@@ -1355,3 +1355,76 @@ removes the failing step instead of tuning it.
 The honest order for the next session is: **rebuild the instrument first**, then
 F1b, because F1b's acceptance is a dead-space number and there is currently no
 number to accept against.
+
+## The instrument, rebuilt from core state · **DONE, and it changes the picture**
+
+`scripts/gates/deadspace-core.mjs`. No segmentation, no pixels, no flood fill —
+the plate comes from `Editor::plate()`, the programme from the components and
+zones the core emitted, and the distance transform runs in world metres.
+`.claude/rules/gate-independence.md` permits exactly this: *derive from bytes or
+core state*. There is no step that can find the wrong region, so there is nothing
+to calibrate.
+
+**Two self-checks, and the first is the one the retracted version lacked:**
+
+1. The sampled plate must agree with the polygon's own area to within 2%, or the
+   run aborts. On F1 it reports **930.1 m² against 930.1 m²** — the failure mode
+   that produced 1597 m² cannot recur silently.
+2. At least ten programme elements, or the instrument is the finding.
+
+An **unresolved plate is refused, not scored 0%** — F3 prints "plate unresolved —
+nothing to measure" rather than a flattering number.
+
+### The definition was chosen by measuring both ways, not by taste
+
+`Workspace` is a 536 m² rectangle drawn over the desk field. Counting it as
+programme lets an empty half of that rectangle score as used floor — a plan could
+cover the plate in one Workspace zone and measure 0% dead, which is the
+self-certification this queue keeps finding. So the open field earns nothing; its
+**desks** do, one footprint at a time. Enclosed rooms count as themselves.
+
+| definition | F1 |
+|---|---|
+| open zones counted as programme | 2.7% |
+| **open zones excluded (adopted)** | **9.4%** |
+
+*(The first draft of that comment guessed 12.6% before the run. Corrected in
+place and recorded, because writing a number before measuring it is the habit
+this whole queue keeps catching.)*
+
+### Measured baseline, all five fixtures
+
+```
+F1 930.1 m² · 241 programme elements · dead 87.8 m² =  9.4%
+F2 930.1 m² · 241                    · dead 87.8 m² =  9.4%
+F3 plate unresolved — nothing to measure
+F4 930.1 m² · 240                    · dead 87.8 m² =  9.4%
+F5 930.1 m² · 234                    · dead 88.3 m² =  9.5%
+```
+
+### Falsification
+
+Deleted 34 desks from the plate's eastern half and re-ran on the snapshot:
+**9.4% → 10.5%**, gate exit 1. It catches the plan it is meant to catch.
+
+**Stated weakness:** removing 37% of the desks moved the number only 1.1 points,
+because a removed desk usually leaves a neighbour inside the 3 m radius. This is
+a coarse instrument — good for "a wing is empty", poor for "the field thinned".
+Recorded rather than tuned; sharpening it means a smaller radius or a coverage
+measure rather than a distance one, and that is a decision for when there is a
+reference number to calibrate the shape of the metric against.
+
+### What it still cannot do
+
+**There is no comparable qbiq number.** The reference has no document, so the
+reference side must be rebuilt as a pixel measurement whose plate comes from the
+page's stated floor area rather than a flood fill. Until then `--max-dead 0.10`
+is a **ratchet against ourselves**, explicitly labelled as one in the script; it
+is not the reference-derived band the brief asks for, and calling it one would be
+the same error as the number it replaced.
+
+Wired into `scripts/verify-all.sh` (**43/43**), so the ratchet holds on every
+commit.
+
+**Rubric row 8 stays UNSCORED.** 9.4% is a trustworthy measurement of ourselves
+with nothing yet to score it against.
