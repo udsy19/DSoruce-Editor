@@ -2445,3 +2445,91 @@ them: `verify-all.sh` runs deadspace/style-gate/accent-univalence, `run-all.sh` 
 G1–G13, `package.json` has one `bench` script that spawns `dwg2dxf`, and there is no
 `.github/workflows`. **Four documents list `ladder-check` as PASS on a board it has
 never been on.** All three pass at HEAD in 51/49/54 ms.
+
+## H1 — the capacity/packer divergence, closed at the class level
+
+*(= ADVERSARY H1 = W1's blocker. Found twice, independently.)*
+
+`field_free_slots` and `pack_desks` shared a lattice and predicates but **not an
+obstacle set**. There is now ONE: `FieldGrid` enumerates the candidate slots once
+against one obstacle set; **capacity is its cardinality and placement is a subset
+of its members.** No second enumeration survives to drift.
+
+### Four divergences, not one
+
+1. **The cluster aisle** — the packer offsets slot `i` by
+   `(i/cluster_cols).min(max_aisles)·clear`; the capacity walk did not. The two
+   were counting slots **at different coordinates**.
+2. **The spread's `ceil(target / inner_n)`** — the empty-room assumption F1a
+   removed from *allocation*, still live inside *placement*. On 20 × 20 m:
+   capacity 25, four spread rows holding 28 candidates, 12 inside rooms →
+   **16 placed**.
+3. **The pair tail** — a bench unit maps to lines `2u`/`2u+1`, and `2u+1` can equal
+   `outer_n`: a phantom line off the field edge (`b11` on 30×24, `b13` on
+   real_plate). Structurally impossible now — the enumeration owns the extent.
+4. **A second capacity model** — `min_viable_field_depth`'s depth pre-filter in
+   `allocate_desks`, disagreeing in the direction `packing.rs`'s own comment warns
+   about (*"the reverse strands floor"*): real_plate R3's 2.0 m field was allocated
+   0 while its grid holds **one** free slot — a pair does not fit, the pair's first
+   row does. Deleted; the helper went with it (no-bloat). **W1 will want it back
+   for the band clamp — recover from `packing.rs` at `7332577`.**
+
+### The battery
+
+`desk_capacity_agrees_with_the_packer_across_plates_and_seeds` — **10 plates × 3
+programs × 3 seeds = 90 cases / 126 region-cases.** Pre-fix, in its 60-case form:
+**40 violations in 84 region-cases**. Now **0**, with **35** region-cases where
+capacity actually bound.
+
+Three non-vacuity guards, and the third exists because the first attempt was
+vacuous: keying it on `allocated > placed` measures exactly what the fix drives to
+zero, so it went vacuous the moment it started passing. It is keyed on
+**capacity-bound cases** instead.
+
+### R10 axes
+
+**Varied:** plate shape × seed × bench pairing × cluster rhythm × region count.
+**Explicitly NOT varied:** desk/clearance dimensions, keep-outs, imported interior
+walls, and **the room band's depth — the axis W1 moves.** The test's own comment
+tells W1 to add a banded plate rather than assume this covers it.
+
+### Sabotage — five runs, two nulls
+
+| sabotage | battery |
+|---|---|
+| composite (split model restored) | **RED 95/126** |
+| aisle-blind capacity | **RED 29/126** |
+| the old `ceil(target/inner_n)` spread | **RED 60/126** |
+| depth pre-filter restored | **RED** on the battery *and* on the wall-to-wall test |
+| enabling step: grid blind to obstacles | **RED 110/126** |
+
+**Null 1:** with the battery as first written, aisle-blind capacity left it
+**green** — the divergence was real but unobservable, which is why the
+`cluster_cols` axis and the `capacity == pack_capacity` assertion exist at all.
+**Null 2:** the phantom-tail sabotage has **no expressible form** — the enumeration
+owns the extent, so there is no phantom line to visit.
+**Also null:** the same-grid clearance net, kept deliberately as a runtime guard
+rather than assumed away, **fired 0 times across 185 tests**.
+
+### FALSIFIED — the wall-to-wall test was passing on the defect
+
+`irregular_plate_is_filled_wall_to_wall_not_a_central_column`'s `best_reach 25.6`
+came from the **top-up pass**, which ran only because the primary pass
+under-delivered on seeds 1/3/5. Seeds 2/4/6 gave 21.6 at HEAD. Removing the
+over-allocation removed the shortfall and the far-wing desk went with it — until
+fixing capacity's *under*-count restored it **through the allocation, where it
+belongs**. 25.6 again, now by design rather than by accident.
+
+### Programme unchanged
+
+All ten goldens moved; **desk counts identical** (21·25·20·88·88·88·26·88·88·24),
+component, wall and zone counts identical in all ten. Only `total` and the digest
+moved — position, not programme. `deadspace-core` and `composition` byte-identical
+to a HEAD build. Rust **185**.
+
+**Flagged for W1:** `pack_capacity < capacity` for regions `i > 0` — an earlier
+region's desks eating a later region's measured slots — is the one divergence the
+single model does **not** close by construction, because allocation is simultaneous
+and placement sequential. It is **counted, not assumed absent**, and measures **0
+across all 126 region-cases**. A deep room band could change that; the counter is
+already there to see it.

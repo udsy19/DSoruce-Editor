@@ -3900,7 +3900,35 @@ fn golden_fingerprint(doc: &Document, program: &Program) -> String {
 /// (`support_spaces = false`), and an EXPLICIT `rooms` program, over a plain
 /// rectangle, the L plate and the user's real multi-wing plate.
 ///
-/// PROVENANCE. Last re-captured for **Q3-F/F1a, occupancy-aware desk
+/// PROVENANCE. Last re-captured for **the ONE OBSTACLE MODEL** (`FieldGrid`,
+/// `layout/packing.rs`) — ADVERSARY H1, and the blocker on the W1 facade band.
+/// **All ten cases moved, and every count is identical in all ten:**
+///
+///   * **desk counts identical** — 21 · 25 · 20 · 88 · 88 · 88 · 26 · 88 · 88 ·
+///     24, the same ten numbers as before;
+///   * **component counts identical** — c72 · c80 · c70 · c222 · c222 · c222 ·
+///     c68 · c192 · c209 · c63;
+///   * **wall counts identical** and **zone counts identical** in all ten;
+///   * only `total` and the digest moved, in all ten.
+///
+/// That is a change of POSITION with no change of PROGRAMME — the same signature
+/// the neighbourhood spread and the F1a allocation fix each produced, and it is
+/// the honest answer to "does this change what the plan contains?" **It does
+/// not.** The desks sit on different lattice lines because capacity and
+/// placement now enumerate ONE slot set instead of two that had drifted apart.
+///
+/// What changed. `field_free_slots` (capacity) and `pack_desks` (placement)
+/// shared a lattice and predicates but not an OBSTACLE SET, and had diverged in
+/// four places: the cluster aisle (counted at coordinates the packer never
+/// visits), the neighbourhood spread's `ceil(target / inner_n)` empty-room
+/// arithmetic, a bench pair's phantom `2u+1` tail line past the field edge, and
+/// a depth pre-filter that zeroed capacity on a field the grid could actually
+/// use. Both halves now read one `FieldGrid`. The desk reaching past the notch
+/// into `real_plate`'s far wing on seeds 1/3 used to arrive through the top-up
+/// pass, which ran only *because* the primary pass under-delivered; it now
+/// arrives through the allocation, which is where it belongs.
+///
+/// Before that, **Q3-F/F1a, occupancy-aware desk
 /// allocation** (`regions::allocate_desks` + `packing::field_free_slots`).
 /// **Three** of the ten cases moved — `default/real_plate/seed2`,
 /// `no_support/real_plate/seed2`, `explicit_rooms/l_plate/seed3` — and again
@@ -4008,16 +4036,16 @@ fn golden_generate_output_is_frozen() {
     cases.push(("explicit_rooms/l_plate/seed3".to_string(), l_room(), prog_rooms, 3));
 
     const EXPECTED: [&str; 10] = [
-"default/rect20x14/seed1 = c72 w52 z11 desks21 total87876523 #2fcc5ec3cf5e079e",
-            "default/rect20x14/seed2 = c80 w52 z11 desks25 total89274625 #c293b33800e054eb",
-            "default/rect20x14/seed3 = c70 w52 z11 desks20 total86967629 #8364ab2af8a362bc",
-            "default/real_plate/seed1 = c222 w155 z34 desks88 total90929428 #6575e587eaa8cef0",
-            "default/real_plate/seed2 = c222 w155 z34 desks88 total90385409 #33d51ab40b060a5d",
-            "default/real_plate/seed3 = c222 w155 z34 desks88 total90889172 #ba4b6c959c324aa3",
-            "no_support/rect20x14/seed1 = c68 w22 z4 desks26 total92213202 #22afe40286b75b52",
-            "no_support/real_plate/seed2 = c192 w101 z38 desks88 total94453541 #92ef0a6fcdc685b8",
-            "explicit_rooms/real_plate/seed1 = c209 w125 z26 desks88 total88630957 #745a1d0b9893da6e",
-            "explicit_rooms/l_plate/seed3 = c63 w33 z10 desks24 total87917986 #d4428b7e286ba0fd",
+"default/rect20x14/seed1 = c72 w52 z11 desks21 total87876523 #1a0244c3d88eeb3c",
+            "default/rect20x14/seed2 = c80 w52 z11 desks25 total89274625 #1fca633eeb04543f",
+            "default/rect20x14/seed3 = c70 w52 z11 desks20 total86967629 #52556c4029d00bfc",
+            "default/real_plate/seed1 = c222 w155 z34 desks88 total90829644 #51346e5dd9e67717",
+            "default/real_plate/seed2 = c222 w155 z34 desks88 total90374158 #8e014e5bf944ae6a",
+            "default/real_plate/seed3 = c222 w155 z34 desks88 total90789464 #dab020c8941dea25",
+            "no_support/rect20x14/seed1 = c68 w22 z4 desks26 total92565832 #991c040294e31e67",
+            "no_support/real_plate/seed2 = c192 w101 z38 desks88 total94498462 #aa40cc22254958f2",
+            "explicit_rooms/real_plate/seed1 = c209 w125 z26 desks88 total88552582 #2e9ede920e2f8d79",
+            "explicit_rooms/l_plate/seed3 = c63 w33 z10 desks24 total87841010 #2c4c9d19abba5d0b",
     ];
     assert_eq!(cases.len(), EXPECTED.len(), "case list and expectations must line up");
 
@@ -4988,4 +5016,210 @@ fn edited_walls_cannot_produce_absurd_metrics() {
     assert!(eff <= 100.0 + 1e-6,
         "efficiency {eff:.1}% exceeds 100 — usable {usable:.2} > NIA {nia:.2} after a wall edit");
     assert!(nia <= gea + 1e-6, "NIA {nia:.2} > GEA {gea:.2} after a wall edit");
+}
+
+// ---------------------------------------------------------------------------
+// The desk-capacity / packer agreement BATTERY (ADVERSARY H1 · W1 blocker)
+// ---------------------------------------------------------------------------
+
+/// One (plate, program, seed) case's per-region capacity-vs-placement rows.
+///
+/// Deliberately re-derived from `generate`'s own diag: this is a unit test of an
+/// internal invariant between two internal functions, not a gate on a delivered
+/// artifact (`.claude/rules/gate-independence.md` scope). The population it runs
+/// over is the thing under test here, and that population is what the battery
+/// varies.
+fn capacity_rows(doc: &mut Document, program: &Program, seed: u64) -> Vec<RegionDesks> {
+    generate(doc, program, seed, false).region_desks
+}
+
+/// The plate shapes the battery runs. Plain RECTANGLES are the point: the
+/// shipped fixture population all descends from ONE 930 m² plate on which the
+/// desk field was over-subscribed, so capacity never bound and the invariant
+/// could not fail. These are the plates the adversary used.
+fn battery_plates() -> Vec<(String, Document)> {
+    let mut v: Vec<(String, Document)> = Vec::new();
+    for (w, h) in [
+        (18.0, 20.0),
+        (20.0, 20.0),
+        (24.0, 20.0),
+        (28.0, 20.0),
+        (30.0, 24.0),
+        (40.0, 18.0),
+        (14.0, 10.0),
+        (22.0, 12.0),
+    ] {
+        v.push((format!("rect{w:.0}x{h:.0}"), room(w, h)));
+    }
+    v.push(("l_plate".into(), l_room()));
+    v.push(("real_plate".into(), real_plate_doc()));
+    v
+}
+
+/// The programs the battery runs. Bench pairing is an AXIS in its own right —
+/// the outer axis is a non-uniform block pitch when it is on, and that is the
+/// half of `outer_line` the two callers share.
+fn battery_programs() -> Vec<(&'static str, Program)> {
+    vec![
+        ("bench", Program { bench_pairs: true, ..Program::default() }),
+        ("single", Program { bench_pairs: false, ..Program::default() }),
+        // A THIRD program purely to exercise the CLUSTER AISLE. At the default
+        // `cluster_cols` the aisle fires on at most the last slot or two of a
+        // row, and the capacity/placement divergence it causes was measurably
+        // unobservable: sabotaging capacity to ignore the aisle entirely left
+        // this battery green over 60 cases. Aisles every two desks make the
+        // displacement large enough to move slots in and out of room
+        // footprints, which is what the sabotage needs in order to bite.
+        ("tight", Program { bench_pairs: true, cluster_cols: 2, ..Program::default() }),
+    ]
+}
+
+/// **Capacity may never exceed what the packer can place — over a VARIED
+/// population.**
+///
+/// **R10 AXES VARIED BY THIS BATTERY'S FALSIFICATION** — plate shape (10 plates:
+/// 8 plain rectangles + the L plate + the real multi-wing plate) × seed (1, 2, 3:
+/// the lattice half-pitch phase and both `SeedChoices` fields) × bench pairing
+/// on/off (the two outer-axis regimes) × cluster rhythm (`cluster_cols` 5 vs 2,
+/// which is what makes the aisle displacement observable) × region count (1 on
+/// rectangles, 2–4 on L/real).
+///
+/// **NOT varied, and therefore NOT certified by it:** desk and clearance
+/// dimensions, keep-outs, imported interior walls, and the room band's DEPTH —
+/// the last is exactly the axis W1's `cap_d = FACADE_BAND_D` will move, and it
+/// is reached here only through whichever seeds happen to band deeply. W1 must
+/// add a banded plate to `battery_plates` rather than assume this covers it.
+///
+/// The axis statement is not decoration. This defect existed, and its invariant
+/// was GREEN, for one reason only: the population never varied plate shape.
+/// Every axis left unnamed above is a place the same thing can happen again.
+///
+/// The invariant: a region allocated `a` desks must either place them all, or
+/// account for every shortfall with a rejection. `field_free_slots` counting a
+/// slot the packer then refuses is an over-allocation — desks handed to a wing
+/// that cannot seat them, which is exactly the defect F1a fixed from the other
+/// side.
+#[test]
+fn desk_capacity_agrees_with_the_packer_across_plates_and_seeds() {
+    let mut cases = 0usize;
+    let mut region_cases = 0usize;
+    let mut binding = 0usize;
+    let mut intrusion = 0usize;
+    let mut violations: Vec<String> = Vec::new();
+    for (pname, base) in battery_plates() {
+        for (gname, program) in battery_programs() {
+            for seed in [1u64, 2, 3] {
+                let mut doc = base.clone();
+                let rows = capacity_rows(&mut doc, &program, seed);
+                cases += 1;
+                for (i, r) in rows.iter().enumerate() {
+                    region_cases += 1;
+                    // The field BINDS when the allocator handed out every slot
+                    // capacity found — the only regime in which an over-count is
+                    // observable at all. On the sample plate the field is
+                    // over-subscribed (programme < capacity everywhere) and this
+                    // is never true, which is precisely why the shipped
+                    // fixture-only invariant could not fail.
+                    //
+                    // Keyed on CAPACITY, not on `allocated > placed`: the latter
+                    // is exactly what the fix drives to zero, so using it would
+                    // make this guard vacuous the moment it started passing.
+                    if r.capacity > 0 && r.allocated == r.capacity {
+                        binding += 1;
+                    }
+                    // The allocator's clamp. Independent of the packer.
+                    if r.allocated > r.capacity {
+                        violations.push(format!(
+                            "{pname}/{gname}/seed{seed} R{i}: allocated {} over a measured \
+                             capacity of {}",
+                            r.allocated, r.capacity
+                        ));
+                    }
+                    // THE ONE-MODEL ASSERTION, and the strongest thing here.
+                    //
+                    // Region 0's packer grid is built against the very obstacle
+                    // set `allocate_desks` measured, with nothing placed in
+                    // between — so the two numbers are the SAME QUESTION asked
+                    // twice. Any difference is a second model, whatever produced
+                    // it. This binds on every case, not only the capacity-bound
+                    // ones, and it is what catches a divergence too small to
+                    // change an allocation (the cluster aisle displacing a slot
+                    // in or out of a room was measurably invisible to the
+                    // over-allocation check alone — 90 cases, sabotage green).
+                    if i == 0 && r.capacity != r.pack_capacity {
+                        violations.push(format!(
+                            "{pname}/{gname}/seed{seed} R0: capacity {} but the packer's own \
+                             grid holds {} — two models of one question",
+                            r.capacity, r.pack_capacity
+                        ));
+                    }
+                    // Later regions pack against obstacles that now include the
+                    // desks regions `0..i` just placed, so their grid may hold
+                    // FEWER free slots. It may never hold more: placing a desk
+                    // cannot create one. Sequential intrusion is the one
+                    // divergence the single model does not close by construction
+                    // — allocation is simultaneous, placement is sequential — so
+                    // it is COUNTED rather than assumed absent.
+                    if r.pack_capacity > r.capacity {
+                        violations.push(format!(
+                            "{pname}/{gname}/seed{seed} R{i}: packer grid {} > measured \
+                             capacity {} — placing desks created free slots",
+                            r.pack_capacity, r.capacity
+                        ));
+                    }
+                    if r.pack_capacity < r.capacity {
+                        intrusion += 1;
+                    }
+                    // The STRONG form. The shipped fixture invariant reads
+                    // `placed >= min(allocated, placed + rejects)`, which is
+                    // satisfied by ANY shortfall whose rejection count is zero —
+                    // a floor with no ceiling, the family the rules file names.
+                    // With one obstacle model there is nothing left to excuse a
+                    // shortfall: capacity is the free-slot count, allocation is
+                    // clamped to it, and the packer places out of that very set.
+                    if r.placed < r.allocated {
+                        violations.push(format!(
+                            "{pname}/{gname}/seed{seed} R{i}: allocated {} placed {} \
+                             rejects b{} p{} w{} o{} (grid {}x{}, depth {:.2})",
+                            r.allocated,
+                            r.placed,
+                            r.rejects.bounds,
+                            r.rejects.plate,
+                            r.rejects.walls,
+                            r.rejects.obstacles,
+                            r.grid_outer,
+                            r.grid_inner,
+                            r.field_depth,
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    println!(
+        "BATTERY: {cases} cases, {region_cases} region-cases, {binding} capacity-bound, \
+         {intrusion} cross-region intrusions, {} violations",
+        violations.len()
+    );
+    // NON-VACUITY. Three separate ways this battery could pass while measuring
+    // nothing, each asserted rather than assumed:
+    //   1. no cases at all (a plate list that stopped building);
+    //   2. cases that allocate nothing (every region a room wing);
+    //   3. cases where allocation never bit — the exact blindness that made the
+    //      shipped fixture-only invariant vacuous. Without (3) a green here
+    //      proves only that the field was over-subscribed everywhere again.
+    assert!(cases >= 90, "battery shrank to {cases} cases");
+    assert!(region_cases >= 90, "only {region_cases} region-cases");
+    assert!(
+        binding >= 5,
+        "no region was capacity-bound in {region_cases} region-cases — the battery is \
+         measuring an over-subscribed field everywhere, which is the vacuity that hid \
+         this defect in the first place"
+    );
+    assert!(
+        violations.is_empty(),
+        "{} of {region_cases} region-cases over-allocate:\n{}",
+        violations.len(),
+        violations.join("\n")
+    );
 }

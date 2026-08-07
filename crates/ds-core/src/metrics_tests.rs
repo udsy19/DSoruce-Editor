@@ -562,18 +562,36 @@ fn no_region_is_allocated_desks_it_cannot_seat() {
 /// The capacity function and the packer must agree. `field_free_slots` counting
 /// a slot the packer then rejects is an over-allocation — the exact defect F1a
 /// fixed, reintroduced from the other side.
+///
+/// **SCOPE, stated because it was the whole defect.** All five fixtures descend
+/// from ONE 930 m² plate, on which the desk field is over-subscribed
+/// (programme < capacity in every region), so capacity never binds and this
+/// assertion cannot fail here however wrong the two halves are. It is a
+/// regression check over the EDITED fixture population, nothing more. The guard
+/// that actually measures the invariant is
+/// `layout::tests::desk_capacity_agrees_with_the_packer_across_plates_and_seeds`,
+/// which varies plate shape, seed, bench pairing and cluster rhythm.
+///
+/// The assertion is the STRONG form. It used to read
+/// `placed >= min(allocated, placed + rejects)`, which is satisfied by any
+/// shortfall whose rejection count is zero — a floor with no ceiling.
 #[test]
 fn desk_capacity_never_exceeds_what_the_packer_places() {
     for id in fixtures::FIXTURE_IDS {
         let diag = fixtures::diag_for(id).expect("fixture builds");
         for (i, r) in diag.region_desks.iter().enumerate() {
             assert!(
-                r.placed >= r.allocated.min(r.placed + r.rejects.obstacles + r.rejects.bounds),
-                "{id} R{i}: allocated {} but placed {} with only {} rejections — \
-                 capacity and the packer disagree",
+                r.placed >= r.allocated,
+                "{id} R{i}: allocated {} but placed {} (capacity {}, packer grid {}, \
+                 rejects b{} p{} w{} o{}) — capacity and the packer disagree",
                 r.allocated,
                 r.placed,
-                r.rejects.obstacles + r.rejects.bounds,
+                r.capacity,
+                r.pack_capacity,
+                r.rejects.bounds,
+                r.rejects.plate,
+                r.rejects.walls,
+                r.rejects.obstacles,
             );
         }
     }

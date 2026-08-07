@@ -395,18 +395,31 @@ pub(crate) fn allocate_desks(
     iwalls: &[(Point, Point, f64)],
     obstacles: &[(f64, f64, f64, f64)],
     lat: Lattice,
-) -> Vec<u32> {
+    // The packer's cluster-aisle rhythm. Capacity is measured through the SAME
+    // `FieldGrid` the packer places out of, and the aisle moves slot positions —
+    // so it is an input to capacity, not a placement-only detail.
+    choices: SeedChoices,
+) -> (Vec<u32>, Vec<u32>) {
     let n = plans.len();
     let mut desk_cap = vec![0u32; n];
     for (i, plan) in plans.iter().enumerate() {
-        // Depth first — a field shallower than one packer BLOCK cannot hold the
-        // unit the packer places, and saying so by name is cheaper than
-        // discovering it slot by slot.
-        let depth = if plan.portrait { plan.field.width() } else { plan.field.height() };
-        if depth + 1e-9 < min_viable_field_depth(program, clear) {
-            continue;
-        }
-        desk_cap[i] = field_free_slots(program, plan, plate, iwalls, obstacles, lat, clear);
+        // NO depth pre-filter. It used to zero capacity for any field shallower
+        // than one packer BLOCK (`min_viable_field_depth`), on the argument that
+        // such a field "cannot hold the unit the packer places". That is a SECOND
+        // model of the same question, and it disagreed with the enumeration in
+        // the direction this file's own doc comment warns about — *"the reverse
+        // strands floor."* MEASURED on the real plate, seeds 1 and 3: R3's field
+        // is 2.0 m deep, under the 2.5 m paired block, so it was allocated 0 —
+        // while its `FieldGrid` holds **one** free slot. A bench pair does not
+        // fit; the pair's FIRST row does, and `outer_line(0)` is exactly that row.
+        //
+        // The guard was load-bearing only by accident: the desk that reached past
+        // the notch into the far wing arrived through the top-up pass, which ran
+        // only because the primary pass was under-delivering. Removing the
+        // over-allocation removed the shortfall and with it the top-up, and the
+        // far-wing desk went with it — until capacity stopped lying in the other
+        // direction too. One model, both directions.
+        desk_cap[i] = field_free_slots(program, plan, plate, iwalls, obstacles, lat, clear, choices.cluster_cols);
     }
 
     let total_cap: u32 = desk_cap.iter().sum();
@@ -443,7 +456,7 @@ pub(crate) fn allocate_desks(
             }
         }
     }
-    d_alloc
+    (d_alloc, desk_cap)
 }
 
 /// Geometry plan of one region (wing): where its room band, primary spine,

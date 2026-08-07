@@ -549,11 +549,13 @@ pub fn generate(
         // Capacity measured against what is ALREADY placed (rooms, keep-outs,
         // corridor strips), so a wing the rooms have consumed is allocated zero
         // instead of being handed desks it cannot seat.
-        let d_alloc = allocate_desks(
+        let (d_alloc, d_cap) = allocate_desks(
             program, &plans, clear, remaining_desks, plate.as_deref(), &iwalls, &obstacles, lat,
+            choices,
         );
         for (i, plan) in plans.iter().enumerate() {
             let region_no = if single_region { None } else { Some((i + 1) as u32) };
+            diag.region_desks[i].capacity = d_cap[i];
             diag.region_desks[i].allocated = d_alloc[i];
             // A ROOM WING: no viable desk capacity, but rooms banded into it.
             // Declared rather than left as a silent zero, so the acceptance

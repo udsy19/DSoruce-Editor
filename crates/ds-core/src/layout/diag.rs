@@ -43,6 +43,17 @@ impl DiagRect {
 /// fixes, which is the whole reason this is recorded separately.
 #[derive(Clone, Debug, Serialize, Default)]
 pub struct RegionDesks {
+    /// Free slots `allocate_desks` measured in this region's field, BEFORE any
+    /// desk was placed anywhere. `allocated` is clamped to it.
+    pub capacity: u32,
+    /// Free slots the PACKER's own `FieldGrid` saw when it ran — the same
+    /// enumeration against the obstacle set as it stood at that moment, which on
+    /// region `i > 0` also contains the desks regions `0..i` just placed. It can
+    /// therefore fall below `capacity`, and the gap is the one divergence the
+    /// single obstacle model does NOT close by construction: allocation is a
+    /// simultaneous split, placement is sequential. Recorded so the battery can
+    /// tell an over-allocation from a packer failure instead of inferring it.
+    pub pack_capacity: u32,
     pub allocated: u32,
     pub placed: u32,
     /// Extra desks the top-up pass reclaimed here.
