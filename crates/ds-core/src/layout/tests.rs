@@ -522,18 +522,18 @@ fn every_component_is_bucketed_into_a_zone() {
         doc.components.len(),
         "every component must be reassigned to a zone"
     );
-    // Desks live in the Workspace zone.
-    let ws = doc
-        .zones
-        .iter()
-        .find(|z| z.zone_type == ZoneType::Workspace)
-        .expect("a workspace zone");
+    // Desks live in Workspace zones. Plural: the open field is emitted as one
+    // band per bank of desks (`emit_workspace_bands`), so asking for "the"
+    // Workspace zone and counting its desks would silently check one bank and
+    // pass while the rest of the field sat in some other zone.
+    let ws: Vec<&Zone> = doc.zones.iter().filter(|z| z.zone_type == ZoneType::Workspace).collect();
+    assert!(!ws.is_empty(), "a workspace zone");
     let desks = doc.components.iter().filter(|c| c.category == "Desk").count();
-    // Count the DESKS bucketed into the zone, not every component in it — each
+    // Count the DESKS bucketed into the zones, not every component in them — each
     // desk now carries a real task Chair, which is bucketed there too.
     let ws_desks = ws
-        .component_ids
         .iter()
+        .flat_map(|z| &z.component_ids)
         .filter(|&&cid| {
             doc.components
                 .iter()
@@ -3141,9 +3141,42 @@ fn large_bare_open_plan_axis_plates_are_not_de_overlapped() {
             }
         }
     }
+    // The dangerous regime — an axis-aligned Workspace clipping to ≥ 0.9·floor —
+    // is no longer REACHABLE through `generate`: the open field is emitted as
+    // bands that hug the desk runs, so the largest single Workspace on any of the
+    // plates above is 0.61·floor. This guard caught that and said so, which is
+    // exactly its job; a test whose regime the producer has walked out of is
+    // vacuous, and bumping the number down to whatever the producer now emits
+    // would calibrate the guard against the thing it guards.
+    //
+    // So the regime is CONSTRUCTED instead, which is the stronger form anyway:
+    // the system under test is `effective_zone_areas`' detector, and its input
+    // should be chosen adversarially rather than be whatever the generator
+    // happened to leave lying around. A hand-built 0.95·floor Workspace on a bare
+    // rectangle is the exact shape the old area-ratio detector mis-read.
+    let mut adversarial = room_from_corners(&[(0.0, 0.0), (100.0, 0.0), (100.0, 60.0), (0.0, 60.0)]);
+    push_zone(
+        &mut adversarial,
+        ZoneType::Workspace,
+        ZoneShape::Rect { x: 50.0, y: 30.0, w: 97.0, h: 58.5 },
+        "Open Workspace",
+    );
+    let a_floor = adversarial.floor_area();
+    let a_frac = adversarial.zones[0].area_on(adversarial.plate_polygon().as_deref()) / a_floor;
     assert!(
-        max_frac >= 0.9,
-        "test regime not reached: max axis Workspace/floor was only {max_frac:.3} (< 0.9)"
+        a_frac >= 0.9,
+        "constructed regime not reached: Workspace/floor {a_frac:.3} (< 0.9)"
+    );
+    let (_, a_spanning) = crate::effective_zone_areas(&adversarial);
+    assert!(
+        a_spanning.is_none(),
+        "de-overlap MIS-FIRED on a hand-built {a_frac:.3}·floor axis-aligned Workspace"
+    );
+    // …and the generator's own output is still exercised for the same misfire,
+    // just no longer as the source of the dangerous fraction.
+    assert!(
+        max_frac > 0.0,
+        "generator emitted no Workspace zone at all on any plate — the loop above is vacuous"
     );
     assert_eq!(
         misfires, 0,
@@ -3560,6 +3593,69 @@ fn axis_aligned_plates_are_never_de_overlapped() {
 /// grid sample of cells inside the plate polygon but inside NO zone. This is
 /// the "wasted space the tenant pays rent for" the whole-plate fill + residual
 /// Circulation passes exist to drive toward zero.
+/// Floor inside the plate that belongs to NO zone **and is at least
+/// `MIN_CIRC_CLEAR_M` wide** — an unaccounted pocket a person could stand in,
+/// in m². Zero is the only acceptable value.
+///
+/// **Why the width test, and not a fraction of the plate.** Untyped floor comes
+/// in two kinds and only one is a defect. `fill_untyped_as_circulation` keeps its
+/// cells a half-raster-cell clear of every zone edge, so every zone is ringed by
+/// a ≲0.25 m untyped seam: invisible, harmless, and proportional to the NUMBER
+/// OF ZONE BORDERS rather than to unaccounted floor. A raw fraction cannot tell
+/// that from a 4 × 30 m strip of nothing, and it moves whenever the zone count
+/// moves — banding the open workspace onto its desk runs took the raw figure on
+/// this plate from ~3–4% to 3.9–7.3% while ADDING no unaccounted floor at all.
+/// Eroding by half the code clear width answers the question that has an answer:
+/// could somebody walk in floor the plan does not name?
+///
+/// The erosion radius is `conform::MIN_CIRC_CLEAR_M / 2` — the IBC-derived width
+/// the classifier already owns — not a percentile of these plates.
+fn walkable_untyped_area(doc: &Document) -> f64 {
+    const CELL: f64 = 0.25;
+    let poly = doc.plate_polygon().expect("closed plate");
+    let (bx0, by0, bx1, by1) = doc.wall_bbox().unwrap();
+    let cols = (((bx1 - bx0) / CELL).ceil() as usize).max(1);
+    let rows = (((by1 - by0) / CELL).ceil() as usize).max(1);
+    let mut untyped = vec![false; cols * rows];
+    for r in 0..rows {
+        for c in 0..cols {
+            let x = bx0 + (c as f64 + 0.5) * CELL;
+            let y = by0 + (r as f64 + 0.5) * CELL;
+            untyped[r * cols + c] = geometry::point_in_polygon(x, y, &poly)
+                && !doc.zones.iter().any(|z| z.shape.contains(x, y));
+        }
+    }
+    let radius = MIN_CIRC_CLEAR_M / 2.0;
+    let k = (radius / CELL).ceil() as i64;
+    let mut area = 0.0;
+    for r in 0..rows {
+        for c in 0..cols {
+            if !untyped[r * cols + c] {
+                continue;
+            }
+            let mut ok = true;
+            'disc: for dr in -k..=k {
+                for dc in -k..=k {
+                    if (dr * dr + dc * dc) as f64 * CELL * CELL > radius * radius {
+                        continue;
+                    }
+                    let (nr, nc) = (r as i64 + dr, c as i64 + dc);
+                    if nr < 0 || nc < 0 || nr >= rows as i64 || nc >= cols as i64
+                        || !untyped[nr as usize * cols + nc as usize]
+                    {
+                        ok = false;
+                        break 'disc;
+                    }
+                }
+            }
+            if ok {
+                area += CELL * CELL;
+            }
+        }
+    }
+    area
+}
+
 fn untyped_floor_frac(doc: &Document) -> f64 {
     let plate = doc.plate_polygon().expect("closed plate");
     let (mnx, mny, mxx, mxy) = doc.wall_bbox().unwrap();
@@ -3647,8 +3743,11 @@ fn irregular_plate_is_filled_wall_to_wall_not_a_central_column() {
 /// to a hairline. `fill_untyped_as_circulation` melts every untyped wedge AND
 /// the many scattered residual `Circulation` rects into a MERGED wall-following
 /// `Poly` per contiguous walking region. Pins, on the real ~843 m² plate:
-///   (a) untyped white floor drops from ~7.4% to ≤ 5% (hairline zone-border
-///       seams; the big wall wedges are gone),
+///   (a) NO unaccounted floor a person could stand in survives — the big wall
+///       wedges are gone and what is left is hairline zone-border seam (see
+///       [`walkable_untyped_area`] for why the bound is a width and no longer a
+///       ≤5% raw fraction: the raw figure counts zone BORDERS, so banding the
+///       open workspace onto its desk runs moved it without adding a hole),
 ///   (b) NIA ≤ GEA (the merged polys are disjoint from every other zone),
 ///   (c) the residual fragments collapse into a handful of merged `Poly`s (a
 ///       few rects survive only in rare hole-containing regions),
@@ -3668,15 +3767,17 @@ fn walking_area_is_unified_no_white_floor() {
         let mut doc = real_plate_doc();
         generate(&mut doc, &program, seed, false);
 
-        // (a) White floor drops from ~7.4% to a hairline: the untyped wedges
-        // against angled/stepped walls are absorbed into wall-following
-        // circulation. What remains is only the ~half-cell corner-clearance
-        // seam along interior zone borders (wall-thickness scale).
-        let untyped = untyped_floor_frac(&doc);
+        // (a) The untyped wedges against angled/stepped walls are absorbed into
+        // wall-following circulation. What remains must be ONLY the ~half-cell
+        // corner-clearance seam along interior zone borders — nothing a person
+        // could stand in.
+        let walkable = walkable_untyped_area(&doc);
         assert!(
-            untyped <= 0.05,
-            "seed {seed}: {:.1}% untyped white floor remains (was ~7.4%)",
-            100.0 * untyped
+            walkable == 0.0,
+            "seed {seed}: {walkable:.1} m² of floor at least {MIN_CIRC_CLEAR_M} m wide \
+             belongs to no zone — a hole in the plan, not a seam \
+             (raw untyped incl. seams: {:.1}%)",
+            100.0 * untyped_floor_frac(&doc)
         );
 
         // (b) NIA ≤ GEA — the merged walking polys are disjoint from every
@@ -3729,7 +3830,32 @@ fn walking_area_is_unified_no_white_floor() {
         let stray_rects =
             circ.iter().filter(|z| matches!(z.shape, ZoneShape::Rect { .. })).count();
         assert!(merged_polys >= 3, "seed {seed}: only {merged_polys} merged residual polys — not unified");
-        assert!(stray_rects <= 6, "seed {seed}: {stray_rects} un-merged residual rects (fragmentation)");
+        // Fragmentation, stated so it does not move with the ZONE COUNT.
+        //
+        // This was `stray_rects <= 6`, an absolute count. Banding the open
+        // workspace onto its desk runs adds ONE stray on the reference plate
+        // (seed 4: 6 → 7, seed 5: 4 → 5) while raising the merged walking
+        // polygons from 12 to 19 and 12 to 16 — the walking area became MORE
+        // unified and the absolute count went the other way, because more zone
+        // borders means more small pockets for the raster to leave behind.
+        // Bumping the 6 to a 7 would have been calibrating the bound against the
+        // change it is meant to judge.
+        //
+        // "Unified, not fragmented" without an absolute number: the un-merged
+        // pieces must be a small minority of the merged ones. A merge pass that
+        // stopped working — a handful of polys and a pile of rects — fails it at
+        // once, and it does not care how many pieces the geometry naturally has.
+        //
+        // (A floor-based form was tried first and rejected on measurement:
+        // "strays hold less than the largest merged polygon" passed at HEAD only
+        // because the un-banded field left ONE 154 m² blob, so it was measuring
+        // the same zone-count sensitivity in different clothes.)
+        assert!(
+            stray_rects * 2 <= merged_polys,
+            "seed {seed}: {stray_rects} un-merged residual rects against only \
+             {merged_polys} merged walking polygons — the walking area is \
+             fragmented, not unified"
+        );
 
         // (e) CONSERVATION — reclassification MOVES floor between buckets, it
         // must never LOSE any. Circulation ∪ Unassigned over residual zones is
@@ -3963,17 +4089,47 @@ fn golden_generate_output_is_frozen() {
     ));
     cases.push(("explicit_rooms/l_plate/seed3".to_string(), l_room(), prog_rooms, 3));
 
+    // RE-CAPTURED for the open-workspace banding + the un-gated leftover pass
+    // (`emit::emit_workspace_bands`, and the `!single_region` gate removed from
+    // the residual/merge passes in `generate`). What moved, and what did NOT:
+    //
+    // | case                          | components | walls | desks | zones   | total       |
+    // |-------------------------------|-----------|-------|-------|---------|-------------|
+    // | default/rect20x14/seed1       | 72 → 72   |  52   | 21    | 11 → 25 | 87.88→86.36 |
+    // | default/rect20x14/seed2       | 80 → 80   |  52   | 25    | 11 → 27 | 89.27→87.97 |
+    // | default/rect20x14/seed3       | 70 → 70   |  52   | 20    | 11 → 23 | 86.97→85.45 |
+    // | default/real_plate/seed1      | 222 → 222 | 155   | 88    | 40 → 53 | 90.81→91.46 |
+    // | default/real_plate/seed2      | 222 → 222 | 155   | 88    | 35 → 45 | 90.36→90.88 |
+    // | default/real_plate/seed3      | 222 → 222 | 155   | 88    | 40 → 53 | 90.82→91.48 |
+    // | no_support/rect20x14/seed1    | 68 → 68   |  22   | 26    |  4 → 12 | 92.57→92.57 |
+    // | no_support/real_plate/seed2   | 192 → 192 | 101   | 88    | 38 → 57 | 94.43→95.10 |
+    // | explicit_rooms/real_plate/s1  | 209 → 209 | 125   | 88    | 26 → 49 | 88.68→89.43 |
+    // | explicit_rooms/l_plate/seed3  | 63 → 63   |  33   | 24    | 10 → 18 | 87.68→87.82 |
+    //
+    // **Component, wall and desk counts are IDENTICAL in all ten cases** — the
+    // change is zone geometry and nothing else, and this table is the evidence
+    // for that claim rather than a restatement of the intent. Zone counts rise
+    // because one field-spanning `Workspace` rect became a few desk-hugging bands
+    // plus the named aisles between them, and because a rectangular plate now
+    // gets the leftover-floor pass it was gated out of.
+    //
+    // Scores move BOTH WAYS, which is the tell that this is geometry and not a
+    // thumb on the scale: irregular plates gain 0.1–0.7 (floor that was billed as
+    // workspace or left untyped is now named circulation, so `unassigned_penalty`
+    // falls), rectangles lose 1.2–1.5 (their leftover pass now finds and NAMES
+    // the waste it used to leave invisible — a worse number for a more honest
+    // plan), and `no_support/rect20x14/seed1` is unchanged to eight digits.
     const EXPECTED: [&str; 10] = [
-"default/rect20x14/seed1 = c72 w52 z11 desks21 total87876523 #1a0244c3d88eeb3c",
-            "default/rect20x14/seed2 = c80 w52 z11 desks25 total89274625 #1fca633eeb04543f",
-            "default/rect20x14/seed3 = c70 w52 z11 desks20 total86967629 #52556c4029d00bfc",
-            "default/real_plate/seed1 = c222 w155 z40 desks88 total90806929 #54c08e269f5425f8",
-            "default/real_plate/seed2 = c222 w155 z35 desks88 total90363979 #222d5680249e3a7a",
-            "default/real_plate/seed3 = c222 w155 z40 desks88 total90824610 #c22488cf2b5b4e08",
-            "no_support/rect20x14/seed1 = c68 w22 z4 desks26 total92565832 #991c040294e31e67",
-            "no_support/real_plate/seed2 = c192 w101 z38 desks88 total94429991 #a040b9f4bb97fed1",
-            "explicit_rooms/real_plate/seed1 = c209 w125 z26 desks88 total88680743 #834c964e4068e5d5",
-            "explicit_rooms/l_plate/seed3 = c63 w33 z10 desks24 total87682433 #e9ed372ac7f562ed",
+            "default/rect20x14/seed1 = c72 w52 z25 desks21 total86363130 #cb88d07692165d3d",
+            "default/rect20x14/seed2 = c80 w52 z27 desks25 total87968821 #f88b8fdce28b09d8",
+            "default/rect20x14/seed3 = c70 w52 z23 desks20 total85454236 #2212584431acb7a8",
+            "default/real_plate/seed1 = c222 w155 z53 desks88 total91458697 #9e566fa49e304eea",
+            "default/real_plate/seed2 = c222 w155 z45 desks88 total90877447 #ba3e4529d90768bc",
+            "default/real_plate/seed3 = c222 w155 z53 desks88 total91481198 #2d957b3d963ae203",
+            "no_support/rect20x14/seed1 = c68 w22 z12 desks26 total92565832 #a30cbec2d243068c",
+            "no_support/real_plate/seed2 = c192 w101 z57 desks88 total95104018 #eba1215f137a6f9e",
+            "explicit_rooms/real_plate/seed1 = c209 w125 z49 desks88 total89431783 #6c32b449e5c20b2a",
+            "explicit_rooms/l_plate/seed3 = c63 w33 z18 desks24 total87819825 #45a2edbc8c492109",
     ];
     assert_eq!(cases.len(), EXPECTED.len(), "case list and expectations must line up");
 
@@ -4957,3 +5113,11 @@ fn an_empty_plan_is_infeasible_and_never_outscores_a_real_one() {
         empty_score.total
     );
 }
+
+// ---------------------------------------------------------------------------
+// The imported-plate fixture and the zone-geometry properties measured on it.
+// ---------------------------------------------------------------------------
+mod dwg_plate;
+mod zone_geometry;
+use dwg_plate::*;
+

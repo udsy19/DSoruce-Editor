@@ -5,18 +5,20 @@ use super::*;
 
 /// Pack one region's desk field on the GLOBAL lattice `lat`, skipping any cell
 /// that collides with an obstacle (rooms, keep-outs, frozen items, connector).
-/// Emits the Workspace zone(s) — segmented at the secondary aisles / crossing
-/// strips so rect zones tile without overlap — plus the drawn secondary-aisle
-/// `Circulation` rects. Returns desks placed.
+/// Returns desks placed.
+///
+/// **Placement only — no zones.** This used to push one `Workspace` rect over
+/// `plan.field` before packing anything into it, which made the zone a statement
+/// of intent rather than of what got built (see [`emit_workspace_bands`], which
+/// now derives the open-workspace zones from the seated desks after every
+/// packing pass has run). The `region_no` / `emit_zones` parameters existed only
+/// to label and to suppress that rect on the top-up pass, and went with it.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn pack_desks(
     doc: &mut Document,
     program: &Program,
     plan: &RegionPlan,
     desk_target: u32,
-    region_no: Option<u32>,
-    // `false` on the top-up pass: zones were already emitted — only place.
-    emit_zones: bool,
     plate: Option<&[Point]>,
     iwalls: &[(Point, Point, f64)],
     obstacles: &mut Vec<(f64, f64, f64, f64)>,
@@ -30,27 +32,6 @@ pub(crate) fn pack_desks(
     let field = plan.field;
     let (dz_x0, dz_y0, dz_x1, dz_y1) = (field.x0, field.y0, field.x1, field.y1);
     let column_major = plan.portrait;
-
-    // Workspace zone over the field. Drawn circulation (spine/connector/link/
-    // seams) is emitted separately by `emit_plan_zones`; the facade gap stays
-    // deliberately un-zoned floor (it is maintenance clearance, not a room).
-    if emit_zones && dz_x1 > dz_x0 && dz_y1 > dz_y0 {
-        let ws_label = match region_no {
-            Some(n) => format!("Open Workspace ({})", n),
-            None => "Open Workspace".to_string(),
-        };
-        push_zone(
-            doc,
-            ZoneType::Workspace,
-            ZoneShape::Rect {
-                x: (dz_x0 + dz_x1) / 2.0,
-                y: (dz_y0 + dz_y1) / 2.0,
-                w: dz_x1 - dz_x0,
-                h: dz_y1 - dz_y0,
-            },
-            &ws_label,
-        );
-    }
 
     // --- Desk grid fills the field on the GLOBAL lattice, skipping any cell
     // that collides with a frozen or just-placed obstacle (rooms, keep-outs,

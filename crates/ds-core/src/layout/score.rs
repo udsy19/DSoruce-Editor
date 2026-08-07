@@ -437,7 +437,16 @@ pub fn score(doc: &Document, program: &Program) -> LayoutScore {
     //
     // Conditioned on document state, not on a generator flag: a flag can be
     // dropped, and an empty document cannot lie about being empty.
-    let feasible = placed_desks > 0 || !doc.zones.is_empty() || !doc.components.is_empty();
+    // Residual zones do NOT count. They are floor the generator had left over,
+    // not anything it placed — and since the leftover pass stopped being gated to
+    // multi-region plates, a plate too small to hold a single desk comes back
+    // carrying a couple of `Unassigned` pockets. Counting those as "something was
+    // generated" would have handed an empty plan a headline score again, which is
+    // the exact defect this predicate exists to stop
+    // (cad-validation/findings/F4). `origin` is structural and generator-only.
+    let feasible = placed_desks > 0
+        || doc.zones.iter().any(|z| z.origin == ZoneOrigin::Drawn)
+        || !doc.components.is_empty();
     if !feasible {
         return LayoutScore {
             capacity: 0.0,

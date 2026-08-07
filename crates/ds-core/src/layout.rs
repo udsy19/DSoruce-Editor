@@ -481,9 +481,8 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
         let mut placed_desks = 0u32;
         let d_alloc = allocate_desks(program, &plans, clear, remaining_desks);
         for (i, plan) in plans.iter().enumerate() {
-            let region_no = if single_region { None } else { Some((i + 1) as u32) };
             placed_desks += pack_desks(
-                doc, program, plan, d_alloc[i], region_no, /*emit_zones=*/ true,
+                doc, program, plan, d_alloc[i],
                 plate.as_deref(), &iwalls, &mut obstacles, lat, clear, choices,
             );
         }
@@ -493,13 +492,12 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
         // (rejected) or fill genuinely free ones in perfect row alignment.
         let mut shortfall = remaining_desks.saturating_sub(placed_desks);
         if shortfall > 0 {
-            for (i, plan) in plans.iter().enumerate().rev() {
+            for plan in plans.iter().rev() {
                 if shortfall == 0 {
                     break;
                 }
-                let region_no = if single_region { None } else { Some((i + 1) as u32) };
                 let got = pack_desks(
-                    doc, program, plan, shortfall, region_no, /*emit_zones=*/ false,
+                    doc, program, plan, shortfall,
                     plate.as_deref(), &iwalls, &mut obstacles, lat, clear, choices,
                 );
                 shortfall = shortfall.saturating_sub(got);
@@ -558,7 +556,6 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
                         obstacles.push(((r.x0 + r.x1) / 2.0, (r.y0 + r.y1) / 2.0, r.width(), r.height()));
                     }
                 }
-                let before = doc.components.len();
                 // ONE sweep over the WHOLE plate bbox on the shared global lattice.
                 // `pack_desks` walks the lattice across the bbox and seats a desk in
                 // every empty in-plate slot, rejecting the rest — so the budget
@@ -573,35 +570,25 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
                 let mut fp = plans[dom].clone();
                 fp.field = geometry::Rect { x0: min_x, y0: min_y, x1: max_x, y1: max_y };
                 pack_desks(
-                    doc, program, &fp, budget, None, /*emit_zones=*/ false,
+                    doc, program, &fp, budget,
                     plate.as_deref(), &iwalls, &mut obstacles, lat, clear, choices,
                 );
                 obstacles.truncate(guard); // drop the temporary corridor guards
-                // Zone each newly seated fill desk (a Workspace tile the size of
-                // the desk footprint — NOT the pitch cell, so bench-paired tiles
-                // never overlap and double-count NIA) so the fill counts toward
-                // the workstation tally and renders as workspace floor. The aisle
-                // gaps between fill desks are picked up by the residual pass below.
-                // A fill desk that landed in an existing Workspace zone's own
-                // unpacked slot is ALREADY counted there — only tile the ones that
-                // fell in genuinely un-zoned pockets, so tiles never overlap the
-                // region field zones (which would double-count NIA).
-                let tiles: Vec<(f64, f64, f64, f64)> = doc.components[before..]
-                    .iter()
-                    .filter(|c| c.category == "Desk")
-                    .filter(|c| {
-                        !doc.zones.iter().any(|z| z.zone_type == ZoneType::Workspace && z.shape.contains(c.x, c.y))
-                    })
-                    .map(|c| {
-                        let (ww, wh) = world_extents(c.w, c.h, c.rotation);
-                        (c.x, c.y, ww, wh)
-                    })
-                    .collect();
-                for (x, y, w, h) in tiles {
-                    push_zone(doc, ZoneType::Workspace, ZoneShape::Rect { x, y, w, h }, "Open Workspace");
-                }
+                // (The fill's desks used to be zoned one desk-sized Workspace tile
+                // at a time here, so they would count toward the workstation tally.
+                // `emit_workspace_bands` below covers every seated desk on every
+                // pass from one derivation, so the tiles are gone — a fill desk
+                // that extends a run now simply extends its band.)
             }
         }
+
+        // --- Open-workspace zones: bands that hug the desk runs ---------------
+        // AFTER every packing pass (per-region, top-up, whole-plate fill), so the
+        // zones describe the field that was actually built rather than the
+        // rectangle it was allocated. Before the residual pass, so the floor no
+        // band claimed is judged on its own merits.
+        let fields: Vec<geometry::Rect> = plans.iter().map(|p| p.field).collect();
+        emit_workspace_bands(doc, clear, plate.as_deref(), &fields);
     }
 
     // --- Residual floor → explicit Circulation ("walking place") ------------
@@ -618,12 +605,19 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
     // fragmented into noise. Emitted before the Core zones (so a keep-out still
     // wins its tile) and, being Circulation, it loses the point-in-zone tie to
     // every desk/room, so bucketing is unchanged. Disjoint from all other zones
-    // by construction, so NIA never double-counts. Gated to irregular multi-
-    // region plates (a rectangular plate has no such pockets). The oriented path
-    // already emits a plate-spanning Workspace (its own fill), so it is excluded
-    // — layering residual Circulation over that spanning zone would double-count
-    // the floor (NIA > GEA).
-    if !single_region && !use_oriented_field {
+    // by construction, so NIA never double-counts.
+    //
+    // **This used to be gated to irregular multi-region plates**, on the stated
+    // ground that "a rectangular plate has no such pockets". It has them: on a
+    // 20 × 14 rectangle `tests::zone_geometry::no_walkable_untyped_pocket`
+    // measured 14–26 m² of untyped floor at least a code corridor wide — the
+    // depth the room band gave up, and the floor beside the desk field the
+    // packer's lattice never reached. The gate was a claim about geometry that
+    // nothing had checked, so it excused exactly the plate shape where the fix
+    // is easiest to see. Only the ORIENTED path stays excluded, and for a real
+    // reason: it emits a plate-spanning Workspace as its own fill, so layering
+    // residual Circulation over it would double-count the floor (NIA > GEA).
+    if !use_oriented_field {
         if let Some(poly) = plate.as_deref() {
             let mut used: Vec<geometry::Rect> = holes.clone(); // keep-outs
             for z in &doc.zones {
@@ -687,10 +681,10 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
         conform_zones_to_plate(doc, poly);
         // Unify the walking area: melt every untyped wedge AND the many scattered
         // residual-Circulation fragments into ONE merged wall-following polygon per
-        // contiguous region (same gate as the residual fill — the oriented spanning
-        // Workspace already covers the floor, so layering circulation would double-
-        // count; a single/axis-aligned plate has no wedges).
-        if !single_region && !use_oriented_field {
+        // contiguous region. Same gate as the residual fill above, and gated for the
+        // same one reason: the oriented path's spanning Workspace already covers the
+        // floor, so layering circulation over it would double-count.
+        if !use_oriented_field {
             fill_untyped_as_circulation(doc, poly);
         }
     }

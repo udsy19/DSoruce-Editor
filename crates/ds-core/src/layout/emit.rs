@@ -73,6 +73,471 @@ fn push_with_origin(
     });
 }
 
+// ---- Open-workspace bands ------------------------------------------------
+
+/// Emit the open-plan `Workspace` zones as **bands that hug the desk runs**,
+/// derived from the desks actually seated — never from the field rectangle the
+/// packer was allocated.
+///
+/// **Why this replaced one rect per region.** `pack_desks` used to push a single
+/// `Workspace` rect over `plan.field` before packing anything into it, so the
+/// zone was a statement of INTENT, not of what got built. On the user's imported
+/// plate that zone measured 433.6 m² around 97 desks: 30% of it — the strip east
+/// of the last desk column, the margin above the first row, and the cluster
+/// aisles — was floor further than the program's own `desk_clearance_m` from any
+/// desk in it. One uniform block covering a third of the plate is the single most
+/// diagram-like mark a test-fit can carry, and it also billed circulation as
+/// workspace. `tests::zone_geometry::workspace_zones_hug_their_desks` measures
+/// the property directly (share of the zone within one clearance of a desk it
+/// contains) rather than any area ratio, and it named 36 offending zones across
+/// four plates when the defect report named one.
+///
+/// **A run, geometrically.** Desks are grouped by connected components of their
+/// footprints inflated *anisotropically*: half a clearance ALONG the row (so
+/// neighbours at the packer's pitch join, and the extra clearance of a cluster
+/// aisle does not) and a hair ACROSS it (so a back-to-back bench pair joins,
+/// and the next pair-row across its access aisle does not). Nothing here reads
+/// the packer's lattice, its bench flag or its cluster width — a run is whatever
+/// the placed desks say it is, so the bands stay right when the packer changes.
+///
+/// Adjacent runs with the SAME extent along the row and only their access aisle
+/// between them are merged, so a regular field reads as a few bands rather than
+/// one per row. Each band is then grown half a clearance on every side — the
+/// desks' own share of the aisle they face — but never across an existing zone,
+/// so bands can neither overlap a room nor annex the drawn corridor network.
+///
+/// What is left over — the desk-free margins, the cluster aisles, the gaps where
+/// a slot was rejected — belongs to no band and falls to the residual pass, which
+/// names it circulation or unassigned on its own merits.
+pub(crate) fn emit_workspace_bands(
+    doc: &mut Document,
+    clear: f64,
+    plate: Option<&[Point]>,
+    fields: &[geometry::Rect],
+) {
+    let eps = 1e-9;
+    // Half a clearance is one desk's SHARE of the aisle it faces: two desks a
+    // full clearance apart grow until they touch, and the floor between them —
+    // where the chairs go — belongs to the pair. Beyond that the aisle is
+    // somebody else's, and the band stops.
+    let half = (clear / 2.0).max(0.0);
+
+    // Every already-named zone. A cell may not grow into a room, into the drawn
+    // corridor network, or into a keep-out; those own their floor, and a band
+    // that overlapped one would double-count it in NIA and take its components.
+    let others: Vec<(f64, f64, f64, f64)> = doc.zones.iter().map(|z| z.shape.bbox()).collect();
+
+    // One grown cell per seated desk: its world footprint, inflated by half a
+    // clearance on each side and clipped back off anything already named.
+    //
+    // **The cell, not the row, is the primitive** — and that is what makes the
+    // property hold by construction rather than by a threshold. Every point of a
+    // grown cell is within `half·√2 ≈ 0.64·clear` of the desk that produced it,
+    // so no band can contain floor further than one clearance from a desk no
+    // matter what shape the field is. Two earlier attempts took the bounding box
+    // of a ROW instead, and both leaked: a row's box swallows the step where the
+    // next row is shorter, and on a TILTED plate a row runs diagonally, so its
+    // box is mostly the two empty triangles beside the desks — measured at 0.88
+    // and 0.82 worked share on rotated plates, against a 0.90 floor.
+    let cells: Vec<geometry::Rect> = doc
+        .components
+        .iter()
+        .filter(|c| c.category == "Desk" && !c.reference)
+        .map(|c| {
+            let (w, h) = world_extents(c.w, c.h, c.rotation);
+            let r = geometry::Rect {
+                x0: c.x - w / 2.0,
+                y0: c.y - h / 2.0,
+                x1: c.x + w / 2.0,
+                y1: c.y + h / 2.0,
+            };
+            let (mut x0, mut y0, mut x1, mut y1) =
+                (r.x0 - half, r.y0 - half, r.x1 + half, r.y1 + half);
+            for &(ox0, oy0, ox1, oy1) in &others {
+                if oy0 < r.y1 - eps && oy1 > r.y0 + eps {
+                    if ox1 <= r.x0 + eps {
+                        x0 = x0.max(ox1);
+                    }
+                    if ox0 >= r.x1 - eps {
+                        x1 = x1.min(ox0);
+                    }
+                }
+                if ox0 < r.x1 - eps && ox1 > r.x0 + eps {
+                    if oy1 <= r.y0 + eps {
+                        y0 = y0.max(oy1);
+                    }
+                    if oy0 >= r.y1 - eps {
+                        y1 = y1.min(oy0);
+                    }
+                }
+            }
+            geometry::Rect {
+                x0: x0.min(r.x0),
+                y0: y0.min(r.y0),
+                x1: x1.max(r.x1),
+                y1: y1.max(r.y1),
+            }
+        })
+        .collect();
+    if cells.is_empty() {
+        return;
+    }
+
+    // Bands = the maximal rectangles tiling the UNION of those cells. A regular
+    // field's twelve stacked rows come back as one band; a ragged or diagonal one
+    // comes back as the few steps it actually has. The tiling covers the union
+    // and nothing else, so bands can neither invent empty floor nor overlap each
+    // other — both by construction, not by a guard.
+    let bands = tile_union(&cells);
+
+    let many = bands.len() > 1;
+    for (i, b) in bands.iter().enumerate() {
+        let label = if many {
+            format!("Open Workspace ({})", i + 1)
+        } else {
+            "Open Workspace".to_string()
+        };
+        push_zone(
+            doc,
+            ZoneType::Workspace,
+            ZoneShape::Rect {
+                x: (b.x0 + b.x1) / 2.0,
+                y: (b.y0 + b.y1) / 2.0,
+                w: b.x1 - b.x0,
+                h: b.y1 - b.y0,
+            },
+            &label,
+        );
+    }
+    emit_bank_aisles(doc, &bands, clear, plate, fields);
+}
+
+/// The maximal axis-aligned rectangles that tile the UNION of `rects`, exactly.
+///
+/// Subdivide the plane on every input edge, mark each cell that lies inside any
+/// input, then merge cells by run-length along x and stack identical runs along
+/// y. The result covers the union and nothing else — no invented floor, no
+/// overlaps — and is deterministic (row-major discovery, ascending emit).
+fn tile_union(rects: &[geometry::Rect]) -> Vec<geometry::Rect> {
+    if rects.len() < 2 {
+        return rects.to_vec();
+    }
+    let mut xs: Vec<f64> = Vec::new();
+    let mut ys: Vec<f64> = Vec::new();
+    for r in rects {
+        xs.push(r.x0);
+        xs.push(r.x1);
+        ys.push(r.y0);
+        ys.push(r.y1);
+    }
+    let dedup = |v: &mut Vec<f64>| {
+        v.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        v.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
+    };
+    dedup(&mut xs);
+    dedup(&mut ys);
+    let (nc, nr) = (xs.len() - 1, ys.len() - 1);
+    let mut inside = vec![false; nc * nr];
+    // Row-banded: the subdivision has 2N columns and 2N rows for N inputs, so a
+    // naive cell × rect scan is O(N³) and this runs once per `generate` on a
+    // hundred-desk plate. Narrowing to the rects that span the row first keeps it
+    // to the handful that can possibly contain the cell.
+    let mut row_rects: Vec<usize> = Vec::new();
+    for r in 0..nr {
+        let cy = (ys[r] + ys[r + 1]) / 2.0;
+        row_rects.clear();
+        row_rects.extend((0..rects.len()).filter(|&k| cy > rects[k].y0 && cy < rects[k].y1));
+        if row_rects.is_empty() {
+            continue;
+        }
+        for c in 0..nc {
+            let cx = (xs[c] + xs[c + 1]) / 2.0;
+            inside[r * nc + c] =
+                row_rects.iter().any(|&k| cx > rects[k].x0 && cx < rects[k].x1);
+        }
+    }
+    let mut used = vec![false; nc * nr];
+    let mut out: Vec<geometry::Rect> = Vec::new();
+    for r in 0..nr {
+        for c in 0..nc {
+            if !inside[r * nc + c] || used[r * nc + c] {
+                continue;
+            }
+            let mut c1 = c;
+            while c1 + 1 < nc && inside[r * nc + c1 + 1] && !used[r * nc + c1 + 1] {
+                c1 += 1;
+            }
+            let mut r1 = r;
+            'grow: while r1 + 1 < nr {
+                for cc in c..=c1 {
+                    if !inside[(r1 + 1) * nc + cc] || used[(r1 + 1) * nc + cc] {
+                        break 'grow;
+                    }
+                }
+                r1 += 1;
+            }
+            for rr in r..=r1 {
+                for cc in c..=c1 {
+                    used[rr * nc + cc] = true;
+                }
+            }
+            out.push(geometry::Rect { x0: xs[c], y0: ys[r], x1: xs[c1 + 1], y1: ys[r1 + 1] });
+        }
+    }
+    out
+}
+
+/// The floor BETWEEN the desk banks, named as the aisle it is.
+///
+/// Bands hug their desks, so what a bank's envelope holds and its bands do not
+/// is the cluster aisle, the step where one row is shorter than the next, and the
+/// pocket a rejected slot left. That floor is open-plan circulation — a person
+/// walks it to reach a desk — and it is emitted here as **drawn** `Circulation`
+/// by exact rectangle subtraction.
+///
+/// **Why not leave it to the residual pass.** Because the residual pass reaches
+/// it through a 0.25 m raster whose cells must clear every zone corner, so each
+/// pocket comes back a raster cell short on every side and the shortfall stays
+/// untyped: routing the between-bank floor that way put 13.0% of the reference
+/// plate into hairline seams and shattered the walking area into two dozen
+/// hatched `Unassigned` fragments — floor the plan then bills as waste and the
+/// score penalises, for the sole reason that a raster could not touch a rectangle.
+/// Subtracting rectangles from rectangles has no such error: the aisles abut the
+/// bands exactly. The rest of the plate is untouched and still goes to the
+/// residual pass, which is the right instrument for floor with no owner nearby.
+fn emit_bank_aisles(
+    doc: &mut Document,
+    bands: &[geometry::Rect],
+    clear: f64,
+    plate: Option<&[Point]>,
+    fields: &[geometry::Rect],
+) {
+    let eps = 1e-9;
+    // Banks: bands within one access aisle of each other belong to the same
+    // envelope, so a bank's own gaps are aisles and the open floor beyond the
+    // last bank is somebody else's problem (the residual pass names it).
+    let mut group: Vec<usize> = (0..bands.len()).collect();
+    fn root(g: &mut Vec<usize>, i: usize) -> usize {
+        let mut i = i;
+        while g[i] != i {
+            g[i] = g[g[i]];
+            i = g[i];
+        }
+        i
+    }
+    for i in 0..bands.len() {
+        for j in (i + 1)..bands.len() {
+            let (a, b) = (bands[i], bands[j]);
+            let gx = (b.x0 - a.x1).max(a.x0 - b.x1);
+            let gy = (b.y0 - a.y1).max(a.y0 - b.y1);
+            if gx <= 2.0 * clear + eps && gy <= 2.0 * clear + eps {
+                let (ra, rb) = (root(&mut group, i), root(&mut group, j));
+                if ra != rb {
+                    group[ra] = rb;
+                }
+            }
+        }
+    }
+    let mut banks: Vec<(geometry::Rect, Vec<usize>)> = Vec::new();
+    let mut slot: Vec<Option<usize>> = vec![None; bands.len()];
+    // A band that sits in a region's DESK FIELD takes the whole field as its
+    // envelope, so the field is tiled exactly into bands + aisles. That field
+    // rect is what used to BE the Workspace zone; naming its desk-free part as
+    // the aisle it is, by rectangle subtraction, is both the honest reading and
+    // the one with no rasterisation error — routing it through the residual pass
+    // instead left a raster cell of untyped seam around every edge.
+    // A band that sits in a region's DESK FIELD takes the whole field as its
+    // envelope, so the field is tiled exactly into bands + aisles. That field
+    // rect is what used to BE the Workspace zone; naming its desk-free part as
+    // the aisle it is, by rectangle subtraction, is both the honest reading and
+    // the one with no rasterisation error — routing it through the residual pass
+    // instead left a raster cell of untyped seam around every edge, and on the
+    // reference plate's harder seeds that came to 10–11% of the floor.
+    let field_of = |b: &geometry::Rect| -> Option<usize> {
+        let (cx, cy) = ((b.x0 + b.x1) / 2.0, (b.y0 + b.y1) / 2.0);
+        fields.iter().position(|f| cx >= f.x0 && cx <= f.x1 && cy >= f.y0 && cy <= f.y1)
+    };
+    let mut by_field: Vec<(usize, Vec<usize>)> = Vec::new();
+    for i in 0..bands.len() {
+        if let Some(fi) = field_of(&bands[i]) {
+            match by_field.iter_mut().find(|(f, _)| *f == fi) {
+                Some((_, v)) => v.push(i),
+                None => by_field.push((fi, vec![i])),
+            }
+            continue;
+        }
+        // No field owns it (the whole-plate fill, a pocket row): fall back to
+        // grouping by proximity, so its own gaps still read as aisle.
+        let r = root(&mut group, i);
+        match slot[r] {
+            Some(k) => {
+                let e = &mut banks[k].0;
+                e.x0 = e.x0.min(bands[i].x0);
+                e.y0 = e.y0.min(bands[i].y0);
+                e.x1 = e.x1.max(bands[i].x1);
+                e.y1 = e.y1.max(bands[i].y1);
+                banks[k].1.push(i);
+            }
+            None => {
+                slot[r] = Some(banks.len());
+                banks.push((bands[i], vec![i]));
+            }
+        }
+    }
+
+    for (fi, members) in by_field {
+        let f = fields[fi];
+        let mut env = f;
+        for &m in &members {
+            env.x0 = env.x0.min(bands[m].x0);
+            env.y0 = env.y0.min(bands[m].y0);
+            env.x1 = env.x1.max(bands[m].x1);
+            env.y1 = env.y1.max(bands[m].y1);
+        }
+        banks.push((env, members));
+    }
+
+    // Existing zones the envelope may overlap (a room sitting in the bank's
+    // shadow): their floor is already named, so it is never re-emitted. Their
+    // EDGES join the subdivision grid below, so no emitted cell can straddle
+    // one — which is what makes the aisles strictly disjoint from every zone,
+    // and therefore keeps NIA ≤ GEA and leaves each desk in its own band rather
+    // than in a smaller aisle that overlapped it.
+    // Keep-outs join the list even though their `Core` zones are pushed later:
+    // an envelope taken from a region field CAN span a shaft, and an aisle over
+    // one would double-count the floor the Core zone claims at the end of
+    // `generate` (NIA > GEA) and draw a corridor through a lift lobby.
+    let mut taken: Vec<(f64, f64, f64, f64)> = doc.zones.iter().map(|z| z.shape.bbox()).collect();
+    for k in &doc.keepouts {
+        taken.push((k.x - k.w / 2.0, k.y - k.h / 2.0, k.x + k.w / 2.0, k.y + k.h / 2.0));
+    }
+    let mut out: Vec<geometry::Rect> = Vec::new();
+    for (env, members) in &banks {
+        if members.len() < 2
+            && (env.x1 - env.x0) * (env.y1 - env.y0) <= bands[members[0]].area() + 1e-9
+        {
+            continue; // a lone band filling its own envelope has no aisle
+        }
+        // Everything this envelope may not claim: named zones, keep-outs, this
+        // bank's own bands, and the aisles ALREADY emitted for earlier banks —
+        // two region fields can overlap, and without the last of those two
+        // envelopes tile the same floor twice (NIA > GEA).
+        let mut blockers: Vec<geometry::Rect> = Vec::new();
+        for &(a0, b0, a1, b1) in &taken {
+            blockers.push(geometry::Rect { x0: a0, y0: b0, x1: a1, y1: b1 });
+        }
+        let zone_blockers = taken.len();
+        for &m in members {
+            blockers.push(bands[m]);
+        }
+        for r in &out {
+            blockers.push(*r);
+        }
+        let mut xs = vec![env.x0, env.x1];
+        let mut ys = vec![env.y0, env.y1];
+        for b in &blockers {
+            for v in [b.x0, b.x1] {
+                if v > env.x0 + eps && v < env.x1 - eps {
+                    xs.push(v);
+                }
+            }
+            for v in [b.y0, b.y1] {
+                if v > env.y0 + eps && v < env.y1 - eps {
+                    ys.push(v);
+                }
+            }
+        }
+        let dedup = |v: &mut Vec<f64>| {
+            v.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+            v.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
+        };
+        dedup(&mut xs);
+        dedup(&mut ys);
+        let (nc, nr) = (xs.len() - 1, ys.len() - 1);
+        let mut free = vec![false; nc * nr];
+        for r in 0..nr {
+            for c in 0..nc {
+                let (cx, cy) = ((xs[c] + xs[c + 1]) / 2.0, (ys[r] + ys[r + 1]) / 2.0);
+                let taken_here = blockers.iter().enumerate().any(|(k, b)| {
+                    cx > b.x0
+                        && cx < b.x1
+                        && cy > b.y0
+                        && cy < b.y1
+                        // A zone's own shape decides; everything else is a rect.
+                        && (k >= zone_blockers
+                            || k >= doc.zones.len()
+                            || doc.zones[k].shape.contains(cx, cy))
+                });
+                // Wholly inside the plate: an aisle rect may not poke through a
+                // wall, and `area_on` clipping would hide that from NIA while the
+                // canvas drew it anyway.
+                //
+                // Measured as "the plate clipped to this cell has the cell's full
+                // area", not as "all four corners are inside". The corner test was
+                // written first and `zone_geometry::every_zone_lies_inside_the_plate`
+                // caught it on the reference plate: the plate is NON-CONVEX, so a
+                // notch can bite 4.19 m² out of a cell whose every corner is
+                // interior. The clip is exact — the clipping window is the cell,
+                // which is convex — and costs the same.
+                let cell_area = (xs[c + 1] - xs[c]) * (ys[r + 1] - ys[r]);
+                let in_plate = plate.is_none_or(|poly| {
+                    geometry::rect_polygon_clip_area(poly, xs[c], ys[r], xs[c + 1], ys[r + 1])
+                        >= cell_area - 1e-9
+                });
+                free[r * nc + c] = !taken_here && in_plate;
+            }
+        }
+        // Merge free cells into maximal rectangles: run-length along x, then
+        // stack identical runs along y. Deterministic, and exact — the emitted
+        // rects abut the bands on their shared edges with no gap at all.
+        let mut used = vec![false; nc * nr];
+        for r in 0..nr {
+            for c in 0..nc {
+                if !free[r * nc + c] || used[r * nc + c] {
+                    continue;
+                }
+                let mut c1 = c;
+                while c1 + 1 < nc && free[r * nc + c1 + 1] && !used[r * nc + c1 + 1] {
+                    c1 += 1;
+                }
+                let mut r1 = r;
+                'grow: while r1 + 1 < nr {
+                    for cc in c..=c1 {
+                        if !free[(r1 + 1) * nc + cc] || used[(r1 + 1) * nc + cc] {
+                            break 'grow;
+                        }
+                    }
+                    r1 += 1;
+                }
+                for rr in r..=r1 {
+                    for cc in c..=c1 {
+                        used[rr * nc + cc] = true;
+                    }
+                }
+                out.push(geometry::Rect { x0: xs[c], y0: ys[r], x1: xs[c1 + 1], y1: ys[r1 + 1] });
+            }
+        }
+    }
+    for r in out {
+        // Sub-visible slivers stay unnamed rather than becoming zone noise — the
+        // same `MIN_AREA` floor the merge pass applies to a leftover pocket.
+        if r.width() < 0.3 || r.height() < 0.3 || r.width() * r.height() < 0.5 {
+            continue;
+        }
+        push_zone(
+            doc,
+            ZoneType::Circulation,
+            ZoneShape::Rect {
+                x: (r.x0 + r.x1) / 2.0,
+                y: (r.y0 + r.y1) / 2.0,
+                w: r.width(),
+                h: r.height(),
+            },
+            "Aisle",
+        );
+    }
+}
+
 // ---- Enclosed-room emission (M1 of docs/design/testfit-pro-quality.md) ----
 
 /// Generated-partition thickness (m): 100 mm double-boarded drywall — the
