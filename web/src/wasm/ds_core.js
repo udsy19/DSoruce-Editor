@@ -34,7 +34,10 @@ export class Editor {
     add_anchor(kind, x, y) {
         const ptr0 = passStringToWasm0(kind, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
-        wasm.editor_add_anchor(this.__wbg_ptr, ptr0, len0, x, y);
+        const ret = wasm.editor_add_anchor(this.__wbg_ptr, ptr0, len0, x, y);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
     }
     /**
      * Place a component (footprint centered at x,y). Returns the new component id
@@ -50,7 +53,10 @@ export class Editor {
         const ptr0 = passStringToWasm0(category, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
         const ret = wasm.editor_add_component(this.__wbg_ptr, ptr0, len0, x, y, w, h);
-        return ret >>> 0;
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return ret[0] >>> 0;
     }
     /**
      * Add a building entry point (world meters). The test-fit generator anchors
@@ -60,7 +66,10 @@ export class Editor {
      * @param {number} y
      */
     add_entry(x, y) {
-        wasm.editor_add_entry(this.__wbg_ptr, x, y);
+        const ret = wasm.editor_add_entry(this.__wbg_ptr, x, y);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
     }
     /**
      * Add a permanent interior keep-out (building core: stairs/lifts/shafts/
@@ -78,7 +87,10 @@ export class Editor {
         const ptr0 = passStringToWasm0(label, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
         const ret = wasm.editor_add_keepout(this.__wbg_ptr, x, y, w, h, ptr0, len0);
-        return ret >>> 0;
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return ret[0] >>> 0;
     }
     /**
      * Add a wall segment a→b. Returns the new wall id.
@@ -91,7 +103,10 @@ export class Editor {
      */
     add_wall(ax, ay, bx, by, thickness) {
         const ret = wasm.editor_add_wall(this.__wbg_ptr, ax, ay, bx, by, thickness);
-        return ret >>> 0;
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return ret[0] >>> 0;
     }
     /**
      * Create a `Rect` zone (center `x,y`, size `w,h`) of `zone_type`; returns the
@@ -130,7 +145,10 @@ export class Editor {
         const len0 = WASM_VECTOR_LEN;
         const ptr1 = passStringToWasm0(product_name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len1 = WASM_VECTOR_LEN;
-        wasm.editor_assign_product(this.__wbg_ptr, id, ptr0, len0, ptr1, len1, !isLikeNone(price_inr), isLikeNone(price_inr) ? 0 : price_inr);
+        const ret = wasm.editor_assign_product(this.__wbg_ptr, id, ptr0, len0, ptr1, len1, !isLikeNone(price_inr), isLikeNone(price_inr) ? 0 : price_inr);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
     }
     /**
      * Circulation / "walking place" evaluation of the current document.
@@ -339,7 +357,10 @@ export class Editor {
      * @param {number} y
      */
     move_component(id, x, y) {
-        wasm.editor_move_component(this.__wbg_ptr, id, x, y);
+        const ret = wasm.editor_move_component(this.__wbg_ptr, id, x, y);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
     }
     /**
      * Translate the current selection by (dx,dy) meters.
@@ -347,7 +368,10 @@ export class Editor {
      * @param {number} dy
      */
     move_selected(dx, dy) {
-        wasm.editor_move_selected(this.__wbg_ptr, dx, dy);
+        const ret = wasm.editor_move_selected(this.__wbg_ptr, dx, dy);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
     }
     constructor() {
         const ret = wasm.editor_new();
@@ -454,7 +478,10 @@ export class Editor {
      */
     select_at(x, y) {
         const ret = wasm.editor_select_at(this.__wbg_ptr, x, y);
-        return ret === Number.MAX_SAFE_INTEGER ? undefined : ret;
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return ret[0] === Number.MAX_SAFE_INTEGER ? undefined : ret[0];
     }
     /**
      * Store the frontend CAD drafting-layer blob (opaque JSON; the core never
@@ -508,7 +535,10 @@ export class Editor {
      * @param {number} radians
      */
     set_component_rotation(id, radians) {
-        wasm.editor_set_component_rotation(this.__wbg_ptr, id, radians);
+        const ret = wasm.editor_set_component_rotation(this.__wbg_ptr, id, radians);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
     }
     /**
      * Set a component's footprint (meters). Used by the object inspector's
@@ -519,7 +549,10 @@ export class Editor {
      * @param {number} h
      */
     set_component_size(id, w, h) {
-        wasm.editor_set_component_size(this.__wbg_ptr, id, w, h);
+        const ret = wasm.editor_set_component_size(this.__wbg_ptr, id, w, h);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
     }
     /**
      * Advance a component's decision lifecycle. `state` is one of
@@ -543,7 +576,10 @@ export class Editor {
      * @param {number} by
      */
     set_wall(id, ax, ay, bx, by) {
-        wasm.editor_set_wall(this.__wbg_ptr, id, ax, ay, bx, by);
+        const ret = wasm.editor_set_wall(this.__wbg_ptr, id, ax, ay, bx, by);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
     }
     /**
      * Set a wall's height in meters. Anything `>= 0` and below the full storey
@@ -556,7 +592,10 @@ export class Editor {
      * @param {number} height_m
      */
     set_wall_height(id, height_m) {
-        wasm.editor_set_wall_height(this.__wbg_ptr, id, height_m);
+        const ret = wasm.editor_set_wall_height(this.__wbg_ptr, id, height_m);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
     }
     /**
      * Reclassify zone `id` to `zone_type` (one of the serde `ZoneType` tags,

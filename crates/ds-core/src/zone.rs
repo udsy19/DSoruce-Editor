@@ -144,6 +144,32 @@ impl ZoneShape {
         }
     }
 
+    /// **Every coordinate of this shape is a real number.**
+    ///
+    /// The predicate `resize_zone`'s bounds guard silently assumed. `NaN < x` and
+    /// `NaN > x` are both false, so a shape of NaNs passed an `OutOfBounds` check
+    /// written entirely in `<`/`>` — and then serialized as `{"x":null,…}`, which
+    /// `from_snapshot` refuses with `invalid type: null, expected f64`. One edit
+    /// produced a `.dsource` that saves and can never be reopened, so the
+    /// finiteness question is asked here, once, in the shape's own vocabulary
+    /// rather than re-spelled at each caller.
+    pub fn is_finite(&self) -> bool {
+        match self {
+            ZoneShape::Rect { x, y, w, h } => {
+                x.is_finite() && y.is_finite() && w.is_finite() && h.is_finite()
+            }
+            ZoneShape::RectRing { x, y, w, h, in_w, in_h } => {
+                x.is_finite()
+                    && y.is_finite()
+                    && w.is_finite()
+                    && h.is_finite()
+                    && in_w.is_finite()
+                    && in_h.is_finite()
+            }
+            ZoneShape::Poly { pts } => pts.iter().all(|p| p[0].is_finite() && p[1].is_finite()),
+        }
+    }
+
     /// Outer AABB `(min_x, min_y, max_x, max_y)` for hit-testing / tiling checks.
     pub fn bbox(&self) -> (f64, f64, f64, f64) {
         match self {
@@ -258,6 +284,10 @@ pub enum ZoneError {
     NotMergeable,
     OutOfBounds,
     InvalidCut,
+    /// A coordinate was NaN or ±∞. Its own variant rather than folded into
+    /// `OutOfBounds`, because it is not a geometry complaint: a non-finite
+    /// coordinate is not a shape in the wrong place, it is not a shape.
+    NonFinite,
 }
 
 impl std::fmt::Display for ZoneError {
@@ -267,6 +297,7 @@ impl std::fmt::Display for ZoneError {
             ZoneError::NotMergeable => "those zones aren't adjacent",
             ZoneError::OutOfBounds => "that shape falls outside the floor plate",
             ZoneError::InvalidCut => "the cut line must be strictly inside the zone",
+            ZoneError::NonFinite => "coordinates must be finite numbers",
         };
         f.write_str(msg)
     }

@@ -4516,7 +4516,8 @@ fn plate_with_strip(strip_w: f64) -> Document {
         ZoneType::Circulation,
         ZoneShape::Rect { x: 12.0, y: 6.0, w: 24.0, h: 2.0 },
         "Corridor".to_string(),
-    );
+    )
+    .expect("test fixture zone is finite and on-plate");
     // Program fills from the corridor's north face up to the strip, but only
     // across x ∈ [0, 20] — leaving a 4 m north–south connector at the east end.
     //
@@ -4537,7 +4538,8 @@ fn plate_with_strip(strip_w: f64) -> Document {
         ZoneType::Workspace,
         ZoneShape::Rect { x: 10.0, y: 7.0 + occupied_h / 2.0, w: 20.0, h: occupied_h },
         "Open Workspace".to_string(),
-    );
+    )
+    .expect("test fixture zone is finite and on-plate");
     doc
 }
 
@@ -4612,14 +4614,16 @@ fn wide_but_sealed_pocket_is_unassigned() {
         ZoneType::Circulation,
         ZoneShape::Rect { x: 12.0, y: 1.0, w: 24.0, h: 2.0 },
         "Corridor".to_string(),
-    );
+    )
+    .expect("test fixture zone is finite and on-plate");
     // Program spans the full width from the corridor to the strip: nothing can
     // route north without crossing it.
     doc.add_zone(
         ZoneType::Workspace,
         ZoneShape::Rect { x: 12.0, y: 6.0, w: 24.0, h: 6.0 },
         "Open Workspace".to_string(),
-    );
+    )
+    .expect("test fixture zone is finite and on-plate");
     let cls = conform::WalkClassifier::build(&doc).expect("grid builds");
     let pts = strip_poly(3.0);
     let (wide_frac, connected, _) = cls.debug_measure(&pts);
@@ -4726,7 +4730,8 @@ fn user_created_zones_are_always_drawn() {
         ZoneType::Circulation,
         ZoneShape::Rect { x: 10.0, y: 6.0, w: 8.0, h: 2.0 },
         "Circulation".to_string(),
-    );
+    )
+    .expect("test fixture zone is finite and on-plate");
     let z = doc.zones.iter().find(|z| z.id == id).unwrap();
     assert_eq!(
         z.origin,
@@ -4793,12 +4798,14 @@ fn plate_with_square_pocket() -> Document {
         ZoneType::Circulation,
         ZoneShape::Rect { x: 12.0, y: 6.0, w: 24.0, h: 2.0 },
         "Corridor".to_string(),
-    );
+    )
+    .expect("test fixture zone is finite and on-plate");
     doc.add_zone(
         ZoneType::Workspace,
         ZoneShape::Rect { x: 9.5, y: 9.5, w: 19.0, h: 5.0 },
         "Open Workspace".to_string(),
-    );
+    )
+    .expect("test fixture zone is finite and on-plate");
     doc
 }
 
@@ -4820,12 +4827,14 @@ fn plate_with_ribbon_pocket() -> Document {
         ZoneType::Circulation,
         ZoneShape::Rect { x: 12.0, y: 6.0, w: 24.0, h: 2.0 },
         "Corridor".to_string(),
-    );
+    )
+    .expect("test fixture zone is finite and on-plate");
     doc.add_zone(
         ZoneType::Workspace,
         ZoneShape::Rect { x: 12.0, y: 10.25, w: 24.0, h: 3.5 },
         "Open Workspace".to_string(),
-    );
+    )
+    .expect("test fixture zone is finite and on-plate");
     doc
 }
 

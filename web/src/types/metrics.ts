@@ -40,6 +40,21 @@ export interface Metrics {
    * as a broken wall loop. Optional only for documents metered by an older core.
    */
   plate_state?: 'traced' | 'open' | 'unresolved'
+  /**
+   * Whether these numbers are a MEASUREMENT — absent (`undefined`; `None`
+   * crosses the wasm boundary that way) normally, a sentence naming the
+   * impossibility when one is not.
+   *
+   * The release-visible successor to a `debug_assert!`. Efficiency reached
+   * 102.469% (retype every F4 zone to Workspace) and 648.4% (overlapping
+   * Workspace rects) behind an assertion that is **compiled out of the wasm we
+   * ship**, so the one guard at the source of the defect did not exist in the
+   * only build a user runs. The core now caps the value AND states why here.
+   *
+   * Display it; never branch on its text. A cap that nothing renders is a
+   * `debug_assert` with extra steps.
+   */
+  metrics_error?: string | null
   indicative_cost?: number
   /** Σ observed ₹ prices of bank-bound components (specified furniture capex). */
   specified_cost?: number

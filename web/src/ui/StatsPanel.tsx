@@ -86,7 +86,27 @@ export function StatsPanel({ ec }: { ec: EditorCanvas }) {
           <MetricRow label="Net Internal Area" value={intFmt(nia)} unit="m²" />
           <MetricRow label="Workstations" value={intFmt(m.workstations ?? 0)} unit="pax" />
           <MetricRow label="Area / Workstation" value={(m.area_per_workstation ?? 0).toFixed(1)} unit="m²" />
-          <MetricRow label="Efficiency" value={(m.efficiency_pct ?? 0).toFixed(0)} unit="%" />
+          <MetricRow
+            label="Efficiency"
+            value={(m.efficiency_pct ?? 0).toFixed(0)}
+            unit="%"
+            state={m.metrics_error ? 'error' : undefined}
+            note={m.metrics_error ?? undefined}
+          />
+          {/* The release-visible error state, rendered. `metrics_error` exists
+              because the guard it replaces (`debug_assert!`) is compiled out of
+              the wasm we ship; a state nothing displays would be the same
+              silence with a different name. It is a SENTENCE from the core —
+              printed verbatim, never parsed. */}
+          {m.metrics_error && (
+            <MetricRow
+              label="Measurement"
+              value="capped"
+              unit=""
+              state="error"
+              note={m.metrics_error}
+            />
+          )}
           <MetricRow label="Carbon Footprint" value={intFmt(elements.totalCo2)} unit="kgCO₂e" />
           <MetricRow label="Total Cost" value={inr(elements.totalCost)} unit="" />
 

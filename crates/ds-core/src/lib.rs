@@ -85,6 +85,23 @@ struct Metrics {
     /// and presenting it in the same slot is how "GEA 1 m²" read as a fact
     /// rather than as a broken wall loop.
     plate_state: &'static str,
+    /// **Whether these numbers are a measurement.** Absent (`undefined` across
+    /// the wasm boundary) normally; a sentence naming the impossibility when one
+    /// is not.
+    ///
+    /// NEW POLICY, and it is the whole of finding M1's third guard. The 102.469%
+    /// efficiency stood behind `debug_assert!(efficiency_pct <= 100.0 + 1e-6)`,
+    /// which is **compiled out of the release wasm we ship** — so the one guard
+    /// placed at the source of the defect did not exist in the only build a user
+    /// ever runs. An impossible value must surface as a STATE the caller can
+    /// see, exactly the way `plate_state` does, and never only as an assertion.
+    ///
+    /// The debug assertion is deliberately gone rather than kept alongside: two
+    /// guards for one property, one of which vanishes at the boundary that
+    /// matters, is how the property came to be unguarded while looking guarded.
+    ///
+    /// Consumers: the panel prints it. Nothing branches on its TEXT.
+    metrics_error: Option<String>,
     /// Indicative fit-out cost (currency units) — see `cost.rs`.
     indicative_cost: f64,
     /// Indicative embodied carbon (kgCO2e) — see `cost.rs`.
@@ -316,6 +333,66 @@ fn net_internal_area(doc: &Document, areas: &[f64]) -> f64 {
     }
 }
 
+/// **THE areas every zone-derived metric is computed from.** One basis, so a
+/// clamp applied to one metric is applied to all of them.
+///
+/// This type exists because the NIA clamp came back as the numerator's problem.
+/// `net_internal_area` clamps `Σ areas` to the traced floor; `usable_area` summed
+/// the SAME `areas` unclamped, and `efficiency = usable / nia` therefore divided
+/// a full sum by a clamped one. Retyping every F4 zone to Workspace — ordinary
+/// editing — took efficiency from 69.979% to **102.469%**; eight overlapping
+/// 30 × 30 Workspace rects on F1 read **648.4%**. Identical in shape to the
+/// 1159% defect, in the same function, as a different pair.
+///
+/// The fix is not a second clamp. When the sum exceeds a floor we trust, the
+/// whole basis is scaled by the one factor `nia / sum`, so:
+///
+/// * NIA is byte-identical to before (`Σ scaled == sum.min(floor)`);
+/// * every subset metric — usable, unassigned — carries the SAME factor;
+/// * `efficiency == usable / nia == usable_raw / sum`, a ratio of a non-negative
+///   subset to its own total, which cannot exceed 1 for any zone set at all.
+///
+/// That last line is the difference between this and the comment it replaces.
+/// The old code said the ratio "cannot exceed 1 by construction" — and it was
+/// true of the numerator and the denominator *separately*, which is not a
+/// construction, it is two constructions that were allowed to drift.
+///
+/// Scaling is a *cap*, not a measurement, so it is also reported: `overflow`
+/// carries the reason out to `Metrics::metrics_error`.
+struct AreaBasis {
+    /// Per-zone effective areas in zone order, after de-overlap AND after the
+    /// clamp factor. `Σ == nia` exactly.
+    areas: Vec<f64>,
+    /// Index of the plate-spanning oriented Workspace, when present.
+    spanning: Option<usize>,
+    nia: f64,
+    /// `Some(reason)` when the zones did not tile the plate and the basis had to
+    /// be capped. Release-visible; see `Metrics::metrics_error`.
+    overflow: Option<String>,
+}
+
+fn area_basis(doc: &Document) -> AreaBasis {
+    let (mut areas, spanning) = effective_zone_areas(doc);
+    let sum: f64 = areas.iter().sum();
+    let nia = net_internal_area(doc, &areas);
+    let mut overflow = None;
+    // `> 1e-9` and not `!= 0.0`: a scale factor from a sum of a few m² of float
+    // noise is meaningless, and a zero sum has nothing to scale.
+    if sum > 1e-9 && nia < sum - 1e-6 {
+        let excess_pct = (sum - nia) / nia.max(1e-9) * 100.0;
+        overflow = Some(format!(
+            "zone areas do not tile the floor: Σ {sum:.3} m² exceeds the traced \
+             floor {nia:.3} m² by {excess_pct:.1}% (zones overlap). NIA, usable \
+             area and efficiency are CAPPED to the floor, not measured."
+        ));
+        let k = nia / sum;
+        for a in &mut areas {
+            *a *= k;
+        }
+    }
+    AreaBasis { areas, spanning, nia, overflow }
+}
+
 fn usable_area(doc: &Document, areas: &[f64]) -> f64 {
     doc.zones
         .iter()
@@ -340,8 +417,7 @@ fn usable_area(doc: &Document, areas: &[f64]) -> f64 {
 fn compute_metrics(doc: &Document) -> Metrics {
     let resolution = doc.plate_resolution();
     let floor_area = doc.floor_area();
-    let (areas, _) = effective_zone_areas(doc);
-    let nia = net_internal_area(doc, &areas);
+    let AreaBasis { areas, nia, overflow, .. } = area_basis(doc);
     // THE ONE workstation definition (== Pax everywhere: chip, row, Zones tab,
     // CSV) — see `workstation_count`. `stats.ts` `zonePax` sums the same per-zone
     // `seated`, so the panel's Pax is identical to this number.
@@ -364,17 +440,64 @@ fn compute_metrics(doc: &Document) -> Metrics {
     } else {
         0.0
     };
-    // `usable` is a subset of the same `areas` NIA sums, so the ratio cannot
-    // exceed 1 by construction — but "by construction" is what the clamped-NIA
-    // pairing also looked like. The debug assertion fires at the source rather
-    // than leaving a future divergence to surface as a number on a screen.
-    let efficiency_pct = if nia > 0.0 { usable / nia * 100.0 } else { 0.0 };
-    debug_assert!(
-        efficiency_pct <= 100.0 + 1e-6,
-        "efficiency {efficiency_pct} > 100: usable {usable} / nia {nia} \
-         (plate {})",
-        resolution.tag()
-    );
+    // `usable` and `nia` now come from ONE basis carrying ONE clamp (see
+    // `area_basis`), so this is `usable_raw / Σ areas` — a non-negative subset
+    // over its own total.
+    let mut efficiency_pct = if nia > 0.0 { usable / nia * 100.0 } else { 0.0 };
+    // `.min(100.0)`: a subset over its own total is 1.0 give or take an ulp, and
+    // the scaled basis makes that last bit visible (`100.00000000000003`). A real
+    // excursion is caught and REPORTED below, at 1e-6; this only removes float
+    // noise, so no defect can hide behind it.
+    let unassigned_pct_raw =
+        if nia > 0.0 { (unassigned / nia * 100.0).min(100.0) } else { 0.0 };
+
+    // ---- The release-visible backstop that replaces the `debug_assert!`. ----
+    //
+    // R10 AXES — this guard's falsification varies: (1) zone TYPE, retyping
+    // ALL zones rather than one (`metrics_can_never_be_impossible`'s new
+    // retype-all step class); (2) zone COUNT and overlap, by adding zones that
+    // overlap existing ones; (3) the BUILD PROFILE, because the guard it
+    // replaces existed only in debug — `statsPanel.test.mjs` runs it against the
+    // release wasm we ship. An unstated axis is an untested axis.
+    let mut errors: Vec<String> = Vec::new();
+    if let Some(reason) = overflow {
+        errors.push(reason);
+    }
+    // Not "belt and braces" — this catches any FUTURE divergence between the
+    // numerator and the denominator, which is exactly the failure that shipped.
+    // It clamps as well as reports: a panel showing 100% next to a stated reason
+    // is honest; a panel showing 648% is not, and silence about either is worse.
+    if efficiency_pct > 100.0 + 1e-6 {
+        errors.push(format!(
+            "efficiency {efficiency_pct:.3}% exceeds 100 (usable {usable:.3} / \
+             NIA {nia:.3}, plate {}) — capped at 100%",
+            resolution.tag()
+        ));
+        efficiency_pct = 100.0;
+    }
+    // Applied AFTER the report, so an excursion is never silently absorbed: the
+    // 1e-6 window above is the only thing between "float noise" and "a finding".
+    efficiency_pct = efficiency_pct.min(100.0);
+    if matches!(resolution, document::PlateResolution::Traced(_))
+        && nia > floor_area + 1e-6
+    {
+        errors.push(format!(
+            "NIA {nia:.3} m² exceeds a TRACED floor of {floor_area:.3} m²"
+        ));
+    }
+    for (name, v) in [
+        ("floor_area", floor_area),
+        ("net_internal_area", nia),
+        ("efficiency_pct", efficiency_pct),
+        ("area_per_workstation", area_per_workstation),
+        ("unassigned_area", unassigned),
+    ] {
+        if !v.is_finite() || v < 0.0 {
+            errors.push(format!("{name} is {v}"));
+        }
+    }
+    let metrics_error = if errors.is_empty() { None } else { Some(errors.join(" · ")) };
+
     Metrics {
         floor_area,
         wall_count: doc.walls.len(),
@@ -390,8 +513,9 @@ fn compute_metrics(doc: &Document) -> Metrics {
         area_per_workstation,
         efficiency_pct,
         unassigned_area: unassigned,
-        unassigned_pct: if nia > 0.0 { unassigned / nia * 100.0 } else { 0.0 },
+        unassigned_pct: unassigned_pct_raw,
         plate_state: resolution.tag(),
+        metrics_error,
         indicative_cost: cost::indicative_cost(doc),
         indicative_carbon: cost::indicative_carbon(doc),
         specified_cost: cost::specified_cost(doc),
@@ -459,6 +583,34 @@ fn zone_overlap_rect_on_plate(
     }
 }
 
+/// **Every `f64` that crosses the wasm boundary into the document is a real
+/// number.** One owner, called by every mutator that takes one.
+///
+/// JavaScript hands us `NaN` for free — `parseFloat("")`, `0/0`, an
+/// `undefined` arithmetic chain, a slider read before layout. Rust then accepts
+/// it silently, because a NaN satisfies no comparison: `resize_zone`'s
+/// `OutOfBounds` guard is written entirely in `<`/`>` and every one of them is
+/// false for NaN, so `resize_zone(id, NaN, NaN, NaN, NaN)` returned **Ok**, NIA
+/// fell 899.789 → 348.029 with no error, and the zone serialized as
+/// `{"x":null,…}` — a `.dsource` that **saves and can never be reopened**
+/// (`from_snapshot` → `invalid type: null, expected f64`).
+///
+/// **A document that cannot round-trip is a defect at WRITE time**, so the
+/// refusal is here, at the write, and not at the load. Checked at the BOUNDARY
+/// rather than per-field inside the document, because the class is "values
+/// arriving from JS", not "zone shapes": patching the one mutator the report
+/// named would have left fourteen others live — the "known hazard patched at one
+/// call site" family in `.claude/rules/gate-independence.md`.
+fn finite(vals: &[f64]) -> Result<(), JsValue> {
+    if let Some(bad) = vals.iter().find(|v| !v.is_finite()) {
+        return Err(JsValue::from_str(&format!(
+            "non-finite coordinate ({bad}) — NaN and ±∞ are not positions, and a \
+             document holding one cannot be reopened"
+        )));
+    }
+    Ok(())
+}
+
 #[wasm_bindgen]
 impl Editor {
     #[wasm_bindgen(constructor)]
@@ -496,8 +648,16 @@ impl Editor {
     }
 
     /// Add a wall segment a→b. Returns the new wall id.
-    pub fn add_wall(&mut self, ax: f64, ay: f64, bx: f64, by: f64, thickness: f64) -> u32 {
+    pub fn add_wall(
+        &mut self,
+        ax: f64,
+        ay: f64,
+        bx: f64,
+        by: f64,
+        thickness: f64,
+    ) -> Result<u32, JsValue> {
         self.touch();
+        finite(&[ax, ay, bx, by, thickness])?;
         let id = self.doc.alloc_id();
         self.doc.walls.push(Wall {
             id,
@@ -508,13 +668,21 @@ impl Editor {
             glazing: false,
             height_m: None,
         });
-        id
+        Ok(id)
     }
 
     /// Place a component (footprint centered at x,y). Returns the new component id
     /// and makes it the current selection.
-    pub fn add_component(&mut self, category: String, x: f64, y: f64, w: f64, h: f64) -> u32 {
+    pub fn add_component(
+        &mut self,
+        category: String,
+        x: f64,
+        y: f64,
+        w: f64,
+        h: f64,
+    ) -> Result<u32, JsValue> {
         self.touch();
+        finite(&[x, y, w, h])?;
         let id = self.doc.alloc_id();
         let label = format!("{} {}", category, id);
         let seats = crate::model::seats_for(&category, w, h);
@@ -535,18 +703,26 @@ impl Editor {
             decision: DecisionState::Open,
         });
         self.doc.selection = Some(id);
-        id
+        Ok(id)
     }
 
     /// Add a permanent interior keep-out (building core: stairs/lifts/shafts/
     /// WCs) as a center-based rect. Keep-outs are hard obstacles `generate()`
     /// always avoids regardless of freeze state, and render as `Core` zones.
     /// Returns the new keep-out id. Serializes with the doc via `state()`.
-    pub fn add_keepout(&mut self, x: f64, y: f64, w: f64, h: f64, label: String) -> u32 {
+    pub fn add_keepout(
+        &mut self,
+        x: f64,
+        y: f64,
+        w: f64,
+        h: f64,
+        label: String,
+    ) -> Result<u32, JsValue> {
         self.touch();
+        finite(&[x, y, w, h])?;
         let id = self.doc.alloc_id();
         self.doc.keepouts.push(KeepOut { id, x, y, w, h, label });
-        id
+        Ok(id)
     }
 
     /// Remove all keep-outs.
@@ -558,9 +734,11 @@ impl Editor {
     /// Add a building entry point (world meters). The test-fit generator anchors
     /// its primary circulation spine to the first entry (spec §3). Serializes
     /// with the doc via `state()`/`snapshot()`.
-    pub fn add_entry(&mut self, x: f64, y: f64) {
+    pub fn add_entry(&mut self, x: f64, y: f64) -> Result<(), JsValue> {
         self.touch();
+        finite(&[x, y])?;
         self.doc.entries.push(Point::new(x, y));
+        Ok(())
     }
 
     /// Remove all entry points.
@@ -574,11 +752,13 @@ impl Editor {
     /// their point and bumps that kind's count. `kind` is a `SpaceKind` name
     /// ("Reception"/"Cabin"/"Meeting"/…); an unknown kind is ignored. Serializes
     /// with the doc via `state()`/`snapshot()`, mirroring `add_entry`.
-    pub fn add_anchor(&mut self, kind: String, x: f64, y: f64) {
+    pub fn add_anchor(&mut self, kind: String, x: f64, y: f64) -> Result<(), JsValue> {
         self.touch();
+        finite(&[x, y])?;
         if let Some(kind) = SpaceKind::from_wire(&kind) {
             self.doc.anchors.push(Anchor { kind, x, y });
         }
+        Ok(())
     }
 
     /// Remove all anchor pins (mirrors `clear_entries`).
@@ -589,8 +769,9 @@ impl Editor {
 
     /// Hit-test components at (x,y) in world coords, topmost first. Sets and
     /// returns the selection (undefined in JS if nothing was hit).
-    pub fn select_at(&mut self, x: f64, y: f64) -> Option<u32> {
+    pub fn select_at(&mut self, x: f64, y: f64) -> Result<Option<u32>, JsValue> {
         self.touch();
+        finite(&[x, y])?;
         let mut hit = None;
         for c in self.doc.components.iter().rev() {
             let dx = (c.x - x).abs();
@@ -601,7 +782,7 @@ impl Editor {
             }
         }
         self.doc.selection = hit;
-        hit
+        Ok(hit)
     }
 
     pub fn clear_selection(&mut self) {
@@ -610,14 +791,16 @@ impl Editor {
     }
 
     /// Translate the current selection by (dx,dy) meters.
-    pub fn move_selected(&mut self, dx: f64, dy: f64) {
+    pub fn move_selected(&mut self, dx: f64, dy: f64) -> Result<(), JsValue> {
         self.touch();
+        finite(&[dx, dy])?;
         if let Some(id) = self.doc.selection {
             if let Some(c) = self.doc.component_mut(id) {
                 c.x += dx;
                 c.y += dy;
             }
         }
+        Ok(())
     }
 
     pub fn delete_selected(&mut self) {
@@ -629,22 +812,26 @@ impl Editor {
 
     /// Move a component **by id** to absolute center `(x, y)` meters. The by-id
     /// primitive the AI uses; complements the selection-based `move_selected`.
-    pub fn move_component(&mut self, id: u32, x: f64, y: f64) {
+    pub fn move_component(&mut self, id: u32, x: f64, y: f64) -> Result<(), JsValue> {
         self.touch();
+        finite(&[x, y])?;
         if let Some(c) = self.doc.component_mut(id) {
             c.x = x;
             c.y = y;
         }
+        Ok(())
     }
 
     /// Set a component's rotation (radians, clockwise in the Y-down plan).
     /// Doors/windows placed along angled walls need this; renderers already
     /// honor `Component::rotation`.
-    pub fn set_component_rotation(&mut self, id: u32, radians: f64) {
+    pub fn set_component_rotation(&mut self, id: u32, radians: f64) -> Result<(), JsValue> {
         self.touch();
+        finite(&[radians])?;
         if let Some(c) = self.doc.component_mut(id) {
             c.rotation = radians;
         }
+        Ok(())
     }
 
     /// Set a component's hinge handedness (mirror across its long axis). Doors
@@ -673,8 +860,9 @@ impl Editor {
     /// Set a component's footprint (meters). Used by the object inspector's
     /// editable W/H fields; clamped to a small positive minimum so a degenerate
     /// zero-size box can't be created.
-    pub fn set_component_size(&mut self, id: u32, w: f64, h: f64) {
+    pub fn set_component_size(&mut self, id: u32, w: f64, h: f64) -> Result<(), JsValue> {
         self.touch();
+        finite(&[w, h])?;
         if let Some(c) = self.doc.component_mut(id) {
             c.w = w.max(0.05);
             c.h = h.max(0.05);
@@ -683,6 +871,7 @@ impl Editor {
             // contract is that the renderer reads `seats` and never recomputes it.
             c.seats = crate::model::seats_for(&c.category, c.w, c.h);
         }
+        Ok(())
     }
 
     /// Change a component's category (which slice of the material bank + which
@@ -717,13 +906,22 @@ impl Editor {
         product_id: String,
         product_name: String,
         price_inr: Option<f64>,
-    ) {
+    ) -> Result<(), JsValue> {
         self.touch();
+        // **Found by the source scan, not by the audit.** The reported defect and
+        // the fifteen mutators I probed were all coordinates; this one is a
+        // PRICE, and it corrupts the document just as completely — `Some(NaN)`
+        // makes `serde_json::to_string` fail outright, so a bound product with a
+        // NaN price is a plan that cannot be saved at all. A behavioural audit
+        // covers the mutators you thought to list; this is why the structural
+        // guard is the one that has to exist.
+        finite(&[price_inr.unwrap_or(0.0)])?;
         if let Some(c) = self.doc.component_mut(id) {
             c.product_id = Some(product_id);
             c.label = product_name;
             c.price_inr = price_inr;
         }
+        Ok(())
     }
 
     /// Advance a component's decision lifecycle. `state` is one of
@@ -821,11 +1019,14 @@ impl Editor {
     fn zone_rows(&self, fold: bool) -> Vec<ZoneStat> {
         // De-overlapped areas so the Zones tab / Areas donut sum to GEA (never
         // above it) on tilted/irregular plates — same source of truth as metrics.
-        let (areas, spanning) = effective_zone_areas(&self.doc);
-        // ONE NIA. This line used to read `areas.iter().sum()` while `metrics()`
-        // summed and clamped — the two-owner split that put GEA 1 m² beside
-        // NIA 138 m² on the same panel.
-        let nia = net_internal_area(&self.doc, &areas);
+        //
+        // ONE BASIS. This used to call `effective_zone_areas` + `net_internal_area`
+        // itself; that is one owner short of enough, because the clamp inside
+        // `net_internal_area` then applied to the total while the rows kept their
+        // unclamped areas, and a donut whose slices sum above its own total is the
+        // Zones-tab face of the 102.469% efficiency. `area_basis` carries the clamp
+        // into the areas, so `Σ row.area == nia` on every document.
+        let AreaBasis { areas, spanning, nia, .. } = area_basis(&self.doc);
         let stats: Vec<ZoneStat> = self
             .doc
             .zones
@@ -913,6 +1114,17 @@ impl Editor {
         self.touch();
         let program: layout::Program =
             serde_wasm_bindgen::from_value(program).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        // The same rule as `finite`, applied to a struct instead of an argument
+        // list: `serde_json` refuses to serialize NaN/±∞, so "is every f64 in
+        // here real?" and "can this round-trip?" are literally the same question,
+        // asked once. A NaN `desk_w` reaches the document as NaN geometry on
+        // every desk it places — the resize_zone defect with more blast radius.
+        serde_json::to_value(&program).map_err(|_| {
+            JsValue::from_str(
+                "the program contains a non-finite number (NaN or ±∞) — generation \
+                 would place geometry no document could reopen",
+            )
+        })?;
         self.diag = layout::generate(&mut self.doc, &program, seed, keep_confirmed);
         serde_wasm_bindgen::to_value(&layout::score(&self.doc, &program))
             .map_err(|e| JsValue::from_str(&e.to_string()))
@@ -1096,7 +1308,10 @@ impl Editor {
         self.touch();
         let t: ZoneType = serde_json::from_str(&format!("\"{}\"", zone_type))
             .map_err(|_| JsValue::from_str("unknown zone type"))?;
-        let id = self.doc.add_zone(t, ZoneShape::Rect { x, y, w, h }, label);
+        let id = self
+            .doc
+            .add_zone(t, ZoneShape::Rect { x, y, w, h }, label)
+            .map_err(|e| JsValue::from_str(&e.to_string()))?;
         Ok(JsValue::from_f64(id as f64))
     }
 
@@ -1119,12 +1334,21 @@ impl Editor {
     /// Move an existing wall's endpoints (by id) to `a=(ax,ay)`, `b=(bx,by)`.
     /// No-op if the id is unknown. Lets an interior partition wall travel with a
     /// room during drag/resize (generated plans have none; hand-drawn walls do).
-    pub fn set_wall(&mut self, id: u32, ax: f64, ay: f64, bx: f64, by: f64) {
+    pub fn set_wall(
+        &mut self,
+        id: u32,
+        ax: f64,
+        ay: f64,
+        bx: f64,
+        by: f64,
+    ) -> Result<(), JsValue> {
         self.touch();
+        finite(&[ax, ay, bx, by])?;
         if let Some(w) = self.doc.walls.iter_mut().find(|w| w.id == id) {
             w.a = Point::new(ax, ay);
             w.b = Point::new(bx, by);
         }
+        Ok(())
     }
 
     /// Set a wall's height in meters. Anything `>= 0` and below the full storey
@@ -1133,8 +1357,9 @@ impl Editor {
     /// negative value (or the full height) to clear the override back to full
     /// height. No-op if the id is unknown. This is the only writer of
     /// `Wall::height_m` — the generator has no partial-height primitive.
-    pub fn set_wall_height(&mut self, id: u32, height_m: f64) {
+    pub fn set_wall_height(&mut self, id: u32, height_m: f64) -> Result<(), JsValue> {
         self.touch();
+        finite(&[height_m])?;
         if let Some(w) = self.doc.walls.iter_mut().find(|w| w.id == id) {
             w.height_m = if height_m > 0.0 && height_m < model::FULL_WALL_HEIGHT_M {
                 Some(height_m)
@@ -1142,6 +1367,7 @@ impl Editor {
                 None
             };
         }
+        Ok(())
     }
 
     // ----- Quantity surface (`quantity.rs`): the geometric truth the Quantity
@@ -1220,6 +1446,184 @@ mod tests {
         );
     }
 
+    /// **Every `f64` mutator is guarded, and a new one cannot be added without a
+    /// guard.** The structural half of finding M2; the behavioural half is
+    /// `no_mutator_can_write_a_document_that_cannot_reopen` below.
+    ///
+    /// Written as a source scan for the same reason `every_mutator_bumps_the_revision`
+    /// is: the failure being prevented is *a method somebody adds next year*, and
+    /// no behavioural test can enumerate a method that does not exist yet. M2 was
+    /// reported against `resize_zone`; the audit found **all fifteen** f64
+    /// mutators accepting NaN, which is what a report about one call site usually
+    /// means (`.claude/rules/gate-independence.md`, "a known hazard patched at one
+    /// call site").
+    ///
+    /// **R10 AXES — this guard's falsification varies:** the MUTATOR (all fifteen,
+    /// not the one reported), the VALUE (`NaN`, `+∞`, `-∞` — the audit's first
+    /// pass tested only NaN and would have missed an `is_nan()`-only guard), and
+    /// the LAYER (wasm boundary via `finite`, document layer via
+    /// `zone_shape_admissible`, struct layer via `serde_json::to_value`).
+    #[test]
+    fn every_f64_mutator_is_guarded_against_non_finite_input() {
+        // Guarded one layer down, in `Document`, by `zone_shape_admissible` /
+        // `split_zone`'s own check — which is STRICTER, because it also covers
+        // Rust callers the wasm boundary never sees. Each name here is a claim
+        // the behavioural test below re-checks by driving it with NaN.
+        const GUARDED_IN_DOCUMENT: [&str; 3] = ["resize_zone", "add_zone", "split_zone"];
+        // Guarded by `serde_json::to_value`, which refuses NaN/±∞ for the whole
+        // struct at once — the f64s arrive inside `Program`, not as arguments.
+        const GUARDED_BY_SERDE: [&str; 1] = ["generate"];
+
+        let src = include_str!("lib.rs");
+        let mut unguarded: Vec<&str> = Vec::new();
+        let mut checked = 0usize;
+        for (idx, _) in src.match_indices("pub fn ") {
+            let after = &src[idx + "pub fn ".len()..];
+            let Some(open) = after.find('(') else { continue };
+            let name = after[..open].trim();
+            let Some(close) = after.find(')') else { continue };
+            if close < open {
+                continue;
+            }
+            let params = &after[open..close];
+            if !params.contains("&mut self") || !params.contains("f64") {
+                continue;
+            }
+            checked += 1;
+            if GUARDED_IN_DOCUMENT.contains(&name) || GUARDED_BY_SERDE.contains(&name) {
+                continue;
+            }
+            let Some(brace) = after[close..].find('{') else { continue };
+            // The real body, by brace balance — not a fixed window. A fixed
+            // window is a threshold on comment length, and this file's comments
+            // are long on purpose: the first draft used 400 chars and reported
+            // `assign_product` unguarded when its guard was simply below a
+            // paragraph explaining why it exists.
+            let body_start = close + brace;
+            let mut depth = 0i32;
+            let mut end = after.len();
+            for (i, ch) in after[body_start..].char_indices() {
+                match ch {
+                    '{' => depth += 1,
+                    '}' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            end = body_start + i;
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            let body = &after[body_start..end];
+            // **Before the first write, not merely somewhere in the body.** A
+            // guard that runs after the document has been touched is not a guard.
+            let guard = body.find("finite(&[");
+            let write = body.find("self.doc");
+            match (guard, write) {
+                (Some(g), Some(w)) if g < w => {}
+                (Some(_), None) => {}
+                _ => unguarded.push(name),
+            }
+        }
+        assert!(checked >= 12, "expected the f64 mutator set, saw {checked}");
+        assert!(
+            unguarded.is_empty(),
+            "these &mut self methods take an f64 and never check it is finite — \
+             add `finite(&[..])?;` after `self.touch();`, or guard it one layer \
+             down and name it in this test's list: {unguarded:?}"
+        );
+    }
+
+    /// **No zone mutator may write a document that cannot be reopened.**
+    ///
+    /// The property, not the fix. `resize_zone(id, NaN, NaN, NaN, NaN)` returned
+    /// `Ok`, dropped NIA 899.789 → 348.029 with no error, serialized the zone as
+    /// `{"x":null,…}`, and `from_snapshot` then threw
+    /// `invalid type: null, expected f64` — the `.dsource` saved and could never
+    /// be reopened. So the assertion is the round trip itself: `serde_json`
+    /// refuses to serialize NaN/±∞, which makes "did this write a non-finite
+    /// number?" and "can this still be saved?" the same question.
+    ///
+    /// **This covers the DOCUMENT layer only.** The `Editor` (wasm) layer cannot
+    /// be driven from `cargo test` on its error paths at all: `JsValue::from_str`
+    /// panics with *"function not implemented on non-wasm32 targets"*, which is
+    /// the same reason the panel's arithmetic went untested and produced the
+    /// 1159%. The boundary audit therefore lives in
+    /// `web/src/core/mutatorGuards.test.mjs`, against the RELEASE wasm — the
+    /// build the user runs, and the build M1's `debug_assert!` did not exist in.
+    #[test]
+    fn no_zone_mutator_can_write_a_document_that_cannot_reopen() {
+        for bad in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            let base = fixtures::build("F1").expect("F1 builds");
+            let before = serde_json::to_string(&base).expect("F1 round-trips to begin with");
+            let zid = base.zones[0].id;
+
+            let mut d = base.clone();
+            assert!(
+                d.resize_zone(zid, ZoneShape::Rect { x: bad, y: bad, w: bad, h: bad }).is_err(),
+                "resize_zone({bad}) returned Ok"
+            );
+            assert_eq!(serde_json::to_string(&d).unwrap(), before, "resize_zone({bad}) still wrote");
+
+            let mut d = base.clone();
+            assert!(
+                d.add_zone(
+                    ZoneType::Workspace,
+                    ZoneShape::Rect { x: bad, y: bad, w: bad, h: bad },
+                    "z".into()
+                )
+                .is_err(),
+                "add_zone({bad}) returned Ok"
+            );
+            assert_eq!(serde_json::to_string(&d).unwrap(), before, "add_zone({bad}) still wrote");
+
+            let mut d = base.clone();
+            assert!(
+                d.split_zone(zid, Axis::Vertical, bad).is_err(),
+                "split_zone(at = {bad}) returned Ok"
+            );
+            assert_eq!(serde_json::to_string(&d).unwrap(), before, "split_zone({bad}) still wrote");
+        }
+    }
+
+    /// **M3: `add_zone` was unguarded where `resize_zone` was guarded.**
+    /// `add_zone(5000, 5000, 200, 200)` billed `area 0 · capacity 6666` and took
+    /// a plan's published capacity from 131 to 6797. Both writers now share one
+    /// admissibility test, so the pair is asserted together — a guard on only one
+    /// of two writers of the same invariant is the bypass, not the guard.
+    #[test]
+    fn both_zone_writers_refuse_an_off_plate_shape() {
+        let base = fixtures::build("F1").expect("F1 builds");
+        let off = ZoneShape::Rect { x: 5000.0, y: 5000.0, w: 200.0, h: 200.0 };
+
+        let mut d = base.clone();
+        assert!(d.add_zone(ZoneType::Workspace, off.clone(), "off".into()).is_err());
+        assert_eq!(d.zones.len(), base.zones.len(), "the off-plate zone was created anyway");
+
+        let mut d = base.clone();
+        assert!(d.resize_zone(base.zones[0].id, off).is_err());
+    }
+
+    /// The guard must not have been bought by refusing ordinary input.
+    #[test]
+    fn the_non_finite_guard_does_not_refuse_ordinary_edits() {
+        let mut d = fixtures::build("F1").expect("F1 builds");
+        let before = d.zones.len();
+        let zid = d.zones[0].id;
+        let (x, y, w, h) = match d.zones[0].shape {
+            ZoneShape::Rect { x, y, w, h } => (x, y, w, h),
+            _ => panic!("F1's first zone is a Rect"),
+        };
+        d.resize_zone(zid, ZoneShape::Rect { x, y, w: w * 0.9, h: h * 0.9 })
+            .expect("a real resize");
+        d.add_zone(ZoneType::Workspace, ZoneShape::Rect { x, y, w: 2.0, h: 2.0 }, "real".into())
+            .expect("a real zone");
+        d.split_zone(zid, Axis::Vertical, x).expect("a real split");
+        assert!(d.zones.len() > before);
+        serde_json::to_string(&d).expect("still saveable");
+    }
+
     #[test]
     fn revision_advances_on_mutation_and_holds_still_on_reads() {
         let mut ed = Editor::new();
@@ -1228,17 +1632,17 @@ mod tests {
         let _ = ed.revision();
         assert_eq!(ed.revision(), start, "revision() itself must not mutate");
 
-        ed.add_wall(0.0, 0.0, 5.0, 0.0, 0.2);
+        ed.add_wall(0.0, 0.0, 5.0, 0.0, 0.2).expect("finite");
         let after_wall = ed.revision();
         assert_ne!(after_wall, start, "add_wall must bump the revision");
 
-        let id = ed.add_component("Desk".into(), 1.0, 1.0, 1.4, 0.7);
+        let id = ed.add_component("Desk".into(), 1.0, 1.0, 1.4, 0.7).expect("finite");
         assert_ne!(ed.revision(), after_wall, "add_component must bump the revision");
         let after_add = ed.revision();
 
         // A no-op-looking mutation still counts: the frontend needs to re-read
         // rather than guess whether the write changed anything.
-        ed.move_component(id, 1.0, 1.0);
+        ed.move_component(id, 1.0, 1.0).expect("finite");
         assert_ne!(ed.revision(), after_add, "move_component must bump the revision");
     }
 

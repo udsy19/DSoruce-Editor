@@ -142,6 +142,146 @@ fn plate_containment_on_a_real_plan_is_not_near_the_threshold() {
     );
 }
 
+/// **M4: seven anchors is a real plan, and the count gate let it through.**
+///
+/// A 40 × 30 envelope with one wall deleted, plus a 1.2 × 1.0 m scratch box, two
+/// zones and five components — 7 anchors, one under the old `MIN_PLAN_ANCHORS`
+/// of 8. The containment check was skipped entirely and largest-loop-wins
+/// returned the scratch box: `plate_state "traced" · GEA 1.20 m²` for a 1200 m²
+/// building, `Open Workspace 1.2 m² / 80 pax`. A 1000× under-report labelled as
+/// a measurement.
+///
+/// **R10 AXES — this guard's falsification varies:** anchor COUNT (7 here, 254 on
+/// F1, 0 in the wizard case below) and face STRUCTURE (a spurious small loop
+/// present vs. a sound envelope). Both must be varied: a count-only falsification
+/// is what shipped the hole, and a structure-only one would not have found it.
+#[test]
+fn a_seven_anchor_plan_cannot_certify_a_scratch_box_as_the_floor() {
+    let mut doc = Document::new();
+    let mut wall = |ax: f64, ay: f64, bx: f64, by: f64| {
+        let id = doc_alloc(&mut doc);
+        doc.walls.push(crate::model::Wall {
+            id,
+            a: crate::geometry::Point::new(ax, ay),
+            b: crate::geometry::Point::new(bx, by),
+            thickness: 0.2,
+            generated: false,
+            glazing: false,
+            height_m: None,
+        });
+    };
+    // Envelope, SOUTH-WEST side deleted — three of four runs.
+    wall(0.0, 0.0, 40.0, 0.0);
+    wall(40.0, 0.0, 40.0, 30.0);
+    wall(40.0, 30.0, 0.0, 30.0);
+    // The scratch box: the only closed face in the network.
+    wall(5.0, 5.0, 6.2, 5.0);
+    wall(6.2, 5.0, 6.2, 6.0);
+    wall(6.2, 6.0, 5.0, 6.0);
+    wall(5.0, 6.0, 5.0, 5.0);
+
+    doc.add_zone(
+        ZoneType::Workspace,
+        ZoneShape::Rect { x: 20.0, y: 10.0, w: 30.0, h: 16.0 },
+        "Open Workspace".into(),
+    )
+    .expect("on-plate");
+    doc.add_zone(
+        ZoneType::Meeting,
+        ZoneShape::Rect { x: 30.0, y: 24.0, w: 8.0, h: 6.0 },
+        "Boardroom".into(),
+    )
+    .expect("on-plate");
+    for i in 0..5 {
+        let id = doc_alloc(&mut doc);
+        doc.components.push(crate::model::Component {
+            id,
+            category: "Desk".into(),
+            x: 10.0 + i as f64 * 2.0,
+            y: 10.0,
+            w: 1.4,
+            h: 0.7,
+            rotation: 0.0,
+            mirror: false,
+            reference: false,
+            seats: 1,
+            label: format!("Desk {id}"),
+            product_id: None,
+            price_inr: None,
+            decision: crate::model::DecisionState::Open,
+        });
+    }
+
+    // The state is what it claims to be, or the test proves nothing.
+    let anchors = doc.plan_anchors_for_test().len();
+    assert_eq!(anchors, 7, "the case is 7 anchors — one under the retired gate");
+    let segs: Vec<_> = doc.walls.iter().filter(|w| !w.generated).map(|w| (w.a, w.b)).collect();
+    let faces = crate::geometry::trace_floor_faces(&segs, crate::geometry::LOOP_SNAP_TOL);
+    assert!(!faces.is_empty(), "the scratch box must still close, or this is just 'open walls'");
+    let largest = crate::geometry::polygon_area(&faces[0]).abs();
+    assert!(largest < 10.0, "the largest face should be the 1.2 m² box, got {largest:.2}");
+
+    let m = compute_metrics(&doc);
+    println!("M4 REPRO: {anchors} anchors, plate {} GEA {:.3}", m.plate_state, m.gross_external_area);
+    assert_eq!(
+        m.plate_state, "unresolved",
+        "a 1.2 m² scratch loop was certified as a 1200 m² building's floor"
+    );
+    assert!(
+        m.gross_external_area > 100.0,
+        "GEA {:.3} m² — the bbox fallback is a poor answer, the scratch box is a wrong one",
+        m.gross_external_area
+    );
+}
+
+/// The other side of the same threshold, and the reason it must be a FRACTION
+/// rather than a count: a plan with plenty of anchors and a spurious loop must
+/// also refuse. Anchor count is high (254 on F1's descendant) and the structure
+/// is the same — so if this passed while the case above failed, the rule would
+/// still be reading the count.
+#[test]
+fn a_high_anchor_plan_with_a_spurious_loop_also_refuses() {
+    let doc = fixtures::build("F3").expect("F3 builds");
+    let anchors = doc.plan_anchors_for_test().len();
+    assert!(anchors > 100, "F3 must be a full plan, {anchors} anchors");
+    assert_eq!(compute_metrics(&doc).plate_state, "unresolved");
+}
+
+/// **The zero-anchor wizard case, which is why the count gate existed at all.**
+///
+/// A plate confirmed in the wizard has no zones and no components. The retired
+/// `MIN_PLAN_ANCHORS` branch existed for exactly this, and the fraction covers it
+/// with no special case: `0 >= PLATE_CONTAINMENT * 0` holds, so the largest face
+/// is accepted and behaviour is unchanged. Pinned, because deleting the branch
+/// that names a case is how the case stops being tested.
+#[test]
+fn a_freshly_imported_plate_with_no_plan_still_traces() {
+    let mut doc = Document::new();
+    let corners = [(0.0, 0.0), (40.0, 0.0), (40.0, 30.0), (0.0, 30.0)];
+    for i in 0..4 {
+        let id = doc_alloc(&mut doc);
+        let (ax, ay) = corners[i];
+        let (bx, by) = corners[(i + 1) % 4];
+        doc.walls.push(crate::model::Wall {
+            id,
+            a: crate::geometry::Point::new(ax, ay),
+            b: crate::geometry::Point::new(bx, by),
+            thickness: 0.2,
+            generated: false,
+            glazing: false,
+            height_m: None,
+        });
+    }
+    assert!(doc.plan_anchors_for_test().is_empty(), "the wizard case has no plan yet");
+    let m = compute_metrics(&doc);
+    assert_eq!(m.plate_state, "traced", "an imported plate with no plan must still trace");
+    assert!((m.gross_external_area - 1200.0).abs() < 1.0, "GEA {:.3}", m.gross_external_area);
+}
+
+fn doc_alloc(doc: &mut Document) -> u32 {
+    doc.alloc_id()
+}
+
 // ---------------------------------------------------------------------------
 // 2. The invariants
 // ---------------------------------------------------------------------------
@@ -201,8 +341,20 @@ fn violations(doc: &Document) -> Vec<String> {
     // is not conservative, it is absent. `pct_of_nia` is `area / nia`, so the
     // Zones tab's own rows carry the NIA they were computed against, and
     // inverting one row recovers it without asking the core which number it used.
+    // **A capped metric must say it was capped.**
+    //
+    // `efficiency_pct` is now clamped at the source, so the M1 symptom can never
+    // again surface as a NUMBER — which is exactly what would make an unreported
+    // cap invisible to every assertion above. Re-derived from the UNCLAMPED
+    // areas, so this asks the document, not the metric, whether a cap happened.
     let (areas, _) = effective_zone_areas(doc);
+    let raw_sum: f64 = areas.iter().sum();
     let owner = net_internal_area(doc, &areas);
+    if raw_sum > owner + 1e-6 && m.metrics_error.is_none() {
+        v.push(format!(
+            "the basis was capped ({raw_sum:.3} → {owner:.3}) and metrics_error is null"
+        ));
+    }
     if (owner - m.net_internal_area).abs() > 1e-9 {
         v.push(format!(
             "two NIA values: metrics {:.6} vs owner {:.6}",
@@ -348,9 +500,37 @@ impl Rng {
     }
 }
 
+/// The zone types the battery reassigns across. Named once because two step
+/// classes draw from it — the one-zone retype and the retype-ALL below.
+const TYPES: [ZoneType; 6] = [
+    ZoneType::Workspace,
+    ZoneType::Meeting,
+    ZoneType::Circulation,
+    ZoneType::Core,
+    ZoneType::Unassigned,
+    ZoneType::Amenity,
+];
+
 /// Apply one random mutation of the kind the UI can produce.
+///
+/// **R10 AXES — what this battery's falsification varies:** zone TYPE (one zone,
+/// and — since M1 — ALL zones at once), zone COUNT (delete, merge, split),
+/// zone SHAPE (resize, including absurd scale factors), zone OVERLAP (a new zone
+/// laid over existing ones), wall TOPOLOGY (draw a closed loop, delete a plate
+/// wall) and component POSITION/COUNT. An axis not listed here is an axis this
+/// battery does not test.
+///
+/// **The axis this list was missing, and what it cost.** Step class 3 retypes
+/// ONE zone per step, drawn from six types, over ten steps. The probability that
+/// ten single retypes leave a fixture with every zone occupiable is effectively
+/// zero — so "all zones usable" was unreachable **by construction**, and
+/// `efficiency = usable / nia` at 102.469% (F4, retype every zone to Workspace —
+/// four UI clicks) sat inside the battery's blind spot through 1 200 evaluations
+/// per run. A guard's frame is part of the guard: this one was varying one axis
+/// intensely and one axis not at all. Step classes 8 and 9 are that repair, and
+/// `the_battery_reaches_an_all_usable_document` asserts they land.
 fn mutate(doc: &mut Document, rng: &mut Rng) {
-    match rng.below(8) {
+    match rng.below(10) {
         0 => {
             // draw a closed loop somewhere in the plate's bbox
             if let Some((x0, y0, x1, y1)) = doc.wall_bbox() {
@@ -405,14 +585,6 @@ fn mutate(doc: &mut Document, rng: &mut Rng) {
             // reassign a zone's type, across the ground boundary as often as not
             let ids: Vec<u32> = doc.zones.iter().map(|z| z.id).collect();
             if !ids.is_empty() {
-                const TYPES: [ZoneType; 6] = [
-                    ZoneType::Workspace,
-                    ZoneType::Meeting,
-                    ZoneType::Circulation,
-                    ZoneType::Core,
-                    ZoneType::Unassigned,
-                    ZoneType::Amenity,
-                ];
                 let id = ids[rng.below(ids.len())];
                 let _ = doc.set_zone_type(id, TYPES[rng.below(TYPES.len())]);
             }
@@ -441,11 +613,53 @@ fn mutate(doc: &mut Document, rng: &mut Rng) {
                 doc.reassign_components();
             }
         }
-        _ => {
+        7 => {
             if !doc.components.is_empty() {
                 let i = rng.below(doc.components.len());
                 doc.components.remove(i);
                 doc.reassign_components();
+            }
+        }
+        8 => {
+            // **RETYPE EVERY ZONE** — the step class the battery did not have.
+            // Four clicks in the Zones tab, and the state that produced 102.469%.
+            // Drawn from the same six types, so it also reaches "all Circulation"
+            // (usable 0) and "all Unassigned", not only the usable extreme.
+            let t = TYPES[rng.below(TYPES.len())];
+            let ids: Vec<u32> = doc.zones.iter().map(|z| z.id).collect();
+            for id in ids {
+                let _ = doc.set_zone_type(id, t);
+            }
+        }
+        _ => {
+            // Add a zone that OVERLAPS what is already there — the second half of
+            // M1. Retyping alone makes every zone usable; overlap is what makes
+            // Σ areas exceed the floor, and the two together are the 648.4% case.
+            // Centred on an existing zone so the overlap is certain, not lucky.
+            if let Some((x0, y0, x1, y1)) = doc.wall_bbox() {
+                let (cx, cy) = match doc.zones.get(rng.below(doc.zones.len().max(1))) {
+                    Some(z) => {
+                        let (bx0, by0, bx1, by1) = z.shape.bbox();
+                        ((bx0 + bx1) / 2.0, (by0 + by1) / 2.0)
+                    }
+                    None => ((x0 + x1) / 2.0, (y0 + y1) / 2.0),
+                };
+                // Clamped into the wall bbox, because `add_zone` refuses an
+                // off-plate shape (M3). The overlap is with SIBLING zones, which
+                // is legal and is exactly the case under test.
+                // `min` before `max`: a bbox narrower than the minimum size would
+                // otherwise give `clamp` a lo above its hi, which panics — a
+                // battery that aborts is not a battery.
+                let w = rng.range(2.0, (x1 - x0).max(2.1)).min(x1 - x0);
+                let h = rng.range(2.0, (y1 - y0).max(2.1)).min(y1 - y0);
+                let cx = cx.max(x0 + w / 2.0).min(x1 - w / 2.0);
+                let cy = cy.max(y0 + h / 2.0).min(y1 - h / 2.0);
+                let t = TYPES[rng.below(TYPES.len())];
+                let _ = doc.add_zone(
+                    t,
+                    ZoneShape::Rect { x: cx, y: cy, w, h },
+                    "battery overlap".to_string(),
+                );
             }
         }
     }
@@ -477,6 +691,102 @@ fn metrics_can_never_be_impossible() {
         }
     }
     assert_eq!(cases, 1200, "the battery must actually run");
+}
+
+/// **The repro for M1, stated as the state rather than as the number.**
+///
+/// Retype every F4 zone to `Workspace` — four clicks in the Zones tab. Before the
+/// fix: `GEA 930.063 · NIA 930.063 · eff 102.469% · traced`, with the raw zone sum
+/// 953.030 against a floor of 930.063. `net_internal_area` clamped, `usable_area`
+/// did not, and `usable / nia` divided a full sum by a clamped one.
+///
+/// Two assertions, because the fix has two halves: efficiency is possible, AND
+/// the cap is REPORTED. A silently capped 100% would satisfy the first alone and
+/// would be the same lie in a smaller font.
+#[test]
+fn retyping_every_zone_cannot_produce_an_impossible_efficiency() {
+    let mut doc = fixtures::build("F4").expect("F4 builds");
+    let ids: Vec<u32> = doc.zones.iter().map(|z| z.id).collect();
+    assert!(ids.len() >= 5, "F4 must be a real plan, {} zones", ids.len());
+    for id in ids {
+        doc.set_zone_type(id, ZoneType::Workspace).expect("zone exists");
+    }
+
+    // Non-vacuity: this case only tests the clamp while the raw sum really does
+    // exceed the traced floor. If de-overlap ever makes it tile exactly, the
+    // assertion below passes for the wrong reason and this line says so.
+    let (raw, _) = effective_zone_areas(&doc);
+    let sum: f64 = raw.iter().sum();
+    let m = compute_metrics(&doc);
+    assert_eq!(m.plate_state, "traced", "the F4 plate must still resolve");
+    println!(
+        "M1 REPRO: Σ zone areas {sum:.3} vs floor {:.3}, eff {:.3}%",
+        m.gross_external_area, m.efficiency_pct
+    );
+    assert!(
+        sum > m.gross_external_area + 1e-6,
+        "the zone sum ({sum:.3}) no longer exceeds the floor ({:.3}) — this test \
+         has stopped reproducing the state it exists for",
+        m.gross_external_area
+    );
+
+    assert!(
+        m.efficiency_pct <= 100.0 + 1e-6,
+        "efficiency {:.3}% — M1, live again",
+        m.efficiency_pct
+    );
+    let err = m
+        .metrics_error
+        .as_deref()
+        .expect("a capped metric must report itself — that is the whole of the new policy");
+    assert!(
+        err.contains("do not tile"),
+        "metrics_error must name the overlap, got {err:?}"
+    );
+}
+
+/// The battery is now allowed to REACH the state M1 lived in. Written as its own
+/// test rather than as a comment, because "the retype-all class exists" and "the
+/// retype-all class lands on a document with no unusable zone left" are different
+/// claims, and only the second one is the axis.
+#[test]
+fn the_battery_reaches_an_all_usable_document() {
+    let bases = all_fixtures();
+    let mut all_usable = 0usize;
+    let mut overflowing = 0usize;
+    for seed in 1u64..=120 {
+        let (_, base) = &bases[(seed as usize - 1) % bases.len()];
+        let mut doc = base.clone();
+        let mut rng = Rng(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1);
+        for _ in 0..10 {
+            mutate(&mut doc, &mut rng);
+            if !doc.zones.is_empty()
+                && doc.zones.iter().all(|z| {
+                    !matches!(
+                        z.zone_type,
+                        ZoneType::Circulation | ZoneType::Core | ZoneType::Unassigned
+                    )
+                })
+            {
+                all_usable += 1;
+            }
+            if compute_metrics(&doc).metrics_error.is_some() {
+                overflowing += 1;
+            }
+        }
+    }
+    println!("ALL-USABLE STATES REACHED: {all_usable} · CAPPED-BASIS STATES: {overflowing}");
+    assert!(
+        all_usable > 0,
+        "the battery never reached a document whose every zone is occupiable — \
+         that is the exact state `usable / nia` could exceed 100% in, and it was \
+         unreachable by construction while `mutate` retyped one zone at a time"
+    );
+    assert!(
+        overflowing > 0,
+        "the battery never reached a document whose zones overlap past the floor, \
+         so the clamp it exercises is inert and proves nothing"
+    );
 }
 
 /// Non-vacuity: the battery is only worth anything if these mutations really do

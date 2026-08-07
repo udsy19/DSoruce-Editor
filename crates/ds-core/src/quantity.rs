@@ -610,7 +610,7 @@ mod tests {
     }
 
     fn zone(doc: &mut Document, t: ZoneType, shape: ZoneShape, label: &str) -> u32 {
-        doc.add_zone(t, shape, label.to_string())
+        doc.add_zone(t, shape, label.to_string()).expect("test zone is finite and on-plate")
     }
 
     fn fixture() -> Document {

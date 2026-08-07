@@ -37,14 +37,6 @@ pub struct Anchor {
 /// a tuned parameter; it is a gap, and 0.9 sits in the middle of it.
 pub(crate) const PLATE_CONTAINMENT: f64 = 0.9;
 
-/// Below this many anchor points there is not enough plan to judge a face by.
-///
-/// A plate confirmed in the wizard has zero zones and zero components, and every
-/// import would fail a containment test against a plan that does not exist yet.
-/// Under this count the trace keeps its historical largest-wins behaviour, which
-/// is the honest reading when there is no evidence either way.
-pub(crate) const MIN_PLAN_ANCHORS: usize = 8;
-
 /// What the wall network could tell us about the floor plate.
 ///
 /// The point of the type is that **"we don't know" is a value**. The old code
@@ -342,13 +334,29 @@ impl Document {
             return PlateResolution::Open;
         }
         let anchors = self.plan_anchors();
-        // Too little plan to judge by. A plate confirmed in the wizard has zero
-        // zones and zero components, and demanding it contain a plan that does
-        // not exist yet would fail every import. Largest-wins is the honest
-        // reading when there is no evidence: `faces` is largest-first.
-        if anchors.len() < MIN_PLAN_ANCHORS {
-            return PlateResolution::Traced(faces.into_iter().next().unwrap());
-        }
+        // **Acceptance is the FRACTION and nothing else — there is no count gate.**
+        //
+        // There used to be one: `anchors.len() < MIN_PLAN_ANCHORS (8)` skipped the
+        // containment test entirely and fell back to largest-wins. Its stated
+        // justification was the wizard's zero-plan import, but its PREDICATE
+        // covered every document with one to seven anchors — and seven anchors is
+        // a real plan. Measured on a 40×30 envelope with one wall deleted plus a
+        // 1.2 × 1.0 m scratch box, 2 zones + 5 components:
+        // `plate_state "traced" · GEA 1.20 m²` for a 1200 m² building, with
+        // `Open Workspace 1.2 m² / 80 pax`. A 1000× under-report, and `"traced"`
+        // is a positive claim that the number is a measurement.
+        //
+        // The wizard case needs no exception, because the fraction already covers
+        // it: with zero anchors `0 >= PLATE_CONTAINMENT * 0` holds, the largest
+        // face is accepted, and behaviour is byte-identical to the old special
+        // case. A gate whose only justified case is handled by the general rule
+        // was never a gate; it was a hole.
+        //
+        // The cost is stated rather than hidden: with a one- or two-anchor plan a
+        // single straggling component centre outside the centreline polygon now
+        // yields `unresolved` instead of a traced plate. That is the conservative
+        // direction — a state the panel reports, not a number it invents — and it
+        // is what the ledger's "we don't know is a value" rule asks for.
         for face in faces {
             let inside = anchors
                 .iter()
@@ -488,6 +496,12 @@ impl Document {
     /// `zone_type`; labels are suffixed `" (1)"` / `" (2)"`. `InvalidCut` if the
     /// zone is a `RectRing` or if `at` is not strictly inside the zone.
     pub fn split_zone(&mut self, id: u32, axis: Axis, at: f64) -> Result<(u32, u32), ZoneError> {
+        // Same reason as `zone_shape_admissible`: the "strictly inside" test below
+        // is `at <= x0 || at >= x1`, and a NaN `at` answers false to both, cutting
+        // the zone into two NaN-wide halves that no snapshot can reload.
+        if !at.is_finite() {
+            return Err(ZoneError::NonFinite);
+        }
         let i = self.zone_index(id).ok_or(ZoneError::NotFound)?;
         let (x, y, w, h) = match self.zones[i].shape {
             ZoneShape::Rect { x, y, w, h } => (x, y, w, h),
@@ -559,11 +573,24 @@ impl Document {
         Ok(())
     }
 
-    /// Resize/move a zone's shape. Rejected (`OutOfBounds`) if the new shape's
-    /// bbox exceeds the wall bbox. Overlap with sibling zones is allowed
-    /// (transient during interactive drags).
-    pub fn resize_zone(&mut self, id: u32, shape: ZoneShape) -> Result<(), ZoneError> {
-        let i = self.zone_index(id).ok_or(ZoneError::NotFound)?;
+    /// **The one admissibility test for a zone shape**, shared by every writer of
+    /// `Zone::shape` (`resize_zone`, `add_zone`).
+    ///
+    /// It exists as a function because it used to exist as a copy-of-zero: the
+    /// bounds test lived inline in `resize_zone` and `add_zone` had NO check at
+    /// all, so `add_zone(5000, 5000, 200, 200)` billed `area 0 · capacity 6666`
+    /// and took a plan's published capacity from 131 to 6797. Two writers of one
+    /// invariant, one of them empty, is the `no-bloat` divergence in its cheapest
+    /// form.
+    ///
+    /// Finiteness is checked FIRST and separately. `NaN` satisfies neither `<`
+    /// nor `>`, so it walked through the bounds test untouched; a guard written
+    /// in comparisons cannot be handed a value that answers `false` to all of
+    /// them and still be a guard.
+    fn zone_shape_admissible(&self, shape: &ZoneShape) -> Result<(), ZoneError> {
+        if !shape.is_finite() {
+            return Err(ZoneError::NonFinite);
+        }
         if let Some((wx0, wy0, wx1, wy1)) = self.wall_bbox() {
             let (bx0, by0, bx1, by1) = shape.bbox();
             let eps = 1e-6;
@@ -571,6 +598,15 @@ impl Document {
                 return Err(ZoneError::OutOfBounds);
             }
         }
+        Ok(())
+    }
+
+    /// Resize/move a zone's shape. Rejected (`OutOfBounds`) if the new shape's
+    /// bbox exceeds the wall bbox, or (`NonFinite`) if any coordinate is NaN/±∞.
+    /// Overlap with sibling zones is allowed (transient during interactive drags).
+    pub fn resize_zone(&mut self, id: u32, shape: ZoneShape) -> Result<(), ZoneError> {
+        let i = self.zone_index(id).ok_or(ZoneError::NotFound)?;
+        self.zone_shape_admissible(&shape)?;
         self.zones[i].shape = shape;
         self.reassign_components();
         Ok(())
@@ -579,7 +615,17 @@ impl Document {
     /// Create a new zone from a shape (the direct-manipulation "add a room" /
     /// duplicate-room primitive). Returns the new id; rebuckets components so any
     /// furniture the shape now covers is recorded in its `component_ids`.
-    pub fn add_zone(&mut self, zone_type: ZoneType, shape: ZoneShape, label: String) -> u32 {
+    ///
+    /// Held to the SAME admissibility test as `resize_zone` — see
+    /// `zone_shape_admissible`. Returning `Result` rather than a bare id is the
+    /// point: an unguarded creator is a bypass around a guarded mutator.
+    pub fn add_zone(
+        &mut self,
+        zone_type: ZoneType,
+        shape: ZoneShape,
+        label: String,
+    ) -> Result<u32, ZoneError> {
+        self.zone_shape_admissible(&shape)?;
         let id = self.alloc_id();
         self.zones.push(Zone {
             id,
@@ -594,7 +640,7 @@ impl Document {
             origin: crate::zone::ZoneOrigin::Drawn,
         });
         self.reassign_components();
-        id
+        Ok(id)
     }
 
     /// Delete a room: remove the zone **and every component it contains** (its
@@ -735,11 +781,13 @@ mod tests {
         let mut doc = Document::new();
         doc.next_id = 30;
         doc.components.push(desk(101, 5.0, 5.0));
-        let id = doc.add_zone(
-            ZoneType::Meeting,
-            ZoneShape::Rect { x: 5.0, y: 5.0, w: 4.0, h: 4.0 },
-            "Meeting Room".into(),
-        );
+        let id = doc
+            .add_zone(
+                ZoneType::Meeting,
+                ZoneShape::Rect { x: 5.0, y: 5.0, w: 4.0, h: 4.0 },
+                "Meeting Room".into(),
+            )
+            .expect("finite shape, no walls to be out of");
         assert!(id > 30, "fresh id allocated");
         let z = doc.zones.iter().find(|z| z.id == id).unwrap();
         assert_eq!(z.component_ids, vec![101], "covers the desk at its center");

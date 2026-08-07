@@ -2533,3 +2533,85 @@ single model does **not** close by construction, because allocation is simultane
 and placement sequential. It is **counted, not assumed absent**, and measures **0
 across all 126 region-cases**. A deep room band could change that; the counter is
 already there to see it.
+
+## Q4-1 — three HIGH fixes: the clamp's other side, the anchor gate, NaN at every boundary
+
+Rust **184 → 194 by name** · verify-all **44 → 45** · goldens **unmoved** ·
+deadspace 9.5% ≤ 10%.
+
+### M1 · the clamp came back on the other side of the fraction
+
+`eff 69.979 → 102.469%` on F4 by retyping every zone to Workspace — four clicks;
+**648.4%** with overlapping rects. Fixed with **one basis, not a second clamp**:
+`area_basis()` scales the whole zone-area vector by `nia/sum`, so NIA is
+byte-identical, every subset carries the same factor, and `efficiency ==
+usable_raw/sum` — a non-negative subset over its own total. `zone_rows` was a
+second owner of the pair and now reads the same basis (`Σ row.area == nia`).
+83.1% overlap → `eff 100.000%`.
+
+> **RETRACTED by name.** `compute_metrics`'s *"cannot exceed 1 by construction"*
+> was true of the numerator and the denominator **separately** — two
+> constructions, allowed to drift.
+
+`debug_assert!(efficiency_pct <= 100.0)` is **deleted, not kept alongside**: it is
+compiled out of the release wasm, so the one guard at the source of the defect
+**did not exist in the only build a user runs.** Two guards for one property, one
+of which vanishes at the boundary that matters, is how the property came to look
+guarded.
+
+**NEW POLICY, in force:** an impossible value surfaces as a **state** —
+`Metrics::metrics_error`, a sentence, rendered by `StatsPanel`. Capped **and**
+reported; a silent 100% is the same lie in a smaller font.
+
+### M4 · `MIN_PLAN_ANCHORS` deleted, not lowered
+
+7 anchors → `traced · GEA 1.20 m²` for a 1200 m² building. Acceptance is now the
+containment **fraction** and nothing else. **The wizard case needs no exception** —
+with zero anchors `0 >= 0.9 × 0` holds, largest-wins is recovered, behaviour
+byte-identical. *A gate whose only justified case is covered by the general rule
+was never a gate.* Stated cost, in the code: a 1–2-anchor plan with one straggler
+now reads `unresolved`.
+
+### M2/M3 · every f64 boundary
+
+**15 of 15** mutators accepted NaN. `resize_zone(NaN)` returned Ok, NIA
+899.789 → 348.029, `{"x":null,…}`, and `from_snapshot` threw `invalid type: null,
+expected f64` — **the `.dsource` saved and never reopened.** Guards at three
+layers: `finite(&[..])` at the wasm boundary, `zone_shape_admissible` shared by
+`resize_zone` **and** `add_zone` (which had no check at all — M3, published
+capacity 131 → 6797), and `serde_json::to_value` over `Program`. Audit result:
+**0 of 16**.
+
+**The 16th was found by the source scan, not the behavioural audit.**
+`assign_product`'s `price_inr` — a *price*, not a coordinate, and `Some(NaN)` makes
+the document unsaveable outright. **A behavioural audit covers the mutators you
+thought to list.** Sanitising accidents (`f64::max` returning the non-NaN operand;
+`NaN > 0.0` being false) were treated as unguarded and guarded explicitly.
+
+### Three guards' FRAMES were the defect
+
+R10 stated at each. `mutate()` retyped **one** zone of six over ten steps, so "all
+usable" was unreachable **by construction** — step classes 8 (retype-ALL) and 9
+(overlapping add) close it. `statsPanel.test.mjs` asserted `≤ 100` on five
+**unedited** fixtures — now **30 edited states, 13 capped**. The `debug_assert` did
+not exist in release — the JS twin runs against the shipped wasm.
+
+### Sabotage — 6 applied, 6 red, two of them enabling steps
+
+S1 unclamped usable → `102.469% — M1, live again`; **the unedited population stayed
+green, which is the finding.** S2 count gate restored → `left "traced" right
+"unresolved"`. S3 finiteness removed → `resize_zone(NaN) returned Ok`. S4
+`add_zone`-only unguarded → red while `resize_zone` stayed green.
+**S5 (enabling)** step classes 8+9 removed → `ALL-USABLE STATES REACHED: 0` against
+**143** shipped. **S6 (enabling)** the source scan's fixed 400-char window restored
+→ reports `assign_product` unguarded when it is guarded: **a threshold on comment
+length**.
+
+### Integration note — the merge that silently did nothing
+
+The first cherry-pick ran **inside the agent's own worktree** (a `cd` in a compound
+command), where HEAD already was that commit, so it was a no-op — and it reported
+success. Caught only because the test count read **185** where a real merge owes
+194. Re-run from the repo root it conflicted on the generated wasm binary alone,
+resolved by rebuilding from the merged Rust source. **A merge that applies nothing
+looks exactly like a merge with no conflicts.**
