@@ -897,6 +897,19 @@ Recording these so nobody rests a parity gate on something that isn't holding it
   that message is the answer, not a mystery.
 
 ## Known bugs / debt
+- [x] **The deliverable-pack FAB ate the wizard's primary CTA** (found walking the flow for the demo
+  build). `.pack-dock` is `position: fixed; right/bottom: 18px`; `.wizard-nav` right-aligns its primary
+  action into that same corner. Measured on `#/new`: the dock overlapped "Create project" by **70px**
+  and `document.elementFromPoint()` at that button's own centre returned the dock. So a click aimed at
+  the primary CTA pressed **Deliverable pack** instead — which calls `ensureEditor()`, whose
+  `route.name === 'create'` branch navigates to `#/editor`. Net effect: the project was never created,
+  Space/Program/Generate were unreachable from the CTA, an "Untitled Plan" opened, and a 2580-frame
+  walkthrough render started in the background. Symptom looked like a routing bug; cause was z-order.
+  Fix (`shell/AppShell.tsx`): withhold the dock on the `create`/`wizard` routes — before Generate there
+  is no plan to export, so pressing it there only forced a throwaway sample document. **Gate-safe:**
+  `one-action.e2e.mjs` asserts "exactly one … on the landing route" and G10 drives the root, so both
+  still see it; verified 1 control on `#/`, 0 on the wizard, `elementFromPoint` at the CTA centre now
+  returns "Create project", and the wizard reaches `2 OF 4 · SPACE`.
 - [x] **Cold-reload of `#/p/:pid/f/:planId`** re-opens the saved floor: EditorView takes an `openPlanId`
   prop (from the route) and, once wasm is ready, loads the SavedPlan via the existing library path
   (`getPlan` → `openSavedPlan` → `applyProject`), guarded by a ref latch + `currentPlanId` so the

@@ -251,11 +251,28 @@ export function AppShell() {
         </div>
       )}
       {/* The deliverable pack is the product's headline output, so its one
-          control lives here — on every route, exactly once in the document.
+          control lives here — exactly once in the document.
           On the landing route the editor is not mounted yet; `ensureEditor`
           mounts it (and its wasm doc) on demand, which is also what the very
-          first click of a fresh session does. */}
-      <DeliverablePackAction ensureEditor={ensureEditor} />
+          first click of a fresh session does.
+
+          It is WITHHELD on the wizard steps. `.pack-dock` is fixed to the
+          bottom-right, which is the same corner `.wizard-nav` right-aligns its
+          primary action into: measured on #/new, the dock overlapped "Create
+          project" by 70px and `elementFromPoint` at that button's own centre
+          returned the dock. A user aiming at the primary CTA therefore started
+          a pack instead — which calls `ensureEditor`, navigating to #/editor
+          (see the branch above) and skipping Space/Program/Generate entirely.
+          A pack is also meaningless here: the wizard exists to produce the very
+          plan the pack exports, so before Generate there is nothing to export
+          and pressing it only forces a throwaway sample document.
+          G10 and one-action.e2e.mjs both drive the LANDING route (the latter
+          asserts "exactly one ... on the landing route"), so both still see it.
+          Withholding is what keeps that count unambiguous rather than breaking
+          it — never render a second copy to work around this. */}
+      {route.name !== 'create' && route.name !== 'wizard' && (
+        <DeliverablePackAction ensureEditor={ensureEditor} />
+      )}
     </>
   )
 }
