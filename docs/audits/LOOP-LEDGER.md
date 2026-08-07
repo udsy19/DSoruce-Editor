@@ -3333,3 +3333,52 @@ battery **49/49**, **no golden moved**, 5 files, 0 added. All four held. The gol
 prediction was reasoned in advance — `quantities()` output changes only where
 `k != 1`, and all five base fixtures are uncapped, proven *negatively* by the
 sabotage round.
+
+---
+
+# R16 — every assertion is a CHECK or a GUARD, and the distinction is stated
+
+Promoted from the identity audit's own self-report, which volunteered that three of
+its conjuncts cannot fail on today's implementation.
+
+- **CHECK** — falsifiable, and carries its falsification record (R3/R13).
+- **GUARD** — an identity **by construction**: it cannot fail because a mechanism
+  you built makes it so. It carries a **construction proof** instead. Cross-surface
+  equality is the worked example: structurally identical *since R14*, which is the
+  goal of R14 and not a defect in the check.
+- **TAUTOLOGY** — an identity by **algebraic accident**, unfalsifiable by *any*
+  code change. That is an **absent check**: delete it or rebuild it.
+
+**The test that separates a guard from a tautology:** break the mechanism. A guard
+becomes falsifiable and reds; a tautology stays green, because algebra does not
+care about your module boundary.
+
+**Guards are excluded from check counts.** A board that counts guards as checks
+overstates its coverage — which is the `ladder-check` base row exactly: printed as
+`0.00%` inside a summary claiming six graded tiers, when it had five.
+
+## Corollary for producer code — the unsatisfiable branch
+
+An unsatisfiable branch is **the tautology's twin in the other direction**: a path
+that cannot fire. `lib.rs:481-487` (`if traced && nia > floor_area + 1e-6`) is
+unsatisfiable for exactly the reason the JS cap check already deleted was — traced
+`nia = Σ.min(floor_area)`. **An error surface that can never fire is decorative
+coverage.** Delete it, or make its condition reachable, and ledger the disposition;
+if it is the only path to a user-visible error state, that state's reachability is
+re-established from a condition that can actually occur, with a falsification
+showing it fire.
+
+## Belief attempt three — dispatched
+
+`/private/tmp/q8-belief3`, ADVERSARY, five sections in one pass: the area/NIA
+family against the unified basis **written against the property rather than the
+report** (the property-written gate just outperformed the report-written one by
+naming a 73.391 m² case no report contained) · the **R14 claim** verified by
+attempting reintroduction through every route rather than by reading the comment ·
+an **R15 surface census derived from the product's own `#[wasm_bindgen]` exports**,
+not from the brief's list · the **R16 taxonomy** with each declared guard's
+mechanism broken to prove it is a guard · and the dead branch's disposition.
+
+**Steps 2+ stay blocked.** Four consecutive rounds returned NOT BELIEVED and every
+one of them was correct; each survivor was found by looking at **algebra or
+population**, never at results.
