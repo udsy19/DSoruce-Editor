@@ -26,7 +26,7 @@ import {
 } from './sheet'
 import type { ProductCardInfo } from './sheet'
 import type { ReportMeta } from './report'
-import { buildTakeoffModel } from './takeoff'
+import { buildTakeoffModel, parseItemDescription } from './takeoff'
 import type { TakeoffFurnitureRow, TakeoffSummaryRow } from './takeoff'
 import type { DocState, DocComponent, DocZone } from '../types/doc'
 import { zoneArea as zoneShapeArea, zoneBBox, zoneCenter as zoneShapeCenter } from '../util/zoneGeom'
@@ -1502,10 +1502,12 @@ function tintFor(name: string): Rgb {
   return hex2rgb(TINT_POOL[h % TINT_POOL.length])
 }
 
-/** Split takeoff's "Desk W70 X L140" into a display name + "70 × 140 cm" dims. */
+/** Split takeoff's "Desk W70 X L140" into a display name + "70 × 140 cm" dims.
+ *  The parser lives beside the formatter it inverts (`takeoff.itemDescription`);
+ *  this shim only adapts `dims: null` to the card's optional field. */
 function parseItem(desc: string): { name: string; dims?: string } {
-  const m = desc.match(/^(.+?)\s+W(\d+)\s+X\s+L(\d+)$/)
-  return m ? { name: m[1], dims: `${m[2]} × ${m[3]} cm` } : { name: desc }
+  const { name, dims } = parseItemDescription(desc)
+  return dims ? { name, dims } : { name }
 }
 
 /**

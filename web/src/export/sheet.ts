@@ -175,11 +175,27 @@ export function pageHeader(p: Page, center: string, client?: string): void {
   if (client) p.text(PAGE_W - MARGIN, MARGIN + 4, 11, client, { align: 'right', gray: 0.2, bold: true })
 }
 
-/** Client logo (data URL) → JPEG; null on any failure/absence. */
-export async function logoJpeg(dataUrl: string | undefined, maxW: number): Promise<PdfJpeg | null> {
+/**
+ * Client logo (data URL) → JPEG; null on any failure/absence.
+ *
+ * `crossOrigin` opts into `img.crossOrigin = 'anonymous'`, which is what a
+ * REMOTE image (a material-bank product photo on a supplier CDN) needs before
+ * it can be read back off a canvas — without it the canvas is tainted and
+ * `canvasToJpeg` throws, which is indistinguishable here from "no image". It is
+ * opt-in because the existing callers pass data URLs, where the flag would be
+ * pure noise, and because a host that sends no CORS headers then fails to LOAD
+ * (→ null) rather than loading and failing to read (→ null): same answer, but
+ * only the opt-in path pays for it.
+ */
+export async function logoJpeg(
+  dataUrl: string | undefined,
+  maxW: number,
+  o?: { crossOrigin?: boolean },
+): Promise<PdfJpeg | null> {
   if (!dataUrl || typeof Image === 'undefined') return null
   return new Promise<PdfJpeg | null>((resolve) => {
     const img = new Image()
+    if (o?.crossOrigin) img.crossOrigin = 'anonymous'
     img.onload = () => {
       try {
         const scale = Math.min(1, maxW / img.width)

@@ -54,6 +54,15 @@ export interface TakeoffFurnitureRow {
   quantity: number
   unitPrice: number
   totalPrice: number
+  /** Bound product identity, carried so a downstream document (the product
+   *  specification sheet) can name the ACTUAL product behind a line instead of
+   *  re-deriving its own component→product map. `null` when unspecified.
+   *  It is part of the aggregation key, so one line is always one product. */
+  productId: string | null
+  /** `Component.label` of the bound product (the core writes it on bind). */
+  productName: string | null
+  /** Document category the line came from (`Desk`, `Chair`, `Door`, …). */
+  category: string
 }
 
 /** One line in the item-summary sheet (aggregated across all rooms). */
@@ -64,14 +73,35 @@ export interface TakeoffSummaryRow {
   quantity: number
   unitPrice: number
   totalPrice: number
+  /** Bound product identity (see {@link TakeoffFurnitureRow.productId}). */
+  productId: string | null
+  productName: string | null
+  category: string
 }
 
 export interface TakeoffModel {
   furniture: TakeoffFurnitureRow[]
   summary: TakeoffSummaryRow[]
+  /**
+   * The SAME row shape for the categories the furniture BOM deliberately does
+   * not bill as loose furniture ({@link NON_FURNITURE} — doors). They are still
+   * elements of the document, so a bill of materials that claims to cover the
+   * plan must list them; the workbook ignores this array and bills them off the
+   * core's `quantities()` instead.
+   *
+   * Emitted here rather than re-derived downstream so a door is described,
+   * costed and roomed by exactly the same code as a desk.
+   */
+  openings: TakeoffFurnitureRow[]
   totals: {
     furniture: number
     itemCount: number
+  }
+  /** Components the BOM legitimately leaves out, so a document can SAY so
+   *  rather than silently dropping them. */
+  excluded: {
+    /** Passive imported/legacy furniture (`Component.reference`). */
+    reference: number
   }
 }
 
@@ -93,7 +123,7 @@ const COST_CODE: Record<string, string> = {
   MeetingRoom: 'FF-MTG',
   FallCeiling: 'CL-FCL',
 }
-function costCodeFor(category: string): string {
+export function costCodeFor(category: string): string {
   return COST_CODE[category] ?? `FF-${category.slice(0, 3).toUpperCase()}`
 }
 
@@ -110,10 +140,18 @@ function itemName(c: DocComponent): string {
  * Item Description with W×L in cm, matching the sample's "Desk W70 X L140"
  * style: W is the shorter side, L the longer — rotation-independent.
  */
-function itemDescription(c: DocComponent): string {
+export function itemDescription(c: DocComponent): string {
   const a = Math.round(Math.min(c.w, c.h) * 100)
   const b = Math.round(Math.max(c.w, c.h) * 100)
   return `${itemName(c)} W${a} X L${b}`
+}
+
+/** Inverse of {@link itemDescription}: "Desk W70 X L140" → name + "70 × 140 cm".
+ *  One parser, so every document that splits a description splits it the same
+ *  way (the drawing set's product cards use it too). */
+export function parseItemDescription(desc: string): { name: string; dims: string | null } {
+  const m = desc.match(/^(.+?)\s+W(\d+)\s+X\s+L(\d+)$/)
+  return m ? { name: m[1], dims: `${m[2]} × ${m[3]} cm` } : { name: desc, dims: null }
 }
 
 /**
@@ -190,25 +228,32 @@ export function buildTakeoffModel(state: DocState, opts: TakeoffOptions = {}): T
   // Key by room + description + supplier + unit price so genuinely identical
   // lines merge (e.g. 10 conference chairs) but differently-priced ones don't.
   const groups = new Map<string, TakeoffFurnitureRow>()
+  const openingGroups = new Map<string, TakeoffFurnitureRow>()
+  let referenceCount = 0
   for (const c of state.components) {
-    if (NON_FURNITURE.has(c.category)) continue
     // Passive imported/legacy furniture is reference-only — not part of the
     // specified fit-out you'd buy, so it stays out of the BoQ (matches the
     // cost/CO2 metric filter; laiout-deep-research.md: BoQ = generated only).
-    if (c.reference) continue
+    // It is COUNTED, so a document can state what it excluded.
+    if (c.reference) {
+      referenceCount++
+      continue
+    }
+    const into = NON_FURNITURE.has(c.category) ? openingGroups : groups
     const zone = zoneFor(c, zones)
     const roomId = zone ? (roomRefs?.get(zone.id) ?? zone.id) : 'OS'
     const roomType = roomTypeLabel(zone)
     const desc = itemDescription(c)
     const unitPrice = priceOf(c)
     const supplier = supplierOf(c)
-    const key = `${roomId}|${desc}|${supplier}|${unitPrice}`
-    const existing = groups.get(key)
+    const productId = c.product_id ?? null
+    const key = `${roomId}|${desc}|${supplier}|${unitPrice}|${productId ?? ''}`
+    const existing = into.get(key)
     if (existing) {
       existing.quantity += 1
       existing.totalPrice = existing.quantity * existing.unitPrice
     } else {
-      groups.set(key, {
+      into.set(key, {
         costCode: costCodeFor(c.category),
         floor,
         roomId,
@@ -218,19 +263,22 @@ export function buildTakeoffModel(state: DocState, opts: TakeoffOptions = {}): T
         quantity: 1,
         unitPrice,
         totalPrice: unitPrice,
+        productId,
+        productName: productId ? c.label : null,
+        category: c.category,
       })
     }
   }
-  const furniture = [...groups.values()].sort(
-    (a, b) =>
-      String(a.roomId).localeCompare(String(b.roomId), undefined, { numeric: true }) ||
-      a.itemDescription.localeCompare(b.itemDescription),
-  )
+  const byRoomThenItem = (a: TakeoffFurnitureRow, b: TakeoffFurnitureRow) =>
+    String(a.roomId).localeCompare(String(b.roomId), undefined, { numeric: true }) ||
+    a.itemDescription.localeCompare(b.itemDescription)
+  const furniture = [...groups.values()].sort(byRoomThenItem)
+  const openings = [...openingGroups.values()].sort(byRoomThenItem)
 
   // --- Item summary: aggregate across all rooms by description ------------
   const summaryMap = new Map<string, TakeoffSummaryRow>()
   for (const r of furniture) {
-    const key = `${r.itemDescription}|${r.supplier}|${r.unitPrice}`
+    const key = `${r.itemDescription}|${r.supplier}|${r.unitPrice}|${r.productId ?? ''}`
     const s = summaryMap.get(key)
     if (s) {
       s.quantity += r.quantity
@@ -243,6 +291,9 @@ export function buildTakeoffModel(state: DocState, opts: TakeoffOptions = {}): T
         quantity: r.quantity,
         unitPrice: r.unitPrice,
         totalPrice: r.totalPrice,
+        productId: r.productId,
+        productName: r.productName,
+        category: r.category,
       })
     }
   }
@@ -256,10 +307,12 @@ export function buildTakeoffModel(state: DocState, opts: TakeoffOptions = {}): T
   return {
     furniture,
     summary,
+    openings,
     totals: {
       furniture: round2(furnitureTotal),
       itemCount,
     },
+    excluded: { reference: referenceCount },
   }
 }
 

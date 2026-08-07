@@ -26,6 +26,7 @@ import { renderRoomPack, roomRenderGroundTruth, type RoomRender } from './roomRe
 import { renderWalkthrough } from './walkthrough'
 import { buildPlanGlb, publishShareLink } from './share'
 import { Mp4Encoder, mp4EncodeSupported, type Mp4EncodeOpts } from './mp4'
+import { buildCommercialDocuments } from './commercialDocs'
 import { triggerDownload } from './png'
 import { zipStore } from './zip'
 
@@ -299,11 +300,23 @@ export async function buildDeliverablePack(
   await sink.put('plan.png', pack.planPng)
   await sink.put('plan.repeat.png', pack.planRepeatPng)
   for (const t of pack.thumbs) await sink.put(`thumbs/${t.id}.png`, t.png)
+  // The three commercial documents — bill of materials, quotation, product
+  // specification — derived from the SAME `state` the workbook just billed, via
+  // the same `buildTakeoffModel`. They ship with the pack so the plan, the
+  // workbook and the paperwork can be checked against each other.
+  onProgress({ stage: 'workbook', label: 'Bill of materials · quotation · specification', fraction: 0.7 })
+  const commercial = await buildCommercialDocuments(state, {
+    ...qto,
+    project: qto.project ?? name,
+  })
+  for (const f of commercial.files) await sink.put(f.name, f.bytes)
   onProgress({
     stage: 'workbook',
     label: 'Quantity takeoff',
     fraction: 1,
-    note: `${pack.model.rooms.length} rooms · ${Math.round(pack.xlsx.byteLength / 1024)} KB`,
+    note:
+      `${pack.model.rooms.length} rooms · ${Math.round(pack.xlsx.byteLength / 1024)} KB · ` +
+      `${commercial.set.stamp.fingerprint}`,
   })
 
   // ---- 2. the four hero stills --------------------------------------------
