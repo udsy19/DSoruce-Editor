@@ -1428,3 +1428,80 @@ commit.
 
 **Rubric row 8 stays UNSCORED.** 9.4% is a trustworthy measurement of ourselves
 with nothing yet to score it against.
+
+## F1b — DIAGNOSED, not fixed. The dead floor is the PERIMETER.
+
+With a trustworthy instrument the residue question could finally be asked
+properly. Two independent core-derived measurements, and they agree:
+
+**(1) The tiling residue**, re-decomposed with the regions as holes — **75.5 m²
+in 10 pieces** above a 2 m² floor:
+
+```
+8.5 x 2.0 = 17.0   9.5 x 1.5 = 14.3   1.0 x 6.5 = 6.5   1.0 x 5.0 = 5.0
+5.0 x 3.0 = 15.0   2.5 x 2.0 =  5.0   4.0 x 1.0 = 4.0   2.5 x 1.5 = 3.8  …
+```
+
+**(2) The dead-space clusters** from `deadspace-core.mjs --clusters` — 87.8 m²
+in 5 pieces above 2 m², with **area, bbox, FILL RATIO and aspect**, because a
+bbox is a scalar wearing two numbers:
+
+| area m² | bbox | fill | aspect | at |
+|---|---|---|---|---|
+| **54.3** | 7.0 × 19.8 | **39%** | 2.8:1 | 23.8, 21.8 |
+| **18.1** | 18.8 × 5.3 | **18%** | 3.6:1 | 1.3, 38.0 |
+| 6.6 | 6.3 × 2.3 | 47% | 2.8:1 | 28.3, 3.0 |
+| 4.8 | 1.3 × 4.5 | 86% | 3.6:1 | 2.0, 12.0 |
+| 3.1 | 8.8 × 0.5 | 71% | 17.5:1 | 12.5, 1.0 |
+
+**The fill ratio changed the answer, and it caught me mid-conclusion.** Reading
+the first row as "a 54 m² room-shaped void on the east side" was wrong — it fills
+**39%** of its bounding box, so it is a RIBBON hugging the plate's east boundary,
+and the second row at **18%** is thinner still. The bbox alone had already led me
+to write the wrong sentence once; the descriptor that separates the classes is
+the one the rules file asks for and it is now in the instrument's output
+permanently.
+
+**The finding:** the dead floor is the **perimeter**, not interior voids. Both
+measurements say the same thing in different units — thin ribbons along a notched
+and angled boundary that the maximal-rectangle tiling cannot reach.
+
+**That decides F1b's choice, and it is not the one the brief leaned toward.**
+Option (ii) — make residue polygons into amenity/lounge/breakout — is wrong here:
+a 1.0 × 6.5 m ribbon holds no lounge, and a band that fills 18% of its bbox holds
+nothing at all. Option (i) is right: **regions must grow to the plate boundary on
+non-rectilinear edges** so the ribbons are absorbed by the neighbour that already
+serves them. The reference's own answer to a perimeter is to LINE it — offices
+and conference along the window wall — which is F1d/F1e's window-wall observation
+arriving from the other direction, and is why those three want to land together.
+
+**Not implemented.** It is a `decompose_plate` / `region_insets` change with a
+golden re-capture and a full board run behind it, and it is the right first
+commit of the next session now that its acceptance number exists.
+
+---
+
+# STATUS AT THIS HANDOFF
+
+| item | state |
+|---|---|
+| F1f wash probe | **DONE** — divergence disproved; palette mean L 89.8 → 85.7, distribution now gated |
+| F1a wing strategy | **DONE** — acceptance met exactly: no `alloc>0/placed=0`, both wings declared, 92 desks unchanged |
+| deadspace instrument | **REBUILT** from core state, self-checked, falsified, wired into the battery as a ratchet |
+| F1b tiling residue | **DIAGNOSED** with two agreeing measurements; the fix is named and not implemented |
+| F1c fill budget order | **NOT STARTED** |
+| F1d programme mix | **NOT STARTED** |
+| F1e field rhythm | **NOT STARTED** |
+| F2 network | **NOT STARTED** — still 2 spines / 3 regions, 0 connectors, 0 links |
+| Q3-B area tool · Q3-D2 symbol spec | **NOT STARTED** |
+
+Rust **184**, battery **43/43**, board re-run after the generator changes.
+
+**Two things the next session should not have to rediscover.** First: there is
+still **no comparable qbiq dead-space number**, so `--max-dead 0.10` is a ratchet
+against ourselves and rubric row 8 is correctly **unscored** — building the
+reference side (its plate from the page's stated floor area, never a flood fill)
+is what unblocks that row. Second: the label-on-furniture census sits at **39/205**
+against a 40 ratchet, raised from 32 with F1a as its cause; the metric conflates
+a tag over its own room's table with a tag stranded on an open field, and
+splitting those two is the named refinement.

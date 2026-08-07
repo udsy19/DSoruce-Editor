@@ -180,15 +180,77 @@ function measure(plate, boxes) {
 
   let plateCells = 0
   let deadCells = 0
+  const dead = new Uint8Array(nx * ny)
   for (let k = 0; k < d.length; k++) {
     if (!inPlate[k]) continue
     plateCells++
-    if ((d[k] / 3) * CELL > RADIUS) deadCells++
+    if ((d[k] / 3) * CELL > RADIUS) {
+      deadCells++
+      dead[k] = 1
+    }
   }
+
+  // WHERE, not only how much. A fraction cannot tell a ring of thin boundary
+  // ribbons from one large empty wing, and those need different fixes in
+  // different files — which is the mistake the retracted instrument's map
+  // finally exposed. Flood the dead cells into connected clusters and report
+  // each with the descriptors that can separate the two shapes (area, bbox,
+  // aspect), per the rules file's "settle shape disputes with tables".
+  const clusters = []
+  const seen = new Uint8Array(nx * ny)
+  for (let k0 = 0; k0 < dead.length; k0++) {
+    if (!dead[k0] || seen[k0]) continue
+    const stack = [k0]
+    seen[k0] = 1
+    let n = 0
+    let bx0 = Infinity
+    let by0 = Infinity
+    let bx1 = -Infinity
+    let by1 = -Infinity
+    while (stack.length) {
+      const k = stack.pop()
+      const i = k % nx
+      const j = (k - i) / nx
+      n++
+      bx0 = Math.min(bx0, x0 + i * CELL)
+      by0 = Math.min(by0, y0 + j * CELL)
+      bx1 = Math.max(bx1, x0 + (i + 1) * CELL)
+      by1 = Math.max(by1, y0 + (j + 1) * CELL)
+      for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const ii = i + di
+        const jj = j + dj
+        if (ii < 0 || jj < 0 || ii >= nx || jj >= ny) continue
+        const kk = jj * nx + ii
+        if (dead[kk] && !seen[kk]) {
+          seen[kk] = 1
+          stack.push(kk)
+        }
+      }
+    }
+    const w = bx1 - bx0
+    const h = by1 - by0
+    clusters.push({
+      area: n * CELL * CELL,
+      w,
+      h,
+      aspect: Math.max(w, h) / Math.max(1e-9, Math.min(w, h)),
+      // FILL RATIO — area over bbox. Without it the bbox reads as a solid block
+      // and it usually is not: the largest cluster on the sample plate has a
+      // 7.0 x 19.8 m bbox and fills 39% of it, so it is a RIBBON hugging the
+      // plate edge, not a room-shaped void. A bbox is a scalar wearing two
+      // numbers; this is the descriptor that separates the classes.
+      fill: (n * CELL * CELL) / Math.max(1e-9, w * h),
+      x: bx0,
+      y: by0,
+    })
+  }
+  clusters.sort((a, b) => b.area - a.area)
+
   return {
     plateAreaSampled: plateCells * CELL * CELL,
     deadArea: deadCells * CELL * CELL,
     deadFrac: plateCells ? deadCells / plateCells : 0,
+    clusters,
   }
 }
 
@@ -228,6 +290,16 @@ for (const id of ids) {
     process.exit(1)
   }
   rows.push({ id, truth, boxes: boxes.length, ...r })
+  if (argv.includes('--clusters') && (!ONLY || ONLY === id)) {
+    console.log(`  ${id} dead clusters (area m² · bbox · aspect · at):`)
+    for (const c of r.clusters.filter((c) => c.area >= 2)) {
+      console.log(
+        `    ${c.area.toFixed(1).padStart(6)} · bbox ${c.w.toFixed(1)}x${c.h.toFixed(1)} · ` +
+          `fill ${(c.fill * 100).toFixed(0)}% · ${c.aspect.toFixed(1)}:1 · ` +
+          `${c.x.toFixed(1)},${c.y.toFixed(1)}`,
+      )
+    }
+  }
   worst = Math.max(worst, r.deadFrac)
 }
 
