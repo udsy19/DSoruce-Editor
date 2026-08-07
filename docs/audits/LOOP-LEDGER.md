@@ -2983,3 +2983,66 @@ instrument** · W4's routing gap (no producer emits the six new symbol categorie
 lives in `import/` and `layout/`, unblocked once W1 settles) · W6 close-out · the
 G10 packet with its blank verdict block, which remains the one item no machine may
 close.
+
+## `ladder-check` reads its ground truth now — and the base row was a tautology
+
+`MEASURED_PT` is **deleted**. The gate opens `research/qbiq-plan-style-spec.json`
+on every run and derives the expected ladder from `line_weights`. The residue is a
+**vocabulary bridge** — six anchored regexes joining the spec's prose roles
+(`"room / zone enclosure"`) to the implementation's identifiers (`roomEnclosure`) —
+carrying **no numbers**, asserted total and injective **both ways**: a retitled
+role reds, a deleted rung reds, an ambiguous match reds. A prose edit to a role's
+tail is deliberately green (null reported).
+
+**Subject vs ground truth, stated in the file so it cannot be got backwards:**
+`planStyle.ts` is graded; the spec — PyMuPDF-measured from the reference PDF,
+external and prior — grades it. Anchoring to `planStyle.ts`'s own exports would
+have made the gate self-comparing outright.
+
+**The spec states its ladder in FOUR places** — per-tier `pt`, per-tier `ratio`,
+`base_pt`, and a partial acceptance ladder under `tolerances` in a *third*
+vocabulary. All four are now cross-checked at 0.5% (worst genuine rounding gap
+**0.046%**), so a spec edit made in only one section cannot pass silently.
+`qbiq-plan-style-spec.json` is byte-identical (md5 `716e2187…`), as is
+`planStyle.ts` (`46521651…`).
+
+**R13 — the motivating sabotage.** Deleting the room-enclosure tier *from the
+spec* printed `ladder OK — 6 measured tiers`, exit 0, at HEAD. Now:
+`no tier … matches /^room\b/i — the 'roomEnclosure' rung has left the spec`,
+exit 1.
+
+**The decisive evidence is a head-to-head, not a pass.** Apply a *self-consistent*
+spec edit (walls 2.0× → 2.8926× across all four statements) **and** move
+`TIER.wall` to match:
+
+```
+OLD gate (hand-copy):  wall 2.893 vs 1.999, 44.68%  <- FAIL    exit 1
+NEW gate (reads spec): wall 2.893 vs 2.893,  0.00%             exit 0
+```
+
+**The old gate reds when the spec and the implementation agree**, because its
+verdict was decided by the frozen copy. Move the spec alone and the new gate reds
+(30.86%). Both directions, same tree — positive evidence that the anchor moved,
+not a "still passes".
+
+**An algebraic identity was found and retired.** The **base row** compared
+`strokePx(base)/strokePx(base)` against `pt[base]/base_pt` — **1.0 on both sides
+for every possible input** — and was printed as `0.00%` inside a summary claiming
+*"6 measured tiers reproduce the qbiq ratios"*. **It advertised six checks and had
+five.** Now labelled `origin` and excluded from the graded count; its **clamp**
+assertion is real and is falsified separately (`BASE_STROKE_PX` 0.4 → 0.3 →
+`furniture … origin <- CLAMPED <- FAIL`).
+
+**R10 — the axis list gains a fourth:** value · clamp (now falsified at **both**
+bounds, MAX and MIN) · membership · **ground truth**. The comment above
+`run "ladder-check"` in `verify-all.sh` still names three and is understated by
+one — flagged, not silently edited.
+
+**19/19 falsification cases behaved as predicted**, in a disposable copy reset per
+case, every sabotage asserting its anchor before writing and re-reading after.
+**`coreParity.test.mjs` registration is NOT warranted** — its scope is Rust↔TS, and
+after this change there is no mirror to register. The correct remedy for an
+avoidable copy is deletion, which is what happened.
+
+**R11 prediction, declared before merging and verified after:** 1 file changed,
+0 added, Rust 195 unchanged, battery 49/49 unchanged. All four held.
