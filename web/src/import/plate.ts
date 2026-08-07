@@ -7,8 +7,17 @@
 //   • Area selection → the lassoed polygon clipped to the floor envelope
 //     (`plateFromArea`), so the plate matches what the user picked instead of a
 //     tight hull around whichever furniture the lasso happened to catch (which
-//     shrank an open-floor selection to a fraction of its size). Falls back to
-//     the hull tracer if the clipped region is degenerate.
+//     shrank an open-floor selection to a fraction of its size).
+//
+// DEGENERATE SELECTIONS RETURN null, not a fallback plate. The `?? extractPlate`
+// below traces the RESTRICTED drawing, and a selection small enough for
+// `plateFromArea` to reject (< 4 m², or off the sheet) has usually restricted
+// that drawing to nothing — so the tracer has nothing to trace. Measured on the
+// sample plan: a 1 m² lasso leaves 0 entities / 0 furniture and the result is
+// null (pinned by `areaTool.test.mjs`). This is the safe outcome — the readouts
+// show "—" rather than silently promoting a stray gesture to a floor plate — but
+// it is NOT the rescue the comment here used to promise. The `??` still earns its
+// place for the narrow case where a sub-4 m² lasso does catch real linework.
 //
 // This module composes testfit + area + heal (none of which import it), so there
 // is no import cycle.

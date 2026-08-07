@@ -7,7 +7,8 @@
 // listener registration/teardown, so DOM lifetime stays in one place.
 
 import type { FurnitureItem } from './types'
-import type { Pt } from './testfit'
+import { pointInRing, type Pt } from './testfit'
+import { snap } from '../cad/snap'
 import { renderScene } from './drawingRender'
 import {
   deleteSelected,
@@ -21,6 +22,7 @@ import {
 } from './drawingEdit'
 import {
   AREA_CLOSE_PX,
+  AREA_EDGE_PX,
   AREA_VERTEX_PX,
   DRAG_THRESHOLD,
   MAX_SCALE,
@@ -51,40 +53,39 @@ function pickFurniture(s: DrawingScene, sx: number, sy: number): FurnitureItem |
   return null
 }
 
-/** Snap a screen point to the nearest wall endpoint (priority) or wall-line
- *  projection within `SNAP_PX`, giving the area tool its "adaptive" feel.
- *  Returns the world point + whether it snapped to a feature. */
+/**
+ * Snap a screen point onto the imported linework, giving the area tool its
+ * "adaptive" feel. Returns the world point + whether it snapped to a feature.
+ *
+ * The OSNAP engine is `cad/snap.ts` — the same one the CAD tools use, so an area
+ * edge lands on a wall endpoint / midpoint / intersection with the documented
+ * priority order instead of a second, weaker copy of that logic. (This function
+ * used to be that copy: endpoints, then a segment projection, no midpoints and
+ * no intersections.)
+ *
+ * `snap()` costs one candidate set per call, so the wall segments are pre-culled
+ * to those whose bbox is within tolerance of the cursor — an imported plan can
+ * carry thousands and this runs on every mousemove.
+ */
 function snapWorld(s: DrawingScene, sx: number, sy: number): { p: Pt; snapped: boolean } {
   const w = toWorld(s, sx, sy)
   const tol = SNAP_PX / s.scale // px → world meters
-  let best: Pt | null = null
-  let bestD = tol
-  for (const [ex, ey] of s.snapPoints) {
-    const d = Math.hypot(ex - w.x, ey - w.y)
-    if (d < bestD) {
-      bestD = d
-      best = [ex, ey]
-    }
-  }
-  if (best) return { p: best, snapped: true }
-  // Fall back to the closest point on any wall segment.
-  let projD = tol
-  let proj: Pt | null = null
+  const walls: { a: { x: number; y: number }; b: { x: number; y: number } }[] = []
   for (const [a, b] of s.snapSegs) {
-    const dx = b[0] - a[0]
-    const dy = b[1] - a[1]
-    const len2 = dx * dx + dy * dy
-    const t = len2 < 1e-12 ? 0 : Math.max(0, Math.min(1, ((w.x - a[0]) * dx + (w.y - a[1]) * dy) / len2))
-    const px = a[0] + t * dx
-    const py = a[1] + t * dy
-    const d = Math.hypot(px - w.x, py - w.y)
-    if (d < projD) {
-      projD = d
-      proj = [px, py]
-    }
+    if (Math.min(a[0], b[0]) - tol > w.x || Math.max(a[0], b[0]) + tol < w.x) continue
+    if (Math.min(a[1], b[1]) - tol > w.y || Math.max(a[1], b[1]) + tol < w.y) continue
+    walls.push({ a: { x: a[0], y: a[1] }, b: { x: b[0], y: b[1] } })
   }
-  if (proj) return { p: proj, snapped: true }
-  return { p: [w.x, w.y], snapped: false }
+  const r = snap(w, {
+    entities: [],
+    walls,
+    components: [],
+    grid: 0, // no grid fallback: an unsnapped area vertex stays exactly where it was put
+    pxPerM: s.scale,
+    tolPx: SNAP_PX,
+  })
+  if (r.type === 'none') return { p: [w.x, w.y], snapped: false }
+  return { p: [r.point.x, r.point.y], snapped: true }
 }
 
 /** Index of the area vertex whose handle is under (sx,sy), or null. */
@@ -101,6 +102,30 @@ function nearFirstVertex(s: DrawingScene, sx: number, sy: number): boolean {
   if (s.area.length < 3) return false
   const p = toScreen(s, s.area[0][0], s.area[0][1])
   return Math.hypot(p.x - sx, p.y - sy) <= AREA_CLOSE_PX
+}
+
+/** The committed ring's edge under (sx,sy): the insert index (the vertex the new
+ *  point goes BEFORE) and the snapped world point to insert. Null when the
+ *  point is not within `AREA_EDGE_PX` of any edge. Vertices are excluded — a
+ *  click on a handle is a handle click, never an insert. */
+function hitAreaEdge(s: DrawingScene, sx: number, sy: number): { at: number; p: Pt } | null {
+  const n = s.area.length
+  if (n < 3) return null
+  const scr = s.area.map((p) => toScreen(s, p[0], p[1]))
+  let best: { at: number; d: number } | null = null
+  for (let i = 0; i < n; i++) {
+    const a = scr[i]
+    const b = scr[(i + 1) % n]
+    const dx = b.x - a.x
+    const dy = b.y - a.y
+    const len2 = dx * dx + dy * dy
+    if (len2 < 1e-9) continue
+    const t = Math.max(0, Math.min(1, ((sx - a.x) * dx + (sy - a.y) * dy) / len2))
+    const d = Math.hypot(a.x + t * dx - sx, a.y + t * dy - sy)
+    if (d <= AREA_EDGE_PX && (!best || d < best.d)) best = { at: (i + 1) % n || n, d }
+  }
+  if (!best) return null
+  return { at: best.at, p: snapWorld(s, sx, sy).p }
 }
 
 // ---- area tool ----
@@ -122,6 +147,20 @@ function closeArea(s: DrawingScene): void {
   s.canvas.style.cursor = 'default'
   renderScene(s)
   emitArea(s)
+}
+
+/** Start a FRESH ring at `first`, discarding a previously committed one. This is
+ *  the "select a different area" gesture (§3.1): with the tool armed, a click
+ *  outside the committed ring starts over. The owner is told the selection is
+ *  gone straight away, so the readouts revert to the whole plan until the new
+ *  ring closes rather than describing an area that is no longer on screen. */
+function restartArea(s: DrawingScene, first: Pt): void {
+  const had = s.areaClosed && s.area.length >= 3
+  s.area = [first]
+  s.areaClosed = false
+  s.areaDragVertex = null
+  renderScene(s)
+  if (had) s.ev.onAreaChange?.(null)
 }
 
 /** Esc while the area tool is armed: cancel an in-progress ring (clear +
@@ -286,7 +325,13 @@ export function handleMove(s: DrawingScene, e: MouseEvent): void {
     } else {
       s.toolCursor = null
     }
-    s.canvas.style.cursor = hitAreaVertex(s, p.x, p.y) != null ? 'grab' : 'crosshair'
+    // grab = a handle is under the cursor; copy = clicking here inserts a vertex.
+    s.canvas.style.cursor =
+      hitAreaVertex(s, p.x, p.y) != null
+        ? 'grab'
+        : s.areaClosed && hitAreaEdge(s, p.x, p.y)
+          ? 'copy'
+          : 'crosshair'
     renderScene(s)
     return
   }
@@ -328,28 +373,50 @@ export function handleUp(s: DrawingScene, e: MouseEvent): void {
     emitChange(s) // a drag-move committed
     return
   }
-  // Area vertex drag committed (a click on a handle that didn't pan).
-  if (s.areaTool && s.areaDragVertex != null) {
+  // ---- area tool: ONE branch, because the discrimination that matters is
+  // "did this press move?", and splitting it across two branches is what broke
+  // the tool. A press that grabbed a handle and MOVED is a drag commit; a press
+  // that grabbed a handle and did NOT move is a plain click on that point and
+  // must fall through to the click semantics — otherwise clicking the first
+  // vertex never closes the ring, and the second press of a double-click is
+  // swallowed so `handleDblClick`'s pop eats a REAL corner (the diagonal chord).
+  if (s.areaTool) {
+    const p = screenFromEvent(s, e)
+    const grabbed = s.areaDragVertex
+    const moved = Math.hypot(p.x - s.downScreen.x, p.y - s.downScreen.y) > DRAG_THRESHOLD
     s.areaDragVertex = null
-    if (s.areaClosed) emitArea(s)
-    renderScene(s)
+    if (grabbed != null && moved) {
+      if (s.areaClosed) emitArea(s)
+      renderScene(s)
+      return
+    }
+    if (wasPan) return // was a pan, not a click
+    if (!s.areaClosed) {
+      // In progress: click the first vertex to close, anything else adds one.
+      if (nearFirstVertex(s, p.x, p.y)) closeArea(s)
+      else {
+        s.area.push(snapWorld(s, p.x, p.y).p)
+        renderScene(s)
+      }
+      return
+    }
+    // Committed ring, tool re-armed ("Edit area"). A click on a handle is inert
+    // (the handle is for dragging); a click on an EDGE inserts a vertex there
+    // (workflow.md §3.1); a click OUTSIDE starts a new selection; a click inside
+    // does nothing, so inspecting a selection can never destroy it.
+    if (grabbed != null) return
+    const edge = hitAreaEdge(s, p.x, p.y)
+    if (edge) {
+      s.area.splice(edge.at, 0, edge.p)
+      renderScene(s)
+      emitArea(s)
+      return
+    }
+    const w = toWorld(s, p.x, p.y)
+    if (!pointInRing(w.x, w.y, s.area)) restartArea(s, snapWorld(s, p.x, p.y).p)
     return
   }
   if (wasPan) return // was a pan, not a click
-  // Area tool: add a vertex, or close the ring by clicking the first vertex.
-  if (s.areaTool) {
-    const p = screenFromEvent(s, e)
-    if (!s.areaClosed && nearFirstVertex(s, p.x, p.y)) {
-      closeArea(s)
-      return
-    }
-    if (!s.areaClosed) {
-      const { p: vertex } = snapWorld(s, p.x, p.y)
-      s.area.push(vertex)
-      renderScene(s)
-    }
-    return
-  }
   // Marker tool: drop a pin at the click point; the owner assigns id/ref.
   if (s.markerArm) {
     const p = screenFromEvent(s, e)
@@ -420,12 +487,24 @@ export function handleLeave(s: DrawingScene): void {
   }
 }
 
-/** Double-click closes the in-progress area ring (dropping the redundant
- *  vertex the two constituent clicks added). */
+/** Double-click closes the in-progress area ring, dropping the redundant vertex
+ *  the two constituent clicks added.
+ *
+ *  The pop is CONDITIONAL on the last two vertices actually coinciding. It used
+ *  to be unconditional ("length > 3"), which is only correct while both presses
+ *  really do add a vertex — and they did not, so the pop removed the user's last
+ *  real corner and the ring closed across the plate on a diagonal. Guarding on
+ *  the duplicate makes both outcomes benign: worst case the ring keeps a
+ *  sub-pixel edge instead of losing a corner. */
 export function handleDblClick(s: DrawingScene, e: MouseEvent): void {
   if (!s.areaTool || s.areaClosed) return
   e.preventDefault()
-  if (s.area.length > 3) s.area.pop() // the dblclick's second click
+  const n = s.area.length
+  if (n > 3) {
+    const a = toScreen(s, s.area[n - 1][0], s.area[n - 1][1])
+    const b = toScreen(s, s.area[n - 2][0], s.area[n - 2][1])
+    if (Math.hypot(a.x - b.x, a.y - b.y) <= AREA_VERTEX_PX * 2) s.area.pop()
+  }
   if (s.area.length >= 3) closeArea(s)
   else renderScene(s)
 }

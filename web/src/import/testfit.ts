@@ -1600,8 +1600,10 @@ function clipToRect(poly: Pt[], x0: number, y0: number, x1: number, y1: number):
  * instead of a tight hull around whatever furniture the lasso happened to catch.
  * The polygon IS the work boundary; we only clip it to the building's bounding
  * box (`bounds`, source coords) so a loose lasso never spills past the floor.
- * Returns null (caller falls back to `extractPlate`) when the clipped region is
- * degenerate (< ~4 m²), so a stray tiny selection can't seed an empty plate.
+ * Returns null when the clipped region is degenerate (< ~4 m²), so a stray tiny
+ * selection can't seed an empty plate. The caller's `?? extractPlate(...)` is a
+ * WEAK fallback, not a guarantee — it traces the area-restricted drawing, which
+ * such a selection has usually already emptied; see `plate.ts`.
  */
 export function plateFromArea(
   polygon: Pt[],

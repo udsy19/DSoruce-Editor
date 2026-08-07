@@ -5,65 +5,24 @@
 // resolved from node_modules at runtime), then import + exercise it against
 // the real furniture-plan sample.
 //
-// THE FIXTURE IS GENERATED, NOT COMMITTED. `samples/*.dxf` is gitignored (the
-// DXF is a 15 MB derivative of the 2.6 MB DWG that IS committed), so this test
-// derives it on first run with dwg2dxf — the same LibreDWG converter the app's
-// own /api/dwg import path uses in dev and production. Previously it just read
-// a path that did not exist on a fresh clone and died, which meant it had never
-// actually run for anyone who had not converted the file by hand: a test
-// sitting in the suite pretending to cover the importer. If the converter is
-// missing we now say so, loudly and with the fix, rather than failing obscurely.
+// THE FIXTURE IS GENERATED, NOT COMMITTED — see `sampleDrawing.mjs`, which owns
+// deriving `samples/furniture-plan.dxf` from the committed DWG (and says so
+// loudly, with the fix, when it cannot). Previously that lived here, so the
+// second test that wanted the real plan could only copy it.
 
 // @covers: web/src/import/dxf.ts
 
 import fs from 'node:fs'
 import path from 'node:path'
-import os from 'node:os'
-import { execFileSync } from 'node:child_process'
-import { createRequire } from 'node:module'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
+import { bundleImport, ensureSampleDxf } from './sampleDrawing.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
-const samplesDir = path.resolve(here, '../../../samples')
-const samplePath = path.join(samplesDir, 'furniture-plan.dxf')
-const dwgPath = path.join(samplesDir, 'furniture-plan.dwg')
-
-if (!fs.existsSync(samplePath)) {
-  if (!fs.existsSync(dwgPath)) {
-    console.error(`FAIL  missing source sample: ${dwgPath}`)
-    process.exit(1)
-  }
-  try {
-    execFileSync('dwg2dxf', ['-o', samplePath, dwgPath], { stdio: 'pipe' })
-  } catch (e) {
-    console.error(
-      `FAIL  could not generate ${path.basename(samplePath)} from the sample DWG.\n` +
-        `      This test needs LibreDWG's dwg2dxf — the same converter the app's\n` +
-        `      /api/dwg import path uses. Install it (macOS: brew install libredwg)\n` +
-        `      and re-run. Original error: ${e.message}`,
-    )
-    process.exit(1)
-  }
-}
-
-// esbuild is a nested (pnpm) dep of vite, not top-level. Resolve it through
-// vite so this runs on a fresh `pnpm install` without extra deps.
-const webRequire = createRequire(path.join(here, '../../package.json'))
-const esbuildPath = createRequire(webRequire.resolve('vite')).resolve('esbuild')
-const { build } = await import(pathToFileURL(esbuildPath).href)
+const samplePath = ensureSampleDxf()
 
 // Bundle dxf.ts fully self-contained (dxf-parser included) so the temp output
 // needs no runtime module resolution.
-const outFile = path.join(os.tmpdir(), `ds-dxf-${Date.now()}.mjs`)
-await build({
-  entryPoints: [path.join(here, 'dxf.ts')],
-  outfile: outFile,
-  bundle: true,
-  format: 'esm',
-  platform: 'node',
-  logLevel: 'silent',
-})
-const { parseDrawing } = await import(pathToFileURL(outFile).href)
+const { parseDrawing } = await bundleImport('dxf.ts')
 
 const dxfText = fs.readFileSync(samplePath, 'utf8')
 const t0 = Date.now()
@@ -124,7 +83,6 @@ check(
 )
 check('every entity has a category', dwg.entities.every((e) => typeof e.category === 'string'))
 
-fs.rmSync(outFile, { force: true })
 if (failures > 0) {
   console.log(`\n${failures} assertion(s) failed`)
   process.exit(1)

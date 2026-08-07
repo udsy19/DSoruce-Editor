@@ -104,10 +104,8 @@ export class DrawingCanvas implements DrawingEvents {
     // A fresh drawing clears selection/undo and any prior area/markers/backdrop;
     // the owner re-applies the persisted ones via setArea/setMarkers after this.
     resetScene(this.s)
-    // Precompute adaptive-snap targets: wall/glazing endpoints and segments.
+    // Precompute the OSNAP candidate source: wall/glazing segments.
     this.s.snapSegs = collectWallSegments(d)
-    this.s.snapPoints = []
-    for (const [a, b] of this.s.snapSegs) this.s.snapPoints.push(a, b)
     buildBuckets(this.s, d)
     this.fitToView() // also renders
   }
@@ -198,7 +196,9 @@ export class DrawingCanvas implements DrawingEvents {
     this.render()
   }
 
-  /** Clear the committed/in-progress polygon and notify (restores full plan). */
+  /** Clear the committed/in-progress polygon and notify (restores full plan).
+   *  The tool stays armed if it was, so "Clear" leaves the user ready to draw
+   *  the next ring instead of silently desyncing the canvas from the toolbar. */
   clearArea(): void {
     this.s.area = []
     this.s.areaClosed = false
@@ -208,8 +208,30 @@ export class DrawingCanvas implements DrawingEvents {
     this.onAreaChange?.(null)
   }
 
-  /** Load a persisted polygon (committed) without firing onAreaChange. */
+  /**
+   * Load a persisted polygon (committed) without firing onAreaChange.
+   *
+   * RE-ENTRANCY — THE ONE RULE. This is also the OWNER'S ECHO: the area emits on
+   * every edit, React stores it, and its `[areaPolygon]` effect pushes the state
+   * straight back through here, one turn of the event loop later — i.e. BETWEEN
+   * two events of a live gesture. So this method must never overwrite a gesture
+   * that is still in flight. Both W5a defects that survived a first fix were this
+   * one hazard on two surfaces:
+   *
+   *   • mid-DRAG: dropping `areaDragVertex` cancelled the drag, and the next
+   *     mousemove fell through to the PAN branch — dragging a handle dragged the
+   *     whole plan. Guarded by keeping the index while it stays addressable.
+   *   • mid-DRAW: starting a new ring emits `null` (the old selection is gone),
+   *     the echo came back as `setArea(null)` and ERASED the vertex just placed,
+   *     so a four-corner lasso committed as a triangle. Guarded by ignoring any
+   *     load while an unclosed ring holds vertices — during a draw the canvas
+   *     owns the ring, and the owner is only repeating what we told it.
+   *
+   * A committed ring has no gesture in flight, so a genuine load (resume, plate
+   * proposal, clear) always lands.
+   */
   setArea(polygon: Pt[] | null): void {
+    if (!this.s.areaClosed && this.s.area.length > 0) return
     if (polygon && polygon.length >= 3) {
       this.s.area = polygon.map((p): Pt => [p[0], p[1]])
       this.s.areaClosed = true
@@ -217,7 +239,9 @@ export class DrawingCanvas implements DrawingEvents {
       this.s.area = []
       this.s.areaClosed = false
     }
-    this.s.areaDragVertex = null
+    if (this.s.areaDragVertex != null && this.s.areaDragVertex >= this.s.area.length) {
+      this.s.areaDragVertex = null
+    }
     this.render()
   }
 

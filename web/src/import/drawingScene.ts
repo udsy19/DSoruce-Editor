@@ -66,6 +66,7 @@ export const AREA_MASK = 'rgba(20,24,33,0.42)' // dims everything OUTSIDE the se
 export const AREA_FILL = hexToRgba(SELECTION_ACCENT, 0.08) // faint wash inside the selected area
 export const AREA_VERTEX_PX = 4 // half-size of an area-polygon vertex handle, screen px
 export const AREA_CLOSE_PX = 10 // click within this of the first vertex closes the ring
+export const AREA_EDGE_PX = 6 // click within this of a committed edge inserts a vertex
 export const MARKER_R_PX = 11 // marker pin radius, screen px
 export const ANCHOR_COLOR = '#4a8fc7' // anchor pins: cool blue, distinct from amber markers
 export const ANCHOR_R_PX = 12 // anchor pin (diamond) half-diagonal, screen px
@@ -191,8 +192,7 @@ export interface DrawingScene {
   areaDragVertex: number | null
   toolCursor: Pt | null // snapped preview point (area vertex / marker ghost)
   toolSnapped: boolean // did `toolCursor` land on a wall feature
-  snapPoints: Pt[] // wall/glazing endpoints — adaptive snap targets
-  snapSegs: Segment[] // wall/glazing segments — projection snap targets
+  snapSegs: Segment[] // wall/glazing segments — the OSNAP candidate source
 
   // marker tool (workflow.md §3.2): `markerArm` is the type+ref waiting to be
   // dropped; `markers` are the placed pins (drawing/source coords) to render.
@@ -250,7 +250,6 @@ export function createScene(
     areaDragVertex: null,
     toolCursor: null,
     toolSnapped: false,
-    snapPoints: [],
     snapSegs: [],
     markerArm: null,
     markers: [],

@@ -2055,3 +2055,68 @@ because the first attempt would otherwise have been reported as a null result.
 `buildQtoModel` produces both the workbook and `ground-truth.json` in one call
 (`qtoWorkbook.ts:1049`), and the producer's own comment concedes the 1:1 check is
 true by construction.
+
+## W5a — the area tool: four defects, one hazard, and an instrument that lied
+
+```
+4 clicks, pre-fix, headless   -> ring [[250,200],[650,200],[650,500]]   a triangle
+4 clicks, pre-fix, BROWSER    -> AREA events: 0                          tool inert
+10-move drag, pre-fix         -> AREA events: 1    the plan panned (120,90)
+10-move drag, post-fix        -> AREA events: 11   one vertex moved
+before/after pixdiff          -> 26.37% draw · 51.72% drag (900x640, identical clicks)
+```
+
+**The suspect list was wrong on every named file but one.** `area.ts` is fine (as
+briefed). `markers.ts` has nothing to do with the area tool. `drawingEdit.ts` is
+untouched by the defect. `cad/snap.ts` was not broken — it **was not being used at
+all**; `drawingInput.ts` carried a private, weaker fork (endpoints + projection, no
+midpoints, no intersections). The whole defect lives in `drawingInput.ts`'s
+`handleUp`/`handleDblClick` and `DrawingCanvas.setArea`.
+
+### One hazard, three surfaces: the owner's echo
+
+`handleMove`/`restartArea` emit; React's `[areaPolygon]` effect calls `setArea`
+back one turn later — **between two events of a live gesture** — and `setArea`
+overwrote the gesture. Mid-drag it dropped `areaDragVertex` and the next move
+**panned the plan**. Mid-draw it erased the vertex just placed. The second surface
+only appeared *after* the first was fixed.
+
+### The chord had two causes and the brief named neither
+
+`handleUp` returned on any press landing on a handle, so closing by clicking the
+first vertex never fired and a double-click's second press was swallowed;
+`handleDblClick`'s **unconditional** pop then ate a real corner. Separately, on the
+sample plan the low-confidence plate proposal is preloaded into area-select — **a
+chord-shaped ring the user never drew and, pre-fix, could not touch.** Three
+reported symptoms, one screen.
+
+### The harness lied first, and only the browser caught it
+
+The driver fired a gesture's events in one turn of the event loop, so the echo
+landed *after* the gesture instead of inside it. **9/9 green** — and the browser
+then drew a triangle from the same four clicks. A synchronous driver is not a model
+of a browser; it is a model of an app with no owner. Fixed to yield the event loop
+after every dispatch, it reproduced the browser byte-for-byte, then went red under
+every sabotage.
+
+### Sabotage — nine applied, eight red, one null
+
+Branch order restored · unconditional dblclick pop · `setArea` drops the grab ·
+edge-insert removed · restart removed · `pointInRing` inverted · `cad/snap`
+neutered — all **RED** with the right message. The unconditional pop **alone** was
+green, so a ninth guard (`double-click that delivers only one press`) was added
+until it reds.
+
+**Null reported:** removing the bbox pre-cull that feeds `cad/snap.ts` left all 12
+guards green. It is a perf guard, not a correctness one — **0.52 ± 0.01 vs
+0.70 ± 0.01 ms/mousemove**, 3 runs each, 1013 entities.
+
+### Also proven
+
+`plate.ts` promised a hull-tracer fallback for a degenerate lasso. **There is
+none** — the fallback traces the *restricted* drawing, which the degenerate
+selection has already emptied (0 entities, 0 furniture, result `null`). Behaviour
+is safe; the comment was false. Corrected and pinned. (`derivePlateOutcome` does
+not exist; it is `derivePlate` + `recordPlateOutcome`.)
+
+Verified **44/44** in a clean worktree carrying only these changes.

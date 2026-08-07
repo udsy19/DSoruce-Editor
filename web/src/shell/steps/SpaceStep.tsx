@@ -286,11 +286,17 @@ export function SpaceStep({
     if (!c) return
     c.onAreaChange = (poly) => {
       setAreaPolygon(poly)
-      setActiveTool('none') // committing/clearing disarms the tool
+      // The tool now emits on EDITS too (vertex drag, edge insert, restart), and
+      // it stays armed through those — so mirror the canvas's actual armed state
+      // instead of asserting 'none'. Asserting it turned the toolbar off on the
+      // first pixel of every drag.
+      setActiveTool(c.isAreaTool() ? 'area' : 'none')
       // Editing a proposed boundary IS the answer to it: record which way the
       // user went, so the calibration log can tell an accepted draft from a
-      // redrawn one (ADR 0003 — promotion comes from this signal only).
-      if (draftRingRef.current) {
+      // redrawn one (ADR 0003 — promotion comes from this signal only). Recorded
+      // once the gesture SETTLES (committed, or the ring dropped), never from a
+      // half-finished drag.
+      if (draftRingRef.current && (poly === null || !c.isAreaTool())) {
         const same = JSON.stringify(poly ?? []) === draftRingRef.current
         void recordPlateOutcome(same ? 'confirmed-unedited' : poly ? 'confirmed-edited' : 'redrawn')
         draftRingRef.current = ''
@@ -740,8 +746,17 @@ export function SpaceStep({
               )}
               {activeTool === 'area' && (
                 <p className="space-tool-hint" data-testid="space-area-hint">
-                  Click to lay the boundary — snaps to nearby walls. Click the first point (or
-                  double-click / Enter) to close, Esc to cancel.
+                  {areaPolygon ? (
+                    <>
+                      Drag a handle to move a corner, click an edge to add one. Click outside the
+                      area to start a new one, Esc to finish.
+                    </>
+                  ) : (
+                    <>
+                      Click to lay the boundary — snaps to nearby walls. Click the first point (or
+                      double-click / Enter) to close, Esc to cancel.
+                    </>
+                  )}
                 </p>
               )}
               {activeTool === 'marker' && (
