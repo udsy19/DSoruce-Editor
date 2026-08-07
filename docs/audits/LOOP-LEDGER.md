@@ -3135,3 +3135,55 @@ a rebrand makes both match zero sites and print OK. A third `SpaceKind` copy in
 from scripts/gates/deadspace-core.mjs"*. **The spec is the copy.** Withdrawn.
 
 **Board: Rust 195, battery 49/49 — and two of its surfaces are not green.**
+
+---
+
+# R14 and R15 — promoted, and they are the round
+
+## R14 — a definition change migrates every consumer, enforced by making the old path cease to exist
+
+**Three of four belief-pass survivors were a fix that changed a definition and left
+a consumer behind.** The M1 fix introduced `area_basis`, moved the panel onto it,
+and left `quantity.rs` on the raw accessor — and the divergence was found by an
+adversary two rounds later, in a priced Room Schedule.
+
+So a source-of-truth change now includes a **consumer census** (grep-derived,
+ledgered — every call site migrated or declared exempt with its reason), and
+wherever the language allows, **the old accessor is deleted or privatized so an
+unmigrated consumer is a COMPILE ERROR.**
+
+> **A "one definition" comment is not a mechanism; a build failure is.**
+
+`quantity.rs` carried three such comments — *"the ONE area definition … so the
+takeoff can never disagree with what the user sees on screen"* — and **all three
+were true when written.** That is the point: prose cannot stay true across a
+change it does not participate in.
+
+## R15 — the battery exercises every published surface, and surfaces must agree
+
+`quantities()` was **never called** by the 1 200-evaluation battery. An entire
+published surface sat outside the tested population — and `quantity.rs:966`
+already asserts the very property that would have caught this
+(`Σ room area ≤ plate`, which fires at 953.030 against 930.063). It had simply
+never run on an edited document.
+
+The battery now evaluates **every surface the product publishes** at every step —
+metrics, zone rows, quantities/takeoff, save/reopen, export — and **cross-surface
+identity is itself a gate**: panel, takeoff and export must agree per-row on both
+populations. That satisfies R2 **structurally** rather than by discipline: the
+surfaces re-derive each other, so neither is asking the producer what it did.
+
+## Dispatched
+
+| worktree | agent | deliverable |
+|---|---|---|
+| `/private/tmp/q7-basis` | CORE | privatize the raw accessor and let the compiler enumerate consumers · `quantities()` into the battery · cross-surface identity gate · **vector invariants** closing the adversary's two proven exploits (the −283.6 m² compensating pair, the +11.1-point misattribution) · the `if !rows.is_empty()` producer veto |
+| `/private/tmp/q7-jstwin` | SURFACE | delete the verbatim tautology that **outlived its own retraction** · delete the unsatisfiable cap check · live M1 assertions on edited fixtures, reading the **error surface** rather than the capped value |
+
+Both are bound by R13: the **F4 retype** is the named sabotage and must red. Both
+must audit their own new assertions for **algebraic identity** — two tautologies in
+two rounds, and one was found *inside the gate being fixed*.
+
+**Steps 4–5 stay blocked until BELIEVED.** Four rounds of history say this
+sequencing is load-bearing: on each of them the board was green and the product
+was not.
