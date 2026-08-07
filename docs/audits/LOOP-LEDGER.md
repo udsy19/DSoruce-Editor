@@ -1915,3 +1915,143 @@ W1's facade band, then W2's network. W1's acceptance is joint and is already bui
 standing red: `composition.mjs --gate` (run 7 > 5; conf 3.26/100 under half of 8.60)
 **together with** density holding ~9.85 — if seats crater to satisfy the mix, the band
 is not being used. Label ratchet still carries its R5 debt back to ≤29.
+
+---
+
+# ADVERSARY ROUND — one guard survived sabotage, and FOUR fixed defects are live again
+
+Six sabotage re-runs against a 43/43 green battery, all in disposable worktrees,
+tree untouched. **Five guards red as designed.** The sixth, plus two categories
+the round was not looking for, are below. Fourteen findings; eight HIGH.
+
+## The surviving guard
+
+`wallnet::tests::an_l_junction_draws_no_line_inside_the_wall` stays **GREEN** with
+`let buried = false` — the union mechanism deleted, per-wall boxes restored.
+Measured: **8 output segments shipped, 12 sabotaged**, test green in both. The
+four extra strokes run straight through the junction. The test's window is the
+**open** box `(3.9, 4.1) × (-0.1, 0.1)` with strict inequalities, and the geometry
+is axis-aligned on exactly those coordinates — so every buried midpoint sits *on*
+the boundary and is excluded. The two length-based tests do catch it, so the
+module is guarded; **the test named for the defect is not.** A strict inequality
+against exactly-aligned geometry is a tolerance of zero pointing the wrong way.
+
+## M1 · HIGH · the clamp came back, on the other side of the fraction
+
+`efficiency = usable / nia`. `net_internal_area` clamps to the floor;
+`usable_area` does not. Retype every F4 zone to Workspace — ordinary editing:
+
+```
+before: GEA 930.063  NIA 912.710  eff  69.979%  traced
+after : GEA 930.063  NIA 930.063  eff 102.469%  traced
+        raw zone sum 953.030 vs floor_area 930.063
+```
+
+Eight overlapping Workspace rects and the shipped wasm prints **633.4%**. This is
+the 1159% defect, in the same function, as a *different* pair — and the comment
+beside it predicted it: *"'by construction' is what the clamped-NIA pairing also
+looked like."* The construction argument is false; the de-overlap does not bound
+the sum by the floor.
+
+**Three guards, all missing it.** `lib.rs:372`'s `debug_assert` is **compiled out
+of the release wasm**. `metrics_can_never_be_impossible` retypes ONE zone per step
+out of six types over ten steps and never reaches "all usable".
+`statsPanel.test.mjs:81` asserts `≤ 100` on five **unedited** fixtures. *A guard's
+frame is part of the guard.*
+
+## M4 · HIGH · `MIN_PLAN_ANCHORS` is a door back into the collapse
+
+`< 8` anchors skips the containment check. **Seven anchors is a real plan:**
+
+```
+2 zones + 5 components, 40×30 envelope with one wall deleted, 1.2 m² scratch box
+plate_state "traced" · GEA 1.20 m² · NIA 1.20 m²
+Open Workspace 1.2 m² / 66 pax     Boardroom 0 m² / 25 pax
+```
+
+A **1000× under-report, labelled `traced`** — a positive claim that the number is
+a measurement. The constant is justified for the zero-plan wizard case; its
+predicate covers far more than that.
+
+## H1 · HIGH · F1a's acceptance was scoped to one plate
+
+`desk_capacity_never_exceeds_what_the_packer_places` runs over five fixtures that
+all descend from **one** 930 m² plate. The identical assertion on plain
+rectangles: **18 violations in 18 region-cases** (20×20 seed1: allocated 33,
+placed 19, 23 obstacle rejections). `field_free_slots` and `pack_desks` share a
+lattice and predicates but **not an obstacle set** — the packer places
+sequentially and each desk's clearance kills slots capacity already counted. My
+ledger claim that they *"cannot disagree by construction"* was true of the sample
+plate only. INV1 passes all 45 cases: it is a **floor with no ceiling**.
+
+## V1 · HIGH · deadspace-core prints OK having measured nothing
+
+It `continue`s on an unresolved plate; `worst` stays 0. With `plate_resolution`
+forced Unresolved and wasm rebuilt, the exact battery invocation prints:
+
+```
+F1..F5: plate unresolved — nothing to measure
+DEADSPACE OK: worst 0.0% <= 10.0%      EXIT=0
+```
+
+The header's claim *"an unresolved plate is refused, not scored 0%"* is true of
+the **row** and false of the **verdict**. **A global plate regression — this
+queue's founding defect — turns this gate green.** The `if not x: continue` class
+the rules file forbids, in a gate I wrote and falsified two commits ago.
+
+## V2 · HIGH · style-gate fails open on a renamed file
+
+```
+inject '#ff00ff' into pdfDoc.ts          -> STYLE GATE FAIL: 1 literal   exit 1
+rename pdfDoc.ts -> pdfWriter.ts         -> style gate: OK               exit 0
+   the literal is still on disk, 1 occurrence
+```
+
+**Its own comment three lines above says** *"a rule pointed at a deleted path is a
+rule watching nothing."* `bench/lod-sweep.mjs:28-36` already carries the fix.
+
+## M2 · HIGH · one edit makes a document unopenable
+
+`resize_zone(id, NaN, NaN, NaN, NaN)` returns **Ok** — NaN makes every `<`/`>` in
+the OutOfBounds guard false. NIA drops **899.8 → 348.0** with no error, and
+`from_snapshot` then throws `invalid type: null, expected f64`: **the `.dsource`
+saves and never reopens.**
+
+## H2 · HIGH · the generator furnishes the lift core
+
+An interior walled loop is a hole to nothing: **6 desks and 6 chairs land inside a
+10×10 core**, and `floor_area()` bills 1200 m² for an 1100 m² floor **even when
+the keep-out is declared** — the keep-out fixes placement, not the area. Every
+downstream figure inherits the 9.1% error.
+
+## Also proven
+
+**M3** `add_zone` is unguarded where `resize_zone` is guarded — an off-plate zone
+bills `area 0 · capacity 6666`, taking published capacity 131 → 6797.
+**V3** `ladder-check` iterates `TIER` (the subject) not `MEASURED_PT` (the spec):
+deleting the roomEnclosure rung prints `ladder OK — 5 tiers`.
+**V4** `g10` reads `spec.durationRange_s`, which is `undefined`; the value lives at
+`spec.target.*` and the hardcoded fallback always wins.
+**M5** efficiency never references GEA: a 1000 m² plate with one 4 m² zone prints
+`GEA 1000 · NIA 4 · efficiency 100.0%`.
+**H3** sliver plates are non-monotonic (40×4 → 30 desks, 40×5 → 7, zero
+rejections); `layout_diag` reports `a0/p0` on the oriented path while 60 desks are
+placed, so **F1a's whole acceptance instrument is blind there**; 200×200 m
+generates in **27.6 s**.
+
+## Clean results, reported as results
+
+No panic in 15 hostile plates. NaN/Inf through six mutators never produced a
+non-finite metric. A **10 000-mutation** wasm-boundary fuzz over all five fixtures
+found no non-finite value, no negative area, no bad `plate_state`, no
+`NIA > traced GEA` — only M1's efficiency excursions.
+
+**Falsification of its own falsification.** The style-gate escape was first tested
+on `paint.ts` and did NOT reproduce — a downstream unconditional read crashes the
+gate for that one file. Re-run on `pdfDoc.ts` it reproduced exactly. Recorded
+because the first attempt would otherwise have been reported as a null result.
+
+**Named, unproven, highest-value next target:** G3's `f(model) == f(model)` —
+`buildQtoModel` produces both the workbook and `ground-truth.json` in one call
+(`qtoWorkbook.ts:1049`), and the producer's own comment concedes the 1:1 check is
+true by construction.
