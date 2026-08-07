@@ -3046,3 +3046,92 @@ avoidable copy is deletion, which is what happened.
 
 **R11 prediction, declared before merging and verified after:** 1 file changed,
 0 added, Rust 195 unchanged, battery 49/49 unchanged. All four held.
+
+# BELIEF VERDICT — **NOT BELIEVED.** The rebuilt check is sound; its twin was never looked at, and the fix created a divergence one surface over.
+
+Six-sabotage NIA family against the direct sum. **Five red as designed**, including
+the motivating defect: restoring the second NIA owner in `zone_rows` verbatim gives
+`rows sum to 1003.454 but NIA is 930.063` at **194/1**. **R13 satisfied for this
+check.**
+
+## THE DEFECT — live at HEAD, no sabotage required
+
+`quantity.rs:511` reads **`effective_zone_areas`** (raw). The panel reads
+**`area_basis`** (scaled by `k = nia/sum`). Two owners of per-zone area. On the M1
+state — retype every F4 zone to Workspace, four clicks — on a **clean tree**:
+
+```
+PANEL   Σ row.area = 930.063
+TAKEOFF Σ area_m2  = 953.030
+DIVERGENCE           22.968 m²  (2.47%)   — 24 of 24 rooms disagree
+```
+
+Three artifacts assert this cannot happen — `quantity.rs:187-188`,
+`quantity.rs:509-511` (*"the ONE area definition … so the takeoff can never
+disagree with what the user sees on screen"*), and `reports/B1-1.md:132`.
+**RETRACTED BY NAME. All three were TRUE when written.**
+
+> **The M1 fix introduced `area_basis`, moved the panel onto it, and left
+> `quantity.rs` behind. The fix created the divergence it was fixing, one surface
+> over.** The core knows it capped (`metrics_error` is set); the takeoff never
+> applies it. Published as the workbook Room Schedule (`qtoWorkbook.ts:272-295`),
+> finishes priced `unit: 'm^2'`.
+
+**Why nothing saw it.** `quantity.rs:966` asserts `Σ room area ≤ plate` and *would*
+fire at 953.030 vs 930.063 — **it is never run on an edited document.** The
+1 200-evaluation battery calls `compute_metrics` and never `quantities()`.
+`metrics_tests.rs`'s own header — *"the population that had no tests is the
+population where the defect lived"* — now names `quantity.rs`.
+
+## RETRACTED BY NAME (R13) — the fix landed at one call site; the class stayed live
+
+`web/src/ui/statsPanel.test.mjs:108-116` carries the retracted inversion
+`(row.area / row.pct_of_nia) * 100` **verbatim**, with the same independence claim
+`metrics_tests.rs:376` retracted. `pct_of_nia := area/nia*100` ⇒ the expression
+**≡ `nia` for every input**. Its neighbour at L90 is **unsatisfiable**: `area_basis`
+makes `Σ rows.area == nia`, and traced `nia ≤ floor_area == gea`, with the test's
+epsilon equal to the producer's. And `efficiency_pct <= 100` is enforced by the
+producer's own `.min(100.0)`. **M1 has no live assertion on the JS side.**
+
+*A known hazard patched locally while it stays live elsewhere* — the exact tell the
+rules file names.
+
+## The stated blind spot: the sum is a scalar, the property is a vector
+
+A compensating pair (+300/−300) leaves **195 green** while F1 bills
+`Meeting Room 2  area -283.600  pct -31.518` — a **negative donut slice**.
+`violations` applies its finite/non-negative predicate to seven **aggregate**
+metrics and to **zero per-row values**.
+
+Not contrived: injected in the **shared basis** where a de-overlap misattribution
+would live, 100 m² moved non-usable → usable takes efficiency **72.763% →
+83.876%** (+11.1 pts), unassigned 116.306 → 16.306 m², **195 green**. M1's own
+family, every rebuilt guard green.
+
+**Null reported:** the *scaled* form is closed — `effective_zone_areas × 3.0` reds
+**10 tests** including `room_areas_match_hand_computed` (36.0000 vs hand-computed
+12.0000), a genuine external anchor. **Producer veto:** `if !rows.is_empty()` — an
+empty `zone_rows` (the Zones tab renders nothing) is **195 green**.
+
+## Two more vacuities, and a measured skip rate
+
+`bench/lod-sweep.mjs:63` iterates the subject's own `BAND` table; all five
+`check()` calls are inside the loop, so an empty parse gives `lod OK` exit 0.
+`bench/export-parity.mjs:178` `if (!fs.existsSync(abs)) continue` — **verbatim the
+veto `style-gate.mjs` records having removed**; latent today. With `web/src/wasm`
+absent: **37 pass / 3 fail**, seven tests exiting 0 on `SKIP`. *Scoped:* three
+hard-fail, so the board still reds — the signal degrades, it does not lie.
+
+## Hand-copies beyond ladder-check, unregistered in `coreParity`
+
+The amber triple in **both** `accent-univalence.mjs:36-40` and
+`export-parity.mjs:174` — both advertised as value-keyed, both keyed to a copy, so
+a rebrand makes both match zero sites and print OK. A third `SpaceKind` copy in
+`three/groundFloors.test.mjs:47`. Ground/usable sets in `legendParity` and
+`foldParity`. sg1–sg4's tables fail **loud on an addition, silent on a deletion**.
+
+**Corrected by reading the owner:** `deadspace-core.mjs`'s `RADIUS`/`CELL` are
+**not** a hand-copy — `qbiq-deadspace-spec.json`'s own `$comment` reads *"Copied
+from scripts/gates/deadspace-core.mjs"*. **The spec is the copy.** Withdrawn.
+
+**Board: Rust 195, battery 49/49 — and two of its surfaces are not green.**
