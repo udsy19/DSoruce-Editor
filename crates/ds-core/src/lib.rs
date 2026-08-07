@@ -532,13 +532,33 @@ fn compute_metrics(doc: &Document) -> Metrics {
     // Applied AFTER the report, so an excursion is never silently absorbed: the
     // 1e-6 window above is the only thing between "float noise" and "a finding".
     efficiency_pct = efficiency_pct.min(100.0);
-    if matches!(resolution, document::PlateResolution::Traced(_))
-        && nia > floor_area + 1e-6
-    {
-        errors.push(format!(
-            "NIA {nia:.3} m² exceeds a TRACED floor of {floor_area:.3} m²"
-        ));
-    }
+    // DELETED (R16 corollary — an unsatisfiable branch is decorative coverage):
+    //
+    //     if matches!(resolution, Traced(_)) && nia > floor_area + 1e-6 {
+    //         errors.push("NIA … exceeds a TRACED floor of …")
+    //     }
+    //
+    // `nia` is `area_basis(doc).nia` = `net_internal_area(doc, raw)`, whose
+    // Traced arm is `sum.min(doc.floor_area())`, and `floor_area` above is that
+    // same `doc.floor_area()` on the same unmutated document. So under `Traced`,
+    // `nia ≤ floor_area` identically — the condition is false for every document,
+    // including the NaN cases (`f64::min` returns the non-NaN operand; a NaN
+    // comparison is false either way). This is D2's exact shape in the producer,
+    // the twin of the JS cap check `statsPanel.test.mjs` already deleted.
+    //
+    // FALSIFIED, not argued: replacing the body with `panic!` left the suite at
+    // **196 passed / 0 failed** — 1 200 battery evaluations plus every fixture
+    // test, and the branch never fired once.
+    //
+    // NOT the only path to its user-visible state. The cap event is reported by
+    // `overflow` above ("zone areas do not tile the floor … CAPPED"), which IS
+    // reachable — 13 of 35 (fixture × edit) states, frozen in
+    // `statsPanel.test.mjs`'s `CAPPED` set. Nor was this branch guarding the
+    // clamp: removing `.min(doc.floor_area())` from `net_internal_area` reds the
+    // suite either way, and reds it HARDER without this branch (192/4) than with
+    // it (193/3) — with it in place the wrong message ("NIA … exceeds a TRACED
+    // floor") satisfied assertions that only ask whether *an* error was
+    // reported, masking one further failure.
     for (name, v) in [
         ("floor_area", floor_area),
         ("net_internal_area", nia),

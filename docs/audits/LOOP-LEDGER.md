@@ -3382,3 +3382,107 @@ mechanism broken to prove it is a guard · and the dead branch's disposition.
 **Steps 2+ stay blocked.** Four consecutive rounds returned NOT BELIEVED and every
 one of them was correct; each survivor was found by looking at **algebra or
 population**, never at results.
+
+# BELIEF VERDICT — **NOT BELIEVED.** The census stopped at the crate boundary, and a delivered sheet has been billing 35.0 m² against the workbook's 8.0 all along.
+
+Baseline confirmed: Rust **196**, battery **49/49**. Four motivating sabotages,
+four red as designed — F4 retype **194/2**, the F1 seed-1 one-mutation case
+**73.391 m²** verbatim, compensating pair **191/5**, misattribution **194/2** on
+basis-consistency alone. **R13 satisfied.** The verdict is negative for what the
+property found *beyond* the report.
+
+## THE DEFECT — live at HEAD, no sabotage, on the UNEDITED base fixtures
+
+`util/zoneGeom.zoneArea(shape)` — raw, **no plate clip, no de-overlap, no cap** —
+is a fourth, fifth, sixth and seventh owner of per-zone area:
+`finishSchedule.ts:319` (**sheet A.09's `AREA m²` column**), `sheetSet.ts:842`
+(**the room label on every plan sheet**), `services.ts:139`, `editor/stats.ts:274`.
+
+```
+F1 unedited · 244 "Open Workspace (2)"   sheet 35.0 m²   workbook 8.0 m²
+F1 unedited · 245 "Open Workspace (3)"   sheet 17.0 m²   workbook 3.7 m²
+F4 retyped  · 23 of 24 scheduled rooms print different areas on the two surfaces
+```
+
+**Same zone id, same name, same delivered pack — 4.4× apart, with no edit.** G3
+anchors the workbook to `ground-truth.json`; **nothing anywhere reads the sheet's
+area column or the plan's room label.** 49/49 green throughout.
+
+> **RETRACTED BY NAME (R14).** My entry read *"The compiler enumerated the
+> consumers: one production site — the defect."* That is true **of one crate**.
+> The census instrument was `rustc`, and `rustc` cannot see `web/src/export/`. An
+> unscoped negative aggregated into a global one — **the reporting convention this
+> very file already names.** I wrote R14 to stop a fix leaving a consumer behind,
+> and then performed its census with an instrument blind to four consumers.
+
+## R14 — the boundary prevents NAMING, not RECOMPUTING, and the recompute route already shipped
+
+Six routes, both build profiles. Ra `E0425` · Rb `E0603` · **Rc `E0425` in
+*both* profiles** (stronger than claimed) · Rd 194/2 · **Re compiles clean** ·
+S1b 194/2. Every *naming* route is closed. The **recompute** route is caught by the
+cross-surface **check** alone — so on that route the check is not "secondary", it
+is the only mechanism.
+
+**And Re is not hypothetical: `cost.rs:185` IS Re, already shipped** —
+`z.area_on(plate_ref)` in a production path feeding `indicative_cost` /
+`indicative_carbon`, invisible to a census of *symbols* because it is a census of a
+*quantity*. Its declared mirror at `stats.ts:271-273` — *"the two enclosure
+premiums agree"* — is **FALSE at HEAD**: F5 `Focus Room 1` 8.4672 vs 7.5096,
+premium Σ 2.20%. Unregistered in `coreParity.test.mjs`.
+
+No source-scan guards `mod basis`, though `lib.rs` carries that precedent twice.
+
+## R15 — the battery covers 4 of ~20 wasm surfaces, and 1 of 7 area owners
+
+`metrics_tests.rs` contains **zero** references to `snapshot`/`restore`/`qto::`/
+`circulation`/`classify_walls`/`layout::score`/`density`.
+
+> **RETRACTED BY NAME (R15).** My entry read *"The battery now evaluates every
+> surface the product publishes at every step — metrics, zone rows,
+> quantities/takeoff, **save/reopen, export**."* **Save/reopen is not in it.
+> Export is not in it.**
+
+## R16 — two tautologies, and a retraction that missed its own file
+
+Panic-instrumented, full suite each time:
+
+| | assertion | proof | result |
+|---|---|---|---|
+| **T1** | `metrics_tests.rs:309` `efficiency_pct > 100+1e-6` | `lib.rs:534` is an unconditional `.min(100.0)`; `NaN.min(100)==100` | **196 green** |
+| **T2** | `metrics_tests.rs:315` `traced && nia > gea+1e-6` | `gea == floor_area`, `nia == min(Σraw, floor_area)` | **196 green** |
+
+**These are D3 and D2.** `git log -S` puts both at `728e963`, untouched since.
+
+> **RETRACTED BY NAME:** `statsPanel.test.mjs`'s header — *"both of the first two
+> were deleted from the RUST twin first and this copy outlived the retraction."*
+> **False for D2.** D2's own note named the producer copy and **missed the third
+> copy in the file it was mirroring.** Third consecutive round of the same class,
+> this time inside the retraction text itself.
+
+**The three declared guards are structural — verified by breaking each mechanism**,
+which is R16's own test: per-row non-negativity → RED · attribution partition, fold
+changed to `Unassigned → Workspace` → **194/2** · cross-surface equality → RED on
+three routes. The cap-report **check** falsified for the first time: suppress
+`overflow`, keep the cap → **193/3**.
+
+**Nothing counts the basis conjuncts at all.** `cargo test` reports 196 *tests*;
+`metrics_can_never_be_impossible` is **one test holding ~17 conjuncts**, two of them
+tautologies. **That is why T1 and T2 survived four assertion-by-assertion audits —
+an unenumerated conjunct cannot be audited by a process that audits lists.**
+
+## The dead branch — deleted, with its falsification
+
+Body → `panic!` left the suite at **196 / 0** across 1 200 evaluations. Not the only
+path to its state, and **not a guard on the clamp**: un-clamping reds **193/3 with**
+it and **192/4 without**, because its wrong message satisfied assertions that only
+ask whether *an* error was reported. Deleted; **196 · 49/49**, step-identical.
+
+## Instrument note
+
+The adversary's first cross-surface probe returned `Σ 0.000` on all ten cells.
+**That identity was the instrument** — `quantities()` serialises camelCase and the
+join used snake_case, so every lookup missed and every row was skipped. Fixed and
+re-run before any number above was quoted.
+
+**Board: Rust 196, battery 49/49 — and a delivered sheet disagrees with the
+workbook by 4.4× on a clean tree.**
