@@ -12,6 +12,8 @@ import { Icon } from './ui/icons'
 import { ToolDock, type DockTool } from './ui/ToolDock'
 import { StatsPanel } from './ui/StatsPanel'
 import { BomPanel } from './ui/BomPanel'
+import { BankPanel } from './ui/BankPanel'
+import { PlanTotals } from './ui/PlanTotals'
 import { logSearch } from './persist/searchLog'
 import { RoomTools } from './ui/RoomTools'
 import { ObjectInspector } from './ui/ObjectInspector'
@@ -321,8 +323,10 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
   const [cmdkOpen, setCmdkOpen] = useState(false)
   /** M6 — sheets manager + publish overlay (opened from the Export menu). */
   const [sheetsOpen, setSheetsOpen] = useState(false)
-  /** Right-inspector tab: the working plan vs the saved-plan library. */
-  const [panelTab, setPanelTab] = useState<'plan' | 'bom' | 'library'>('plan')
+  /** Right-inspector tab: the working plan · its BOM · the PRODUCT bank (the
+   *  digital library you place from) · the saved-PLAN library. The last two are
+   *  both "libraries" and are deliberately named for what they hold. */
+  const [panelTab, setPanelTab] = useState<'plan' | 'bom' | 'bank' | 'library'>('plan')
   const [plans, setPlans] = useState<SavedPlan[]>([])
   /** Last autonomous-search candidates, lifted from GenerateCard so the topbar
    *  export menu can build the A/B/C space-planning report from them. */
@@ -1430,6 +1434,10 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
             </>
           ) : ec ? (
             <>
+              {/* The plan's headline count, above the tabs so it is visible on
+                  every one of them — the element total is a fact about the
+                  document, not about whichever panel is open. */}
+              <PlanTotals ec={ec} />
               <div className="stat-tabs" role="tablist">
                 <button
                   role="tab"
@@ -1451,16 +1459,27 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
                 </button>
                 <button
                   role="tab"
+                  aria-selected={panelTab === 'bank'}
+                  className={panelTab === 'bank' ? 'stat-tab on' : 'stat-tab'}
+                  onClick={() => setPanelTab('bank')}
+                  data-testid="tab-bank"
+                >
+                  Bank
+                </button>
+                <button
+                  role="tab"
                   aria-selected={panelTab === 'library'}
                   className={panelTab === 'library' ? 'stat-tab on' : 'stat-tab'}
                   onClick={() => setPanelTab('library')}
                   data-testid="tab-library"
                 >
-                  Library
+                  Plans
                 </button>
               </div>
               {panelTab === 'bom' ? (
                 <BomPanel ec={ec} />
+              ) : panelTab === 'bank' ? (
+                <BankPanel ec={ec} onBound={assignPanelProduct} />
               ) : panelTab === 'library' ? (
                 <>
                 <LibraryPanel
@@ -1519,7 +1538,20 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
                   <StatsPanel ec={ec} />
                 </>
               ) : (
+                // INSIGHTS FIRST. This branch used to open with the Drawing card
+                // — a lone Presentation toggle — pushing the whole statistics
+                // breakdown below the fold. The panel's job with nothing
+                // selected is to describe the plan, so the analysis leads and
+                // the two canvas controls sit under it.
                 <>
+                  <StatsPanel ec={ec} />
+                  <GenerateCard
+                    key={programVersion}
+                    ec={ec}
+                    metrics={metrics}
+                    onSaveCandidate={saveCandidateToLibrary}
+                    onCandidates={setCandidates}
+                  />
                   <ObjectInspector ec={ec} />
                   {tool.startsWith('cad:') && (
                     <>
@@ -1542,14 +1574,6 @@ export const EditorView = forwardRef<EditorController, EditorViewProps>(function
                       <LayersCard ec={ec} />
                     </>
                   )}
-                  <StatsPanel ec={ec} />
-                  <GenerateCard
-                    key={programVersion}
-                    ec={ec}
-                    metrics={metrics}
-                    onSaveCandidate={saveCandidateToLibrary}
-                    onCandidates={setCandidates}
-                  />
                 </>
               )}
             </>

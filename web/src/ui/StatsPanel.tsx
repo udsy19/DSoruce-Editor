@@ -287,8 +287,12 @@ function ChipTile({ kind, icon, value, label }: { kind: string; icon: string; va
       <span className={`chip ${kind}`}>
         <Icon name={icon} size={17} />
       </span>
+      {/* `.num` — every one of these is a measured quantity (a %, a headcount,
+          kgCO₂e, ₹), and CLAUDE.md puts quantitative data in the numeric face.
+          They were in the UI face with only tabular-nums, so the tiles read as
+          labels rather than as instrument readings. */}
       <span className="chip-meta">
-        <span className="chip-val">{value}</span>
+        <span className="chip-val num">{value}</span>
         <span className="chip-label">{label}</span>
       </span>
     </div>
@@ -299,7 +303,7 @@ function MetricRow({ label, value, unit }: { label: string; value: string | numb
   return (
     <div className="metric-row">
       <span className="label">{label}</span>
-      <span className="value">
+      <span className="value num">
         {value}
         {unit && <span className="unit">{unit}</span>}
       </span>
