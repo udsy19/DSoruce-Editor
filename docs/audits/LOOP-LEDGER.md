@@ -3187,3 +3187,74 @@ two rounds, and one was found *inside the gate being fixed*.
 **Steps 4–5 stay blocked until BELIEVED.** Four rounds of history say this
 sequencing is load-bearing: on each of them the board was green and the product
 was not.
+
+## The retracted inversion is gone from the JS twin — and two more went with it
+
+Four assertions **deleted, none replaced in kind**:
+
+| | deleted | why it could not fail |
+|---|---|---|
+| D1 | the `pct_of_nia` inversion, behind an `if (row)` veto | identity of its own algebra |
+| D2 | a cap guard on `Σ rows.area > gea` | **unsatisfiable** — `area_basis` makes `Σ rows.area == nia ≤ gea` |
+| D3 | `efficiency_pct <= 100` | restates the producer's own `.min(100.0)` |
+| D4 | a source match strictly subsumed by the one two lines above it |  |
+
+A fifth — a `keys.includes` loop — was **written during this change and deleted
+when the sabotage round proved it subsumed** by the set-equality beside it. Found
+by doing the round exhaustively, not by review.
+
+### The head-to-heads: same build, both files
+
+Restoring the second NIA owner in `zone_rows`: **new RED** (`24 rows sum to
+940.109 but NIA 930.063` — a donut billing 101.08% of itself), **old 5/5 GREEN**.
+Re-creating M1 exactly (raw numerator, capped denominator): **new RED**, **old 5/5
+GREEN with `efficiency 101.080% exceeds 100` live behind the clamp.**
+
+### The cap EVENT is now the M1 assertion
+
+`.min(100.0)` sterilises the number, so the value can no longer carry the signal.
+**13 of 35 (fixture × edit) states are pinned as capped and frozen; the other 22
+must report NOTHING** — two-sided, so silencing *and* forcing-on both red.
+
+### Fourteen sabotages, thirteen red, and the null is the useful one
+
+**E7:** removing the plate-state edit **and** disabling the plate-STATE
+non-vacuity assertion leaves the suite green — **that assertion is the only thing
+guarding an axis three R10 statements claim.**
+
+### Two instrument incidents, both self-caught
+
+A sabotage build failed while `set -e` was defeated by a pipe, and the test ran on
+**stale wasm and read green**; redone under a build gate with an artifact md5. A
+second renamed what it meant to remove and read green; redone. **Same class as the
+goto-is-not-reload finding, one layer down.**
+
+### A correction to my own brief
+
+I wrote *"M1 has no live assertion on the JS side at all."* Not quite: the
+dedicated `the reported M1 state` test **was** live and does red under the R13
+sabotage. `assertPanelIsRenderable`'s three M1 checks were all dead. The
+contribution is extending that one live check from 1 state to 13 and making it
+two-sided.
+
+### Assertion count went UP, 20 → 34, and the header says so
+
+Twelve of the fourteen added are **edit-landing and non-vacuity guards** —
+assertions about the POPULATION, not about the panel. Only two are new statements
+about the panel itself. **The arithmetic went the wrong way and the coverage went
+the right way**, which is the honest summary.
+
+Also fixed: three vetoes in the fixture setup — `if (w) ed.set_wall(...)` (no wall
+⇒ the plate-STATE axis silently unexercised while the comment claimed it), a
+swallowed `try { add_zone } catch {}` (the overlap axis could be claimed and
+exercised on nothing), now both asserting their edits actually landed.
+
+### Still open, reported not fixed
+
+**`lib.rs:481-487` is a dead error branch in the PRODUCER** — unsatisfiable for
+D2's exact reason (traced `nia = Σ.min(floor_area)`), on a release-visible surface.
+**`metrics_tests.rs:385` still carries `if !rows.is_empty()`** — the producer veto
+the ledger already flagged.
+
+**R11 prediction, declared before merging and verified after:** 1 file, 0 added,
+battery 49/49, Rust 195. All four held.
