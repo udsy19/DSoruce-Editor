@@ -1505,3 +1505,99 @@ is what unblocks that row. Second: the label-on-furniture census sits at **39/20
 against a 40 ratchet, raised from 32 with F1a as its cause; the metric conflates
 a tag over its own room's table with a tag stranded on an open field, and
 splitting those two is the named refinement.
+
+---
+
+# SESSION 3 — S3-1, the measured composition constants
+
+The brief's first commit: *the composition constants come from the reference's
+own geometry before any allocator code moves.* They do, and **two of the three
+guesses in the brief did not survive contact with the measurement** — which is
+rule 2 working as intended.
+
+## The extraction
+
+`research/qbiq-composition-extract.py` → `research/qbiq-composition-spec.json`,
+frozen like the plate fixture. **Two sources, deliberately different:**
+
+- **The mix** comes from the report's own **stated summary** (page 6), across
+  all three alternatives — stated facts, not inferred from pixels. Transcription
+  is self-checked: seats ÷ USF must reproduce the report's own printed
+  `Density sqf/person` to 0.2, or the run aborts.
+- **The rhythm** has no stated form, so it comes from page 3's **vector
+  geometry**. The bench desk position is a 7.2 × 14.4 pt filled rect
+  (675 × 1350 mm at `pt × 10/32.5 × 304.8`); **166 of them** are present, and the
+  size anchor is *checked* — if the dominant matched size is not the stated
+  position within 10%, the scale is wrong and the run aborts rather than
+  reporting metres derived from a bad scale.
+
+## The constants
+
+| | reference | ours (F1) | verdict |
+|---|---|---|---|
+| offices per 100 open seats | **4.67** | **5.43** | **we EXCEED it** |
+| conf rooms per 100 open | **8.60** | **3.26** | **38% — the real gap** |
+| density m²/person | **9.85** | **9.78** | essentially identical |
+| max unpunctuated desk rows | **5** | **7** | over, but modestly |
+| row pitch | 1.35 m | 1.70 m | ours is looser |
+
+**The brief said our programme is "one cabin, one boardroom, one reception".**
+Measured from the document, F1 carries **twelve rooms**: 5 ClosedOffice
+(2 cabins, 2 focus, 1 phone booth), 3 Meeting, 4 Amenity (reception, IT/server,
+storage, print). The poverty is real but it is *specific*: **conference rooms**,
+where we sit at 38% of the reference. Offices we already have more of, per seat,
+than qbiq does. What we have none of is a **pantry** and a **comfort zone /
+lounge** — both in the reference's legend, neither in our derive.
+
+**The brief said the reference "never runs more than ~3 desk rows".** Measured:
+runs of `[4, 2, 5, 1, 3]` in the portrait family and `[2, 2, 3, 4]` in the
+landscape one — **max 5**, mode 2. Our own longest run is **7**.
+
+## Two instrument errors, both mine, both caught by measurement
+
+1. **Axis assignment, first pass.** Clustering the mixed desk population reported
+   a "median row pitch of 0.67 m" — that is the 675 mm *position* pitch along a
+   bench, not a row pitch. Fixed by separating the orientation families.
+2. **The same error, repeated on our side.** Having fixed it for the reference I
+   then hard-coded the correction into `composition.mjs` — portrait ⇒ rows stack
+   along y. Our packer rotates desks ±π/2 inside a portrait *wing*, so ours stack
+   along **x**, and the gate reported our longest run as **14 rows at 2.5 m
+   pitch** against a true **7 at 1.7 m**. I would have shipped a 14-vs-5 gap that
+   does not exist.
+
+   The stacking axis is now **derived from the data** — rows are fewer than
+   desks-per-row, so the row axis is the one yielding fewer bands. That is a
+   property of a grid, not of a convention, and it holds for either arrangement.
+
+## Falsification (rule 1 — no number without one)
+
+`node scripts/gates/composition.mjs --falsify` fills the widest aisle in the
+dominant family with a row of desks, merging two runs:
+
+```
+falsify: added 14 desks into the x aisle at 23.25
+F1: 106 desks · max run 9 [portrait/x rows 9 runs 9 pitch 1.9]     (was 7, runs 7,1)
+```
+
+The instrument moves when the defect is induced. Non-vacuity is asserted too:
+under 10 desks and it refuses to score rather than passing 0/0.
+
+## The gate is RED, deliberately, and is NOT on the board
+
+`composition.mjs --gate` fails F1 on both counts — run of 7 > 5, and 3.26 conf
+rooms per 100 under half the reference's 8.60. That is the correct state before
+the allocator work lands, so it ships as a standalone instrument and is
+**deliberately not wired into `verify-all.sh`**: the battery stays green
+(**43/43**) and this number stays visible instead of being absorbed. It gets
+wired when it passes, exactly as the deadspace tool was.
+
+The mix band is **one-sided and stated**: a plan may exceed the reference's room
+ratios (ours does, on offices) but not fall below half of them. That line is
+declared here rather than derived from what we happen to score.
+
+## Not started
+
+The allocator change itself (F1d's programme model, F1e's rhythm punctuation and
+perimeter strategy), F1c, F2, S3-4's reference deadspace number, S3-5's label
+re-place. The constants they need now exist and are frozen; **no allocator code
+moved this session**, which is what the brief asked for as the first commit.
