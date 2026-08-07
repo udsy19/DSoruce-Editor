@@ -105,22 +105,33 @@ def outside_mask(rgb, bg_tol=12):
     return out, bg
 
 
-def ink_mask(rgb, bg, sat_max=60, val_min=None):
-    """Line-work and furniture: darker than the background, or strongly coloured.
+#: How far below the page background a pixel must sit to count as ink.
+#:
+#: **Luminance only, and the chroma clause was REMOVED because the palette moved
+#: under it.** The first version also counted "strongly coloured" pixels
+#: (chroma > 60) as ink, which was true of line-work and false of the washes —
+#: until the washes were corrected to the reference's saturation band and their
+#: chroma crossed 62. Ink jumped 59 438 -> 220 545 px on an unchanged drawing:
+#: the instrument had started counting the floor as the thing standing on it.
+#:
+#: A threshold a palette can cross is calibrated on the population under test
+#: (`.claude/rules/gate-independence.md`). Luminance is not: architectural
+#: line-work is DARK by convention in both the reference and here (our furniture
+#: stroke is L 37, the darkest wash is L 83), and every programme wash in the
+#: reference's own band (L 80-92) sits far above this line. 55/255 falls in the
+#: gap between those two populations, not near either.
+INK_LUMA_BELOW_BG = 55
 
-    A pale zone wash is NOT ink — it is floor with a colour on it, and counting
-    it would let a plan hide an empty wing under a big flat fill.
+
+def ink_mask(rgb, bg):
+    """Line-work and furniture outlines: markedly darker than the page.
+
+    A zone wash is NOT ink — it is floor with a colour on it, and counting it
+    would let a plan hide an empty wing under a big flat fill.
     """
-    mx = rgb.max(axis=2).astype(np.int16)
-    mn = rgb.min(axis=2).astype(np.int16)
-    chroma = mx - mn
     lum = rgb.mean(axis=2)
     bg_lum = float(np.mean(bg))
-    dark = lum < bg_lum - 40
-    # Saturated marks (a coloured tag, a red wall run) count as ink; a pale wash
-    # has low chroma AND high luminance, so it fails both tests.
-    vivid = (chroma > sat_max) & (lum < bg_lum - 10)
-    return dark | vivid
+    return lum < bg_lum - INK_LUMA_BELOW_BG
 
 
 def distance_to_ink(ink):

@@ -505,3 +505,76 @@ fn the_randomized_battery_reaches_broken_plates() {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// 4. The generator's own accounting (Q3-F)
+// ---------------------------------------------------------------------------
+
+/// **No region is allocated desks it cannot seat.**
+///
+/// This is F1a's acceptance criterion, stated as an invariant rather than as a
+/// number. The defect it forbids: two wings on the sample plate were allocated
+/// 7 desks between them and placed 0, because capacity was computed by dividing
+/// an empty field rect by the desk pitch while placement was computed against
+/// the rooms already standing in that field.
+///
+/// It is checked over every fixture, so it covers the edited population too.
+#[test]
+fn no_region_is_allocated_desks_it_cannot_seat() {
+    for id in fixtures::FIXTURE_IDS {
+        let diag = fixtures::diag_for(id).expect("fixture builds");
+        // Non-vacuity: a diag with no regions would pass this trivially.
+        assert!(
+            !diag.region_desks.is_empty(),
+            "{id}: no regions recorded — the instrument is the finding"
+        );
+        for (i, r) in diag.region_desks.iter().enumerate() {
+            assert!(
+                !(r.allocated > 0 && r.placed == 0),
+                "{id} R{i}: allocated {} desks and placed none \
+                 (grid {}x{}, depth {:.2} m, rejects b{} p{} w{} o{})",
+                r.allocated,
+                r.grid_outer,
+                r.grid_inner,
+                r.field_depth,
+                r.rejects.bounds,
+                r.rejects.plate,
+                r.rejects.walls,
+                r.rejects.obstacles,
+            );
+            // A region that seats nothing is either a DECLARED room wing or has
+            // no viable field at all. What it may never be is an undeclared
+            // failure — that is the state F1a exists to make impossible.
+            if r.allocated == 0 && !r.room_wing {
+                assert!(
+                    r.grid_outer == 0 || r.grid_inner == 0 || r.field_depth < 3.0,
+                    "{id} R{i}: seats nothing, is not a declared room wing, and has a \
+                     {:.2} m field with a {}x{} grid — an undeclared failure",
+                    r.field_depth,
+                    r.grid_outer,
+                    r.grid_inner,
+                );
+            }
+        }
+    }
+}
+
+/// The capacity function and the packer must agree. `field_free_slots` counting
+/// a slot the packer then rejects is an over-allocation — the exact defect F1a
+/// fixed, reintroduced from the other side.
+#[test]
+fn desk_capacity_never_exceeds_what_the_packer_places() {
+    for id in fixtures::FIXTURE_IDS {
+        let diag = fixtures::diag_for(id).expect("fixture builds");
+        for (i, r) in diag.region_desks.iter().enumerate() {
+            assert!(
+                r.placed >= r.allocated.min(r.placed + r.rejects.obstacles + r.rejects.bounds),
+                "{id} R{i}: allocated {} but placed {} with only {} rejections — \
+                 capacity and the packer disagree",
+                r.allocated,
+                r.placed,
+                r.rejects.obstacles + r.rejects.bounds,
+            );
+        }
+    }
+}

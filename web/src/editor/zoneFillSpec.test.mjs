@@ -89,6 +89,29 @@ test('every programme zone wash sits in the reference band', () => {
   assert.deepEqual(bad, [], `zone washes outside the reference band:\n  ${bad.join('\n  ')}`)
 })
 
+test('the palette is centred on the reference, not parked at the band edge', () => {
+  // F1f. A pixel probe of the editor capture showed the corrected fills
+  // rendering EXACTLY as declared (#d1e7fc at S 87.8 / L 90.4) — there is no
+  // editor-profile alpha and no paper-only fix, so the suspected divergence does
+  // not exist. What the probe DID find is subtler and is why the plan still read
+  // pale: the first correction preserved each zone's existing lightness and only
+  // clamped it, so every value landed legal but bunched at the TOP of the band.
+  // Palette mean L was **89.8** against the reference's **85.7** — inside the
+  // letter of the contract, four points off its centre, and systematically
+  // lighter on every zone at once.
+  //
+  // A per-zone range check cannot see that: eight values can each be in-band
+  // while the set is skewed. So the DISTRIBUTION is asserted too.
+  const programme = zoneFills().filter((z) => !GROUND.has(z.name))
+  const mean = programme.reduce((a, z) => a + hsl(z.fill).l, 0) / programme.length
+  const target = targets.lightness_pct.mean
+  assert.ok(
+    Math.abs(mean - target) <= 1.5,
+    `palette mean lightness ${mean.toFixed(1)} vs the reference's ${target} — the ` +
+      'set is skewed even if every member is in band',
+  )
+})
+
 test('ground stays neutral — the programme contract does not apply to it', () => {
   for (const z of zoneFills().filter((x) => GROUND.has(x.name))) {
     const { s } = hsl(z.fill)

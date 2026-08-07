@@ -1151,3 +1151,139 @@ Rust **182 green**, goldens re-captured with a stamp; verification battery
 change — the artifacts it grades all moved — and came back **13/13 ALL GREEN**
 (G12's check count shifted 603 → 599 with the new plan, which is the drawing set
 grading a different document, not a weaker gate).
+
+---
+
+# Q3-F CONTINUATION — F1f, F1a
+
+Operating rule promoted from the F1 finding and applied throughout: **the
+instrument that found a defect is the instrument that scores the fix.** Captures
+are evidence of character; only the number closes an item.
+
+## F1f — the wash probe · **DONE. The suspected divergence does not exist.**
+
+Sampled the editor capture's actual pixels. The dominant wash is **`#d1e7fc`,
+S 87.8 / L 90.4** — byte-identical to the declared `Workspace` fill. `#e1d4fc`
+(Meeting) and `#fcf4d4` (Amenity) likewise. There is **no editor-profile alpha**
+and the fix did **not** touch paper only; `v.presentation` is the only branch and
+it *lightens* for paper. The two suspects are both eliminated.
+
+What the probe did find is subtler, and is why it still read pale:
+
+> The first correction preserved each zone's existing lightness and only clamped
+> it, so every value landed legal but **bunched at the top of the band**. Palette
+> mean L was **89.8** against the reference's **85.7** — inside the letter of the
+> contract, four points off its centre, and systematically lighter on every zone
+> at once.
+
+A per-zone range check cannot see that: six values can each be in-band while the
+set is skewed. Fixed by shifting every programme fill −4.1 L points at constant
+hue and saturation (`#d1e7fc`→`#bdddfb`, `#e1d4fc`→`#d3c0fb`, `#c7fbcd`→`#b3fabc`,
+`#fcf4d4`→`#fbefc0`, `#fbe0c2`→`#fad6ae`, `#fcd4db`→`#fbc0cb`), new mean **85.7**,
+every value still in [80, 92]. `zoneFillSpec.test.mjs` now asserts the
+**distribution** as well as the per-zone range.
+
+## F1a — wing strategy · **DONE, acceptance criterion met exactly**
+
+### The named constant, and its derivation
+
+`packing::min_viable_field_depth(program, clear)` — from the packer's own
+arithmetic, not chosen. The packer lays desks in BLOCKS on the cross axis: under
+bench pairing the block is `2·desk_h + SPINE_GAP + clear`, with pairing off it is
+`desk_h + clear`. A field shallower than one block cannot hold the unit the
+packer places. At the shipped defaults (desk 1.6 × 0.8, clearance 0.9,
+`SPINE_GAP` 0.0) that is **2.5 m paired, 1.7 m single**.
+
+**It is necessary and not sufficient, and the instrument said so before the fix
+was written.** R2's field is 2.0 m — below the block. R1's is **3.5 m, over the
+threshold, and it also placed 0**. Depth alone would have fixed one wing.
+
+### What the rejection counters found
+
+`pack_desks` now evaluates its four slot predicates separately and counts each
+cause, because "placed 0" has four fixes in four files:
+
+```
+R0  alloc 83  placed 70  topup 20 | grid 11x14  depth 14.80 | rej  b14 p0 w0 o0
+R1  alloc  5  placed  0  topup  0 | grid  2x3   depth  3.50 | rej  b0  p0 w0 o6
+R2  alloc  2  placed  0  topup  0 | grid  1x3   depth  2.00 | rej  b0  p0 w0 o3
+```
+
+**Every one of R1's six candidate slots and all three of R2's were rejected as
+occupied.** Not shallow, not walled, not off-plate — *full*. The wings were
+already room wings in fact; the code just did not say so, and handed them a desk
+allocation that could never be met.
+
+### The mechanism, and the fix
+
+> `allocate_desks` computed capacity by dividing an **empty** field rect by the
+> desk pitch, while placement was computed against the rooms **already standing
+> in that field**. Seven desks went to wings that could not take one, and the
+> wing that could was short by seven.
+
+Capacity is now measured the way placement is — `packing::field_free_slots` walks
+the same lattice and applies the same predicates — and a region with zero
+capacity that carries rooms is a **declared `room_wing`**, which is the
+reference's own strategy: a deep central field carries the desk grid, shallow
+perimeter wings go entirely to rooms and amenity.
+
+**One shared outer-axis sequence.** The first capacity walk stepped a uniform
+pitch on both axes; the packer steps bench BLOCKS on the outer axis, which is
+denser. It undercounted, and a 14 × 10 m plate that seats 10 desks was allocated
+5 — caught by `small_plates_pack_desks_not_zero`, not by review. `outer_line` is
+now one function called by both, so they cannot disagree by construction.
+
+### Acceptance, from `layout_diag`
+
+```
+R0  alloc 90  placed 90  topup 0  roomWing false | rej b0 p0 w0 o0
+R1  alloc  0  placed  0  topup 0  roomWing TRUE  | rej b0 p0 w0 o0
+R2  alloc  0  placed  0  topup 0  roomWing TRUE  | rej b0 p0 w0 o0
+desks 92 (unchanged)
+```
+
+No region with `alloc > 0` and `placed 0`; both shallow wings **declared**; zero
+rejections anywhere. Pinned by two new invariants over all five fixtures:
+`no_region_is_allocated_desks_it_cannot_seat` (which also forbids the
+*undeclared* zero) and `desk_capacity_never_exceeds_what_the_packer_places`.
+
+Goldens re-captured: **three** of ten moved, **every desk count identical**,
+component and wall counts identical in all ten. Same programme, different
+distribution.
+
+## The instrument broke under its own subject, and was fixed
+
+`deadspace.py` classified ink as "dark **or** strongly coloured (chroma > 60)".
+The washes had chroma ~55 when that was written. F1f moved them into the
+reference's saturation band and their chroma crossed 62, so on an unchanged
+drawing **ink jumped 59 438 → 220 545 px**: the instrument had started counting
+the floor as the thing standing on it.
+
+A threshold a palette can cross is calibrated on the population under test. The
+chroma clause is deleted; ink is **luminance only**, `bg − 55`, which sits in the
+gap between two populations that do not move — architectural line-work is dark by
+convention (our furniture stroke L 37) and every programme wash in the
+reference's own band is L 80–92. **Both subjects re-baselined with the corrected
+instrument**, and the verdicts are unchanged:
+
+| subject | dead space (>3 m from ink) |
+|---|---|
+| qbiq reference, page 3 | **11.1%** |
+| DSource F1, after the spread | 19.0% |
+| DSource F1, **after F1a** | **19.0%** |
+
+**F1a moved dead space by zero.** That is the correct result and it points at the
+next mechanism: the seven desks it redistributed were going to wings that already
+hold rooms, and rooms are ink. The dead floor is elsewhere — **F1b's 122 m² of
+plate outside every region**, plus the bottom strip. F1b is where row 8 lives.
+
+## One regression, with a cause on the record
+
+The label-on-furniture census went **29 → 39 of 205**, over its 32 ratchet. Cause
+is F1a itself: seven more desks in the dominant field means fewer clear pockets
+for a tag, and the placement algorithm is unchanged and still picks the clearest
+spot available. Ratchet raised to 40 **with the cause recorded, not as a tuning**.
+
+The metric lumps two different things together — a tag over its own room's table
+(unavoidable and correct) and a tag stranded on an open desk field (avoidable).
+Splitting them is the named next refinement.

@@ -372,26 +372,41 @@ pub(crate) fn allocate_rooms(
 }
 
 /// Desks: largest-remainder split proportional to each region's desk-field
-/// grid capacity, clamped to it — regions too small for a single desk get zero.
-pub(crate) fn allocate_desks(program: &Program, plans: &[RegionPlan], clear: f64, desks: u32) -> Vec<u32> {
+/// capacity, clamped to it — regions that can seat nothing get zero.
+///
+/// **Capacity is now measured against the obstacles that are already down**, not
+/// by dividing the field rect by the desk pitch. The empty-room arithmetic sent
+/// 7 desks to two wings whose every candidate slot was already occupied by the
+/// rooms banded into them (`rejects.obstacles` 6/6 and 3/3, measured), so those
+/// wings placed 0 and the wings that could have used the desks were short.
+///
+/// A region whose measured capacity is zero **while it carries rooms** is a
+/// ROOM WING: the reference's own strategy — a deep central field carries the
+/// desk grid, shallow perimeter wings are given over entirely to rooms, amenity
+/// and lounge. It is a declared state, not a silent zero, so `layout_diag` can
+/// tell "this wing is meant to hold rooms" from "this wing failed".
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn allocate_desks(
+    program: &Program,
+    plans: &[RegionPlan],
+    clear: f64,
+    desks: u32,
+    plate: Option<&[Point]>,
+    iwalls: &[(Point, Point, f64)],
+    obstacles: &[(f64, f64, f64, f64)],
+    lat: Lattice,
+) -> Vec<u32> {
     let n = plans.len();
     let mut desk_cap = vec![0u32; n];
     for (i, plan) in plans.iter().enumerate() {
-        let iw = plan.field.width();
-        let ih = plan.field.height();
-        // Capacity in the orientation the packer will actually use: a portrait
-        // region rotates desks ±π/2, so its world footprint swaps w/h.
-        let (dw, dh) = if plan.portrait {
-            (program.desk_h, program.desk_w)
-        } else {
-            (program.desk_w, program.desk_h)
-        };
-        let (pitch_x, pitch_y) = (dw + clear, dh + clear);
-        if iw >= dw && ih >= dh && pitch_x > 0.0 && pitch_y > 0.0 {
-            let cols = (((iw + clear) / pitch_x).floor() as i64).max(0);
-            let rows = (((ih + clear) / pitch_y).floor() as i64).max(0);
-            desk_cap[i] = (cols * rows) as u32;
+        // Depth first — a field shallower than one packer BLOCK cannot hold the
+        // unit the packer places, and saying so by name is cheaper than
+        // discovering it slot by slot.
+        let depth = if plan.portrait { plan.field.width() } else { plan.field.height() };
+        if depth + 1e-9 < min_viable_field_depth(program, clear) {
+            continue;
         }
+        desk_cap[i] = field_free_slots(program, plan, plate, iwalls, obstacles, lat, clear);
     }
 
     let total_cap: u32 = desk_cap.iter().sum();

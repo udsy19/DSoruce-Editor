@@ -485,6 +485,11 @@ pub fn generate(
     }
 
     // --- Pass A: rooms slide into each region's band ------------------------
+    // Which regions actually received rooms — read here because `region_jobs` is
+    // drained below, and a ROOM WING is defined by holding rooms while seating no
+    // desks. Without it a wing that failed and a wing that was meant for rooms
+    // look identical in the diagnostics, which is the distinction F1a exists for.
+    let rooms_in_region: Vec<u32> = region_jobs.iter().map(|l| l.len() as u32).collect();
     for (i, plan) in plans.iter().enumerate() {
         let mut cursors = (plan.a0, plan.a1);
         for job in region_jobs[i].drain(..) {
@@ -519,14 +524,25 @@ pub fn generate(
         // AXIS-ALIGNED plate (rectangle, L/T, real multi-wing): desks on the
         // shared global lattice, per-region proportional allocation.
         let mut placed_desks = 0u32;
-        let d_alloc = allocate_desks(program, &plans, clear, remaining_desks);
+        // Capacity measured against what is ALREADY placed (rooms, keep-outs,
+        // corridor strips), so a wing the rooms have consumed is allocated zero
+        // instead of being handed desks it cannot seat.
+        let d_alloc = allocate_desks(
+            program, &plans, clear, remaining_desks, plate.as_deref(), &iwalls, &obstacles, lat,
+        );
         for (i, plan) in plans.iter().enumerate() {
             let region_no = if single_region { None } else { Some((i + 1) as u32) };
+            diag.region_desks[i].allocated = d_alloc[i];
+            // A ROOM WING: no viable desk capacity, but rooms banded into it.
+            // Declared rather than left as a silent zero, so the acceptance
+            // check can tell an intended room wing from a failed desk field.
+            diag.region_desks[i].room_wing =
+                d_alloc[i] == 0 && rooms_in_region.get(i).copied().unwrap_or(0) > 0;
             let got = pack_desks(
                 doc, program, plan, d_alloc[i], region_no, /*emit_zones=*/ true,
                 plate.as_deref(), &iwalls, &mut obstacles, lat, clear, choices,
+                Some(&mut diag.region_desks[i]),
             );
-            diag.region_desks[i].allocated = d_alloc[i];
             diag.region_desks[i].placed = got;
             placed_desks += got;
         }
@@ -544,6 +560,7 @@ pub fn generate(
                 let got = pack_desks(
                     doc, program, plan, shortfall, region_no, /*emit_zones=*/ false,
                     plate.as_deref(), &iwalls, &mut obstacles, lat, clear, choices,
+                    None,
                 );
                 diag.region_desks[i].topped_up += got;
                 shortfall = shortfall.saturating_sub(got);
@@ -623,6 +640,7 @@ pub fn generate(
                 pack_desks(
                     doc, program, &fp, budget, None, /*emit_zones=*/ false,
                     plate.as_deref(), &iwalls, &mut obstacles, lat, clear, choices,
+                    None,
                 );
                 diag.fill_placed = (doc.components.len() - before) as u32;
                 obstacles.truncate(guard); // drop the temporary corridor guards

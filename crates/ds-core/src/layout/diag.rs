@@ -47,6 +47,35 @@ pub struct RegionDesks {
     pub placed: u32,
     /// Extra desks the top-up pass reclaimed here.
     pub topped_up: u32,
+    /// Why the packer turned slots down here.
+    pub rejects: DeskRejects,
+    /// Grid the packer actually walked: `outer_n × inner_n` candidate lines.
+    /// `0` on either axis means the field could not host a single desk row, and
+    /// that is a BAND-DEPTH finding, not a packing one.
+    pub grid_outer: i64,
+    pub grid_inner: i64,
+    /// Cross-axis depth of the region's field (m) — what the room band left.
+    pub field_depth: f64,
+    /// Declared a ROOM WING: too shallow for a viable desk field after banding,
+    /// so its whole depth goes to rooms and it is never allocated desks.
+    pub room_wing: bool,
+}
+
+/// Slot rejections, by cause. Four counters instead of one, because "the packer
+/// placed 0" has four different fixes and they are in different files: a bounds
+/// rejection is the band eating the field, a plate rejection is the facade gap
+/// against an angled boundary, a wall rejection is imported linework, and an
+/// obstacle rejection is a room or an already-placed desk.
+#[derive(Clone, Debug, Serialize, Default)]
+pub struct DeskRejects {
+    /// Snapped footprint fell outside the field rect.
+    pub bounds: u32,
+    /// Outside the plate polygon, or inside its facade gap.
+    pub plate: u32,
+    /// Straddles an imported/committed interior wall.
+    pub walls: u32,
+    /// Overlaps a room, keep-out, corridor strip or an existing desk.
+    pub obstacles: u32,
 }
 
 /// Everything one `generate` call decided.

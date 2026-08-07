@@ -95,6 +95,13 @@ thread_local! {
         std::cell::RefCell::new(layout::LayoutDiag::default());
 }
 
+/// Build `name` and return the diagnostics its `generate` produced. Fixtures
+/// that edit a generated plan report the generate that produced it.
+pub(crate) fn diag_for(name: &str) -> Option<layout::LayoutDiag> {
+    build(name)?;
+    Some(last_diag())
+}
+
 /// The diagnostics from the most recent fixture build on this thread.
 pub(crate) fn last_diag() -> layout::LayoutDiag {
     LAST_DIAG.with(|d| d.borrow().clone())

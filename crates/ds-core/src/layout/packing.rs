@@ -9,6 +9,151 @@ use super::*;
 /// strips so rect zones tile without overlap — plus the drawn secondary-aisle
 /// `Circulation` rects. Returns desks placed.
 #[allow(clippy::too_many_arguments)]
+/// Centre and rotation of outer-axis line `o`.
+///
+/// **Shared by the packer and by `field_free_slots` on purpose.** Under bench
+/// pairing the outer axis is not a uniform pitch: rows come back-to-back in
+/// blocks of `2·desk + SPINE_GAP + clear`, which is DENSER than two single rows.
+/// The first capacity measurement stepped a uniform pitch instead and undercounted
+/// rows — a 14 × 10 m plate that seats 6 desks was allocated 5 — so the two must
+/// come from one function rather than from two that agree today.
+#[allow(clippy::too_many_arguments)]
+fn outer_line(
+    o: i64,
+    bench: bool,
+    outer_first: f64,
+    outer_first_near: f64,
+    outer_half: f64,
+    outer_desk: f64,
+    block: f64,
+    outer_pitch: f64,
+    base_rot: f64,
+) -> (f64, f64) {
+    if bench {
+        let p = o / 2;
+        let w = o % 2;
+        let near = outer_first_near
+            + p as f64 * block
+            + if w == 1 { outer_desk + SPINE_GAP } else { 0.0 };
+        let rot = if w == 1 { base_rot + std::f64::consts::PI } else { base_rot };
+        (near + outer_half, rot)
+    } else {
+        (outer_first + o as f64 * outer_pitch, base_rot)
+    }
+}
+
+/// **The minimum depth at which a desk field is a field**, derived from the
+/// packer's own arithmetic rather than chosen.
+///
+/// The packer lays desks in BLOCKS on the cross axis. Under bench pairing the
+/// block is two desks back-to-back plus the aisle that serves them —
+/// `2·desk_h + SPINE_GAP + clear`; with pairing off it is one row and its aisle,
+/// `desk_h + clear`. A field shallower than one block cannot hold the unit the
+/// packer places, so allocating desks to it is allocating them to nothing.
+///
+/// At the shipped defaults (desk 1.6 × 0.8, clearance 0.9, `SPINE_GAP` 0.0) that
+/// is **2.5 m** paired and **1.7 m** single. The sample plate's R2 field is
+/// 2.0 m: below the block, and it placed 0 of its 2 allocated desks.
+///
+/// It is a NECESSARY condition, not a sufficient one — R1's field is 3.5 m, over
+/// the threshold, and also placed 0 because rooms had consumed it. Depth is what
+/// this function knows; occupancy is what `field_free_slots` measures.
+pub(crate) fn min_viable_field_depth(program: &Program, clear: f64) -> f64 {
+    if program.bench_pairs {
+        2.0 * program.desk_h + SPINE_GAP + clear
+    } else {
+        program.desk_h + clear
+    }
+}
+
+/// How many desks a region's field can ACTUALLY take, against the obstacles that
+/// are already down.
+///
+/// `allocate_desks` used to divide the field rect by the desk pitch. That is
+/// capacity in an empty room, and the desks are packed into a room that is not
+/// empty: on the sample plate R1 was allocated 5 desks into a field whose six
+/// candidate slots were **all six** rejected as occupied, and R2 was allocated 2
+/// into three slots that were **all three** occupied. Seven desks went to wings
+/// that could not take one, and the regions that could were short by seven.
+///
+/// So capacity is measured the way placement is: walk the same lattice and apply
+/// the same predicates. This function and `pack_desks` MUST agree — a slot this
+/// counts and the packer rejects is an over-allocation, and the reverse strands
+/// floor. `desk_capacity_never_exceeds_what_the_packer_places` pins that.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn field_free_slots(
+    program: &Program,
+    plan: &RegionPlan,
+    plate: Option<&[Point]>,
+    iwalls: &[(Point, Point, f64)],
+    obstacles: &[(f64, f64, f64, f64)],
+    lat: Lattice,
+    clear: f64,
+) -> u32 {
+    let f = plan.field;
+    if f.x1 <= f.x0 || f.y1 <= f.y0 || program.desk_w <= 0.0 || program.desk_h <= 0.0 {
+        return 0;
+    }
+    let column_major = plan.portrait;
+    let (fw, fh) = if column_major {
+        (program.desk_h, program.desk_w)
+    } else {
+        (program.desk_w, program.desk_h)
+    };
+    let (hw, hh) = (fw / 2.0, fh / 2.0);
+    let (px, py) = (fw + clear, fh + clear);
+    let bench = program.bench_pairs;
+    // Same axis assignment the packer uses: a portrait region runs its uniform
+    // INNER axis along Y and its paired OUTER axis along X.
+    let (inner_o, i_lo, i_hi, i_half, i_pitch) =
+        if column_major { (lat.oy, f.y0, f.y1, hh, py) } else { (lat.ox, f.x0, f.x1, hw, px) };
+    let (outer_o, o_lo, o_hi, o_half, o_pitch, o_desk) =
+        if column_major { (lat.ox, f.x0, f.x1, hw, px, fw) } else { (lat.oy, f.y0, f.y1, hh, py, fh) };
+
+    let mut inner_first = inner_o + ((i_lo - inner_o) / i_pitch).ceil() * i_pitch + i_half;
+    if inner_first + i_half > i_hi + 1e-9 && i_hi - i_lo >= 2.0 * i_half - 1e-9 {
+        inner_first = i_lo + i_half;
+    }
+    let mut outer_first = outer_o + ((o_lo - outer_o) / o_pitch).ceil() * o_pitch + o_half;
+    if outer_first + o_half > o_hi + 1e-9 && o_hi - o_lo >= o_desk - 1e-9 {
+        outer_first = o_lo + o_half;
+    }
+    let block = 2.0 * o_desk + SPINE_GAP + clear;
+    let outer_first_near = outer_first - o_half;
+
+    let mut n = 0u32;
+    let mut o = 0i64;
+    loop {
+        let (oc, _) =
+            outer_line(o, bench, outer_first, outer_first_near, o_half, o_desk, block, o_pitch, 0.0);
+        if oc + o_half > o_hi + 1e-9 {
+            break;
+        }
+        let mut i = 0i64;
+        loop {
+            let ic = inner_first + i as f64 * i_pitch;
+            if ic + i_half > i_hi + 1e-9 {
+                break;
+            }
+            let (cx, cy) = if column_major { (oc, ic) } else { (ic, oc) };
+            let (sx, sy) = (snap_module(cx), snap_module(cy));
+            if sx - hw >= f.x0 - 1e-9
+                && sx + hw <= f.x1 + 1e-9
+                && sy - hh >= f.y0 - 1e-9
+                && sy + hh <= f.y1 + 1e-9
+                && slot_fits_plate(plate, sx, sy, fw, fh, FACADE_GAP)
+                && slot_clears_walls(iwalls, sx, sy, fw, fh)
+                && !footprint_overlaps(obstacles, sx, sy, fw, fh, clear - 1e-6)
+            {
+                n += 1;
+            }
+            i += 1;
+        }
+        o += 1;
+    }
+    n
+}
+
 pub(crate) fn pack_desks(
     doc: &mut Document,
     program: &Program,
@@ -23,6 +168,10 @@ pub(crate) fn pack_desks(
     lat: Lattice,
     clear: f64,
     choices: SeedChoices,
+    // Why slots were turned down, and the grid actually walked. `None` on the
+    // passes whose rejections are not diagnostic (the top-up re-walks ground the
+    // primary pass already covered, so its rejections are mostly "occupied").
+    mut diag: Option<&mut RegionDesks>,
 ) -> u32 {
     // The desk field is the region plan's field rect (facade side of the
     // spine); the 0.9 m facade gap and the drawn circulation stay OUTSIDE it,
@@ -148,17 +297,10 @@ pub(crate) fn pack_desks(
         // across the spine: base orientation + π (0/π in landscape wings,
         // π/2 / 3π/2 in portrait wings — same reading convention, rotated).
         let outer_at = |o: i64| -> (f64, f64) {
-            if bench {
-                let p = o / 2;
-                let w = o % 2;
-                let near = outer_first_near
-                    + p as f64 * block
-                    + if w == 1 { outer_desk + SPINE_GAP } else { 0.0 };
-                let rot = if w == 1 { base_rot + std::f64::consts::PI } else { base_rot };
-                (near + outer_half, rot)
-            } else {
-                (outer_first + o as f64 * outer_pitch, base_rot)
-            }
+            outer_line(
+                o, bench, outer_first, outer_first_near, outer_half, outer_desk, block,
+                outer_pitch, base_rot,
+            )
         };
         let outer_n = {
             let mut n = 0i64;
@@ -167,6 +309,11 @@ pub(crate) fn pack_desks(
             }
             n
         };
+        if let Some(d) = diag.as_deref_mut() {
+            d.grid_outer = outer_n;
+            d.grid_inner = inner_n;
+            d.field_depth = outer_dz1 - outer_dz0;
+        }
         if inner_n <= 0 || outer_n <= 0 {
             break 'desks;
         }
@@ -282,13 +429,32 @@ pub(crate) fn pack_desks(
                     || fy - hh < dz_y0 - 1e-9
                     || fy + hh > dz_y1 + 1e-9
                 {
+                    if let Some(d) = diag.as_deref_mut() {
+                        d.rejects.bounds += 1;
+                    }
                     continue;
                 }
-                let ok = slot_fits_plate(plate, fx, fy, fw, fh, FACADE_GAP)
-                    && slot_clears_walls(iwalls, fx, fy, fw, fh)
-                    && !footprint_overlaps(&obstacles[..grid_start], fx, fy, fw, fh, clear - 1e-6)
-                    && !footprint_overlaps(&obstacles[grid_start..], fx, fy, fw, fh, same_grid_pad);
-                if !ok {
+                // Evaluated SEPARATELY, not as one `&&` chain, so the counter
+                // names the cause. "placed 0" has four different fixes in four
+                // different files and a single tally cannot tell them apart.
+                if !slot_fits_plate(plate, fx, fy, fw, fh, FACADE_GAP) {
+                    if let Some(d) = diag.as_deref_mut() {
+                        d.rejects.plate += 1;
+                    }
+                    continue;
+                }
+                if !slot_clears_walls(iwalls, fx, fy, fw, fh) {
+                    if let Some(d) = diag.as_deref_mut() {
+                        d.rejects.walls += 1;
+                    }
+                    continue;
+                }
+                if footprint_overlaps(&obstacles[..grid_start], fx, fy, fw, fh, clear - 1e-6)
+                    || footprint_overlaps(&obstacles[grid_start..], fx, fy, fw, fh, same_grid_pad)
+                {
+                    if let Some(d) = diag.as_deref_mut() {
+                        d.rejects.obstacles += 1;
+                    }
                     continue;
                 }
                 // Local (unrotated) dims + rotation — the renderer, 3D, and the

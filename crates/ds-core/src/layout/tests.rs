@@ -3900,9 +3900,19 @@ fn golden_fingerprint(doc: &Document, program: &Program) -> String {
 /// (`support_spaces = false`), and an EXPLICIT `rooms` program, over a plain
 /// rectangle, the L plate and the user's real multi-wing plate.
 ///
-/// PROVENANCE. Last re-captured for **Q3-F, the neighbourhood spread**
-/// (`packing.rs`). All ten cases moved, and the shape of the move is the
-/// evidence that it is the intended one:
+/// PROVENANCE. Last re-captured for **Q3-F/F1a, occupancy-aware desk
+/// allocation** (`regions::allocate_desks` + `packing::field_free_slots`).
+/// **Three** of the ten cases moved — `default/real_plate/seed2`,
+/// `no_support/real_plate/seed2`, `explicit_rooms/l_plate/seed3` — and again
+/// **every desk count is identical** (21·25·20·88·88·88·26·88·88·24), with
+/// component and wall counts identical in all ten. Capacity is now measured
+/// against the obstacles already placed rather than by dividing an empty field
+/// rect by the desk pitch, so the seven desks that were being allocated to two
+/// consumed wings go to a wing that can seat them. Same programme, different
+/// distribution — the same shape of move as the spread below.
+///
+/// Before that, **Q3-F, the neighbourhood spread** (`packing.rs`). All ten cases
+/// moved, and the shape of the move was the evidence that it was intended:
 ///
 ///   * **every desk count is identical** — 21 · 25 · 20 · 88 · 88 · 88 · 26 ·
 ///     88 · 88 · 24, unchanged in all ten;
@@ -4002,12 +4012,12 @@ fn golden_generate_output_is_frozen() {
             "default/rect20x14/seed2 = c80 w52 z11 desks25 total89274625 #c293b33800e054eb",
             "default/rect20x14/seed3 = c70 w52 z11 desks20 total86967629 #8364ab2af8a362bc",
             "default/real_plate/seed1 = c222 w155 z34 desks88 total90929428 #6575e587eaa8cef0",
-            "default/real_plate/seed2 = c222 w155 z35 desks88 total90349023 #167cc7e101189976",
+            "default/real_plate/seed2 = c222 w155 z34 desks88 total90385409 #33d51ab40b060a5d",
             "default/real_plate/seed3 = c222 w155 z34 desks88 total90889172 #ba4b6c959c324aa3",
             "no_support/rect20x14/seed1 = c68 w22 z4 desks26 total92213202 #22afe40286b75b52",
-            "no_support/real_plate/seed2 = c192 w101 z38 desks88 total94569068 #1572aea14d0ff47a",
+            "no_support/real_plate/seed2 = c192 w101 z38 desks88 total94453541 #92ef0a6fcdc685b8",
             "explicit_rooms/real_plate/seed1 = c209 w125 z26 desks88 total88630957 #745a1d0b9893da6e",
-            "explicit_rooms/l_plate/seed3 = c63 w33 z10 desks24 total87841010 #2c4c9d19abba5d0b",
+            "explicit_rooms/l_plate/seed3 = c63 w33 z10 desks24 total87917986 #d4428b7e286ba0fd",
     ];
     assert_eq!(cases.len(), EXPECTED.len(), "case list and expectations must line up");
 
