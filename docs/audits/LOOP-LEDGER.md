@@ -1669,3 +1669,42 @@ replaces an allocator change that would have been aimed at the wrong file.
 
 Rust **184**, battery **43/43**, goldens unmoved (the change is diagnostic only),
 `deadspace-core` 9.5% ≤ 10.0%.
+
+---
+
+# FINAL PUSH — ORCHESTRATION OPENED
+
+Five workstreams dispatched in parallel to subagents, chosen so their file sets
+do not overlap. The orchestrator holds the backlog, the board and this ledger,
+and reads no large source files itself.
+
+| # | agent | deliverable | files | blocks |
+|---|---|---|---|---|
+| 1 | EXTRACTOR | **adjacency patterns** from the reference vectors — window-wall sequence, corridor face, pairing matrix, core clustering, band depth | `research/qbiq-adjacency-*` | **W1** |
+| 2 | EXTRACTOR | **reference deadspace**, vector-derived, plate reconciled against the stated 15,360 USF | `research/qbiq-deadspace-*` | row 8 |
+| 3 | INTERACTION | **area tool**: diagonal chord · handles won't drag · no second selection | `web/src/import/*` | W5a |
+| 4 | EXTRACTOR+SURFACE | **measured symbol spec** + `symbols.ts` reconciliation, overlay pixdiffs | `research/`, `web/src/editor/symbols*` | row 5 |
+| 5 | ADVERSARY | sabotage re-runs of every prior fix · vacuous-pass hunt · impossible metrics · hostile plates | disposable worktrees | — |
+
+**W1 (the facade room band) is deliberately NOT dispatched yet.** Its shape is
+settled — `allocate_rooms` sets `cap_d = 0` for field regions, so all 24 derived
+rooms must fit in two full wings and 12 are dropped — but the brief requires the
+adjacency patterns first, because counts alone produce a filing cabinet. Agent 1
+blocks it; W2 (the network) blocks on W1's aisles.
+
+Every agent was briefed with: the settled KNOWN STATE lines it needs, the
+standing rules, one deliverable, and the instruction to return a diff, evidence
+paths and a draft ledger entry with a **clean tree and no commits** — the
+orchestrator integrates and commits, so a failed agent cannot leave a half-landed
+change (R7).
+
+Each was told explicitly that a **retraction or a falsified symptom is a
+first-class result** (R9) and that where its measurement contradicts its brief,
+the measurement wins and must be reported loudly (R4). That instruction is not
+decoration: five of the six mechanisms this project has fixed were found only
+because an instrument contradicted the brief that commissioned it.
+
+**Green floor at dispatch:** board 13/13 · battery 43/43 · Rust 184 ·
+deadspace 9.5% ≤ 10.0% · `composition.mjs` red off-board by design (run 7 > 5;
+conf 3.26/100 under half of 8.60) · label census 39/205 against a 40 ratchet
+carrying R5 debt back to ≤29.
