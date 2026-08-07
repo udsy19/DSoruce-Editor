@@ -3258,3 +3258,78 @@ the ledger already flagged.
 
 **R11 prediction, declared before merging and verified after:** 1 file, 0 added,
 battery 49/49, Rust 195. All four held.
+
+# R14/R15 — the takeoff joins the basis, and the vector joins the invariants
+
+**The defect, closed.** F4-retyped: panel Σ 930.063 · takeoff Σ **953.030** ·
+**22.968 m² (2.47%), 24/24 rooms**. Now **0.000 m², 0/24**.
+
+## R14 — the old path ceased to exist
+
+`effective_zone_areas` is **private to a new `mod basis`**; `area_basis` is its
+only caller. **The compiler enumerated the consumers: one production site — the
+defect.** 17 test sites migrated to `raw_zone_areas_unscaled`, marked
+`#[cfg(test)]`, so **no shipped path can reach the raw vector at all.**
+
+**Proof it is a mechanism and not a comment:** S1 (restore the raw read in
+`quantity.rs`) **would not compile** until the exemption was *also* re-opened —
+reproducing the pre-fix state now takes **two** edits. S2 reds as `E0603` at build
+time.
+
+> **RETRACTED BY NAME:** `quantity.rs:187-188`, `quantity.rs:509-511`,
+> `reports/B1-1.md:132`. All three were TRUE when written. The M1 fix moved the
+> panel and left the takeoff.
+
+**What the compiler caught that grep would not:** grep finds 13 names. It does not
+tell you that a *class* of reintroduction is now impossible — and it did not
+predict that migrating the takeoff would put it under `quantity.rs`'s **own
+hand-computed anchors**, which had existed and passed all along with no grip on
+the basis until the takeoff read it (S3 failed them too).
+
+## R15 — `quantities()` is in the battery
+
+**1 200 evaluations · 28 361 rooms billed · 201 capped-and-roomed** states where
+the two owners are separable. Non-vacuity is its own named test (the 196th). Panel
+== takeoff **per row and in sum**, and the takeoff is *also* anchored to the
+document's geometry in its own right — so the pair cannot agree while both drift.
+
+## The stated blind spot, closed
+
+**Misattribution** (100 m² non-usable → usable, in the shared basis) went
+**195 green → 194/2**, on the basis-consistency check *alone*: sum preserved, no
+negative row, `metrics_error` untouched. **Compensating pair** → 191/5.
+**Producer veto** `if !rows.is_empty()` replaced by `rows.len() ==
+doc.zones.len()`; **S5b reproduces the exploit against the pre-fix gate at 196
+green first**, confirming both gates measure the same thing and the veto was the
+whole of it.
+
+**Enabling-step sabotage:** `k = 1.0` → **194/2**. The scale derivation is guarded,
+not inert.
+
+## The gate audited its own brief
+
+Written against the property rather than the report, the cross-surface check named
+a case the adversary's report did not: **F1, seed 1, after ONE mutation, 73.391 m²
+divergence** — larger than the M1 case and reachable in a single edit.
+
+## Identity audit, self-reported
+
+Three conjuncts **cannot fail on today's implementation and are declared as
+guards, not checks**: per-row non-negativity, the three-way attribution partition
+(a theorem of the current fold table), and — after this fix — **cross-surface
+equality itself**, which is now structurally identical *because R14 made it so*.
+
+The distinction from the retracted `row.area / row.pct_of_nia * 100` is stated
+rather than glossed: that was an identity **by algebra**, unfalsifiable by any code
+change short of rewriting the formula. This one **was RED at HEAD** and is
+falsified by a code change (S1). The module boundary is the primary mechanism; the
+check is the secondary one, for a future legitimate second reader.
+
+**`Σ room area ≤ plate` deliberately NOT added** — derivable from two conjuncts
+already present. It would have been a fourth near-tautology.
+
+**R11 prediction, declared before merging and verified after:** Rust 195 → **196**,
+battery **49/49**, **no golden moved**, 5 files, 0 added. All four held. The golden
+prediction was reasoned in advance — `quantities()` output changes only where
+`k != 1`, and all five base fixtures are uncapped, proven *negatively* by the
+sabotage round.

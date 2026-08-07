@@ -222,79 +222,13 @@ fn workstation_count(doc: &Document) -> usize {
         .count()
 }
 
-fn effective_zone_areas(doc: &Document) -> (Vec<f64>, Option<usize>) {
-    let plate = doc.plate_polygon();
-    let plate_ref = plate.as_deref();
-    let floor_area = doc.floor_area();
-    let mut areas: Vec<f64> = doc.zones.iter().map(|z| z.area_on(plate_ref)).collect();
-    if floor_area <= 0.0 {
-        return (areas, None);
-    }
-    // The oriented spanning Workspace's `Rect` footprint == the wall bbox. Only
-    // the oriented desk-field background fill is emitted that way; axis-path
-    // Workspace fields are inset, so they can never match. `None` bbox (open
-    // walls) → no plate → nothing to de-overlap.
-    let spanning = doc.wall_bbox().and_then(|(min_x, min_y, max_x, max_y)| {
-        let (cx, cy) = ((min_x + max_x) / 2.0, (min_y + max_y) / 2.0);
-        let (bw, bh) = (max_x - min_x, max_y - min_y);
-        // 1 mm tolerance: the emit writes these exact expressions, so a match is
-        // effectively exact; the epsilon only absorbs f64 round-trip noise.
-        const TOL: f64 = 1e-3;
-        (0..doc.zones.len()).find(|&i| {
-            doc.zones[i].zone_type == ZoneType::Workspace
-                && matches!(
-                    doc.zones[i].shape,
-                    ZoneShape::Rect { x, y, w, h }
-                        if (x - cx).abs() < TOL
-                            && (y - cy).abs() < TOL
-                            && (w - bw).abs() < TOL
-                            && (h - bh).abs() < TOL
-                )
-        })
-    });
-    // Non-spanning Workspace de-overlap. A Workspace *field* zone is the
-    // open-floor BACKGROUND of its band; the rooms/core placed within it are
-    // carved OUT of that floor, so its honest contribution is its clip MINUS the
-    // floor it shares with non-Workspace zones. Without this a band Workspace laid
-    // over its band's rooms double-counts their area (e.g. a 53 m² bottom-band
-    // field over four ~8 m² rooms = ~33 m² counted twice) — invisible while empty
-    // floor kept the total under GEA, but exposed the moment the boundary-
-    // conforming Circulation fill claims that empty floor. Rooms are disjoint from
-    // one another, so summing per-room overlaps is exact. The single plate-spanning
-    // field keeps its own `floor − others` rule below.
-    for i in 0..doc.zones.len() {
-        if doc.zones[i].zone_type != ZoneType::Workspace || Some(i) == spanning {
-            continue;
-        }
-        let ZoneShape::Rect { x, y, w, h } = doc.zones[i].shape else { continue };
-        let (rx0, ry0, rx1, ry1) = (x - w / 2.0, y - h / 2.0, x + w / 2.0, y + h / 2.0);
-        let mut sub = 0.0;
-        for j in 0..doc.zones.len() {
-            if j == i || doc.zones[j].zone_type == ZoneType::Workspace {
-                continue;
-            }
-            sub += zone_overlap_rect_on_plate(&doc.zones[j].shape, rx0, ry0, rx1, ry1, plate_ref);
-        }
-        areas[i] = (areas[i] - sub).max(0.0);
-    }
-    if let Some(idx) = spanning {
-        let others: f64 = areas
-            .iter()
-            .enumerate()
-            .filter(|(i, _)| *i != idx)
-            .map(|(_, a)| *a)
-            .sum();
-        areas[idx] = (floor_area - others).max(0.0);
-    }
-    (areas, spanning)
-}
 
 /// Usable (occupiable) area — the numerator of the workplace space-efficiency
 /// ratio (usable / NIA; see `Metrics::efficiency_pct`). "Usable" is every zone
 /// EXCEPT `Circulation` (corridors/aisles) and `Core` (WC, stairs, lifts, MEP,
 /// service): all workstations, private offices, meeting, collab AND amenity are
 /// occupiable space, not overhead. `areas` are the de-overlapped effective zone
-/// areas from `effective_zone_areas`, in zone order. Standard definition per
+/// areas from `area_basis`, in zone order. Standard definition per
 /// BCO 2023 / RICS IPMS / JLL; a good fit-out lands ~70–85%.
 ///
 /// **`Unassigned` is excluded here and this is the whole point of the type.**
@@ -359,7 +293,7 @@ fn net_internal_area(doc: &Document, areas: &[f64]) -> f64 {
 ///
 /// Scaling is a *cap*, not a measurement, so it is also reported: `overflow`
 /// carries the reason out to `Metrics::metrics_error`.
-struct AreaBasis {
+pub(crate) struct AreaBasis {
     /// Per-zone effective areas in zone order, after de-overlap AND after the
     /// clamp factor. `Σ == nia` exactly.
     areas: Vec<f64>,
@@ -371,38 +305,158 @@ struct AreaBasis {
     overflow: Option<String>,
 }
 
-fn area_basis(doc: &Document) -> AreaBasis {
-    let (mut areas, spanning) = effective_zone_areas(doc);
-    let sum: f64 = areas.iter().sum();
-    let nia = net_internal_area(doc, &areas);
-    let mut overflow = None;
-    // `> 1e-9` and not `!= 0.0`: a scale factor from a sum of a few m² of float
-    // noise is meaningless, and a zero sum has nothing to scale.
-    if sum > 1e-9 && nia < sum - 1e-6 {
-        let excess_pct = (sum - nia) / nia.max(1e-9) * 100.0;
-        overflow = Some(format!(
-            "zone areas do not tile the floor: Σ {sum:.3} m² exceeds the traced \
-             floor {nia:.3} m² by {excess_pct:.1}% (zones overlap). NIA, usable \
-             area and efficiency are CAPPED to the floor, not measured."
-        ));
-        let k = nia / sum;
-        for a in &mut areas {
-            *a *= k;
+/// **R14 — the one place per-zone areas come from, enforced by the compiler.**
+///
+/// `effective_zone_areas` is private *to this module*, and this module contains
+/// exactly one caller of it. Nothing outside can name it, so "the takeoff and
+/// the panel use the same areas" is a build failure rather than a comment.
+///
+/// It is stated as a mechanism because the comment form was tried and lost.
+/// `quantity.rs:187-188` and `:509-511` both asserted that the takeoff read "the
+/// ONE area definition … the same number the Statistics panel shows", and
+/// `reports/B1-1.md:132` recorded it as verified. **All three were true when
+/// written.** The M1 fix then introduced [`AreaBasis`], moved the panel onto it,
+/// and left the takeoff on the raw areas: on the M1 state — retype every F4 zone
+/// to Workspace, four clicks — the panel billed Σ 930.063 m² and the workbook's
+/// Room Schedule billed Σ 953.030 m², 22.968 m² apart across all 24 rooms, with
+/// finishes priced per m² off the second number. A definition change has to
+/// migrate every consumer, and only the compiler can enumerate them.
+mod basis {
+    use super::*;
+
+    /// Plate-clipped, de-overlapped per-zone areas — **raw**, before the cap.
+    /// Private on purpose; see the module doc. `area_basis` below is the only
+    /// caller, and `raw_zone_areas_unscaled` is the one declared exemption.
+    fn effective_zone_areas(doc: &Document) -> (Vec<f64>, Option<usize>) {
+        let plate = doc.plate_polygon();
+        let plate_ref = plate.as_deref();
+        let floor_area = doc.floor_area();
+        let mut areas: Vec<f64> = doc.zones.iter().map(|z| z.area_on(plate_ref)).collect();
+        if floor_area <= 0.0 {
+            return (areas, None);
         }
+        // The oriented spanning Workspace's `Rect` footprint == the wall bbox. Only
+        // the oriented desk-field background fill is emitted that way; axis-path
+        // Workspace fields are inset, so they can never match. `None` bbox (open
+        // walls) → no plate → nothing to de-overlap.
+        let spanning = doc.wall_bbox().and_then(|(min_x, min_y, max_x, max_y)| {
+            let (cx, cy) = ((min_x + max_x) / 2.0, (min_y + max_y) / 2.0);
+            let (bw, bh) = (max_x - min_x, max_y - min_y);
+            // 1 mm tolerance: the emit writes these exact expressions, so a match is
+            // effectively exact; the epsilon only absorbs f64 round-trip noise.
+            const TOL: f64 = 1e-3;
+            (0..doc.zones.len()).find(|&i| {
+                doc.zones[i].zone_type == ZoneType::Workspace
+                    && matches!(
+                        doc.zones[i].shape,
+                        ZoneShape::Rect { x, y, w, h }
+                            if (x - cx).abs() < TOL
+                                && (y - cy).abs() < TOL
+                                && (w - bw).abs() < TOL
+                                && (h - bh).abs() < TOL
+                    )
+            })
+        });
+        // Non-spanning Workspace de-overlap. A Workspace *field* zone is the
+        // open-floor BACKGROUND of its band; the rooms/core placed within it are
+        // carved OUT of that floor, so its honest contribution is its clip MINUS the
+        // floor it shares with non-Workspace zones. Without this a band Workspace laid
+        // over its band's rooms double-counts their area (e.g. a 53 m² bottom-band
+        // field over four ~8 m² rooms = ~33 m² counted twice) — invisible while empty
+        // floor kept the total under GEA, but exposed the moment the boundary-
+        // conforming Circulation fill claims that empty floor. Rooms are disjoint from
+        // one another, so summing per-room overlaps is exact. The single plate-spanning
+        // field keeps its own `floor − others` rule below.
+        for i in 0..doc.zones.len() {
+            if doc.zones[i].zone_type != ZoneType::Workspace || Some(i) == spanning {
+                continue;
+            }
+            let ZoneShape::Rect { x, y, w, h } = doc.zones[i].shape else { continue };
+            let (rx0, ry0, rx1, ry1) = (x - w / 2.0, y - h / 2.0, x + w / 2.0, y + h / 2.0);
+            let mut sub = 0.0;
+            for j in 0..doc.zones.len() {
+                if j == i || doc.zones[j].zone_type == ZoneType::Workspace {
+                    continue;
+                }
+                sub += zone_overlap_rect_on_plate(&doc.zones[j].shape, rx0, ry0, rx1, ry1, plate_ref);
+            }
+            areas[i] = (areas[i] - sub).max(0.0);
+        }
+        if let Some(idx) = spanning {
+            let others: f64 = areas
+                .iter()
+                .enumerate()
+                .filter(|(i, _)| *i != idx)
+                .map(|(_, a)| *a)
+                .sum();
+            areas[idx] = (floor_area - others).max(0.0);
+        }
+        (areas, spanning)
     }
-    AreaBasis { areas, spanning, nia, overflow }
+    /// **THE per-zone areas.** Every consumer — the metrics chip, the Zones tab,
+    /// the areas donut, the workbook Room Schedule — reads this and only this.
+    pub(crate) fn area_basis(doc: &Document) -> AreaBasis {
+        let (mut areas, spanning) = effective_zone_areas(doc);
+        let sum: f64 = areas.iter().sum();
+        let nia = net_internal_area(doc, &areas);
+        let mut overflow = None;
+        // `> 1e-9` and not `!= 0.0`: a scale factor from a sum of a few m² of float
+        // noise is meaningless, and a zero sum has nothing to scale.
+        if sum > 1e-9 && nia < sum - 1e-6 {
+            let excess_pct = (sum - nia) / nia.max(1e-9) * 100.0;
+            overflow = Some(format!(
+                "zone areas do not tile the floor: Σ {sum:.3} m² exceeds the traced \
+                 floor {nia:.3} m² by {excess_pct:.1}% (zones overlap). NIA, usable \
+                 area and efficiency are CAPPED to the floor, not measured."
+            ));
+            let k = nia / sum;
+            for a in &mut areas {
+                *a *= k;
+            }
+        }
+        AreaBasis { areas, spanning, nia, overflow }
+    }
+    /// **The one declared exemption from the module boundary, and it is
+    /// `#[cfg(test)]`, so no shipped code path can reach the raw areas at all.**
+    ///
+    /// Tests legitimately need the UNSCALED vector, because the properties they
+    /// assert are about the de-overlap itself and the cap is what would make
+    /// them vacuous: `NIA ≤ GEA` is the de-overlap's job and is *tautological*
+    /// after a cap that clamps NIA to the floor; `metrics_tests` compares raw
+    /// against scaled precisely to detect that a cap happened, and asking the
+    /// capped vector whether it was capped answers itself. The `spanning` index
+    /// is carried through for the same reason — several layout tests assert the
+    /// plate-spanning field was or was not detected, which the areas do not say.
+    #[cfg(test)]
+    pub(crate) fn raw_zone_areas_unscaled(doc: &Document) -> (Vec<f64>, Option<usize>) {
+        effective_zone_areas(doc)
+    }
+}
+
+pub(crate) use basis::area_basis;
+#[cfg(test)]
+pub(crate) use basis::raw_zone_areas_unscaled;
+
+
+/// **THE usable/overhead partition**, as one predicate. Occupiable space is every
+/// zone except `Circulation` (corridors/aisles), `Core` (WC, stairs, lifts, MEP)
+/// and `Unassigned` (floor usable by nobody).
+///
+/// One owner, because this set decides the numerator of `efficiency = usable /
+/// nia` and it had three hand-written copies — `usable_area`, the battery's
+/// all-usable reachability probe, and the cross-surface attribution check —
+/// which is exactly the drift `.claude/rules/no-bloat.md` names. `Zone::capacity`
+/// keeps its own copy: it answers "how many people does this seat", not "is this
+/// occupiable", and the two questions are only accidentally the same list.
+pub(crate) fn is_usable_zone(t: ZoneType) -> bool {
+    !matches!(t, ZoneType::Circulation | ZoneType::Core | ZoneType::Unassigned)
 }
 
 fn usable_area(doc: &Document, areas: &[f64]) -> f64 {
     doc.zones
         .iter()
         .zip(areas)
-        .filter(|(z, _)| {
-            !matches!(
-                z.zone_type,
-                ZoneType::Circulation | ZoneType::Core | ZoneType::Unassigned
-            )
-        })
+        .filter(|(z, _)| is_usable_zone(z.zone_type))
         .map(|(_, a)| *a)
         .sum()
 }
@@ -1719,7 +1773,7 @@ mod tests {
 
         // area_per_workstation == NIA / N (NIA == 200 here, so ~25 m²/ws), NOT
         // NIA / (N+M) which would be the polluted, too-tight figure.
-        let (areas, _) = effective_zone_areas(&doc);
+        let (areas, _) = raw_zone_areas_unscaled(&doc);
         let floor_area = doc.floor_area();
         let nia: f64 = areas.iter().sum::<f64>().min(floor_area);
         let apw = nia / workstation_count(&doc) as f64;
@@ -1815,7 +1869,7 @@ mod tests {
 
     /// `metrics().area_per_workstation`, recomputed from identical pure inputs.
     fn area_per_ws(doc: &Document) -> f64 {
-        let (areas, _) = effective_zone_areas(doc);
+        let (areas, _) = raw_zone_areas_unscaled(doc);
         let nia: f64 = areas.iter().sum::<f64>().min(doc.floor_area());
         let ws = workstation_count(doc);
         if ws > 0 {
@@ -1972,7 +2026,7 @@ mod tests {
         doc.reassign_components();
 
         let gea0 = doc.floor_area();
-        let (areas0, _) = effective_zone_areas(&doc);
+        let (areas0, _) = raw_zone_areas_unscaled(&doc);
         let nia0: f64 = areas0.iter().sum();
 
         // Flip every component to reference.
@@ -1980,7 +2034,7 @@ mod tests {
             c.reference = true;
         }
         let gea1 = doc.floor_area();
-        let (areas1, _) = effective_zone_areas(&doc);
+        let (areas1, _) = raw_zone_areas_unscaled(&doc);
         let nia1: f64 = areas1.iter().sum();
 
         assert_eq!(gea0, gea1, "GEA is wall-bbox based, unaffected by reference");
@@ -2032,7 +2086,7 @@ mod tests {
             add_rect_zone(&mut doc, zt, 5.0 + 10.0 * i as f64, 5.0, 10.0, 10.0);
         }
 
-        let (areas, _) = effective_zone_areas(&doc);
+        let (areas, _) = raw_zone_areas_unscaled(&doc);
         let nia: f64 = areas.iter().sum::<f64>().min(doc.floor_area());
         let usable = usable_area(&doc, &areas);
 

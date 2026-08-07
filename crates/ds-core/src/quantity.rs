@@ -184,8 +184,11 @@ pub struct RoomQuantity {
     pub zone_type: ZoneType,
     /// Human-readable `zone_type` (the workbook's "Space Type").
     pub space_type: String,
-    /// Plate-clipped, de-overlapped floor area, m² — the same number the
-    /// Statistics panel shows (`crate::effective_zone_areas`).
+    /// Plate-clipped, de-overlapped, cap-scaled floor area, m² — the same number
+    /// the Statistics panel shows, because both read `crate::basis`'s
+    /// `area_basis` and the raw vector behind it is unnameable outside that
+    /// module. It previously named `crate::effective_zone_areas` here, which was
+    /// the raw vector and diverged from the panel by 2.47% on an edited plan.
     pub area_m2: f64,
     /// `area_m2 × SQF_PER_M2`.
     pub area_sqf: f64,
@@ -505,10 +508,20 @@ pub fn quantities(doc: &Document) -> Quantities {
         .collect();
 
     // ---- rooms -------------------------------------------------------------
-    // Reuse the ONE area definition the Statistics panel and the metrics chip
-    // already use: plate-clipped and de-overlapped, so the takeoff can never
-    // disagree with what the user sees on screen.
-    let (areas, _) = crate::effective_zone_areas(doc);
+    // THE ONE per-zone area basis (`crate::basis`), which is what the Statistics
+    // panel, the Zones tab and the areas donut read — plate-clipped,
+    // de-overlapped, AND carrying the overflow cap.
+    //
+    // This line used to read `crate::effective_zone_areas`, the raw vector, under
+    // a comment claiming the takeoff "can never disagree with what the user sees
+    // on screen". That was true when it was written and stopped being true the
+    // moment `area_basis` was introduced and only the panel was moved onto it: on
+    // an ordinary edit — retype every F4 zone to Workspace, four clicks — the
+    // panel billed Σ 930.063 m² and this function billed Σ 953.030 m², 22.968 m²
+    // (2.47%) apart with all 24 rooms disagreeing, and the workbook priced
+    // finishes per m² off the wrong one. The comment is no longer the mechanism:
+    // the raw vector is private to `crate::basis` and unnameable from here.
+    let areas = crate::area_basis(doc).areas;
     let rooms: Vec<RoomQuantity> = doc
         .zones
         .iter()

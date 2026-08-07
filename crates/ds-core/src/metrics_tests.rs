@@ -17,7 +17,7 @@
 use crate::document::{Document, PlateResolution};
 use crate::fixtures;
 use crate::zone::{ZoneShape, ZoneType};
-use crate::{compute_metrics, effective_zone_areas, net_internal_area};
+use crate::{compute_metrics, net_internal_area, raw_zone_areas_unscaled};
 
 /// Every fixture, built once, with its id for failure messages.
 fn all_fixtures() -> Vec<(&'static str, Document)> {
@@ -347,7 +347,7 @@ fn violations(doc: &Document) -> Vec<String> {
     // again surface as a NUMBER — which is exactly what would make an unreported
     // cap invisible to every assertion above. Re-derived from the UNCLAMPED
     // areas, so this asks the document, not the metric, whether a cap happened.
-    let (areas, _) = effective_zone_areas(doc);
+    let (areas, _) = raw_zone_areas_unscaled(doc);
     let raw_sum: f64 = areas.iter().sum();
     let owner = net_internal_area(doc, &areas);
     if raw_sum > owner + 1e-6 && m.metrics_error.is_none() {
@@ -382,15 +382,182 @@ fn violations(doc: &Document) -> Vec<String> {
     // exceeds a traced floor), and the PLATE STATE (traced / open / unresolved,
     // which decides whether the cap applies at all).
     let rows = crate::Editor::for_test(doc.clone()).zone_rows_for_test(false);
-    if !rows.is_empty() {
-        let row_sum: f64 = rows.iter().map(|r| r.area).sum();
-        if (row_sum - m.net_internal_area).abs() > 1e-6 * row_sum.max(1.0) {
+    // **The producer no longer chooses whether it is checked.** This was
+    // `if !rows.is_empty()`, which handed `zone_rows` a veto over its own test:
+    // returning nothing — the Zones tab rendering an empty donut — left the whole
+    // suite at 195 green. *A missing input is a FAILURE, never a skip.* The
+    // expected count is re-derived from the document, not from the producer.
+    if rows.len() != doc.zones.len() {
+        v.push(format!(
+            "zone_rows delivered {} rows for a document with {} zones",
+            rows.len(),
+            doc.zones.len()
+        ));
+    }
+    let row_sum: f64 = rows.iter().map(|r| r.area).sum();
+    if (row_sum - m.net_internal_area).abs() > 1e-6 * row_sum.max(1.0) {
+        v.push(format!(
+            "the Zones tab's rows sum to {row_sum:.3} but NIA is {:.3} — the \
+             donut's slices do not sum to its own total",
+            m.net_internal_area
+        ));
+    }
+
+    // ---- THE VECTOR INVARIANTS. The sum is a scalar; the property is a vector.
+    //
+    // Everything above this line applies its finite/non-negative predicate to
+    // seven AGGREGATE metrics and to zero per-row values, and a sum is preserved
+    // by any compensating pair. Injecting +300 into one row and −300 into another
+    // left 195 green while F1 billed `Meeting Room 2  area -283.600  pct -31.518`
+    // — a negative donut slice, on a published surface, under a green board.
+    for r in &rows {
+        finite(&format!("zone row {} area", r.id), r.area, &mut v);
+        finite(&format!("zone row {} pct_of_nia", r.id), r.pct_of_nia, &mut v);
+    }
+
+    // **ONE BASIS, ONE FACTOR — asserted per row, not per total.**
+    //
+    // `area_basis` scales the WHOLE vector by the single factor `k = nia / Σraw`,
+    // which is the property its doc comment claims ("every subset metric carries
+    // the SAME factor"). A total cannot see a violation of that: moving 100 m²
+    // from the largest non-usable zone to the largest usable one inside the
+    // shared basis preserves Σ exactly, keeps every row non-negative, keeps
+    // `metrics_error` null — and takes efficiency 72.763% → 83.876%, +11.1 pts.
+    // That is M1's own family (a numerator and a denominator disagreeing about
+    // one floor) and every rebuilt guard stayed green through it.
+    //
+    // R2: the expected vector is re-derived from the DOCUMENT's geometry via
+    // `raw_zone_areas_unscaled`, not read back out of the basis the rows came
+    // from, so a per-zone transform applied anywhere between the geometry and the
+    // row is visible as a row whose ratio is not k. The condition mirrors
+    // `area_basis`'s own cap condition; in the boundary region both branches give
+    // k ≈ 1 and the tolerance covers the difference.
+    let k = if raw_sum > 1e-9 && owner < raw_sum - 1e-6 { owner / raw_sum } else { 1.0 };
+    for (i, r) in rows.iter().enumerate() {
+        let want = areas[i] * k;
+        if (r.area - want).abs() > 1e-6 * want.abs().max(1.0) {
             v.push(format!(
-                "the Zones tab's rows sum to {row_sum:.3} but NIA is {:.3} — the \
-                 donut's slices do not sum to its own total",
-                m.net_internal_area
+                "zone row {} area {:.3} is not its own de-overlapped footprint \
+                 {:.3} × the one basis factor {k:.6} (= {want:.3}) — the basis \
+                 carries a per-zone transform, not one shared cap",
+                r.id, r.area, areas[i]
             ));
         }
+    }
+
+    // ---- CROSS-SURFACE: the panel and the takeoff are the same numbers. ------
+    //
+    // R15. `quantities()` is a PUBLISHED surface — the workbook's Room Schedule
+    // (`web/src/export/qtoWorkbook.ts:272-295`), with finishes priced `unit:
+    // 'm^2'` off these very rows — and it was outside the tested population
+    // entirely: this 1 200-evaluation battery called `compute_metrics` and never
+    // `quantities`. `quantity.rs`'s own `Σ room area ≤ plate` assertion would
+    // have fired at 953.030 against a 930.063 floor; it had simply never run on
+    // an edited document.
+    //
+    // RETRACTED BY NAME: `quantity.rs:187-188` ("the same number the Statistics
+    // panel shows"), `quantity.rs:509-511` ("the ONE area definition … so the
+    // takeoff can never disagree with what the user sees on screen") and
+    // `reports/B1-1.md:132`. All three were TRUE when written. The M1 fix
+    // introduced `area_basis`, moved the panel onto it, and left the takeoff on
+    // the raw areas — so on the M1 state (retype every F4 zone to Workspace,
+    // four clicks) the panel billed Σ 930.063 and the takeoff billed Σ 953.030,
+    // 22.968 m² apart, all 24 rooms disagreeing, on a clean tree.
+    //
+    // R2: neither surface is asked what the other used. Both are read as
+    // delivered artifacts and joined on the zone id — the document's own key.
+    let rooms = crate::quantity::quantities(doc).rooms;
+    // The FOLDED rows — what `Editor::zone_stats()` actually publishes to the
+    // Zones tab. `rows` above is the unfolded truth; both are checked, because
+    // the fold is where an attribution could change without any area moving.
+    let pub_rows = crate::Editor::for_test(doc.clone()).zone_rows_for_test(true);
+    if rooms.len() != doc.zones.len() {
+        v.push(format!(
+            "the takeoff delivered {} rooms for a document with {} zones",
+            rooms.len(),
+            doc.zones.len()
+        ));
+    }
+    if rooms.len() == rows.len() {
+        for (i, (r, q)) in rows.iter().zip(&rooms).enumerate() {
+            if r.id != q.room_id {
+                v.push(format!(
+                    "panel row {} and takeoff room {} are not the same zone",
+                    r.id, q.room_id
+                ));
+                continue;
+            }
+            if (r.area - q.area_m2).abs() > 1e-6 * r.area.abs().max(1.0) {
+                v.push(format!(
+                    "zone {}: the panel shows {:.3} m² and the takeoff bills \
+                     {:.3} m² — two owners of one room's area",
+                    r.id, r.area, q.area_m2
+                ));
+            }
+            // ...and the takeoff is anchored to the DOCUMENT's geometry in its
+            // own right, not merely to the panel. Otherwise the pair could agree
+            // with each other while both drifted off the floor they describe —
+            // the mutual-contamination shape the rules file names, where two
+            // artifact-derived lists agree about the missing element.
+            let want = areas[i] * k;
+            if (q.area_m2 - want).abs() > 1e-6 * want.abs().max(1.0) {
+                v.push(format!(
+                    "the takeoff bills zone {} at {:.3} m², not its own \
+                     de-overlapped footprint {:.3} × the one basis factor \
+                     {k:.6} (= {want:.3})",
+                    q.room_id, q.area_m2, areas[i]
+                ));
+            }
+            // ---- The ATTRIBUTION facet, anchored to the document. ----
+            //
+            // Efficiency is `usable / nia`, so which side of that partition a
+            // room lands on is worth 11 points on the headline. Checked as the
+            // PREDICATE, not as the type name: the panel publishes FOLDED rows
+            // (`Editor::zone_stats` → `zone_rows(true)`, Unassigned →
+            // Circulation) and the takeoff publishes unfolded ones deliberately
+            // (`space_type_label`: "Seeing 'Unassigned' in a delivered artifact
+            // is the bug report"), so the two names legitimately differ while
+            // the partition must not. Three-way against the document's own
+            // `zone_type`, which neither surface owns.
+            let doc_type = doc
+                .zones
+                .iter()
+                .find(|z| z.id == q.room_id)
+                .map(|z| z.zone_type);
+            let Some(doc_type) = doc_type else {
+                v.push(format!("takeoff bills room {} which is not a zone", q.room_id));
+                continue;
+            };
+            let published = pub_rows.iter().find(|p| p.id == q.room_id);
+            let seen = [
+                ("the panel's raw row", Some(r.zone_type)),
+                ("the panel's published row", published.map(|p| p.zone_type)),
+                ("the takeoff", Some(q.zone_type)),
+            ];
+            for (who, t) in seen {
+                match t {
+                    None => v.push(format!("zone {} is missing from {who}", q.room_id)),
+                    Some(t) if crate::is_usable_zone(t) != crate::is_usable_zone(doc_type) => v.push(format!(
+                        "zone {}: the document types it {doc_type:?} ({}) and \
+                         {who} bills it {t:?} ({}) — the usable/non-usable \
+                         partition differs by surface",
+                        q.room_id,
+                        if crate::is_usable_zone(doc_type) { "usable" } else { "overhead" },
+                        if crate::is_usable_zone(t) { "usable" } else { "overhead" },
+                    )),
+                    Some(_) => {}
+                }
+            }
+        }
+    }
+    let room_sum: f64 = rooms.iter().map(|r| r.area_m2).sum();
+    if (room_sum - row_sum).abs() > 1e-6 * row_sum.max(1.0) {
+        v.push(format!(
+            "the panel's rows sum to {row_sum:.3} m² and the takeoff's rooms sum \
+             to {room_sum:.3} m² — a {:.3} m² divergence between two published \
+             surfaces over the same document",
+            (room_sum - row_sum).abs()
+        ));
     }
     v
 }
@@ -428,7 +595,7 @@ fn nia_is_never_capped_by_a_plate_we_do_not_trust() {
     });
 
     let bbox_area = compute_metrics(&doc).gross_external_area;
-    let (areas, _) = effective_zone_areas(&doc);
+    let (areas, _) = raw_zone_areas_unscaled(&doc);
     let sum: f64 = areas.iter().sum();
     assert!(
         sum > bbox_area * 10.0,
@@ -685,6 +852,61 @@ fn mutate(doc: &mut Document, rng: &mut Rng) {
     }
 }
 
+/// **The cross-surface check is not free: the battery reaches states where the
+/// two area owners could disagree, and did.**
+///
+/// R15's non-vacuity. `violations` now evaluates `quantities()` — a published
+/// surface (the workbook Room Schedule) that this battery never called, which is
+/// the whole reason the divergence survived four belief passes. But panel == takeoff
+/// is trivially true wherever the cap does not fire: `k == 1` and any two readers
+/// of the same raw vector agree for free. So assert the population contains
+/// CAPPED evaluations with real rooms in them — the states the two owners are
+/// separable in — and print the count, because a battery that never reaches them
+/// certifies nothing while staying green.
+///
+/// Deliberately **not** a re-run of `metrics_can_never_be_impossible`'s assertion:
+/// that test says the property holds, this one says the property was tested.
+#[test]
+fn the_battery_reaches_states_the_two_area_surfaces_could_diverge_in() {
+    let bases = all_fixtures();
+    let (mut capped, mut evaluated, mut rooms_seen) = (0usize, 0usize, 0usize);
+    for seed in 1u64..=120 {
+        let (_, base) = &bases[(seed as usize - 1) % bases.len()];
+        let mut doc = base.clone();
+        let mut rng = Rng(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1);
+        for _ in 0..10 {
+            mutate(&mut doc, &mut rng);
+            let (raw, _) = raw_zone_areas_unscaled(&doc);
+            let raw_sum: f64 = raw.iter().sum();
+            let nia = net_internal_area(&doc, &raw);
+            let rooms = crate::quantity::quantities(&doc).rooms;
+            evaluated += 1;
+            rooms_seen += rooms.len();
+            if raw_sum > nia + 1e-6 && !rooms.is_empty() {
+                capped += 1;
+            }
+        }
+    }
+    println!(
+        "TAKEOFF EVALUATIONS: {evaluated} · rooms billed {rooms_seen} · \
+         CAPPED-AND-ROOMED (where panel ≠ takeoff was possible): {capped}"
+    );
+    assert_eq!(evaluated, 1200, "the battery must actually run");
+    assert!(
+        rooms_seen > 0,
+        "the battery billed zero rooms across 1 200 evaluations — the takeoff is \
+         in the loop but not in the population, and the cross-surface check is a \
+         comparison of two empty lists"
+    );
+    assert!(
+        capped > 0,
+        "the battery never reached a document whose basis was capped WITH rooms \
+         on it. Uncapped, k == 1 and the panel and the takeoff agree by reading \
+         the same numbers — the check would pass with the divergence live, which \
+         is exactly what happened for four belief passes"
+    );
+}
+
 /// **No sequence of edits may produce an impossible metric.**
 ///
 /// 120 seeds × 10 mutations from each of the five fixtures = 6 000 mutations and
@@ -735,7 +957,7 @@ fn retyping_every_zone_cannot_produce_an_impossible_efficiency() {
     // Non-vacuity: this case only tests the clamp while the raw sum really does
     // exceed the traced floor. If de-overlap ever makes it tile exactly, the
     // assertion below passes for the wrong reason and this line says so.
-    let (raw, _) = effective_zone_areas(&doc);
+    let (raw, _) = raw_zone_areas_unscaled(&doc);
     let sum: f64 = raw.iter().sum();
     let m = compute_metrics(&doc);
     assert_eq!(m.plate_state, "traced", "the F4 plate must still resolve");
@@ -763,6 +985,38 @@ fn retyping_every_zone_cannot_produce_an_impossible_efficiency() {
         err.contains("do not tile"),
         "metrics_error must name the overlap, got {err:?}"
     );
+
+    // **The M1 state, on the SECOND surface.** The fix above moved the panel onto
+    // `area_basis` and left the workbook's Room Schedule on the raw vector, so
+    // this very document — the one the test above certifies as fixed — billed
+    // Σ 930.063 m² on screen and Σ 953.030 m² in the delivered workbook, 22.968 m²
+    // (2.47%) apart, 24 of 24 rooms disagreeing. Printed, not just asserted: the
+    // divergence is the number this test exists to keep at zero.
+    let rows = crate::Editor::for_test(doc.clone()).zone_rows_for_test(false);
+    let rooms = crate::quantity::quantities(&doc).rooms;
+    let panel: f64 = rows.iter().map(|r| r.area).sum();
+    let takeoff: f64 = rooms.iter().map(|r| r.area_m2).sum();
+    let disagreeing = rows
+        .iter()
+        .zip(&rooms)
+        .filter(|(r, q)| (r.area - q.area_m2).abs() > 1e-6 * r.area.abs().max(1.0))
+        .count();
+    println!(
+        "M1 CROSS-SURFACE: panel Σ {panel:.3} · takeoff Σ {takeoff:.3} · \
+         divergence {:.3} m² · {disagreeing}/{} rooms disagree",
+        (takeoff - panel).abs(),
+        rooms.len()
+    );
+    // Non-vacuity: a capped basis is what makes the two surfaces separable at
+    // all. `k == 1` on an uncapped document and any pair of readers agrees.
+    assert!(
+        m.metrics_error.is_some() && sum > m.net_internal_area + 1e-6,
+        "this case only separates the two area owners while the basis is CAPPED \
+         (Σ raw {sum:.3} vs NIA {:.3}); uncapped, k == 1 and they agree for free",
+        m.net_internal_area
+    );
+    let v = violations(&doc);
+    assert!(v.is_empty(), "M1 state: {v:?}");
 }
 
 /// The battery is now allowed to REACH the state M1 lived in. Written as its own
@@ -782,10 +1036,7 @@ fn the_battery_reaches_an_all_usable_document() {
             mutate(&mut doc, &mut rng);
             if !doc.zones.is_empty()
                 && doc.zones.iter().all(|z| {
-                    !matches!(
-                        z.zone_type,
-                        ZoneType::Circulation | ZoneType::Core | ZoneType::Unassigned
-                    )
+                    crate::is_usable_zone(z.zone_type)
                 })
             {
                 all_usable += 1;

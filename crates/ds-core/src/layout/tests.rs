@@ -2780,7 +2780,7 @@ fn oriented_fill_insights_are_correct_nia_le_gea_and_pax_is_seated() {
             generate(&mut doc, &Program::default(), seed, false);
 
             let gea = doc.floor_area();
-            let (areas, spanning) = crate::effective_zone_areas(&doc);
+            let (areas, spanning) = crate::raw_zone_areas_unscaled(&doc);
             let nia: f64 = areas.iter().sum();
             // (1) NIA can never exceed GEA — the whole point of the fix.
             assert!(
@@ -3059,7 +3059,7 @@ fn stress_shapes() -> Vec<(String, Vec<(f64, f64)>)> {
 /// Assert every insights invariant on one generated document.
 fn assert_insights_invariants(doc: &Document, tag: &str) {
     let gea = doc.floor_area();
-    let (areas, spanning) = crate::effective_zone_areas(doc);
+    let (areas, spanning) = crate::raw_zone_areas_unscaled(doc);
     // (4) finite, non-negative areas.
     for (i, a) in areas.iter().enumerate() {
         assert!(a.is_finite(), "{tag}: zone[{i}] area is NaN/inf ({a})");
@@ -3138,7 +3138,7 @@ fn nia_never_exceeds_gea_under_room_heavy_tilted_plates() {
                     generate(&mut doc, prog, seed, false);
                     let gea = doc.floor_area();
                     if gea <= 0.0 { continue; }
-                    let (areas, _) = crate::effective_zone_areas(&doc);
+                    let (areas, _) = crate::raw_zone_areas_unscaled(&doc);
                     let nia: f64 = areas.iter().sum();
                     let ratio = nia / gea;
                     if ratio > worst {
@@ -3186,7 +3186,7 @@ fn large_bare_open_plan_axis_plates_are_not_de_overlapped() {
                         max_frac = max_frac.max(z.area_on(plate.as_deref()) / floor);
                     }
                 }
-                let (_, spanning) = crate::effective_zone_areas(&doc);
+                let (_, spanning) = crate::raw_zone_areas_unscaled(&doc);
                 if spanning.is_some() {
                     misfires += 1;
                 }
@@ -3217,7 +3217,7 @@ fn stress_insights_invariants_over_shape_space() {
                 generate(&mut doc, &Program::default(), seed, false);
                 let tag = format!("{name} @{th:.2}rad seed {seed}");
                 assert_insights_invariants(&doc, &tag);
-                let (_, spanning) = crate::effective_zone_areas(&doc);
+                let (_, spanning) = crate::raw_zone_areas_unscaled(&doc);
                 if spanning.is_some() {
                     oriented_hits += 1;
                 }
@@ -3578,7 +3578,7 @@ fn axis_aligned_plates_are_never_de_overlapped() {
         for seed in 1u64..=8 {
             let mut doc = room_from_corners(&corners);
             generate(&mut doc, &Program::default(), seed, false);
-            let (areas_eff, spanning) = crate::effective_zone_areas(&doc);
+            let (areas_eff, spanning) = crate::raw_zone_areas_unscaled(&doc);
             assert!(
                 spanning.is_none(),
                 "{name} seed {seed}: axis-aligned plate was WRONGLY de-overlapped (spanning={spanning:?})"
@@ -3734,7 +3734,7 @@ fn walking_area_is_unified_no_white_floor() {
         // (b) NIA ≤ GEA — the merged walking polys are disjoint from every
         // other zone, so they never double-count floor.
         let gea = doc.floor_area();
-        let (areas, _) = crate::effective_zone_areas(&doc);
+        let (areas, _) = crate::raw_zone_areas_unscaled(&doc);
         let nia: f64 = areas.iter().sum();
         assert!(nia <= gea + 1e-6, "seed {seed}: NIA {nia:.2} > GEA {gea:.2}");
 
@@ -4712,7 +4712,7 @@ fn unassigned_counts_in_nia_but_never_in_usable() {
         let mut doc = real_plate_doc();
         generate(&mut doc, &program, seed, false);
         let gea = doc.floor_area();
-        let (areas, _) = crate::effective_zone_areas(&doc);
+        let (areas, _) = crate::raw_zone_areas_unscaled(&doc);
         let nia: f64 = areas.iter().sum();
         assert!(nia <= gea + 1e-6, "seed {seed}: NIA {nia:.2} > GEA {gea:.2}");
 
@@ -5047,7 +5047,7 @@ fn edited_walls_cannot_produce_absurd_metrics() {
     doc.walls.retain(|w| !outer.contains(&w.id));
 
     let gea = doc.floor_area();
-    let (areas, _) = crate::effective_zone_areas(&doc);
+    let (areas, _) = crate::raw_zone_areas_unscaled(&doc);
     let nia: f64 = areas.iter().sum::<f64>().min(gea);
     let usable = crate::usable_area(&doc, &areas);
     let eff = if nia > 0.0 { usable / nia * 100.0 } else { 0.0 };
