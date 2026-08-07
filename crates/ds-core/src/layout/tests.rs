@@ -1627,10 +1627,29 @@ fn bench_pairs_false_reproduces_single_rows() {
     let mut col = cols.into_values().max_by_key(|v| v.len()).unwrap();
     col.sort_by(|a, b| a.y.partial_cmp(&b.y).unwrap());
     assert!(col.len() >= 3);
+    // REWRITTEN, not relaxed, when the neighbourhood spread landed.
+    //
+    // The property this test exists for is the SINGLE-ROW CONVENTION: with
+    // `bench_pairs` off, rows are unrotated and sit on the uniform single-row
+    // lattice — never back-to-back in pairs. It used to assert that every
+    // consecutive gap equals exactly one pitch, which quietly also asserted that
+    // every lattice line is USED. The spread deliberately leaves lines unused so
+    // the field reaches across the whole wing instead of stacking at one edge,
+    // so consecutive gaps became 2 × pitch and the old form failed.
+    //
+    // The invariant is therefore stated as what it always meant: every gap is a
+    // WHOLE NUMBER of single-row pitches. That is strictly stronger than "rows
+    // are on the lattice" and it still catches the thing the test guards — a
+    // bench pair's gap is `desk_h + SPINE_GAP` (0.95 m here), which is not a
+    // multiple of 1.7 m, so pairing under `bench_pairs: false` still reds.
     let pitch_y = program.desk_h + program.desk_clearance_m;
     for w in col.windows(2) {
         let gap = w[1].y - w[0].y;
-        assert!((gap - pitch_y).abs() < 1e-6, "row pitch {gap:.3} != single-row {pitch_y:.3}");
+        let n = (gap / pitch_y).round();
+        assert!(
+            n >= 1.0 && (gap - n * pitch_y).abs() < 1e-6,
+            "row gap {gap:.3} is not a whole multiple of the single-row pitch {pitch_y:.3}"
+        );
     }
 }
 
@@ -3881,13 +3900,28 @@ fn golden_fingerprint(doc: &Document, program: &Program) -> String {
 /// (`support_spaces = false`), and an EXPLICIT `rooms` program, over a plain
 /// rectangle, the L plate and the user's real multi-wing plate.
 ///
-/// PROVENANCE. Last re-captured for the circulation workstream: Phase 1b (the
-/// shape conjunct). Two of the ten cases moved; component, wall, zone and desk
-/// counts were identical in all ten, and only `total` and the digest changed —
-/// the classifier re-types leftover floor without moving geometry. The digest
-/// now also pins `Zone.origin` and the wasted-floor penalty, so a silent
-/// re-flagging of drawn-vs-residual trips it. Re-captured deliberately, never
-/// relaxed (CLAUDE.md).
+/// PROVENANCE. Last re-captured for **Q3-F, the neighbourhood spread**
+/// (`packing.rs`). All ten cases moved, and the shape of the move is the
+/// evidence that it is the intended one:
+///
+///   * **every desk count is identical** — 21 · 25 · 20 · 88 · 88 · 88 · 26 ·
+///     88 · 88 · 24, unchanged in all ten;
+///   * component and wall counts identical in all ten;
+///   * zone counts moved in two cases only (real_plate seeds 1 and 3, 40 → 34),
+///     because a field that now reaches across its wing leaves fewer stranded
+///     pockets for the residual pass to name;
+///   * `total` and the digest moved everywhere, which is what a change of
+///     POSITION with no change of PROGRAMME looks like.
+///
+/// That is the whole claim of the spread: the same plan, distributed instead of
+/// stacked against one edge. Measured on the sample plate, the dominant wing's
+/// desks went from covering 8.1 m of a 14.8 m field to 12.5 m — 55% → 84% —
+/// with the seat count unchanged at 92.
+///
+/// Before that, Phase 1b (the shape conjunct): two cases moved, counts identical
+/// in all ten. The digest also pins `Zone.origin` and the wasted-floor penalty,
+/// so a silent re-flagging of drawn-vs-residual trips it. Re-captured
+/// deliberately, never relaxed (CLAUDE.md).
 ///
 /// The expected strings were captured from the generator as it stood; they are
 /// the behavioural contract, NOT a hand-derived truth. Regenerating them is
@@ -3964,16 +3998,16 @@ fn golden_generate_output_is_frozen() {
     cases.push(("explicit_rooms/l_plate/seed3".to_string(), l_room(), prog_rooms, 3));
 
     const EXPECTED: [&str; 10] = [
-"default/rect20x14/seed1 = c72 w52 z11 desks21 total87876523 #1a0244c3d88eeb3c",
-            "default/rect20x14/seed2 = c80 w52 z11 desks25 total89274625 #1fca633eeb04543f",
-            "default/rect20x14/seed3 = c70 w52 z11 desks20 total86967629 #52556c4029d00bfc",
-            "default/real_plate/seed1 = c222 w155 z40 desks88 total90806929 #54c08e269f5425f8",
-            "default/real_plate/seed2 = c222 w155 z35 desks88 total90363979 #222d5680249e3a7a",
-            "default/real_plate/seed3 = c222 w155 z40 desks88 total90824610 #c22488cf2b5b4e08",
-            "no_support/rect20x14/seed1 = c68 w22 z4 desks26 total92565832 #991c040294e31e67",
-            "no_support/real_plate/seed2 = c192 w101 z38 desks88 total94429991 #a040b9f4bb97fed1",
-            "explicit_rooms/real_plate/seed1 = c209 w125 z26 desks88 total88680743 #834c964e4068e5d5",
-            "explicit_rooms/l_plate/seed3 = c63 w33 z10 desks24 total87682433 #e9ed372ac7f562ed",
+"default/rect20x14/seed1 = c72 w52 z11 desks21 total87876523 #2fcc5ec3cf5e079e",
+            "default/rect20x14/seed2 = c80 w52 z11 desks25 total89274625 #c293b33800e054eb",
+            "default/rect20x14/seed3 = c70 w52 z11 desks20 total86967629 #8364ab2af8a362bc",
+            "default/real_plate/seed1 = c222 w155 z34 desks88 total90929428 #6575e587eaa8cef0",
+            "default/real_plate/seed2 = c222 w155 z35 desks88 total90349023 #167cc7e101189976",
+            "default/real_plate/seed3 = c222 w155 z34 desks88 total90889172 #ba4b6c959c324aa3",
+            "no_support/rect20x14/seed1 = c68 w22 z4 desks26 total92213202 #22afe40286b75b52",
+            "no_support/real_plate/seed2 = c192 w101 z38 desks88 total94569068 #1572aea14d0ff47a",
+            "explicit_rooms/real_plate/seed1 = c209 w125 z26 desks88 total88630957 #745a1d0b9893da6e",
+            "explicit_rooms/l_plate/seed3 = c63 w33 z10 desks24 total87841010 #2c4c9d19abba5d0b",
     ];
     assert_eq!(cases.len(), EXPECTED.len(), "case list and expectations must line up");
 

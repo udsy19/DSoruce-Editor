@@ -86,11 +86,26 @@ fn push_loop(doc: &mut Document, corners: &[Point], thickness: f64) {
     }
 }
 
+// The last `generate` a fixture build ran, so `Editor::load_fixture` can hand
+// the debug overlay the same diagnostics a live generate would produce.
+// Thread-local rather than threaded through `build`'s signature, which every
+// test calls: the alternative was changing eight call sites to ignore a tuple.
+thread_local! {
+    static LAST_DIAG: std::cell::RefCell<layout::LayoutDiag> =
+        std::cell::RefCell::new(layout::LayoutDiag::default());
+}
+
+/// The diagnostics from the most recent fixture build on this thread.
+pub(crate) fn last_diag() -> layout::LayoutDiag {
+    LAST_DIAG.with(|d| d.borrow().clone())
+}
+
 /// F1's base: the plate walls, then one deterministic `generate`.
 fn generated_plate() -> Document {
     let mut doc = Document::new();
     push_loop(&mut doc, &plate_boundary(), 0.15);
-    layout::generate(&mut doc, &fixture_program(), FIXTURE_SEED, false);
+    let diag = layout::generate(&mut doc, &fixture_program(), FIXTURE_SEED, false);
+    LAST_DIAG.with(|d| *d.borrow_mut() = diag);
     doc
 }
 

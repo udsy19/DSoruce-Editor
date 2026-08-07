@@ -260,6 +260,22 @@ export class Editor {
         }
     }
     /**
+     * **What the last `generate` decided**, for the debug overlay — see
+     * `layout/diag.rs`. Empty until `generate` has run in this session.
+     *
+     * The generator's own account of itself. It exists to point at a mechanism
+     * when a plate comes out with empty wings; it is explicitly NOT a gate
+     * input, because a check that reads this is reading the thing it checks.
+     * @returns {any}
+     */
+    layout_diag() {
+        const ret = wasm.editor_layout_diag(this.__wbg_ptr);
+        if (ret[2]) {
+            throw takeFromExternrefTable0(ret[1]);
+        }
+        return takeFromExternrefTable0(ret[0]);
+    }
+    /**
      * Score the current document against a `Program` without regenerating.
      * @param {any} program
      * @returns {any}

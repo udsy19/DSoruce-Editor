@@ -121,6 +121,7 @@ const ZOOMS = [
 ]
 const manifest = []
 const collisions = []
+let lastScale = null
 
 for (const d of docs) {
   for (const z of ZOOMS) {
@@ -196,6 +197,9 @@ for (const d of docs) {
           png: canvas.toDataURL('image/png').slice('data:image/png;base64,'.length),
           texts,
           furniture,
+          // Metres per pixel, so a pixel-census gate (scripts/gates/deadspace.py)
+          // can convert a distance in pixels into a distance a person walks.
+          mPerPx: 1 / scale,
         }
       },
       { doc: d, zoom: z, w: W, h: H },
@@ -220,6 +224,7 @@ for (const d of docs) {
     // Label OVER FURNITURE — the defect the captures actually showed.
     const rect = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h
     const onFurniture = boxes.filter((t) => png.furniture.some((f) => rect(t, f))).map((t) => t.t)
+    if (z.name === 'fit') lastScale = png.mPerPx
     collisions.push({
       id: d.id,
       zoom: z.name,
@@ -237,6 +242,7 @@ for (const d of docs) {
   }
   manifest.push({
     id: d.id,
+    mPerPx: lastScale,
     walls: d.state.walls.length,
     components: d.state.components.length,
     zones: (d.state.zones ?? []).length,

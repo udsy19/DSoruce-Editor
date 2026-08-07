@@ -1,57 +1,62 @@
 [
   {
     "id": "F1",
+    "mPerPx": 0.05152439024390244,
     "walls": 131,
     "components": 229,
-    "zones": 25,
+    "zones": 24,
     "outlineSegs": 554,
     "plateState": "traced",
     "gea": 930.06,
-    "nia": 902.2,
-    "efficiency": 72.6
+    "nia": 899.79,
+    "efficiency": 72.8
   },
   {
     "id": "F2",
+    "mPerPx": 0.05152439024390244,
     "walls": 135,
     "components": 229,
-    "zones": 25,
+    "zones": 24,
     "outlineSegs": 570,
     "plateState": "traced",
     "gea": 930.06,
-    "nia": 902.2,
-    "efficiency": 72.6
+    "nia": 899.79,
+    "efficiency": 72.8
   },
   {
     "id": "F3",
+    "mPerPx": 0.05152439024390244,
     "walls": 134,
     "components": 229,
-    "zones": 25,
+    "zones": 24,
     "outlineSegs": 564,
     "plateState": "unresolved",
     "gea": 1594.94,
-    "nia": 902.2,
-    "efficiency": 72.6
+    "nia": 899.79,
+    "efficiency": 72.8
   },
   {
     "id": "F4",
+    "mPerPx": 0.05152439024390244,
     "walls": 131,
     "components": 229,
-    "zones": 25,
+    "zones": 24,
     "outlineSegs": 554,
     "plateState": "traced",
     "gea": 930.06,
-    "nia": 915.12,
-    "efficiency": 69.8
+    "nia": 912.71,
+    "efficiency": 70
   },
   {
     "id": "F5",
+    "mPerPx": 0.05152439024390244,
     "walls": 136,
     "components": 225,
-    "zones": 24,
+    "zones": 23,
     "outlineSegs": 573,
     "plateState": "traced",
     "gea": 930.06,
-    "nia": 893.39,
-    "efficiency": 70.9
+    "nia": 890.98,
+    "efficiency": 71.1
   }
 ]

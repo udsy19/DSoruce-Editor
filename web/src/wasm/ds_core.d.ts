@@ -111,6 +111,15 @@ export class Editor {
      */
     get_cad_json(): string;
     /**
+     * **What the last `generate` decided**, for the debug overlay — see
+     * `layout/diag.rs`. Empty until `generate` has run in this session.
+     *
+     * The generator's own account of itself. It exists to point at a mechanism
+     * when a plate comes out with empty wings; it is explicitly NOT a gate
+     * input, because a check that reads this is reading the thing it checks.
+     */
+    layout_diag(): any;
+    /**
      * Score the current document against a `Program` without regenerating.
      */
     layout_score(program: any): any;
@@ -371,6 +380,7 @@ export interface InitOutput {
     readonly editor_from_snapshot: (a: any) => [number, number, number];
     readonly editor_generate: (a: number, b: any, c: bigint, d: number) => [number, number, number];
     readonly editor_get_cad_json: (a: number) => [number, number];
+    readonly editor_layout_diag: (a: number) => [number, number, number];
     readonly editor_layout_score: (a: number, b: any) => [number, number, number];
     readonly editor_load_fixture: (a: number, b: number, c: number) => [number, number];
     readonly editor_merge_zones: (a: number, b: number, c: number) => [number, number, number];

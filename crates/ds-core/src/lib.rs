@@ -118,6 +118,10 @@ pub struct Editor {
     /// "nothing changed" from "changed back to an equal value" without
     /// serializing the document. See [`Editor::revision`].
     rev: u64,
+    /// What the last `generate` decided — the debug overlay's source
+    /// (`layout/diag.rs`). Not part of the document, so it never rides a
+    /// snapshot, a save, or an export.
+    diag: layout::LayoutDiag,
 }
 
 /// The open-plan share of headcount seated at open workstations.
@@ -463,6 +467,7 @@ impl Editor {
         Editor {
             doc: Document::new(),
             rev: 0,
+            diag: Default::default(),
         }
     }
 
@@ -735,6 +740,16 @@ impl Editor {
         serde_wasm_bindgen::to_value(&self.doc).map_err(|e| JsValue::from_str(&e.to_string()))
     }
 
+    /// **What the last `generate` decided**, for the debug overlay — see
+    /// `layout/diag.rs`. Empty until `generate` has run in this session.
+    ///
+    /// The generator's own account of itself. It exists to point at a mechanism
+    /// when a plate comes out with empty wings; it is explicitly NOT a gate
+    /// input, because a check that reads this is reading the thing it checks.
+    pub fn layout_diag(&self) -> Result<JsValue, JsValue> {
+        serde_wasm_bindgen::to_value(&self.diag).map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
     /// **The wall network's outline**, as strokes: `[{ a, b, wall, exterior,
     /// glazed }]` in world meters — see `wallnet.rs`.
     ///
@@ -793,7 +808,7 @@ impl Editor {
     /// `cargo test`, which is precisely why the panel's arithmetic went untested.
     #[cfg(test)]
     pub(crate) fn for_test(doc: Document) -> Editor {
-        Editor { doc, rev: 0 }
+        Editor { doc, rev: 0, diag: Default::default() }
     }
 
     /// `zone_rows`, for the invariant battery. Reads the Zones tab's actual rows
@@ -898,7 +913,7 @@ impl Editor {
         self.touch();
         let program: layout::Program =
             serde_wasm_bindgen::from_value(program).map_err(|e| JsValue::from_str(&e.to_string()))?;
-        layout::generate(&mut self.doc, &program, seed, keep_confirmed);
+        self.diag = layout::generate(&mut self.doc, &program, seed, keep_confirmed);
         serde_wasm_bindgen::to_value(&layout::score(&self.doc, &program))
             .map_err(|e| JsValue::from_str(&e.to_string()))
     }
@@ -987,6 +1002,10 @@ impl Editor {
         let doc = fixtures::build(name)
             .ok_or_else(|| JsValue::from_str(&format!("no such fixture: {name}")))?;
         self.doc = doc;
+        // The fixture ran `generate` itself, so carry its diagnostics over —
+        // otherwise the debug overlay would be blank on exactly the documents
+        // the capture harness renders.
+        self.diag = fixtures::last_diag();
         Ok(())
     }
 
@@ -1004,7 +1023,7 @@ impl Editor {
         let mut doc: Document =
             serde_json::from_str(&s).map_err(|e| JsValue::from_str(&e.to_string()))?;
         doc.backfill_seats();
-        Ok(Editor { doc, rev: 0 })
+        Ok(Editor { doc, rev: 0, diag: Default::default() })
     }
 
     // ----- Zone ops — thin wrappers over `Document` methods. Each returns the

@@ -52,6 +52,7 @@ use crate::zone::{Zone, ZoneOrigin, ZoneShape, ZoneType};
 use serde::{Deserialize, Serialize};
 
 mod conform;
+mod diag;
 mod emit;
 mod grid;
 mod jobs;
@@ -69,6 +70,7 @@ mod tests;
 // generator below (and `lib.rs`, which reaches for `Program` / `SpaceKind` /
 // `score`) sees exactly the same names it did when this was one file.
 pub(crate) use self::conform::*;
+pub use self::diag::{DiagRect, LayoutDiag, RegionDesks};
 pub(crate) use self::emit::*;
 pub(crate) use self::grid::*;
 pub(crate) use self::jobs::*;
@@ -104,7 +106,16 @@ pub(crate) use self::seed::*;
 /// that find no band slot fall back to interior clear pockets (both
 /// orientations), and any remaining shortfall is reported honestly through
 /// `LayoutScore::program_fit` rather than silently dropped.
-pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed: bool) {
+pub fn generate(
+    doc: &mut Document,
+    program: &Program,
+    seed: u64,
+    keep_confirmed: bool,
+) -> LayoutDiag {
+    // The generator's own account of what it decided — see `diag.rs`. Returned
+    // rather than stored, and returning it is source-compatible: every existing
+    // caller uses `generate(..)` in statement position.
+    let mut diag = LayoutDiag::default();
     // Generated walls (room partitions/glass fronts) are OUTPUT of a previous
     // run: clear them FIRST — and only them, never user-drawn/imported walls —
     // so the plate trace, wall bbox and interior-wall snapshot below see the
@@ -181,7 +192,7 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
 
     let (min_x, min_y, max_x, max_y) = match doc.wall_bbox() {
         Some(b) => b,
-        None => return, // no boundary → nothing to place
+        None => return diag, // no boundary → nothing to place
     };
 
     // The floor-plate polygon: the largest closed loop through the walls. For a
@@ -251,6 +262,14 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
     let use_oriented_field =
         !is_rectangular && plate_area > 0.0 && axis_cover < ORIENTED_COVER_FRAC * plate_area;
     let single_region = regions.is_empty();
+    diag.plate_area = plate_area;
+    diag.bbox_area = bbox_area;
+    diag.is_rectangular = is_rectangular;
+    diag.axis_cover = axis_cover;
+    diag.axis_cover_frac = if plate_area > 0.0 { axis_cover / plate_area } else { 0.0 };
+    diag.use_oriented_field = use_oriented_field;
+    diag.single_region = single_region;
+    diag.desk_target = remaining_desks;
     if single_region {
         regions.push(geometry::Rect { x0: min_x, y0: min_y, x1: max_x, y1: max_y });
     }
@@ -373,6 +392,27 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
         })
         .collect();
 
+    for (i, r) in regions.iter().enumerate() {
+        diag.rects.push(DiagRect::of(*r, "region", Some(i)));
+    }
+    for (i, p) in plans.iter().enumerate() {
+        diag.rects.push(DiagRect::of(p.field, "field", Some(i)));
+        diag.rects.push(DiagRect::of(p.pocket, "pocket", Some(i)));
+        if let Some(r) = p.spine {
+            diag.rects.push(DiagRect::of(r, "spine", Some(i)));
+        }
+        if let Some(r) = p.connector {
+            diag.rects.push(DiagRect::of(r, "connector", Some(i)));
+        }
+        if let Some(r) = p.link {
+            diag.rects.push(DiagRect::of(r, "link", Some(i)));
+        }
+        for r in &p.seams {
+            diag.rects.push(DiagRect::of(*r, "seam", Some(i)));
+        }
+    }
+    diag.region_desks = vec![RegionDesks::default(); plans.len()];
+
     // Full-size circulation rects: rooms must not intrude on them, and pocket
     // rooms orient their door toward the nearest one.
     let circ_rects: Vec<geometry::Rect> = plans
@@ -482,10 +522,13 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
         let d_alloc = allocate_desks(program, &plans, clear, remaining_desks);
         for (i, plan) in plans.iter().enumerate() {
             let region_no = if single_region { None } else { Some((i + 1) as u32) };
-            placed_desks += pack_desks(
+            let got = pack_desks(
                 doc, program, plan, d_alloc[i], region_no, /*emit_zones=*/ true,
                 plate.as_deref(), &iwalls, &mut obstacles, lat, clear, choices,
             );
+            diag.region_desks[i].allocated = d_alloc[i];
+            diag.region_desks[i].placed = got;
+            placed_desks += got;
         }
         // --- Top-up pass: reclaim allocation lost to rooms/geometry. Smallest
         // wings first: the proportional allocation already loaded the big regions.
@@ -502,6 +545,7 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
                     doc, program, plan, shortfall, region_no, /*emit_zones=*/ false,
                     plate.as_deref(), &iwalls, &mut obstacles, lat, clear, choices,
                 );
+                diag.region_desks[i].topped_up += got;
                 shortfall = shortfall.saturating_sub(got);
             }
         }
@@ -548,6 +592,10 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
             // headroom, so the fill lands ON the density floor rather than past it.
             let desks_now = doc.components.iter().filter(|c| c.category == "Desk").count() as f64;
             let budget = (seat_cap - meeting_seats - desks_now).max(0.0) as u32;
+            diag.fill_seat_cap = seat_cap;
+            diag.fill_meeting_seats = meeting_seats;
+            diag.fill_desks_before = desks_now;
+            diag.fill_budget = budget;
             if budget > 0 {
                 // The spine + seam corridors are not yet obstacles (connector/link
                 // already are); add them at FULL drawn width so the fill can never
@@ -576,6 +624,7 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
                     doc, program, &fp, budget, None, /*emit_zones=*/ false,
                     plate.as_deref(), &iwalls, &mut obstacles, lat, clear, choices,
                 );
+                diag.fill_placed = (doc.components.len() - before) as u32;
                 obstacles.truncate(guard); // drop the temporary corridor guards
                 // Zone each newly seated fill desk (a Workspace tile the size of
                 // the desk footprint — NOT the pitch cell, so bench-paired tiles
@@ -705,4 +754,6 @@ pub fn generate(doc: &mut Document, program: &Program, seed: u64, keep_confirmed
     // Model the facade's glazing module. Runs AFTER zones and components so the
     // ids they were allocated (the workbook's Room IDs) never move.
     glaze_facade(doc);
+
+    diag
 }

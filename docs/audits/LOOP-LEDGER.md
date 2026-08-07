@@ -1020,3 +1020,134 @@ of further work on `paint.ts` will move those rows.
 **Standing hazard for whoever runs the board next:** clear `out/` first. Grading
 an earlier session's renders against freshly written ground truth produced two
 false regressions (G6, G7) here and cost real diagnosis time.
+
+---
+
+# QUEUE 3 CONTINUATION — F → B → D2
+
+## Q3-F F1 — the dead wings, DIAGNOSED · **DONE**
+
+The brief listed five suspects and required the finding written before any fix.
+So the instrument came first: `crates/ds-core/src/layout/diag.rs` +
+`Editor::layout_diag()` — `generate` now returns what it decided (regions,
+coverage fraction, per-region field/band/spine/seam rects, desk allocation vs
+placement, the leftover fill's budget arithmetic). **It is explicitly not a gate
+input**: it is the generator's own account of itself, which
+`.claude/rules/gate-independence.md` forbids a check from consuming. Its job is to
+name a mechanism.
+
+### What it printed on the sample plate (F1)
+
+```
+plate 930.1  bbox 1594.9  rectangular? false
+axis_cover 808.0  frac 0.869  (gate 0.70)  oriented? false  single? false
+desk_target 90
+FILL: seat_cap 110  meeting_seats 18  desks_before 90  =>  budget 2  placed 2
+  R0  16.0 x 38.0  area 608.0  desks alloc 83  placed 83  topup 7
+  R1  11.5 x 10.0  area 115.0  desks alloc  5  placed  0  topup 0
+  R2  10.0 x  8.5  area  85.0  desks alloc  2  placed  0  topup 0
+  fields:  R0 14.8 x 36.2      R1 10.0 x 3.5      R2 8.5 x 2.0
+  spine 2   seam 4   connector 0   link 0
+  DESKS 92, spanning x 12.9…21.0 of a field running x 11.6…26.4
+```
+
+### Suspects, resolved
+
+| suspect | verdict |
+|---|---|
+| `decompose_plate` discards the wings | **ELIMINATED** — all three wings found |
+| `REGION_MIN_DIM` / `REGION_MIN_AREA` / `REGION_CELL` too aggressive | **ELIMINATED** — 808 of 930 m² covered |
+| coverage under `ORIENTED_COVER_FRAC` 0.70 | **ELIMINATED** — 0.869, the axis path is correct |
+| imported keep-outs cover those areas | **ELIMINATED** — the fixture has none |
+| the leftover fill stops early | **CONFIRMED** — budget **2**, because `seat_cap 110 − meeting 18 − desks 90` |
+
+**None of them was the main mechanism.** The measurement named a sixth:
+
+> `pack_desks` sweeps outer rows from the field's near edge and **stops the
+> instant it has placed its allocation**. With a target below what the field
+> holds, every desk stacks against one edge. The dominant wing's 90 desks
+> occupied **8.1 m of a 14.8 m field** — 55% — with ~240 m² of its own field
+> empty beside them, while the plan sat at professional density (10.3 m²/desk,
+> inside the 8–12 band). A **distribution** failure masked by an **aggregate**
+> density target.
+
+Two secondary mechanisms, both real and both recorded: R1/R2 were allocated 7
+desks between them and placed **0**, because their room bands left fields **3.5 m
+and 2.0 m deep** — a 1.6 × 0.8 desk with 0.9 m clearance cannot sit in 2.0 m; and
+**122 m² of plate lies outside every region**.
+
+## Q3-F — the neighbourhood spread · **DONE, and it did less than it looks**
+
+`packing.rs` now distributes the rows the target buys across the whole field
+instead of stacking them at one edge. Bench pairs move as pairs, every used line
+is still a global-lattice line, and the spread applies **only to the primary
+per-region pass** (`emit_zones == true`) — the top-up and whole-plate fill exist
+to close gaps, and striding them strides over the very gaps they close. That was
+measured, not reasoned: with the spread on every pass the plate fell **92 → 70
+desks** and the fill placed **0 of its 22-desk budget**.
+
+Result: desks span **x 12.9…25.4**, covering **84% of the field width** (was
+55%), seat count **unchanged at 92**.
+
+**Goldens re-captured, and the shape of the move is the evidence.** All ten cases
+moved; **every desk count is identical** (21·25·20·88·88·88·26·88·88·24),
+component and wall counts identical in all ten, zone counts moved in two cases
+only (40 → 34, a field that reaches across its wing strands fewer pockets for the
+residual pass). Position changed, programme did not. Provenance stamp updated in
+place; never relaxed.
+
+`bench_pairs_false_reproduces_single_rows` was **rewritten, not relaxed**. It
+asserted every consecutive row gap equals exactly one pitch, which quietly also
+asserted that every lattice line is USED — the spread deliberately leaves lines
+unused. Restated as the property it always meant: every gap is a **whole multiple**
+of the single-row pitch. Still catches bench pairing under `bench_pairs: false`
+(a pair's gap is 0.95 m, not a multiple of 1.7 m).
+
+## The coverage instrument, and the number that corrected me
+
+`scripts/gates/deadspace.py` — **one instrument, two subjects**, both measured
+from delivered pixels: plate by flood fill from the frame, ink by "darker than
+background or strongly coloured" (a pale wash is floor, not ink), dead space by
+chamfer distance transform. Neither side reads a producer's plate polygon, so the
+threshold is **reference-derived**, not calibrated on the artifact under test.
+
+| subject | dead space (>3 m from any ink) |
+|---|---|
+| **qbiq reference report, page 3** | **11.1%** ← the target |
+| DSource F1, before the spread | 19.4% |
+| DSource F1, after the spread | **19.0%** |
+
+**The spread moved dead space 0.4 points**, and that is the most useful thing this
+instrument has produced. The capture looks materially better — the field now
+reads as three desk neighbourhoods with aisles between them — and I would have
+reported it as progress on rubric row 8. It is not: the dead floor is the 122 m²
+outside every region plus the two shallow wings, and no amount of redistribution
+*inside* a field can reach any of it. Row 8 stays at **2**.
+
+`RATCHET = 0.20` is today's number plus margin — a ratchet so the gap cannot
+widen, explicitly **not** the target, which is the reference's 11.1%.
+
+## Status — HANDOFF, not closure
+
+| item | state |
+|---|---|
+| Q3-F **F1** (diagnose with instruments) | **DONE** — mechanism named, five suspects resolved, a sixth found |
+| Q3-F spread | **DONE** — distribution fixed inside fields; dead space essentially unmoved |
+| Q3-F **F2** (spine as connected geometry) | **NOT DONE** — measured: 2 spines / 3 regions, 0 connectors, 0 links |
+| Q3-F **F3/F4** | **NOT DONE** |
+| Coverage gate on the board | **NOT DONE** — `deadspace.py` runs standalone; it is not wired into `run-all.sh`, so the board's 13/13 does not include it |
+| Q3-B area tool | **NOT STARTED** |
+| Q3-D2 symbol extraction | **NOT STARTED** |
+
+The three mechanisms that own the remaining 19% are now named and measured, which
+is what the next session needs: **(1)** 122 m² of plate outside every region —
+`decompose_plate`'s maximal-rectangle tiling leaves the residue; **(2)** R1/R2's
+fields at 3.5 m and 2.0 m after their room bands — `allocate_rooms` gives the
+non-dominant wings the whole support programme; **(3)** the fill's aggregate
+`seat_cap`, which is spent by the dominant wing before the far wings are reached.
+
+Rust **182 green**, goldens re-captured with a stamp; verification battery
+**42/42**. The board was re-run against a clean `out/` AFTER the generator
+change — the artifacts it grades all moved — and came back **13/13 ALL GREEN**
+(G12's check count shifted 603 → 599 with the new plan, which is the drawing set
+grading a different document, not a weaker gate).

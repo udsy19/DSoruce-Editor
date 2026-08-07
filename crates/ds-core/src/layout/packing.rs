@@ -171,6 +171,73 @@ pub(crate) fn pack_desks(
             break 'desks;
         }
 
+        // ---- NEIGHBOURHOOD SPREAD ------------------------------------------
+        //
+        // The sweep below stops the instant it has placed `desk_target` desks.
+        // With a target BELOW what the field holds, that packed every desk
+        // against the field's near edge and left the rest of the wing bare.
+        //
+        // MEASURED on the sample plate (`Editor::layout_diag`, F1): the dominant
+        // wing's field is 14.8 × 36.2 m; its 90 desks occupied x 12.9…21.0 —
+        // **8.1 m of 14.8** — with ~240 m² of its own field empty beside them.
+        // The plan was at professional density (10.3 m²/desk, inside the 8–12
+        // band) and geometrically collapsed into a column. Every one of the five
+        // suspects the brief listed was eliminated by the same instrument: the
+        // decomposition found all three wings and covered 86.9% of the plate
+        // (gate 70%), so it is not `decompose_plate`, not `ORIENTED_COVER_FRAC`,
+        // and not keep-outs.
+        //
+        // So spread the rows the target DOES buy across the whole field instead
+        // of stacking them at one edge. The gaps that opens are not waste — they
+        // are the aisles between desk neighbourhoods, which is what makes an open
+        // field read as a plan rather than as a slab of furniture.
+        //
+        // Bench pairs move as PAIRS, so back-to-back rows stay back-to-back and
+        // the pairing convention is untouched; only which pair-lines are used
+        // changes, and each used line is still a global-lattice line.
+        let pairs_avail = if bench { (outer_n + 1) / 2 } else { outer_n };
+        let rows_needed = if inner_n > 0 {
+            ((desk_target as i64) + inner_n - 1) / inner_n
+        } else {
+            0
+        };
+        let units_needed = if bench { (rows_needed + 1) / 2 } else { rows_needed };
+        // Never denser than requested and never sparser than available.
+        let units_used = units_needed.clamp(1, pairs_avail.max(1));
+        // Map the u-th used unit onto the available range. Integer arithmetic, so
+        // the result is deterministic and every unit still lands on its lattice
+        // line — the spread chooses BETWEEN lattice lines, it does not invent
+        // positions between them.
+        // ONLY the primary per-region field pass spreads. `emit_zones` is exactly
+        // that flag: the top-up pass and the whole-plate leftover fill both pass
+        // `false`, and their whole job is to seat desks in the gaps a previous
+        // pass left. Spreading THEM would stride over the very gaps they exist to
+        // close — measured: with the spread applied to every pass the plate fell
+        // from 92 desks to 70 and the fill placed 0 of its 22-desk budget.
+        let spread_unit = |u: i64| -> i64 {
+            if !emit_zones || units_used >= pairs_avail || units_used <= 0 {
+                u
+            } else {
+                (u * (pairs_avail - 1)) / (units_used - 1).max(1)
+            }
+        };
+        let outer_at_spread = |o: i64| -> (f64, f64) {
+            if bench {
+                let (u, w) = (o / 2, o % 2);
+                outer_at(spread_unit(u) * 2 + w)
+            } else {
+                outer_at(spread_unit(o))
+            }
+        };
+        // The sweep now walks only the units it will use; without this the
+        // remapped indices would revisit the last line once `u` passed
+        // `units_used` and re-reject every slot as already occupied.
+        let outer_sweep = if !emit_zones {
+            outer_n
+        } else {
+            (if bench { units_used * 2 } else { units_used }).min(outer_n)
+        };
+
         // Cluster aisles accrue on the INNER axis only, capped to what the inner
         // slack absorbs so a bench aisle never costs a whole row (utilization wins;
         // the perimeter/seam corridors carry egress).
@@ -191,8 +258,8 @@ pub(crate) fn pack_desks(
         // rhythm — the exact "half-desk offset" tell §4.5 bans — and is gone.
         // Cross-region shortfall recovery is the top-up pass in `generate`.)
         let grid_start = obstacles.len();
-        'grid: for o in 0..outer_n {
-            let (outer_c, rot) = outer_at(o);
+        'grid: for o in 0..outer_sweep {
+            let (outer_c, rot) = outer_at_spread(o);
             for i in 0..inner_n {
                 if desks_here >= desk_target {
                     break 'grid;

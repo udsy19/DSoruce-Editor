@@ -42,14 +42,15 @@ silently taken.
 | 4 | **Figure/ground fill rule** | visual read of `@4x`; census pending | **4** | **4** | Furniture already fills white over the wash (`C.furnitureFill`), at 0.86 alpha rather than opaque. **Open:** the census inside a desk footprint (D1's stated gate) is NOT yet written, so this score is a read, not a measurement. |
 | 5 | **Furniture symbol fidelity** | `symbols.test.mjs` (46) + visual read | **3** | **3** | The architecture is right — world units, seats from the model, continuous LOD, and the task chair does draw seat/back/arms. What is missing is the *vocabulary* and the *provenance*: 9 categories, all authored rather than extracted. **Q3-D2 (extract the spec from the reference PDF) is not started**, so nothing here is measured against qbiq's actual geometry. |
 | 6 | **Label / tag collisions** | tag census at the canvas API (`capture-fixtures.mjs`) | **4** | **4** | label-on-label **0**; label-on-furniture **29 / 205**, down from **127 / 211** when tags were pinned to zone centres. Not 5 because of the 29, and because a zone rect wider than the room drawn inside it still lets a tag cross a wall (`OPEN WORKSPACE (2)`). |
-| 7 | **Circulation legibility** | visual read of `F1@fit`; evaluator not yet re-derived by a gate | **2** | **2** | A reader cannot trace entry → spine → rooms. There is no spine to trace: the ground is one undifferentiated field. **Q3-F not started.** |
-| 8 | **Plan uses the floor** | `manifest.json` + visual read | **2** | **2** | The desk field is one tall rectangle; the left third and the bottom of the plate carry no program at all. This is the largest remaining visual defect and it is a GENERATOR problem, not a renderer one. |
-| 9 | **Zone fill S/L conformance** | not yet instrumented | **?** | **?** | The spec's `zone_fill_targets` (S 86.2 ± 5, L 85.7 ± 3) are not yet checked against `ZONE` in `planStyle.ts`. Unscored rather than guessed. |
+| 7 | **Circulation legibility** | `Editor::layout_diag` (the generator's own account — diagnostic only, never a gate input) + visual read | **2** | **3** | Measured on F1: **2 spines for 3 regions, 0 entry connectors, 0 links, 4 seams**. The network is not connected and there is no entry anchor in the fixture. The spread opened real aisles between desk neighbourhoods, which is the first legible circulation the plan has had, but the drawn network is still not emitted as connected geometry. **Q3-F F2 not done.** |
+| 8 | **Plan uses the floor** | `scripts/gates/deadspace.py` — one pixel-census instrument run on BOTH the qbiq reference PDF and our delivered plan | **2** | **2** | **Reference 11.1% dead space** (>3 m from any ink); **DSource 19.4% → 19.0%** after the neighbourhood spread. The spread fixed distribution INSIDE the dominant field (desks 55% → 84% of its width, seat count unchanged) and moved dead space **0.4 points**, which is the finding: the empty floor is the 122 m² of plate no region covers plus two wings whose fields are 3.5 m and 2.0 m deep after their room bands. Still 2. |
+| 9 | **Zone fill S/L conformance** | `web/src/editor/zoneFillSpec.test.mjs` — band from the spec file, values parsed from `planStyle.ts` source | **5** | **5** | Was unscored, so it got measured, and **seven of eight zones failed saturation** — Workspace at S 55 against the spec's mean of 86. Hues untouched, S/L moved into the band, ground left neutral. |
 | 10 | **Paper sheet completeness** | `scripts/gates/run-all.sh` G1–G11 | **4** | **—** | The board is the instrument and it is green. Not yet re-run per fixture, so the edited population is unscored. |
 | 11 | **Metrics trustworthiness** | `metrics_tests.rs` (8 tests, 1 200 evaluations) + `statsPanel.test.mjs` | **5** | **5** | Was 1 — the panel showed GEA 1 m² beside NIA 138 m² and efficiency 1159%. One NIA owner, a plate that can say "unresolved", and a randomized battery that reaches broken plates. Three-part sabotage round; two parts shipped unguarded and now red under sabotage. |
 
-**Rows below 4: 5, 7, 8** (and 9 unscored). Rows 7 and 8 are the same root cause —
-the generator, not the renderer.
+**Rows below 4: 5, 7, 8.** Rows 7 and 8 are the same root cause — the generator,
+not the renderer — and `deadspace.py` has now quantified the gap to the reference
+(11.1% vs 19.0%) rather than leaving it as a read.
 
 ---
 
@@ -69,7 +70,17 @@ the generator, not the renderer.
 - **Metrics.** 120 seeds × 10 mutations from each of five fixtures. Non-vacuity
   asserted by requiring the population to include both `traced` and `unresolved`
   plates; it prints its census.
-- **What none of them see:** whether the plan is a *good* plan. Rows 7 and 8 are
-  scored from a human read of a capture, and they are the two lowest scores in the
-  table. That is the honest position and it should not be dressed up with a
-  number until there is an instrument behind it.
+- **Dead space.** One instrument, two subjects: the qbiq reference PDF page and
+  our delivered plan, both measured from pixels — plate by flood fill from the
+  frame, ink by "darker than background or strongly coloured" (a pale wash is
+  floor, not ink), dead by chamfer distance transform. Neither side reads a
+  producer's plate polygon, so the threshold is reference-derived rather than
+  calibrated on the artifact under test.
+- **`layout_diag` is NOT an instrument in this sense.** It is the generator's own
+  account of what it decided, which `.claude/rules/gate-independence.md` forbids a
+  gate from consuming. It is how a mechanism gets NAMED; every acceptance number
+  above comes from somewhere else.
+- **What none of them see:** whether the plan is a *good* plan. Row 7 is still
+  scored from a read of a capture plus the generator's own network counts, and it
+  is the lowest score in the table. That is the honest position and it should not
+  be dressed up with a number until there is an instrument behind it.
