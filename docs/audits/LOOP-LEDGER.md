@@ -988,3 +988,35 @@ but an earlier RUN's leftovers being graded — and it cost two false diagnoses
 before the baseline separated them.
 
 **Board now: 13/13.** Verification battery **42/42**.
+
+---
+
+# QUEUE 3 — STATUS AT THIS HANDOFF
+
+**Not closed.** Four of the seven work items are done; three are not started, and
+saying so is the point of an append-only ledger.
+
+| item | state |
+|---|---|
+| Phase 0 (fixtures · harness · rubric) | **DONE** |
+| Q3-A metrics collapse | **DONE** — repro reproduced (1466% at nia 1.2 m²), three mechanisms fixed, 1 200-case battery, three-part sabotage round |
+| Q3-C wall network | **DONE** — union outline in the core, `punchOpening` deleted, A1 refined not reversed |
+| Q3-E labels | **PARTIAL** — label-on-furniture 127/211 → 29/205, measured both ways; the 29 remain |
+| Q3-D element grammar | **PARTIAL** — the zone-wash chroma defect found and fixed against the spec; **D2 (extract the symbol spec from the reference PDF) NOT STARTED**, so every symbol is still authored rather than measured |
+| Q3-B area tool | **NOT STARTED** |
+| Q3-F circulation legibility | **NOT STARTED** — and it is the biggest remaining visual defect |
+| Q3-G paper sheet + panel | **PARTIAL** — the panel's error states are in (Q3-A); the per-fixture paper pass is not |
+
+**Boards at this handoff:** `scripts/gates/run-all.sh` **13/13 ALL GREEN**
+(the first run in which G13 has ever been visible); `scripts/verify-all.sh`
+**42/42**; `cargo test -p ds-core` **182**, goldens unchanged.
+
+**The next agent should start with Q3-F.** Rubric rows 7 and 8 are the two lowest
+scores and they share one root cause: the generator leaves the left third and the
+bottom of the sample plate with no programme at all, and emits no traceable
+circulation spine. It is a `layout/` problem, not a renderer one, and no amount
+of further work on `paint.ts` will move those rows.
+
+**Standing hazard for whoever runs the board next:** clear `out/` first. Grading
+an earlier session's renders against freshly written ground truth produced two
+false regressions (G6, G7) here and cost real diagnosis time.
