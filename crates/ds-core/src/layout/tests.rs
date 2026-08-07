@@ -574,7 +574,9 @@ fn l_room_keeps_every_footprint_out_of_the_notch() {
 fn loop_tracer_finds_the_l_polygon_from_its_walls() {
     let doc = l_room();
     let segs: Vec<(Point, Point)> = doc.walls.iter().map(|w| (w.a, w.b)).collect();
-    let poly = geometry::trace_floor_polygon(&segs, geometry::LOOP_SNAP_TOL)
+    let poly = geometry::trace_floor_faces(&segs, geometry::LOOP_SNAP_TOL)
+        .into_iter()
+        .next()
         .expect("6 closed walls must trace a loop");
     assert_eq!(poly.len(), 6, "the L has 6 corners");
     // 20×14 − 8×6 notch = 232 m².
@@ -592,7 +594,7 @@ fn open_walls_fall_back_to_bbox_behavior() {
     open.walls.pop();
     let segs: Vec<(Point, Point)> = open.walls.iter().map(|w| (w.a, w.b)).collect();
     assert!(
-        geometry::trace_floor_polygon(&segs, geometry::LOOP_SNAP_TOL).is_none(),
+        geometry::trace_floor_faces(&segs, geometry::LOOP_SNAP_TOL).is_empty(),
         "open walls must not trace a loop"
     );
 
@@ -738,17 +740,13 @@ fn real_plate_open_field_dominates_the_program() {
             .zones
             .iter()
             .filter(|z| matches!(z.zone_type, ZoneType::Meeting | ZoneType::Collaboration))
-            .map(|z| z.capacity_from_area(z.area()) as f64)
+            .map(|z| z.seat_estimate_for_ordering() as f64)
             .sum();
         let seats = desks as f64 + meeting_seats;
         // Open desk field vs the rest of the PROGRAMMED (non-circulation,
         // non-core) floor — the qbiq "open dominates usable area" check.
         let ws_area: f64 = doc.zones.iter().filter(|z| z.zone_type == ZoneType::Workspace).map(|z| z.area()).sum();
-        // `crate::is_usable_zone`, not a fourth spelling. This read
-        // `!matches!(t, Circulation | Core)` — omitting `Unassigned` — so it
-        // counted leftover floor as usable and diverged from the partition every
-        // published surface bills from.
-        let usable: f64 = doc.zones.iter().filter(|z| crate::is_usable_zone(z.zone_type)).map(|z| z.area()).sum();
+        let usable: f64 = doc.zones.iter().filter(|z| !matches!(z.zone_type, ZoneType::Circulation | ZoneType::Core)).map(|z| z.area()).sum();
 
         // (a) OPEN-DESK DOMINANT by SEATS: workstations are the majority.
         assert!(
@@ -964,7 +962,7 @@ fn focus_rooms_hug_the_facade_nearer_than_meetings() {
 #[test]
 fn largest_wing_is_a_pure_desk_field_rooms_concentrate() {
     let doc0 = real_plate_doc();
-    let poly = geometry::trace_floor_polygon(&wall_segments(&doc0), geometry::LOOP_SNAP_TOL).unwrap();
+    let poly = doc0.plate_polygon().unwrap();
     let area = geometry::polygon_area(&poly);
     let holes: Vec<geometry::Rect> = Vec::new();
     let corridor = 1.2;
@@ -1034,7 +1032,7 @@ fn largest_wing_is_a_pure_desk_field_rooms_concentrate() {
             assert!(!room_zones.is_empty(), "{:?} seed {seed}: the support program vanished", strat);
 
             // (d) Density in the professional band + walkable + on-plate.
-            let meeting_seats: f64 = doc.zones.iter().filter(|z| matches!(z.zone_type, ZoneType::Meeting | ZoneType::Collaboration)).map(|z| z.capacity_from_area(z.area()) as f64).sum();
+            let meeting_seats: f64 = doc.zones.iter().filter(|z| matches!(z.zone_type, ZoneType::Meeting | ZoneType::Collaboration)).map(|z| z.seat_estimate_for_ordering() as f64).sum();
             let seats = total_desks as f64 + meeting_seats;
             let m2pp = area / seats;
             assert!((8.0..=12.0).contains(&m2pp), "{:?} seed {seed}: {m2pp:.1} m²/seat outside 8–12", strat);
@@ -1259,7 +1257,7 @@ fn meetings_cluster_in_the_entry_wing() {
 
 fn poly_of(doc: &Document) -> Vec<Point> {
     let segs: Vec<(Point, Point)> = doc.walls.iter().map(|w| (w.a, w.b)).collect();
-    geometry::trace_floor_polygon(&segs, geometry::LOOP_SNAP_TOL).expect("plate loop")
+    geometry::trace_floor_faces(&segs, geometry::LOOP_SNAP_TOL).into_iter().next().expect("plate loop")
 }
 
 /// All 9 sample points (corners, edge midpoints, center) of the WORLD
@@ -2447,7 +2445,7 @@ fn seats_and_area(doc: &Document) -> (f64, f64) {
         .zones
         .iter()
         .filter(|z| matches!(z.zone_type, ZoneType::Meeting | ZoneType::Collaboration))
-        .map(|z| z.capacity_from_area(z.area()) as f64)
+        .map(|z| z.seat_estimate_for_ordering() as f64)
         .sum();
     (desks + mseats, geometry::polygon_area(&poly_of(doc)))
 }
@@ -2810,11 +2808,11 @@ fn oriented_fill_insights_are_correct_nia_le_gea_and_pax_is_seated() {
                 seated, placed_desks,
                 "{name} seed {seed}: Workspace seats {seated} but {placed_desks} desks placed"
             );
-            // The area-rule capacity() would be far larger than the real
+            // The area-rule estimate would be far larger than the real
             // seated count on the oversized bbox — confirm the gap is real so
             // this test would catch a regression to area-based pax.
             assert!(
-                doc.zones[idx].capacity_from_area(doc.zones[idx].area()) as usize >= placed_desks,
+                doc.zones[idx].seat_estimate_for_ordering() as usize >= placed_desks,
                 "{name} seed {seed}: area capacity unexpectedly below seated"
             );
         }

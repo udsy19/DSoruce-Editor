@@ -65,17 +65,6 @@ pub(crate) fn footprint_overlaps(
     })
 }
 
-/// The **architectural** walls' centerline segments, ready for
-/// `geometry::trace_floor_polygon`. Generator-emitted partitions are excluded:
-/// the plate is the building envelope, never our own room shells.
-pub(crate) fn wall_segments(doc: &Document) -> Vec<(Point, Point)> {
-    doc.walls
-        .iter()
-        .filter(|w| !w.generated)
-        .map(|w| (w.a, w.b))
-        .collect()
-}
-
 /// True when a candidate footprint (center `cx,cy`, size `w`×`h`) is a valid
 /// slot on the floor plate: its center lies inside the plate polygon and the
 /// whole rect keeps ≥ `margin` clearance to **every** plate edge. Because the

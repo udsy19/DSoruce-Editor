@@ -298,36 +298,32 @@ pub fn rect_polygon_clip_area(poly: &[Point], x0: f64, y0: f64, x1: f64, y1: f64
     polygon_area(&clip_rect_to_polygon(poly, x0, y0, x1, y1))
 }
 
-/// Trace the **floor-plate polygon**: the largest-area closed loop through the
-/// given wall centerline segments. Endpoints within `tol` of each other are
-/// snapped to one node; the loop is found by planar face traversal (at each
-/// node, take the next edge clockwise from the reversed incoming edge), which
-/// tolerates interior partition walls and dead-end stubs — the outer face has
-/// the largest area and wins. Returns `None` when no closed loop exists (open
-/// walls), letting callers fall back to bounding-box behavior.
-pub fn trace_floor_polygon(segments: &[(Point, Point)], tol: f64) -> Option<Vec<Point>> {
-    // `trace_floor_faces` is sorted largest-first by a STABLE sort, so equal-area
-    // faces keep traversal order and this is byte-identical to the original
-    // `if area > best` scan. Ties are not hypothetical — the sample plate's
-    // envelope is enumerated twice at 930.06 m², and picking the other one
-    // reorders `plate_points`, which moves every clipped zone area and every
-    // score that reads them. `max_by` returns the LAST maximum and did exactly
-    // that: it re-hashed five of the ten frozen golden cases while leaving all
-    // their counts and coordinates identical.
-    trace_floor_faces(segments, tol).into_iter().next()
-}
-
-/// **Every** closed, positive-area face of the wall network — the enumeration
-/// [`trace_floor_polygon`] reduces by taking the largest.
+/// **Every** closed, positive-area face of the wall network, largest first.
 ///
-/// Largest-wins is only correct while the building envelope IS the largest
-/// closed loop, and one user gesture invalidates that: draw a small closed box
-/// while the envelope's loop is open and the box becomes the largest face, so a
-/// 930 m² floor reports as 1 m². Callers that can tell the envelope from a
-/// scratch loop — because they know what the floor is supposed to contain —
-/// need the candidates, not the winner. See `Document::plate_polygon`.
+/// Endpoints within `tol` of each other are snapped to one node; faces are found
+/// by planar traversal (at each node, take the next edge clockwise from the
+/// reversed incoming edge), which tolerates interior partition walls and
+/// dead-end stubs. Empty when no closed loop exists (open walls), letting
+/// callers fall back to bounding-box behaviour.
 ///
-/// Faces are returned largest-first.
+/// **Selecting among the faces is `Document::plate_polygon`'s job, and this
+/// crate has no other selector.** There WAS one — `trace_floor_polygon`, "the
+/// largest-area closed loop" — and it is deleted. Largest-wins is right only
+/// while the building envelope IS the largest closed loop, and one user gesture
+/// invalidates that: draw a small closed box while the envelope's loop is open
+/// and the box becomes the largest face, so a 930 m² floor reports as 1 m².
+/// `plate_polygon` replaced the rule with anchor containment and left the
+/// function standing, so `layout/score.rs` and `layout.rs` went on calling it
+/// for four belief passes — a fix applied at one call site while the retired
+/// rule kept a name anyone could reach for. Deleting the name is what makes
+/// "the plate has one owner" checkable by the compiler instead of by a comment.
+///
+/// The sort is STABLE, so equal-area faces keep traversal order. Ties are not
+/// hypothetical: the sample plate's envelope is enumerated twice at 930.06 m²,
+/// and picking the other one reorders `plate_points`, which moves every clipped
+/// zone area and every score that reads them. A `max_by` here returns the LAST
+/// maximum and did exactly that — it re-hashed five of the ten frozen golden
+/// cases while leaving all their counts and coordinates identical.
 pub fn trace_floor_faces(segments: &[(Point, Point)], tol: f64) -> Vec<Vec<Point>> {
     fn snap(nodes: &mut Vec<Point>, p: Point, tol: f64) -> usize {
         if let Some(i) = nodes.iter().position(|n| n.dist(&p) <= tol) {
@@ -722,7 +718,7 @@ mod tests {
             (Point::new(10.0, 10.0), Point::new(0.0, 10.0)),
             (Point::new(0.0, 10.0), Point::new(0.005, 0.0)),
         ];
-        let poly = trace_floor_polygon(&segs, LOOP_SNAP_TOL).expect("snapped loop closes");
+        let poly = trace_floor_faces(&segs, LOOP_SNAP_TOL).into_iter().next().expect("snapped loop closes");
         assert_eq!(poly.len(), 4);
         assert!((polygon_area(&poly) - 100.0).abs() < 0.2);
     }

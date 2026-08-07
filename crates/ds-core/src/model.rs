@@ -143,7 +143,7 @@ pub struct Component {
     /// tag at every zoom but one. Seat count is not a property of the zoom
     /// level; it is a property of the table.
     ///
-    /// NOT the same quantity as a room's `Zone::capacity()`, which is an
+    /// NOT the same quantity as a room's `Zone::capacity_on()`, which is an
     /// area rule-of-thumb for the ROOM. A tag never counts chairs and a glyph
     /// never renders room pax; they are different facts about different things.
     ///

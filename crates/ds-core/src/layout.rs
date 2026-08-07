@@ -195,10 +195,21 @@ pub fn generate(
         None => return diag, // no boundary → nothing to place
     };
 
-    // The floor-plate polygon: the largest closed loop through the walls. For a
-    // rectangular room it equals the bbox. `None` (open walls) keeps the
-    // historical bbox-only behavior.
-    let plate = geometry::trace_floor_polygon(&wall_segments(doc), geometry::LOOP_SNAP_TOL);
+    // The floor-plate polygon — `Document::plate_polygon`, the same face the
+    // panel bills and the scorer divides by. For a rectangular room it equals
+    // the bbox. `None` (walls that close nowhere, or close on no face holding
+    // this plan) keeps the historical bbox-only behavior.
+    //
+    // On THIS call site the two selection rules coincide by construction and the
+    // routing is therefore byte-identical: zones and (unless `keep_confirmed`)
+    // components have just been cleared above, so `plan_anchors()` is empty,
+    // `0 >= PLATE_CONTAINMENT * 0` holds, and the largest face is accepted —
+    // which is exactly what `trace_floor_polygon` returned. It is routed anyway,
+    // because "the plate has one owner" must be true of every reader or the next
+    // change to the selection rule reaches two of the three again. Under
+    // `keep_confirmed` the confirmed furniture IS an anchor set, and there the
+    // routing is a real correction.
+    let plate = doc.plate_polygon();
 
     // Interior partitions (imported linework, committed CAD sketches) are hard
     // obstacles: nothing may straddle them. Boundary walls are excluded — the
@@ -625,7 +636,7 @@ pub fn generate(
                 .zones
                 .iter()
                 .filter(|z| matches!(z.zone_type, ZoneType::Meeting | ZoneType::Collaboration))
-                .map(|z| z.capacity_from_area(z.area()) as f64)
+                .map(|z| z.seat_estimate_for_ordering() as f64)
                 .sum();
             let seat_cap = (plate_area / fill_density_floor(program.strategy)).floor();
             // Actual desks already down (the per-region pass AND its top-up, which

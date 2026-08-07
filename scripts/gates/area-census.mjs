@@ -144,6 +144,13 @@ const REGISTER = [
     why: 'Zone::area, the UNCLIPPED primitive. Every production caller is an ordering or a generation-time estimate; nothing published reads it.',
   },
 
+  {
+    key: 'crates/ds-core/src/zone.rs::seat_estimate_for_ordering',
+    kind: 'ordering',
+    count: 1,
+    why: "Line A's named wrapper for the RAW-area seat estimate — generator heuristics and orderings only. Its whole point is that the call site says which area it used; published seat counts take `capacity_from_area(basis)` instead.",
+  },
+
   // ---- Rust: ordering, never published ------------------------------------
   {
     key: 'crates/ds-core/src/document.rs::zone_index_at',
@@ -203,7 +210,7 @@ const REGISTER = [
   {
     key: 'crates/ds-core/src/layout.rs::generate',
     kind: 'estimate',
-    count: 6,
+    count: 5,
     why: 'Region `Rect` areas for wing/field selection + the residue diagnostic + the desk-field capacity estimate. All mid-generation.',
   },
   {
@@ -211,18 +218,6 @@ const REGISTER = [
     kind: 'estimate',
     count: 1,
     why: 'MIN_AREA floor that drops sliver residuals during conform. A threshold on a zone that is still provisional.',
-  },
-  {
-    key: 'crates/ds-core/src/layout/score.rs::score',
-    kind: 'estimate',
-    count: 1,
-    why: 'Unassigned-waste penalty in the layout objective. Published only inside `LayoutScore.total` (0-100), never as a room quantity.',
-  },
-  {
-    key: 'crates/ds-core/src/layout/score.rs::density_of',
-    kind: 'estimate',
-    count: 1,
-    why: 'Meeting-seat estimate feeding the density objective term. Same population and same reason as `score` above.',
   },
 
   // ---- TypeScript: web/ owns no area. It receives `ZoneAreas`. ------------

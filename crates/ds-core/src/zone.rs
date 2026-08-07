@@ -341,6 +341,21 @@ impl Zone {
     /// quantity. The generator still passes `z.area()` at its two sites, and now
     /// it says so at the call site instead of getting the raw estimate silently
     /// from a method that decides for it.
+    /// The seat estimate for an ORDERING or a generator heuristic — the raw
+    /// shape's own area, named so the call site says which area it used.
+    ///
+    /// **Line A's naming discipline, kept in the merge.** A renamed the old
+    /// `capacity()` to this "following the `rawShapeAreaForOrderingOnly`
+    /// precedent: the previous name read like the published quantity and was
+    /// twice mistaken for it." Line B's fix was the SIGNATURE — make the caller
+    /// supply the area, so a published surface cannot get the raw one by
+    /// accident. Both survive here because they solve different halves: B's
+    /// parameter makes the wrong area impossible on published paths, A's name
+    /// makes the right one legible on ordering paths.
+    pub(crate) fn seat_estimate_for_ordering(&self) -> u32 {
+        self.capacity_from_area(self.area())
+    }
+
     pub fn capacity_from_area(&self, area: f64) -> u32 {
         let per = match self.zone_type {
             ZoneType::Workspace => 6.0,     // m² per workstation

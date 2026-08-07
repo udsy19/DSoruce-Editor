@@ -5,16 +5,16 @@ use super::*;
 
 /// The density sub-score for a document — the scoring engine's ONE opinion of
 /// whether a plan is professionally dense, so nothing outside this module gets
-/// to hold a second one. Floor area is the true plate-polygon area when the
-/// walls close a loop (identical to the bbox for rectangular rooms); bbox only
-/// as a fallback, or an L-plate's density would be diluted by its void notch.
+/// to hold a second one. Floor area is `Document::plate_polygon`'s area, the
+/// same plate the panel bills (identical to the bbox for rectangular rooms);
+/// `Document::floor_area`'s bounding-box fallback only when the plate does not
+/// resolve, or an L-plate's density would be diluted by its void notch.
 /// Total SEATS = workstations + meeting/collab capacity (the report's KPI), so
 /// density measures people-per-area the way a consultant reads it, not desk
 /// footprint coverage (which rewarded cramming). 0 when there is nothing to
 /// judge.
 pub fn density_of_doc(doc: &Document) -> f64 {
-    let poly = geometry::trace_floor_polygon(&wall_segments(doc), geometry::LOOP_SNAP_TOL);
-    density_of(doc, poly.as_deref())
+    density_of(doc, doc.plate_polygon().as_deref())
 }
 
 /// See [`density_of_doc`] — this form takes an already-traced plate so `score`
@@ -27,7 +27,7 @@ pub fn density_of(doc: &Document, plate_poly: Option<&[Point]>) -> f64 {
         .zones
         .iter()
         .filter(|z| matches!(z.zone_type, ZoneType::Meeting | ZoneType::Collaboration))
-        .map(|z| z.capacity_from_area(z.area()) as f64)
+        .map(|z| z.seat_estimate_for_ordering() as f64)
         .sum();
     let seats =
         doc.components.iter().filter(|c| c.category == "Desk").count() as f64 + meeting_seats;
@@ -66,6 +66,30 @@ pub struct LayoutScore {
     /// `Unassigned` share of the plate. Surfaced so the autonomous loop can say
     /// WHICH term cost a candidate its rank, rather than only that it lost.
     pub unassigned_penalty: f64,
+    /// **The floor every plate-derived term above divided by**, m² — one number,
+    /// published so the two readers of the plate can be held to each other.
+    ///
+    /// It is `Document::floor_area()` and nothing else. It is surfaced because
+    /// the scorer held a SECOND plate for four belief passes: `score` traced its
+    /// own polygon with the retired largest-closed-loop rule while the panel used
+    /// anchor containment, they disagreed on 545 of 1 200 mutated states, and
+    /// nothing could see it because the scorer never said which floor it used.
+    /// `CirculationScore::floor_area` already publishes the same quantity for the
+    /// same reason. Graded against the panel by `S17`.
+    pub floor_area_m2: f64,
+    /// **Whether the numbers above are a measurement.** `"traced"` · `"open"` ·
+    /// `"unresolved"` — the same three tags, from the same owner
+    /// (`document::PlateResolution::tag`), that `Metrics::plate_state` carries.
+    ///
+    /// `adjacency`, `density`, `daylight`, `program_fit` and
+    /// `unassigned_penalty` — and through them `total` — are all measured on the
+    /// floor plate. When the plate is `"unresolved"` the floor is a bounding-box
+    /// stand-in, so every one of them is a number derived from a fallback rather
+    /// than from the building; a consumer that shows a user a score, or hands one
+    /// to an LLM, must be able to tell that apart from a bad layout. It is the
+    /// same branch `Metrics::plate_state` exists for, on the same document, and
+    /// deliberately not a second convention.
+    pub plate_state: &'static str,
 }
 
 // ---- M5: professional scoring (spec §5) ----
@@ -189,9 +213,27 @@ pub fn score(doc: &Document, program: &Program) -> LayoutScore {
         .collect();
     let placed_desks = desks.len() as u32;
 
-    // The plate polygon (true floor loop) is traced ONCE and reused by the
-    // adjacency (facade relationships), density and daylight sub-scores.
-    let plate_poly = geometry::trace_floor_polygon(&wall_segments(doc), geometry::LOOP_SNAP_TOL);
+    // The plate polygon is resolved ONCE and reused by the adjacency (facade
+    // relationships), density, daylight, program_fit and wasted-floor terms.
+    //
+    // **It is `Document::plate_polygon`, and the scorer holds no second opinion
+    // about which face is the floor.** This used to be
+    // `geometry::trace_floor_polygon` — largest-closed-loop — which
+    // `plate_polygon`'s own doc comment records as a retired defect: the rule is
+    // right only while the envelope's loop is closed, and one user gesture breaks
+    // that. Routing the panel to anchor containment and leaving the scorer on
+    // largest-wins gave one document two floors. Measured over the mutation
+    // battery: they disagreed on **545 of 1 200** states (45.42%), and on the
+    // unedited F3 fixture the scorer divided by a **1.20 m² scratch box** where
+    // the document's floor is 1 594.94 m² — `density 0.000/100` against
+    // 68.757/100, and an `unassigned_penalty` of **969.2178** on a term whose own
+    // comment sizes it at ~1.8 points, clamping every candidate's `total` to 0
+    // and blinding `autoGenerate`'s seed search. It is not confined to a broken
+    // envelope: a DISJOINT neighbouring loop (an adjacent tenancy or atrium void
+    // in an imported DWG) does it on a fully `"traced"` document, with no
+    // `plate_state` warning and no `metrics_error` — see
+    // `a_disjoint_neighbouring_loop_is_not_this_plans_floor`.
+    let plate_poly = doc.plate_polygon();
 
     // --- capacity: fraction of requested desks actually seated ---
     let capacity = if program.desks == 0 {
@@ -371,6 +413,16 @@ pub fn score(doc: &Document, program: &Program) -> LayoutScore {
     // a tie toward the plan that wastes less floor, deliberately NOT enough to
     // reorder candidates separated by more than that.
     //
+    // **That sizing is now enforced, because it was not true and nothing said
+    // so.** Measured over the mutation battery at `8adfb0d`: 969.2178 points on
+    // the unedited F3 fixture (the scorer's own plate was a 1.20 m² scratch box)
+    // and 15.2783 on a correctly-traced 930.06 m² plate (the numerator
+    // double-counted an overlapping hand-drawn zone). A debit of 969 on a 0..100
+    // scale does not "break a tie"; it clamps every candidate's `total` to zero
+    // and blinds `autoGenerate`'s seed search entirely. The term is now a share
+    // of the plate by construction on both ends — one plate, one basis — and
+    // `S19` in `metrics_tests` grades it inside `[0, 10]` on every state.
+    //
     // Subtractive rather than a weighted sub-score on purpose. Every term above
     // is "how good is this plan at X"; waste is not a quality being averaged, it
     // is a debit against whatever the plan otherwise achieved. Folding it into
@@ -394,12 +446,20 @@ pub fn score(doc: &Document, program: &Program) -> LayoutScore {
     // fixture plate it ranges 171.3 m² (seed 1) to 195.0 m² (seed 4), a spread
     // of ~0.3 points. A future reader finding it constant on one plate is
     // looking at a property of that plate, not a broken constant.
-    let unassigned_m2: f64 = doc
-        .zones
-        .iter()
-        .filter(|z| z.zone_type == ZoneType::Unassigned)
-        .map(|z| z.area_on(plate_poly.as_deref()))
-        .sum();
+    //
+    // **The numerator is `crate::unassigned_area` over the shared
+    // `crate::area_basis`, not a sum this module computes.** It used to be
+    // `doc.zones … .map(|z| z.area_on(plate_poly))` — the raw, un-de-overlapped,
+    // uncapped clip — and that read carried a REGISTERED EXEMPTION whose stated
+    // ground was that the number is "not a published area and never billed … a
+    // relative penalty compared only against itself". True of the area; **false
+    // of the number derived from it**: `unassigned_penalty` is a serialized
+    // `LayoutScore` field and `total` is an absolute 0..100 shown in the
+    // candidate gallery, printed as "best N/100", and handed to the Claude
+    // evaluator. The exemption is deleted, by the same route the `cost.rs` entry
+    // beside it went: the site now reads the basis, so it is not an exemption any
+    // more. See `crate::unassigned_area` for the 11-of-1 205 measurement.
+    let unassigned_m2 = crate::unassigned_area(doc, &crate::area_basis(doc).areas);
     let waste_fraction = if floor > 0.0 { unassigned_m2 / floor } else { 0.0 };
     let unassigned_penalty = 10.0 * waste_fraction;
 
@@ -425,5 +485,7 @@ pub fn score(doc: &Document, program: &Program) -> LayoutScore {
         total,
         placed_desks,
         unassigned_penalty,
+        floor_area_m2: floor,
+        plate_state: doc.plate_resolution().tag(),
     }
 }

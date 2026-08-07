@@ -461,6 +461,19 @@ fn usable_area(doc: &Document, areas: &[f64]) -> f64 {
         .sum()
 }
 
+/// Σ of the `Unassigned` zones' basis areas — **one owner, Line A's extraction.**
+///
+/// `compute_metrics` computed this inline and `layout/score.rs` computed its own;
+/// two readers of one quantity is the shape this mission spends its rounds on.
+pub(crate) fn unassigned_area(doc: &Document, areas: &[f64]) -> f64 {
+    doc.zones
+        .iter()
+        .zip(areas)
+        .filter(|(z, _)| z.zone_type == ZoneType::Unassigned)
+        .map(|(_, a)| *a)
+        .sum()
+}
+
 /// The statistics panel's numbers, derived from a document and nothing else.
 ///
 /// **Pure on purpose.** This was the body of `Editor::metrics()`, which returns a
@@ -482,13 +495,7 @@ fn compute_metrics(doc: &Document) -> Metrics {
     // and amenity (reception/pantry/café) ARE usable space, not overhead —
     // excluding them (the old bug) understated efficiency by ~25 pts.
     let usable = usable_area(doc, &areas);
-    let unassigned: f64 = doc
-        .zones
-        .iter()
-        .zip(&areas)
-        .filter(|(z, _)| z.zone_type == ZoneType::Unassigned)
-        .map(|(_, a)| *a)
-        .sum();
+    let unassigned = unassigned_area(doc, &areas);
     let area_per_workstation = if workstations > 0 {
         nia / workstations as f64
     } else {

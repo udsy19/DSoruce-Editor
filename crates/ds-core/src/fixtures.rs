@@ -119,8 +119,9 @@ fn generated_plate() -> Document {
 /// A 1.2 × 1.0 m closed loop of user walls, centred on the plate's centroid.
 ///
 /// Small on purpose. It is the shape a user gets from drawing a phone-booth
-/// outline, and — once the plate's own loop is broken — it is the loop that
-/// `trace_floor_polygon` locks onto, which is how a 930 m² floor came to report
+/// outline, and — once the plate's own loop is broken — it is the loop the
+/// retired largest-closed-loop rule locked onto, which is how a 930 m² floor
+/// came to report
 /// as ~1 m². The reported symptom and the fixture are the same order of
 /// magnitude because they are the same defect.
 fn drawn_box_corners(doc: &Document) -> [Point; 4] {

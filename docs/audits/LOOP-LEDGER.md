@@ -4666,3 +4666,136 @@ blind spot with three live unclassified exports); the janitor's four sabotages
 re-run against the hardened tool; and **belief attempt six was not dispatched**.
 
 The authored-domain class is closed. Nothing else in this brief is.
+
+---
+
+# R24 — THE INTEGRATION ROUND, STEP 0: the measurement inverted the plan
+
+## R24 recorded — one writer per branch; concurrent lines declare themselves
+
+Two orchestrators wrote one mission without knowing of each other. A session
+opening work on a mission branch now READS, then WRITES, a session declaration
+(ledger entry + branch registry: session id, branch, scope). Finding a live
+declaration it did not write, it takes a NEW branch named for its line and
+proceeds as a declared parallel line. Worktree attribution extends to branches.
+**Integration of parallel lines is a named phase, never an ambient merge.**
+
+## Step 0 preconditions
+
+* **Disk**: cleared by the human, **41 GiB free** (was 3.9). Precondition ≥8 GiB met.
+* **Both pre-merge states tagged and permanently reachable**:
+  `premerge-line-a` = `048d99e`, `premerge-line-b` = `6e49ba3`.
+* Line A checked out in an attributed worktree at `048d99e` (detached — the
+  branch itself is checked out in `/private/tmp/endgame-int`, which is **Line A's
+  session worktree and may be live**; R24 exists because of exactly this).
+
+## Step 0.2 — Line A verified BY MEASUREMENT, and it is not green
+
+The plan's A-as-base recommendation was licensed by the integration report, and
+the brief required the measurement to license acting on it. Freshness
+precondition observed (`make wasm` first; tree clean afterwards).
+
+| | Line A @ 048d99e | Line B @ 6e49ba3 |
+|---|---|---|
+| `cargo test -p ds-core` | **203 passed** | 200 passed |
+| `verify-all.sh --full` | **51/51 green** | **52/52 green** |
+| sheet board (direct run) | **5/6 — `SG5 FAIL (29 checks, 27 failing)`** | **8/8 — ALL SHEET GATES GREEN** |
+| sheet-board gates present | SG1–SG6 | SG1–SG7 **+ `drawing-set` row** |
+
+**A's SG5 fails on precisely the two defects B found, diagnosed and closed:**
+
+```
+FAIL drawing-set.test.mjs passes — it says FAIL
+FAIL drawing-set.test.mjs still runs 283 checks — 339 checks now, 283 at the baseline
+```
+
+Confirmed directly rather than from SG5's summary — `node scripts/drawing-set.test.mjs`
+in A's tree reproduces the whole 19-failure fixture:
+
+```
+FAIL dwg sheet A.01: 'UNASSIGNED (1)'…'(6)' is drawn 0x for 1 zone(s)
+FAIL seeded sheet 3 / 4 / 6 / 11: content digest changed
+```
+
+Those `UNASSIGNED` rows are the private-ground-definition defect: the test
+carrying `!== 'Circulation'` against a renderer using `isGroundZone`. A never
+touched `scripts/drawing-set.test.mjs` — it is one of B's unique 24.
+
+### A detail worth keeping: both lines' area fixes moved the same two digests
+
+`seeded sheet 3` (A.01 room label) and `seeded sheet 11` (A.09 AREA column) are
+red in A. They are the same two digests B's area fix moved — B re-recorded them
+with per-digest attribution because B had the fixture ON A BOARD. A's area fix
+moved them too and nothing told A, because in A's tree that fixture is in no
+board's population. **Same defect, same two sheets, one line saw it.** That is
+R12-amended's thesis, replicated across an independent line without either
+line's author intending the experiment.
+
+## THE PLAN INVERTS: B is the base, A is ported onto it
+
+Per the brief — *"If A's board is NOT green as claimed, the plan inverts (B as
+base, port A) — decide from the measurement and ledger why."* The reasons, in
+order of weight:
+
+1. **A's board is red on defects B's unique work closes.** Porting B onto A
+   would mean re-landing B's drawing-set round anyway; porting A onto B starts
+   from a board that is green on all three instruments.
+2. **Direction of effort**: A's unique work is 9 files, mostly core files B never
+   edited (`geometry.rs`, `layout/grid.rs`, `model.rs`, `fixtures.rs`,
+   `ai/engine.ts`, `ai/evaluator.ts`, `util/publishedArea.ts` + its test,
+   `util/areaCensus.test.mjs`). B's unique work is 24 files spanning the whole
+   gate/board layer. **9 onto green beats 24 onto red.**
+3. **The sheet board's shape**: B's board carries SG7 and the `drawing-set` row;
+   A's has neither. Basing on A discards two graded surfaces and then re-adds
+   them.
+
+**This does NOT devalue Line A.** Its 203 Rust tests exceed B's 200, its battery
+is green, and its unique work includes a live rupee-exact cost defect B never
+measured. The inversion is about which tree is cheaper and safer to *build on*,
+not which line is better. A's mechanisms still win where the report said they do
+— `publishedArea`'s throw-on-missing-id is stricter than B's NaN, and survives
+the reconciliation.
+
+## Not yet done
+
+Steps 1–4 (the semantic merge, the merged tree's own state, belief six, the
+endgame) are not started. This entry records Step 0 only: preconditions met,
+both refs tagged, A measured, the plan inverted with its reason.
+
+## R24 retroactive — Line A's closing declaration
+
+**Line A closed at `048d99e`, tagged `premerge-line-a`.** Its orchestrator wrote
+its final handoff (continuation state: HANDOFF REVISION 2) and closed; nothing in
+flight, no unintegrated worktrees. Declaration written retroactively because R24
+did not exist when Line A was born — which is the whole reason it now does.
+
+`/private/tmp/endgame-int` retired on the human's attribution. The janitor
+refuses untagged trees BY DESIGN and correctly refused this one; the override is
+a human who knows which session is dead, which is exactly the authority the
+grandfather rule reserves rather than a hole in it.
+
+**Line A is inherited, not merely ported.** Its 9 unique files are the smallest
+part of what it leaves:
+
+* **HANDOFF REVISION 2's six numbered items** join the merged backlog.
+* **A's five live defects** reconcile against B's closures:
+  * A.09 is the **zone-244 family** — the merged fix must be verified against
+    A's exact repro, not assumed to cover it;
+  * the **density-off-1.20 m² floor** is the plate-collapse family;
+  * the **15.28-point un-de-overlapped penalty** and **five 6 m² workstations in
+    an 8 m² room** are NEW carried items (B closed the capacity/area
+    self-contradiction; A measured a second face of it).
+* **A's doc-comment grep, re-run over the MERGED tree.** *A comment explaining
+  why an old rule was wrong means the old rule is live elsewhere.* Both lines'
+  comments now coexist, so the yield doubles.
+* **Basis anchors.** A proved **371 326 conjunct evaluations sit byte-identical
+  under a 5% basis error** — every conjunct descends from the shared basis, so
+  none can see the basis move. Anchors independent of it: hand-computed
+  fixtures, the reference's stated areas, physical invariants
+  (`capacity × footprint ≤ room area`).
+* **R16 taxonomy over A's 41 conjuncts** — eleven guards wearing check grades;
+  **S08 is `Point::dist` retyped and is 43.8% of the advertised count.**
+
+**"The brief is a hypothesis" is a standing convention on every agent dispatch
+from here on** — the same discipline that falsified this round's own A-as-base
+recommendation by measurement.
