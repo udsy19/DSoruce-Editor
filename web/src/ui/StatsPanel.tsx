@@ -156,10 +156,20 @@ function AreasTab({ zones, nia }: { zones: ReturnType<typeof buildZones>; nia: n
         <SplitRow label="Circulation" hint="corridors · aisles" area={split.circulation} pct={split.circulationPct} tone="circ" />
         <SplitRow label="Core / Service" hint="WC · stairs · lifts · MEP" area={split.core} pct={split.corePct} tone="core" />
       </div>
+      {/* This note has to track how the generator actually attributes floor.
+          It used to end "only enclosed corridors count as Circulation", which
+          stopped being true when open space became per-desk bands: the plan now
+          emits drawn Aisle zones for the field floor no desk bank covers — 10 of
+          them, 166 m² on the real plate, against 2 and 4.5 m² before. The note
+          also already contradicted the Circulation row's own hint one line
+          above, which reads "corridors · aisles". A panel that disagrees with
+          itself about what it is measuring teaches the reader to distrust all
+          of it. */}
       {hasWorkspace && (
         <p className="split-note">
-          Open Workspace area includes the walking aisles between desk neighbourhoods; only
-          enclosed corridors count as Circulation.
+          Open Workspace covers the desks and the aisles between them. Floor further than one
+          workstation clearance from any desk is measured as Circulation, whether it is an
+          enclosed corridor or open aisle.
         </p>
       )}
     </>
