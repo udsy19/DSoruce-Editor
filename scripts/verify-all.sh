@@ -3,6 +3,9 @@
 #
 #   bash scripts/verify-all.sh              # staged-aware: Rust suite only if Rust changed
 #   bash scripts/verify-all.sh --full       # always run everything
+#
+# A skipped step is COUNTED and NAMED (see `skip()` below). Quote a floor number
+# only from `--full`; `48/49, 1 skipped` is not the same measurement as `49/49`.
 #   VERIFY_SELFTEST=1 bash scripts/verify-all.sh   # append a deliberately failing step
 #
 # WHY THIS EXISTS. Twice in one working session a commit landed on a red signal —
@@ -26,7 +29,7 @@ export PATH="$HOME/.cargo/bin:$PATH"
 FULL=0
 [ "${1:-}" = "--full" ] && FULL=1
 
-declare -a NAMES=() CODES=()
+declare -a NAMES=() CODES=() SKIPPED=()
 run() {                       # run <name> <command...>
   local name="$1"; shift
   local out
@@ -40,22 +43,48 @@ run() {                       # run <name> <command...>
   fi
 }
 
-# Rust changes are the only reason to pay for the Rust suite. Compare the STAGED
-# tree when there is one (pre-commit), else the working tree.
+# A SKIPPED STEP IS A DECLARED STEP THAT DID NOT RUN — it stays in the
+# denominator and it is named in the summary. It is NOT absent.
+#
+# WHY. The Rust suite is step 49, and it was skipped on every clean tree — which
+# is the state of every post-commit floor measurement. `total` was `${#NAMES[@]}`,
+# the count of steps that RAN, so the skipped step did not lower the numerator:
+# it left the population. Measured on the branch base (956125e, clean tree):
+#
+#     bash scripts/verify-all.sh           ->  VERIFY OK — 48/48 steps green
+#     bash scripts/verify-all.sh --full    ->  VERIFY OK — 49/49 steps green
+#
+# Both print OK, neither says a step was dropped, and the ledger's recorded floor
+# ("battery 49/49") is not comparable to either without knowing which invocation
+# produced it. That is R8 — the summary was derived from the rows, but the rows
+# were the wrong population — and it is the same shape as the SUBJECT EXISTENCE
+# axis stated ~30 lines below: a missing subject is a FAILURE, not a skip. This
+# file named the rule and then broke it one screen up.
+skip() {                      # skip <name> <reason>
+  SKIPPED+=("$1 — $2")
+  printf '\033[1;33m  · %s — SKIPPED\033[0m (%s)\n' "$1" "$2"
+}
+
+# Rust changes are the only reason to pay for the Rust suite.
+#
+# Widened from `crates` alone, and from staged-XOR-worktree to staged-OR-worktree.
+# The old predicate had two holes: Rust behaviour also moves with the workspace
+# manifests (a dependency bump changes no file under `crates/`), and the
+# staged/worktree branch was exclusive — with ANY file staged, unstaged Rust edits
+# took the `--cached` arm and reported untouched. Both holes end in the same
+# place: the suite skipped on a change that could break it.
 rust_touched() {
   [ $FULL -eq 1 ] && return 0
-  if git diff --cached --quiet 2>/dev/null; then
-    ! git diff --quiet -- crates 2>/dev/null
-  else
-    ! git diff --cached --quiet -- crates 2>/dev/null
-  fi
+  ! git diff --quiet -- crates Cargo.toml Cargo.lock 2>/dev/null && return 0
+  ! git diff --cached --quiet -- crates Cargo.toml Cargo.lock 2>/dev/null && return 0
+  return 1
 }
 
 echo "verification battery"
 if rust_touched; then
   run "cargo test -p ds-core" cargo test -p ds-core
 else
-  echo "  · cargo test -p ds-core — skipped (no Rust in this change; --full to force)"
+  skip "cargo test -p ds-core" "no Rust in this change; --full to force"
 fi
 run "tsc --noEmit" bash -c 'cd web && pnpm typecheck'
 while IFS= read -r t; do
@@ -123,13 +152,27 @@ fi
 
 failed=0
 for c in "${CODES[@]}"; do [ "$c" -ne 0 ] && failed=$((failed + 1)); done
-total=${#NAMES[@]}
+ran=${#NAMES[@]}
+skipped=${#SKIPPED[@]}
+# The denominator is DECLARED steps (ran + skipped), never `ran` alone — see the
+# `skip()` note at the top. A green board must state its own coverage: 48/49 with
+# one named skip and 49/49 are different measurements and must not print alike.
+total=$((ran + skipped))
+green=$((ran - failed))
 echo
+if [ $skipped -gt 0 ]; then
+  printf '\033[1;33m  %d step(s) SKIPPED — NOT MEASURED:\033[0m\n' "$skipped"
+  for s in "${SKIPPED[@]}"; do echo "    $s"; done
+fi
 if [ $failed -eq 0 ]; then
-  printf '\033[1;32mVERIFY OK\033[0m — %d/%d steps green\n' "$total" "$total"
+  printf '\033[1;32mVERIFY OK\033[0m — %d/%d steps green' "$green" "$total"
+  [ $skipped -gt 0 ] && printf ', \033[1;33m%d skipped\033[0m' "$skipped"
+  printf '\n'
   exit 0
 fi
-printf '\033[1;31mVERIFY FAIL\033[0m — %d of %d step(s) red:\n' "$failed" "$total"
+printf '\033[1;31mVERIFY FAIL\033[0m — %d of %d step(s) red' "$failed" "$total"
+[ $skipped -gt 0 ] && printf ', \033[1;33m%d skipped\033[0m' "$skipped"
+printf ':\n'
 for i in "${!NAMES[@]}"; do
   [ "${CODES[$i]}" -ne 0 ] && echo "    ${NAMES[$i]}"
 done

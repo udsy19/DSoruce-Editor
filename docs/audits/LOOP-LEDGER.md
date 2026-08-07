@@ -3486,3 +3486,82 @@ re-run before any number above was quoted.
 
 **Board: Rust 196, battery 49/49 — and a delivered sheet disagrees with the
 workbook by 4.4× on a clean tree.**
+
+---
+
+# ENDGAME — branch `qbiq-parity-endgame` opened at `956125e`
+
+Mission continues on a dedicated branch, treated as main-quality at every commit.
+`main` and the branch point at the same commit; the belief-three verdict
+(`956125e`) was the previous session's staged, uncommitted work and is now on the
+record.
+
+**Floor re-measured on the branch base, not inherited:** Rust **196 passed / 0
+failed** (45.47 s) · battery **49/49 with `--full`**.
+
+## The floor measurement disagreed with the ledger's floor — and the battery was right to be doubted
+
+Plain `bash scripts/verify-all.sh` returned **48/48**, against a recorded floor of
+49/49. Not a regression: step 49 is `cargo test -p ds-core`, and it was **skipped**.
+
+```
+bash scripts/verify-all.sh           ->  VERIFY OK — 48/48 steps green
+bash scripts/verify-all.sh --full    ->  VERIFY OK — 49/49 steps green
+```
+
+`total=${#NAMES[@]}` counted the steps that RAN. A skipped step therefore did not
+lower the numerator — **it left the population**, and the board printed a clean
+green over a shrunken denominator. Two different measurements, one string, no way
+to tell them apart after the fact. Every floor number this mission has quoted is
+ambiguous unless the invocation was recorded with it.
+
+This is **R8** (summary derived from rows — the arithmetic was right, the row
+population was wrong) and it is the SUBJECT-EXISTENCE axis this very file declares
+~30 lines further down: *"symbols.ts missing is a FAILURE, not a skip — the
+previous fixture-replay version stayed green with the subject gone."* The rule was
+written in this file and broken one screen above it.
+
+**And `rust_touched()` had two holes beyond the bookkeeping**, both confirmed live
+against the OLD predicate rather than argued:
+
+| case | old predicate | why |
+|---|---|---|
+| `Cargo.toml` modified | **SKIPPED** | pathspec was `crates` alone; a dependency bump changes no file under `crates/` |
+| `crates/ds-core/src/cost.rs` modified in the **working tree**, any unrelated file staged | **SKIPPED** | the staged/worktree branch was exclusive — with anything staged it took the `--cached` arm and reported untouched |
+
+Case 2 is a live Rust source edit with the Rust suite not run. Under `git add -p`
+it is the ordinary case, not the corner.
+
+**Fixed.** Skips are first-class: `skip()` records into a `SKIPPED` array, the
+denominator is **declared** steps (`ran + skipped`), and the summary names every
+skipped step on both the OK and FAIL paths. `rust_touched()` widened to
+`crates Cargo.toml Cargo.lock` and to staged-**OR**-worktree.
+
+```
+VERIFY OK — 48/49 steps green, 1 skipped
+  1 step(s) SKIPPED — NOT MEASURED:
+    cargo test -p ds-core — no Rust in this change; --full to force
+```
+
+## Sabotage round (R10 axes: bookkeeping · recording · predicate reach)
+
+Run in a disposable worktree (`/private/tmp/e0-sab`, removed), never the tree.
+
+| sabotage | result |
+|---|---|
+| **S-a** denominator reverted to `total=$ran` | **`48/48`** — the original defect's exact string, reproduced |
+| **S-b** `SKIPPED+=` removed from `skip()` | **`48/48`** with no summary block — full defect reproduced |
+| **S-c** enabling step: manifest-only change under the WIDENED predicate | **`49/49`**, suite RAN |
+| **S-c′** same state under the OLD predicate | **SKIPPED** — the widening is load-bearing |
+| **S-c″** unstaged Rust edit + staged unrelated file, OLD predicate | **SKIPPED** — hole 2 confirmed |
+| `VERIFY_SELFTEST=1` | **`VERIFY FAIL — 1 of 50`**, real exit **1** |
+| clean tree, plain | real exit **0** |
+
+**No null results this round** — every part removed produced a red or a wrong
+number, so no part of this mechanism is decorative. S-a and S-b each reproduce
+`48/48` independently, which is the proof the two halves (recording, arithmetic)
+are separately load-bearing rather than one fix stated twice.
+
+**Policy deliberately NOT changed:** the hook still skips Rust on a non-Rust
+change. The defect was the silence, not the skip. Floor numbers are quoted from
+`--full` only; that requirement is now in the file's header.
