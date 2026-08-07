@@ -61,10 +61,47 @@ const MEASURED_PT = {
 }
 const TOLERANCE = 0.01 // 1% — the measured pt values carry their own rounding
 
+// COMPLETENESS, and it is the half this file shipped without (V3, adversary
+// round). The loop below used to iterate `TIER` — the table under test — so a
+// rung DELETED from the table was simply not visited, and `ladder OK — 5 tiers`
+// printed green with `roomEnclosure` gone. A check that iterates its subject can
+// only ever grade the rungs the subject chose to offer: `.claude/rules/
+// gate-independence.md`, "derive the full expected set, never presence-match".
+//
+// So the expected set is MEASURED_PT, which is the spec, and the two sides are
+// compared BOTH ways: a rung in the spec that the table no longer carries is a
+// deletion, and a rung in the table with no measured value is an invention with
+// no ground truth behind its ratio. Neither can be graded, so neither is a skip.
+//
+// R10 — WHICH AXES THIS GUARD'S FALSIFICATION VARIES: (1) the VALUE — perturb a
+// multiplier, the ratio leaves tolerance; (2) the CLAMP — move BASE_STROKE_PX so
+// a tier lands on a bound; (3) MEMBERSHIP — delete a rung from TIER, or add one
+// the spec does not measure. Only (1) and (2) were ever varied.
+{
+  const inTable = new Set(Object.keys(TIER))
+  const inSpec = new Set(Object.keys(MEASURED_PT))
+  const missing = [...inSpec].filter((t) => !inTable.has(t))
+  const extra = [...inTable].filter((t) => !inSpec.has(t))
+  if (missing.length || extra.length) {
+    if (missing.length) {
+      console.log(`LADDER FAIL: TIER is missing ${missing.length} measured rung(s): ${missing.join(', ')}`)
+      console.log('  The ladder IS the ratios; a rung that is not in the table is not graded,')
+      console.log('  and iterating the table instead of the spec is how that went unnoticed.')
+    }
+    if (extra.length) {
+      console.log(`LADDER FAIL: TIER carries ${extra.length} rung(s) the spec does not measure: ${extra.join(', ')}`)
+      console.log('  research/qbiq-plan-style-spec.json is the only source of a correct ratio.')
+      console.log('  Measure it there first, or the tier has no ground truth to reproduce.')
+    }
+    process.exit(1)
+  }
+}
+
 let failed = 0
 const base = strokePx('furniture')
 console.log('tier            TIER   rendered   ratio    measured   delta')
-for (const [tier, mult] of Object.entries(TIER)) {
+for (const tier of Object.keys(MEASURED_PT)) {
+  const mult = TIER[tier]
   const px = strokePx(tier)
   const ratio = px / base
   const measured = MEASURED_PT[tier] / MEASURED_PT.furniture
@@ -87,5 +124,8 @@ if (failed > 0) {
   )
   process.exit(1)
 }
-console.log(`\nladder OK — ${Object.keys(TIER).length} tiers reproduce the qbiq ratios within ${TOLERANCE * 100}%`)
+console.log(
+  `\nladder OK — ${Object.keys(MEASURED_PT).length} measured tiers, all present in TIER, ` +
+    `reproduce the qbiq ratios within ${TOLERANCE * 100}%`,
+)
 console.log(`  base ${BASE} px · clamps [${MIN}, ${MAX}] · no tier on a bound`)

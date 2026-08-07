@@ -209,7 +209,22 @@ await L.runGate('G10', async (g) => {
   // decoded duration inside the spec's range is what "finished" means.
   const mp4 = path.join(out, 'walkthrough.mp4')
   const spec = L.loadJson(path.join(L.SPEC_DIR, 'video-spec.json'), 'video spec')
-  const [dlo, dhi] = spec.durationRange_s ?? [30, 45]
+  // The range is at spec.TARGET.durationRange_s — `reference` is what qbiq's mp4
+  // measured, `target` is what we assert. This read used to be
+  // `spec.durationRange_s ?? [30, 45]`, which is `undefined ?? [30, 45]` on
+  // every run: the spec was never consulted and the hardcoded pair always won.
+  // It went unnoticed because the literal happened to equal the spec — so the
+  // gate agreed with the spec by coincidence, not by reading it, and editing the
+  // spec would have changed nothing. `??` on a misspelt path is a silent skip
+  // wearing a default; g7-video.py:83 reads `tgt["durationRange_s"]` and would
+  // have thrown. A missing input is a FAILURE, never a default.
+  const range = spec.target?.durationRange_s
+  if (!Array.isArray(range) || range.length !== 2) {
+    throw new L.Missing(
+      'video-spec.json has no target.durationRange_s — the duration assertion has no ground truth',
+    )
+  }
+  const [dlo, dhi] = range
   const dur = videoDuration(mp4)
   if (g.check(!dur.error, `walkthrough.mp4 ${dur.error}`)) {
     g.check(dur.seconds >= dlo && dur.seconds <= dhi,

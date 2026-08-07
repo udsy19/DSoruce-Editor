@@ -37,6 +37,33 @@
 // `radius` 3.0 m is a bit over two desk pitches, so an ordinary aisle never
 // counts as dead and a genuinely empty wing always does. Same value the pixel
 // version used, kept so the two are talking about the same quantity.
+//
+// THE VERDICT IS OVER A SET THAT MUST BE FULL (V1, adversary round)
+// -----------------------------------------------------------------
+// This gate shipped with `continue` on an unresolved plate. The ROW said so
+// honestly; the VERDICT did not. `worst` is a maximum, a maximum over the empty
+// set is 0, and 0 is under every threshold — so forcing `plate_resolution` to
+// return Unresolved and rebuilding wasm printed, verbatim:
+//
+//     F1..F5: plate unresolved — nothing to measure
+//     DEADSPACE OK: worst 0.0% <= 10.0%       EXIT=0
+//
+// A global plate-resolution regression — the founding defect of this whole queue
+// — turned this gate GREEN. That is `if not x: continue` handing the producer a
+// veto over its own test, which `.claude/rules/gate-independence.md` forbids by
+// name, in a gate written and falsified two commits earlier.
+//
+// So the set of plates this run MUST measure is derived BEFORE anything is
+// measured, and the verdict is refused unless every one of them was measured.
+// EXPECTED_UNRESOLVED is the only exemption and it is two-sided: a fixture
+// declared unresolved that RESOLVES fails exactly as loudly as one not declared
+// that does not. A one-sided allowlist is the same veto with better manners.
+//
+// R10 — WHICH AXES THIS GUARD'S FALSIFICATION VARIES: (1) the measured VALUE —
+// delete desks, the dead fraction rises past --max-dead; (2) the measured COUNT
+// — force plate_resolution Unresolved, zero plates resolve; (3) the measured
+// MEMBERSHIP — F3 (declared unresolved) resolving, or F1 not. The original
+// falsification varied (1) only, which is why (2) shipped live.
 
 import fs from 'node:fs'
 import path from 'node:path'
@@ -89,6 +116,24 @@ const GROUND = new Set(['Circulation', 'Unassigned'])
  * queue keeps catching.)
  */
 const OPEN_ZONES = new Set(['Workspace'])
+
+/**
+ * Fixtures whose plate is expected NOT to resolve, with the reason it does not.
+ *
+ * F3 is `F2 with one plate wall removed — the outer loop is broken while a
+ * smaller closed loop survives`, described in `crates/ds-core/src/fixtures.rs`
+ * as **the GEA-collapse state**. It exists precisely so something exercises an
+ * unresolved plate; refusing to measure it is correct, and it is the only
+ * fixture for which that is true.
+ *
+ * TWO-SIDED, and that is the whole point. An id in this map that RESOLVES fails
+ * as loudly as an id outside it that does not: the first says the fixture drifted
+ * out from under its own description, the second is the V1 regression. A skip
+ * list checked in one direction is a producer veto wearing a declaration.
+ */
+const EXPECTED_UNRESOLVED = new Map([
+  ['F3', 'the GEA-collapse fixture — outer plate loop deliberately broken (crates/ds-core/src/fixtures.rs)'],
+])
 
 function pointInPoly(x, y, poly) {
   let inside = false
@@ -255,7 +300,17 @@ function measure(plate, boxes) {
 }
 
 const ids = SNAPSHOT ? ['snapshot'] : ONLY ? [ONLY] : Editor.fixture_ids()
+/**
+ * The plates this run MUST measure, fixed BEFORE the first measurement. A
+ * snapshot is always in it — the caller named that file on purpose, so an
+ * unresolved one is a failed run, not an empty one.
+ */
+const MUST_MEASURE = ids.filter((id) => !EXPECTED_UNRESOLVED.has(id))
 let worst = 0
+let measured = 0
+/** Failures about WHICH plates resolved — a different class from how dead they
+ *  are, collected so all of them are reported rather than the first. */
+const structural = []
 const rows = []
 for (const id of ids) {
   const ed = SNAPSHOT
@@ -265,9 +320,22 @@ for (const id of ids) {
   const plate = ed.plate()
   const st = ed.state()
   if (!plate || plate.length < 3) {
-    // An unresolved plate has no floor to measure. Say so; do not report 0%.
+    // An unresolved plate has no floor to measure. Say so; do not report 0% —
+    // AND do not let the run reach a verdict without it, unless it is declared.
     rows.push({ id, note: 'plate unresolved — nothing to measure' })
+    if (!EXPECTED_UNRESOLVED.has(id)) {
+      structural.push(
+        `${id}: plate UNRESOLVED and NOT declared so — this is the measurement, ` +
+          'not a row to skip. Either the plate regressed or EXPECTED_UNRESOLVED is stale.',
+      )
+    }
     continue
+  }
+  if (EXPECTED_UNRESOLVED.has(id)) {
+    structural.push(
+      `${id}: plate RESOLVED, but it is declared unresolved (${EXPECTED_UNRESOLVED.get(id)}). ` +
+        'The fixture moved out from under its declaration; re-derive both, do not delete the entry.',
+    )
   }
   const boxes = [...st.components.map(componentBox), ...zoneBoxes(st.zones)]
 
@@ -301,6 +369,7 @@ for (const id of ids) {
     }
   }
   worst = Math.max(worst, r.deadFrac)
+  measured++
 }
 
 for (const r of rows) {
@@ -313,10 +382,33 @@ for (const r of rows) {
       `dead (>${RADIUS} m) ${r.deadArea.toFixed(1)} m² = ${(r.deadFrac * 100).toFixed(1)}%`,
   )
 }
+// NON-VACUITY OF THE VERDICT (V1). Before any threshold is applied: every plate
+// this run committed to measuring must have been measured, and there must be at
+// least one. Unconditional — a report-only run that measured nothing found
+// nothing, and should say so rather than print an empty table quietly.
+if (structural.length) {
+  for (const s of structural) console.error(`  ${s}`)
+  console.error(
+    `DEADSPACE FAIL: ${structural.length} plate(s) did not resolve as declared — ` +
+      'no dead-space verdict is available for this run.',
+  )
+  process.exit(1)
+}
+if (measured !== MUST_MEASURE.length || measured === 0) {
+  console.error(
+    `DEADSPACE FAIL: measured ${measured} of ${MUST_MEASURE.length} required plate(s) ` +
+      `[${MUST_MEASURE.join(', ')}] — worst over an empty or partial set is not a verdict.`,
+  )
+  process.exit(1)
+}
+
 if (MAX_DEAD != null) {
   if (worst > MAX_DEAD) {
     console.error(`DEADSPACE FAIL: worst ${(worst * 100).toFixed(1)}% > ${(MAX_DEAD * 100).toFixed(1)}%`)
     process.exit(1)
   }
-  console.log(`DEADSPACE OK: worst ${(worst * 100).toFixed(1)}% <= ${(MAX_DEAD * 100).toFixed(1)}%`)
+  console.log(
+    `DEADSPACE OK: worst ${(worst * 100).toFixed(1)}% <= ${(MAX_DEAD * 100).toFixed(1)}% ` +
+      `over ${measured}/${MUST_MEASURE.length} required plate(s)`,
+  )
 }

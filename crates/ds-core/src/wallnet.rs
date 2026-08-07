@@ -237,27 +237,93 @@ mod tests {
         assert!((total - 8.4).abs() < 1e-6, "perimeter {total}");
     }
 
+    /// Is `p` STRICTLY inside wall `w`'s own thickness rectangle?
+    ///
+    /// Derived here from `(a, b, thickness)` and nothing else — never from
+    /// `quads()`, which is the code under test. It is deliberately the
+    /// UN-MITRED rectangle, a strict subset of the solid `outline` actually
+    /// unions, so it can only ever UNDER-report burial: every point it calls
+    /// interior really is interior, and the assertion cannot fire on a segment
+    /// that legitimately lies on the union boundary.
+    ///
+    /// `eps` points OUTWARD. A point exactly on a face is on the boundary of the
+    /// solid and is exactly where the union is supposed to draw, so tangency
+    /// must be permitted; only a point with clearance on every side is buried.
+    fn strictly_inside(wall: &Wall, p: [f64; 2], eps: f64) -> bool {
+        let (dx, dy) = (wall.b.x - wall.a.x, wall.b.y - wall.a.y);
+        let len = (dx * dx + dy * dy).sqrt();
+        if len < 1e-9 {
+            return false;
+        }
+        let (ux, uy) = (dx / len, dy / len);
+        let (vx, vy) = (p[0] - wall.a.x, p[1] - wall.a.y);
+        let along = vx * ux + vy * uy;
+        let across = (vy * ux - vx * uy).abs();
+        along > eps && along < len - eps && across < wall.thickness / 2.0 - eps
+    }
+
     /// **The junction.** Two walls meeting at a corner used to draw eight
-    /// strokes, four of them buried inside the solid. The union keeps six: four
-    /// faces plus the two free end caps, and nothing crosses the corner.
+    /// strokes, four of them buried inside the solid. The union keeps the
+    /// boundary and nothing else: no stroke may run through the wall body.
+    ///
+    /// THE PROPERTY, not a window (F5, adversary round). This test previously
+    /// asked whether a midpoint fell in the OPEN box `(3.9, 4.1) × (-0.1, 0.1)`
+    /// with strict `>`/`<` and a `+1e-9` inset — and the L is axis-aligned on
+    /// exactly those four coordinates, so every buried midpoint landed precisely
+    /// ON the excluded boundary. Deleting the union entirely (`let buried =
+    /// false`) took the output from 8 segments to 12, and this test — the one
+    /// named for the defect — stayed GREEN through it. Measured, not assumed:
+    /// the four strokes it could not see were
+    ///     w1 [3.9,0.1]→[4.1,0.1]  mid (4.000, 0.100)
+    ///     w1 [4.1,0.1]→[4.1,-0.1] mid (4.100, 0.000)
+    ///     w2 [3.9,-0.1]→[3.9,0.1] mid (3.900, 0.000)
+    ///     w2 [4.1,0.1]→[4.1,-0.1] mid (4.100, 0.000)
+    /// A hand-drawn window is a guess about where the defect will appear. The
+    /// property — *no output segment lies strictly inside another wall's solid*
+    /// — is the definition of a union boundary, needs no coordinates, and holds
+    /// at every angle.
+    ///
+    /// R10 — WHICH AXES THIS GUARD'S FALSIFICATION VARIES: (1) the MECHANISM —
+    /// `let buried = false` in `outline`, the sabotage this test is named for and
+    /// had never survived; (2) the ORIENTATION — the same junction axis-aligned
+    /// and at 60°, so the assertion cannot be passing on exact-coordinate luck.
+    /// Orientation was the unvaried axis that let (1) through.
     #[test]
     fn an_l_junction_draws_no_line_inside_the_wall() {
-        let walls = [w(1, 0.0, 0.0, 4.0, 0.0, 0.2), w(2, 4.0, 0.0, 4.0, 3.0, 0.2)];
-        let segs = outline(&walls, &|_| false);
-        // The buried cap: wall 1's end at x = 4 lies inside wall 2's rectangle.
-        // If any output segment runs along it, the junction still draws a line
-        // through the corner.
-        for s in &segs {
-            let inside_corner = |p: [f64; 2]| {
-                p[0] > 3.9 + 1e-9 && p[0] < 4.1 - 1e-9 && p[1] > -0.1 + 1e-9 && p[1] < 0.1 - 1e-9
-            };
-            let mid = [(s.a[0] + s.b[0]) / 2.0, (s.a[1] + s.b[1]) / 2.0];
-            assert!(
-                !inside_corner(mid),
-                "a segment runs through the junction interior: {:?} → {:?}",
-                s.a,
-                s.b
-            );
+        // Axis-aligned — the original case, where every buried midpoint sits on
+        // an exact coordinate — and oblique, where none of them do.
+        let cases: [(&str, [Wall; 2]); 2] = [
+            (
+                "axis-aligned",
+                [w(1, 0.0, 0.0, 4.0, 0.0, 0.2), w(2, 4.0, 0.0, 4.0, 3.0, 0.2)],
+            ),
+            (
+                "oblique 60°",
+                [
+                    w(1, 0.0, 0.0, 4.0, 0.0, 0.2),
+                    w(2, 4.0, 0.0, 4.0 + 3.0 * 0.5, 3.0 * 0.866_025_403_784_438_6, 0.2),
+                ],
+            ),
+        ];
+        for (name, walls) in cases {
+            let segs = outline(&walls, &|_| false);
+            assert!(!segs.is_empty(), "{name}: outline produced nothing to check");
+            for s in &segs {
+                let mid = [(s.a[0] + s.b[0]) / 2.0, (s.a[1] + s.b[1]) / 2.0];
+                for other in &walls {
+                    if other.id == s.wall {
+                        continue;
+                    }
+                    assert!(
+                        !strictly_inside(other, mid, 1e-9),
+                        "{name}: segment {:?} → {:?} (wall {}) runs through the body of wall {}",
+                        s.a,
+                        s.b,
+                        s.wall,
+                        other.id
+                    );
+                }
+            }
         }
     }
 

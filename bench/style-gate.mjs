@@ -6,12 +6,46 @@
 // how canvas and export drift apart.
 //
 // Run: node bench/style-gate.mjs   (exit 1 on violation)
+//
+// R10 — WHICH AXES THIS GATE'S FALSIFICATION VARIES: (1) the LITERAL — inject a
+// hex into a guarded file, expect red; (2) the PATH — rename or move a guarded
+// file with its literal untouched, expect red. Axis (2) was never varied, and
+// that is exactly how `if (!fs.existsSync(file)) continue` survived under the
+// comment naming the hazard. See `resolveGuarded` below.
+//
+// MEASURED, and deliberately not taken: a fully CONTENT-derived guarded set —
+// "every file under web/src that imports planStyle.ts", which is the population
+// this gate's own premise names — is 13 files beyond GUARDED carrying ~60
+// literals today. That is a migration, not a fix, so the guarded set stays
+// declared and the derivation is applied to RESOLVING each entry instead. The
+// number is recorded so the migration can be scoped rather than re-measured.
 
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+
+/**
+ * THE TREE, walked from disk exactly once — the one definition of "the files
+ * that exist" every check below shares.
+ *
+ * It replaces the two separate `walk`/`walk2` copies that differed only in their
+ * extension filter, and it is what makes the guarded set RESOLVABLE rather than
+ * merely enumerated: a check can now ask where a file actually is instead of
+ * assuming the path in a constant is still true.
+ */
+function walkSrc(dir = path.join(ROOT, 'web/src'), out = []) {
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (e.name === 'node_modules' || e.name === 'wasm' || e.name.startsWith('.')) continue
+    const p = path.join(dir, e.name)
+    if (e.isDirectory()) walkSrc(p, out)
+    else out.push(p)
+  }
+  return out
+}
+const SRC_FILES = walkSrc()
+const srcWith = (re) => SRC_FILES.filter((f) => re.test(path.basename(f)))
 
 // Files that draw the plan and must read every mark from the table.
 //
@@ -99,10 +133,69 @@ const RGBA = /\brgba?\(\s*\d/g
 // punish it.
 const LINEWIDTH = /lineWidth\s*=\s*[0-9.]+/g
 
+/**
+ * Resolve a guarded entry to the file it actually names — FAIL CLOSED (V2).
+ *
+ * This gate shipped with `if (!fs.existsSync(file)) continue`, three lines under
+ * its own comment saying *"a rule pointed at a deleted path is a rule watching
+ * nothing."* The hazard was named and the code did the opposite. Proven:
+ *
+ *     inject '#ff00ff' into web/src/export/pdfDoc.ts   -> STYLE GATE FAIL: 1   exit 1
+ *     git mv pdfDoc.ts pdfWriter.ts (hex untouched)    -> style gate: OK       exit 0
+ *
+ * `bench/lod-sweep.mjs:28` already carried the correct shape for exactly this
+ * reason; this is that shape, plus the part lod-sweep does not need:
+ *
+ *  - the path is DERIVED, not trusted. A file MOVED to another directory is
+ *    followed by basename and scanned where it now lives, so a stale directory
+ *    in GUARDED can never silently unguard a file. The stale entry is still a
+ *    violation — a named resource whose name no longer resolves is a defect
+ *    even when the gate works around it.
+ *  - a basename resolving to MORE than one file is a violation. Copying a
+ *    guarded file to a second path is the other way out of a guard, and it
+ *    leaves the original entry passing.
+ *  - a name that resolves nowhere is a hard failure, never a skip.
+ *
+ * A true RENAME (new basename) cannot be followed by construction and is caught
+ * by the hard failure instead. The two mechanisms cover different escapes; the
+ * measured coverage of a content-derived set is in the header note below.
+ */
+function resolveGuarded(rel) {
+  const direct = path.join(ROOT, rel)
+  const base = path.basename(rel)
+  const sameName = SRC_FILES.filter((f) => path.basename(f) === base)
+  if (fs.existsSync(direct)) {
+    if (sameName.length > 1) {
+      return { file: direct, notes: [`GUARD FORKED: ${base} exists at ${sameName.length} paths — ` +
+        `${sameName.map((f) => path.relative(ROOT, f)).join(', ')}. A copy of a guarded file is ` +
+        'unguarded by default; guard it or delete it.'] }
+    }
+    return { file: direct, notes: [] }
+  }
+  if (sameName.length === 1) {
+    const moved = path.relative(ROOT, sameName[0])
+    return {
+      file: sameName[0],
+      notes: [`GUARD MOVED: ${rel} -> ${moved}. Followed by name and scanned there, but ` +
+        'GUARDED still points at a path that does not exist — re-anchor it in this commit.'],
+    }
+  }
+  return {
+    file: null,
+    notes: [`GUARD MISSING: ${rel} does not exist and no file named ${base} is under web/src. ` +
+      'A rule pointed at a deleted path is a rule watching nothing, so this is a FAILURE, not ' +
+      'a skip. Re-anchor the rule on the successor in the SAME commit that moves or renames it.'],
+  }
+}
+
 let violations = 0
 for (const [rel, rules] of GUARDED) {
-  const file = path.join(ROOT, rel)
-  if (!fs.existsSync(file)) continue
+  const { file, notes } = resolveGuarded(rel)
+  for (const n of notes) {
+    console.log(`  ${n}`)
+    violations++
+  }
+  if (!file) continue
   const src = fs.readFileSync(file, 'utf8')
   const lines = src.split('\n')
   lines.forEach((line, i) => {
@@ -167,16 +260,7 @@ for (const [rel, rules] of GUARDED) {
   const zoneBlock = tableSrc.match(/export const ZONE: Record<[^>]*> = \{([\s\S]*?)\n\}/)
   const values = zoneBlock ? [...zoneBlock[1].matchAll(/#[0-9a-fA-F]{6}/g)].map((m) => m[0].toLowerCase()) : []
   const unique = [...new Set(values)]
-  const walk = (dir, out = []) => {
-    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-      if (e.name === 'node_modules' || e.name === 'wasm' || e.name.startsWith('.')) continue
-      const p = path.join(dir, e.name)
-      if (e.isDirectory()) walk(p, out)
-      else if (/\.(ts|tsx|css|mjs)$/.test(e.name)) out.push(p)
-    }
-    return out
-  }
-  for (const file of walk(path.join(ROOT, 'web/src'))) {
+  for (const file of srcWith(/\.(ts|tsx|css|mjs)$/)) {
     const rel = path.relative(ROOT, file)
     if (rel === TABLE) continue
     const src = fs.readFileSync(file, 'utf8').toLowerCase()
@@ -207,16 +291,7 @@ for (const [rel, rules] of GUARDED) {
 {
   const TABLE = 'web/src/editor/planStyle.ts'
   const GROUND_FILL = /ZONE\.(Circulation|Unassigned)\.fill/g
-  const walk2 = (dir, out = []) => {
-    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-      if (e.name === 'node_modules' || e.name === 'wasm' || e.name.startsWith('.')) continue
-      const p2 = path.join(dir, e.name)
-      if (e.isDirectory()) walk2(p2, out)
-      else if (/\.(ts|tsx)$/.test(e.name)) out.push(p2)
-    }
-    return out
-  }
-  for (const file of walk2(path.join(ROOT, 'web/src'))) {
+  for (const file of srcWith(/\.(ts|tsx)$/)) {
     const rel = path.relative(ROOT, file)
     if (rel === TABLE) continue
     const src = fs.readFileSync(file, 'utf8')

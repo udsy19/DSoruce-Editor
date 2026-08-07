@@ -2351,3 +2351,97 @@ Each was falsified, and each falsification moved along an axis the defect did no
 live on. From here every guard ships with **a one-line statement of which axes its
 falsification varies**, and the ADVERSARY verifies that claim rather than the
 guard's green.
+
+# VERIFIER ROUND — three guards rebuilt, two repaired, four nulls reported
+
+## V1 · `deadspace-core` — the verdict now needs a full set
+
+`worst` is a maximum; a maximum over the empty set is 0; 0 clears every threshold.
+With `plate_resolution → Unresolved` + `make wasm`:
+`DEADSPACE OK: worst 0.0% <= 10.0%  EXIT=0`.
+
+**A second, cheaper reproduction of the same class, not in the brief and needing no
+wasm rebuild:** `--fixture F3 --max-dead 0.10` printed `worst 0.0%` exit 0 on the
+**shipped** tree. F3 is unresolved at HEAD *by design* — the GEA-collapse fixture —
+so the gate had been grading **4 of 5 with nothing asserting the count**.
+
+Fixed: `MUST_MEASURE` is fixed *before* the first measurement, and
+`EXPECTED_UNRESOLVED` (F3, with its reason) is **two-sided** — a declared-unresolved
+fixture that *resolves* fails as loudly as an undeclared one that does not, so it
+cannot rot into a blanket exemption.
+
+```
+unresolved everywhere -> FAIL, 4 named      F1 declared unresolved -> FAIL
+--fixture F3 alone    -> FAIL, 0 of 0       --max-dead 0.09        -> FAIL 9.5% > 9.0%
+clean tree            -> OK, worst 9.5% <= 10.0% over 4/4 required plate(s)
+```
+
+## F5 · the L-junction test asserts the property, not a window
+
+8 segments shipped, 12 sabotaged, **green in both**. The window is deleted; the test
+now asserts the defining property — no output segment's midpoint lies strictly
+inside another wall's thickness rectangle — with the rectangle derived in the test
+from `(a, b, thickness)` alone and deliberately **un-mitred**, a strict subset of
+the real solid so it can only under-report. `eps` points **outward**, because
+tangency is where the union is *supposed* to draw. Run axis-aligned **and oblique
+60°**.
+
+**Nulls.** Dropping the oblique case leaves it red (axis-aligned catches it) and
+dropping the axis-aligned case leaves it red too — each is independently
+sufficient. Using the **mitred** rect leaves it **green**: the conservative rect is
+margin, not mechanism. Flipping `eps` inward reds a *correct* tree, so that
+direction **is** load-bearing.
+
+**Two unrelated observations from the dump, out of remit:** the shipped union
+leaves a 0.2 m gap in the outer corner (both coincident bottom-face pieces are
+dropped) and emits `[4.1,0.1]→[4.1,-0.1]` **twice**. Also a correction to the
+brief's mechanism: only two of the four missed strokes were strictly interior; the
+other two were dropped by boundary coincidence.
+
+## V2 · style-gate fails closed, and derives the path
+
+`git mv pdfDoc.ts pdfWriter.ts` with `#ff00ff` live → `style gate: OK  exit 0`.
+`resolveGuarded()` now distinguishes three cases: a **move** (same basename, new
+directory) is followed and scanned where the file now lives — still a violation,
+since the entry no longer resolves; a **fork** (basename at two paths) is a
+violation; a **rename** resolves nowhere and is a hard failure. Two duplicate tree
+walkers collapsed onto one.
+
+**Measured and deliberately not taken**, recorded in the header so the migration
+can be scoped without re-measuring: the fully content-derived guarded set — "every
+file importing `planStyle.ts`", the population the gate's own premise names — is
+**13 files beyond GUARDED carrying ~60 literals**; directory-wide guarding of
+`editor/`+`export/` is 12 new offenders. Migrations, not fixes.
+
+## Also fixed
+
+**V3** `ladder-check` iterates `MEASURED_PT` (the spec) and compares **both**
+directions. Deleting the `roomEnclosure` rung went `ladder OK — 5 tiers` exit 0 →
+`FAIL: TIER is missing 1 measured rung(s)`; an invented rung also reds.
+**V4** `g10` reads `spec.target.durationRange_s` and throws `Missing` on absence.
+**The fallback EQUALLED the spec**, so the gate agreed with it by coincidence and
+editing the spec would have changed nothing. Not falsified end-to-end — no `out/`
+pack in the worktree.
+
+## R10 axis statements, one per rebuilt guard
+
+| guard | axes its falsification now varies | the axis that had never been varied |
+|---|---|---|
+| `deadspace-core` | value · **count** · **membership** | count |
+| `an_l_junction_…` | mechanism · **orientation** | orientation |
+| `style-gate` | literal · **path** (rename/move/fork) | path |
+| `ladder-check` | value · clamp · **membership** | membership |
+
+## Two findings outside the remit, reported
+
+**The battery is not deterministic.** `real_building_plate_spreads_the_program`
+failed once in three full runs — `seed 1: generate took 575 ms (debug budget 300)`
+— and passed 3/3 in isolation at ~1.05 s. **A wall-clock budget inside the standard
+battery is a coin flip under parallel-worktree load, and it decides commits through
+`.githooks/pre-commit`.**
+
+**`ladder-check`, `lod-sweep` and `export-parity` gate NOTHING.** No runner invokes
+them: `verify-all.sh` runs deadspace/style-gate/accent-univalence, `run-all.sh` runs
+G1–G13, `package.json` has one `bench` script that spawns `dwg2dxf`, and there is no
+`.github/workflows`. **Four documents list `ladder-check` as PASS on a board it has
+never been on.** All three pass at HEAD in 51/49/54 ms.
