@@ -520,10 +520,18 @@ pub fn generate(
     // orientations, nearest-to-circulation candidate wins). A room that fits
     // nowhere is a shortfall `program_fit` reports — never a silent drop.
     for job in overflow {
-        place_in_pocket(
+        let ok = place_in_pocket(
             doc, &plans, &job, plate.as_deref(), &iwalls, &mut obstacles,
             keepout_len, frozen_len, &circ_rects, clear,
         );
+        // A room that fits in no band and no pocket is DROPPED. It already
+        // surfaces as a `program_fit` shortfall in the score, but a score is a
+        // scalar: it says the plan is short without saying of what. Naming them
+        // is the difference between "the derive did not ask for it" and "the
+        // derive asked and placement refused", and those have different fixes.
+        if !ok {
+            diag.rooms_unplaced.push(job.label.clone());
+        }
     }
 
     // --- Drawn circulation zones (spine / entry connector / link / seams) --

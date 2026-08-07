@@ -1546,8 +1546,15 @@ Measured from the document, F1 carries **twelve rooms**: 5 ClosedOffice
 (2 cabins, 2 focus, 1 phone booth), 3 Meeting, 4 Amenity (reception, IT/server,
 storage, print). The poverty is real but it is *specific*: **conference rooms**,
 where we sit at 38% of the reference. Offices we already have more of, per seat,
-than qbiq does. What we have none of is a **pantry** and a **comfort zone /
-lounge** — both in the reference's legend, neither in our derive.
+than qbiq does.
+
+> **CORRECTION, made one commit later by a better instrument.** This entry went
+> on to claim *"what we have none of is a pantry and a comfort zone / lounge —
+> both in the reference's legend, neither in our derive."* **That is false.**
+> `SpaceProgram::derive` requests a `Pantry` on every plate and a `Collab`
+> (the lounge/breakout equivalent) at 1 per ~12 breakout seats. Both are asked
+> for on F1 and both are **dropped by placement**. See the S3-1 entry below; the
+> claim is retracted here so this table is not read on its own.
 
 **The brief said the reference "never runs more than ~3 desk rows".** Measured:
 runs of `[4, 2, 5, 1, 3]` in the portrait family and `[2, 2, 3, 4]` in the
@@ -1601,3 +1608,64 @@ The allocator change itself (F1d's programme model, F1e's rhythm punctuation and
 perimeter strategy), F1c, F2, S3-4's reference deadspace number, S3-5's label
 re-place. The constants they need now exist and are frozen; **no allocator code
 moved this session**, which is what the brief asked for as the first commit.
+
+## S3-1 — the mechanism is PLACEMENT, not the programme model
+
+`LayoutDiag.rooms_unplaced` was declared in the first diag commit and never
+populated — a field that names nothing is worth nothing, so it now records every
+room the derive asked for that `place_in_pocket` refused. One run answered the
+question the whole item was built on:
+
+```
+ROOMS THE DERIVE ASKED FOR AND PLACEMENT DROPPED: 12
+    3 x Meeting Room      3 x Phone Booth      2 x Cabin
+    1 x Collab            1 x Pantry           1 x Wellness Room
+    1 x Print Point
+```
+
+**The derive asked for 24 rooms. Twelve never land.**
+
+### This overturns the brief AND my own entry above
+
+- *"Conference rooms are the gap — this is the bulk of the allocator change."*
+  The derive already asks for **six** meeting rooms; **three** are placed.
+  Raising the requested count would take the drop count from 12 to 17 and change
+  nothing on the sheet.
+- *"Pantry and lounge/comfort zone do not exist in the derive."* They do —
+  `SpaceKind::Pantry` on every plate, `SpaceKind::Collab` at 1 per ~12 breakout
+  seats. Both are requested on F1. **Both are dropped.** I repeated this claim as
+  a finding in the entry above; it is corrected there and retracted here.
+
+Adding programme to a generator that cannot place the programme it already has
+would have produced a bigger derive, an unchanged drawing, and a ledger entry
+saying the work was done.
+
+### Where the rooms have to go, and why they cannot
+
+The chain runs straight back into F1a. `allocate_rooms` sets `cap_d[i] = 0` for
+every `field_regions[i]` — the dominant wing accepts **zero** rooms by design, so
+the whole 24-room programme must fit in R1 (115 m²) and R2 (85 m²). Those two
+wings are exactly the ones F1a measured as **full** and declared room wings.
+There is no third place, so twelve rooms are dropped.
+
+**The reference does not have this problem because it does not make this
+choice.** It lines the main field's window wall with alternating offices and
+conference rooms — the perimeter strategy the brief mentions as part of the
+change. Measured, it is not a stylistic nicety: **it is the only floor the
+support programme can occupy.** F1b's finding arrives at the same place from the
+other side — the dead floor is the perimeter, because we reserve the perimeter
+for desks and the reference furnishes it.
+
+So S3-1's real shape is: **let the dominant wing's window edge carry a room band**
+(a `cap_d` that is zero only for the field's *interior*, not its facade), and the
+mix ratio follows without touching the derive at all. That is a change to
+`allocate_rooms` + `plan_region`, and its acceptance is already built and
+standing red: `composition.mjs --gate`, jointly with the density band, which the
+reference proves can hold together.
+
+**Not implemented.** The instrument that names the mechanism landed; the
+allocator change did not. Everything above is one `layout_diag` read, and it
+replaces an allocator change that would have been aimed at the wrong file.
+
+Rust **184**, battery **43/43**, goldens unmoved (the change is diagnostic only),
+`deadspace-core` 9.5% ≤ 10.0%.
