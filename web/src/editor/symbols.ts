@@ -88,6 +88,26 @@ export interface SymbolSpec {
    * premise, so it is the one caller that turns this off.
    */
   implySeats?: boolean
+  /**
+   * BASE pen for the symbol's primary linework. Defaults to `'thin'`.
+   *
+   * A fact about the CONSUMER, exactly like {@link SymbolSpec.implySeats}, and
+   * for the same kind of reason: the ink a surface wants is a property of the
+   * surface, not of the chair.
+   *
+   * The measured case. `pen('thin', 1)` is 2 CSS px, so on a 1× screen every
+   * desk outline is drawn at 2 px — while the wall beside it is 1 px and the
+   * reference's own furniture is 0.29 px of a 2.08 px/pt page, a fifth of its
+   * room-enclosure weight. Ours was DOUBLE the wall's. The ladder was not merely
+   * flat at plan zoom, it was upside down, and it is why a desk field reads as a
+   * mass of dark boxes here and as a light repeating texture on the reference.
+   *
+   * The editor canvas therefore drops to `'hair'` once a glyph is small enough
+   * that it is being surveyed rather than inspected. The PRINT and IMPORT
+   * consumers pass nothing and are byte-identical to before — a sheet is a
+   * different medium with its own measured ink, and `scripts/gates/` grades it.
+   */
+  weight?: PenWeight
   selected?: boolean
 }
 
@@ -112,13 +132,33 @@ export function pen(weight: PenWeight, dpr: number): number {
 // Continuous level of detail
 // ---------------------------------------------------------------------------
 
-/** Detail bands, in projected pixels of a symbol's smaller world dimension.
- *  `exit` = fully invisible at or below; `enter` = fully drawn at or above. */
+/**
+ * Detail bands, in projected pixels of a symbol's smaller world dimension.
+ * `exit` = fully invisible at or below; `enter` = fully drawn at or above.
+ *
+ * RE-CENTRED ON THE SCALE A PLAN IS ACTUALLY READ AT. The bands were tuned to
+ * the symbol, not to the drawing, and the drawing lost. A test-fit is reviewed
+ * at 15–25 px/m — the qbiq reference plate itself sits at ~20 px/m in its own
+ * 1748 px render — where a 0.7 m-deep desk projects 11–18 px. The old
+ * `primary: {9, 20}` put a1 at 0.18–0.82 across exactly that window and 0.33 at
+ * our default 18 px/m, so on the whole desk field the chair, the monitor and the
+ * table-top inset — the marks that make a rectangle read as a workstation —
+ * were two-thirds transparent. The reference draws every one of them at full
+ * strength at that scale; that is most of why its desk rows read as furniture
+ * and ours read as a field of identical hollow boxes.
+ *
+ * `fine` moves with it so the two bands stay a stop apart: grace notes still
+ * arrive only when you have zoomed IN to look at an object, never at overview.
+ *
+ * The counts these gate remain world-derived and zoom-invariant — the bands
+ * change WHEN detail appears, never HOW MUCH of it there is (symbols.test.mjs
+ * §3 pins that across the whole 8–300 px/m range).
+ */
 const BAND = {
   /** Chairs, monitor, table-top inset: the things that make it read as furniture. */
-  primary: { exit: 9, enter: 20 },
+  primary: { exit: 4, enter: 11 },
   /** Keyboard, drawer seams, armrests, ceiling tiles: grace notes. */
-  fine: { exit: 22, enter: 42 },
+  fine: { exit: 16, enter: 34 },
 } as const
 
 /** 0 → 1 ramp across a band. Linear, so detail dissolves rather than popping. */
@@ -182,7 +222,7 @@ export function drawSymbol(ctx: CanvasRenderingContext2D, s: SymbolSpec, ink: In
   if (!(W > 0) || !(H > 0)) return
   const line = s.selected ? ink.accent : ink.stroke
   // Selected draws one pen heavier — a weight step, not an arbitrary bump.
-  const lw = pen(s.selected ? 'med' : 'thin', v.dpr)
+  const lw = pen(s.selected ? 'med' : (s.weight ?? 'thin'), v.dpr)
   const hair = pen('hair', v.dpr)
   const minPx = Math.min(W, H)
   const a1 = lod(minPx, BAND.primary)
@@ -285,9 +325,19 @@ function desk(g: G, w: number, h: number): void {
   g.ctx.stroke()
 
   // Monitor — a real 0.45 m screen on the back edge, not a px-clamped bar.
-  if (g.a1 > 0) {
+  //
+  // FINE detail, not primary. A monitor is desk equipment; a chair is what makes
+  // a rectangle read as a WORKSTATION, and the reference plate draws the second
+  // and not the first — its desk runs carry chairs and bare white worktops, with
+  // no screens anywhere at plan scale. On our own output the difference is
+  // brutal: the screen is a FILLED bar 0.45 m long across a 0.7 m-deep desk, so
+  // at overview zoom it is a solid dark slash through 64% of the glyph, and a
+  // desk field of it reads as hatching. Chairs stay on `a1` and arrive first;
+  // the screen and the keyboard arrive together, when you have zoomed in to look
+  // at one desk rather than to survey a floor.
+  if (g.a2 > 0) {
     g.ctx.save()
-    g.ctx.globalAlpha = g.a1
+    g.ctx.globalAlpha = g.a2
     const mw = Math.min(MONITOR_W_M, w * 0.6)
     const my = T + h * 0.06
     roundRect(g, -mw / 2, my, mw, MONITOR_D_M, MONITOR_D_M * 0.4)

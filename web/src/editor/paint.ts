@@ -12,10 +12,10 @@ import { drawSymbol, seatsForSize } from './symbols'
 import { fmtMeters } from '../cad/dimEdit'
 import type { DocComponent, DocState, DocWall, DocZone } from '../types/doc'
 import {
-  planStyle, strokePx, C, DECISION_DOT, ZONE,
-  WHITE, BLACK, THUMB_FILL, THUMB_OTHER, hexToRgba, CHROME, hatchLevel, detailLevel, SERVICE_ROOMS, abbreviate,
+  planStyle, strokePx, C, DECISION_DOT, ZONE, LOD, zoneBandFill,
+  WHITE, BLACK, THUMB_FILL, THUMB_OTHER, hexToRgba, CHROME, hatchLevel, SERVICE_ROOMS, abbreviate,
 } from './planStyle'
-import type { FillStyle } from './planStyle'
+import type { FillStyle, PlanStyle } from './planStyle'
 import type { Metrics, ZoneStat } from '../types/metrics'
 
 /** A point in screen or world space (the function names say which). */
@@ -108,6 +108,37 @@ export function drawGrid(v: PaintView, w: number, h: number) {
   ctx.strokeStyle = C.axis
   line(ctx, o.x, 0, o.x, h)
   line(ctx, 0, o.y, w, o.y)
+}
+
+/**
+ * Paint the floor plate as PAPER — white, over the wall bounding box, drawn
+ * AFTER the grid so the drawing never sits on graph paper.
+ *
+ * The reference's plan area is measured white: `qbiq-plan-style-spec.json` →
+ * `palette.grid` records *"0 of 394 sampled px non-white in an empty band"*. We
+ * ruled a 1 m grid across the whole viewport instead, so every room, every desk
+ * run and every corridor had construction lines running through it. Keeping the
+ * grid on the MAT and stopping it at the plate gives the editor the working
+ * reference it needs outside the building and gives the drawing the clean sheet
+ * the reference has inside it — an order change, not a lost affordance.
+ *
+ * THE BOUNDING BOX, NOT THE TRACED POLYGON, and the difference was measured
+ * rather than assumed. `Editor.plate()` traces the floor loop, and on a real
+ * imported plate that trace is not guaranteed to cover every enclosed room: on
+ * the 930 m² sample its 76-vertex polygon omits the whole western strip, so
+ * filling the polygon punched a mat-coloured hole inside the building's own
+ * outline — worse than the grid it removed. The box over-covers slightly at a
+ * concave corner, which is exactly what the background did before this change;
+ * only the ORDER is new.
+ */
+export function fillPlate(
+  v: PaintView,
+  bbox: { minX: number; minY: number; maxX: number; maxY: number },
+) {
+  const p0 = v.toScreen(bbox.minX, bbox.minY)
+  const p1 = v.toScreen(bbox.maxX, bbox.maxY)
+  v.ctx.fillStyle = C.surface
+  v.ctx.fillRect(p0.x, p0.y, p1.x - p0.x, p1.y - p0.y)
 }
 
 export function drawSegment(v: PaintView, a: Pt, b: Pt, widthPx: number, color: string) {
@@ -217,12 +248,26 @@ export function drawWall(v: PaintView, w: DocWall, exterior: boolean) {
     Math.max(w.thickness, 0.1) * v.scale,
   )
 
-  drawSegment(v, a1, b1, width, color)
-  drawSegment(v, a2, b2, width, color)
-  // End caps close the wall so it reads as a solid element rather than two
-  // stray parallel lines.
-  drawSegment(v, a1, a2, width, color)
-  drawSegment(v, b1, b2, width, color)
+  // ONE closed, mitred path — not four round-capped segments.
+  //
+  // The faces and the end caps are the same rectangle, so stroking them
+  // separately was four chances to disagree: `drawSegment` sets
+  // `lineCap = 'round'`, which put a half-width bead on all eight ends and left
+  // every wall junction a soft blob. The reference's walls meet at sharp
+  // corners because they are one path with mitred joins, and at the 1 px wall
+  // tier the difference between a bead and a mitre is the difference between a
+  // drawing and a sketch.
+  ctx.save()
+  ctx.lineJoin = 'miter'
+  ctx.lineCap = 'butt'
+  ctx.strokeStyle = color
+  ctx.lineWidth = width
+  ctx.beginPath()
+  ctx.moveTo(q[0].x, q[0].y)
+  for (let i = 1; i < q.length; i++) ctx.lineTo(q[i].x, q[i].y)
+  ctx.closePath()
+  ctx.stroke()
+  ctx.restore()
 }
 
 /**
@@ -318,6 +363,31 @@ function fillWith(
   ctx.restore()
 }
 
+/**
+ * THE room enclosure — the drawing's heaviest mark, stroked around the CURRENT
+ * path (the caller traces the zone; this only inks it).
+ *
+ * It reads {@link PlanStyle.roomEnclosure} instead of tinting the zone's own
+ * palette line, and that is the whole point. Both zone branches used to stroke
+ * `rgba(pal.line, 0.45)` — a 45%-opacity PASTEL — and the table's declaration
+ * (`stroke: BLACK, tier: 'roomEnclosure'`) was never read by anything. So the
+ * 7.05× tier, which the reference measurement identifies as the single mark that
+ * carries the drawing ("the only heavy black strokes are the outlines of ZONE
+ * polygons whose fills are the pastel zone colours"), shipped as the LIGHTEST
+ * thing on our canvas: lighter than the walls, far lighter than the furniture.
+ * The ladder existed in the table and was inverted on screen.
+ *
+ * GROUND IS EXCLUDED by the caller, not here. A corridor is the surface the plan
+ * sits on; outlining it in the enclosure ink would turn the leftover floor into
+ * the most emphatic room on the sheet.
+ */
+function strokeEnclosure(v: PaintView, style: PlanStyle): void {
+  const el = style.roomEnclosure
+  v.ctx.strokeStyle = el.stroke ?? BLACK
+  v.ctx.lineWidth = strokePx(el.tier ?? 'roomEnclosure', v.scale)
+  v.ctx.stroke()
+}
+
 /** Paint the zone tints (fills, hairlines, core poché) and collect the room tags
  *  the caller draws afterwards, above furniture. `zoneStats` is the core's
  *  plate-clipped truth (area/capacity), cached by the caller. */
@@ -382,7 +452,7 @@ export function drawZones(
       ? style.groundTint!
       : v.presentation
         ? lighten(pal.fill, 0.4)
-        : pal.fill
+        : zoneBandFill(pal.fill)
     // `fillWith`'s last argument is the REFERENCE SIZE its LOD ramp fades the
     // hatch against (`hatchLevel` = smoothstep 5..13 px). It exists because a
     // hatch inside a 4 px wall is a smear, so a thin wall degrades to a plain
@@ -436,10 +506,8 @@ export function drawZones(
         ctx.lineWidth = strokePx(outline.tier ?? 'furniture', v.scale)
         ctx.stroke()
         ctx.restore()
-      } else {
-        ctx.strokeStyle = hexToRgba(pal.line, 0.45)
-        ctx.lineWidth = strokePx('roomEnclosure', v.scale)
-        ctx.stroke()
+      } else if (!ground) {
+        strokeEnclosure(v, style)
       }
       // Screen-space ring, computed ONCE: the texture bbox, the pole of
       // inaccessibility and the tag's own bounds are all derived from it.
@@ -524,20 +592,22 @@ export function drawZones(
       const w = s.w * v.scale
       const h = s.h * v.scale
       ctx.fillRect(p.x, p.y, w, h)
-      // Soft inset border (secondary to walls) — a refined architectural edge,
-      // not a saturated toy outline.
       const rectOutline = z.zone_type === 'Unassigned' ? style.unassignedOutline : null
-      ctx.save()
       if (rectOutline) {
+        ctx.save()
         ctx.setLineDash(rectOutline.dash ?? [])
         ctx.strokeStyle = rectOutline.stroke!
         ctx.lineWidth = strokePx(rectOutline.tier ?? 'furniture', v.scale)
-      } else {
-        ctx.strokeStyle = hexToRgba(pal.line, 0.45)
-        ctx.lineWidth = strokePx('roomEnclosure', v.scale)
+        // The half-pixel inset belongs to a 1 px chrome rule, not to a 3.5 px
+        // drawing mark: on the enclosure tier it pulls the outline OFF the
+        // room's own edge and doubles it against the wall that shares it.
+        ctx.strokeRect(p.x, p.y, w, h)
+        ctx.restore()
+      } else if (!ground) {
+        ctx.beginPath()
+        ctx.rect(p.x, p.y, w, h)
+        strokeEnclosure(v, style)
       }
-      ctx.strokeRect(p.x + 0.5, p.y + 0.5, w - 1, h - 1)
-      ctx.restore()
       if (texture) {
         fillWith(
           v,
@@ -814,7 +884,17 @@ export function drawZoneTags(
       ctx.lineWidth = CHROME.labelHalo
       ctx.strokeText(chosen.name, chosen.x, nameY)
     }
-    ctx.fillStyle = t.color
+    // THE TABLE'S INK, not the zone's palette line.
+    //
+    // A room name printed in a 45%-ish pastel blue over a pastel blue fill is
+    // the lowest-contrast text on the drawing, and it was the ONLY text — so the
+    // plan carried its identification in the one colour least able to carry it.
+    // The reference sets its in-plan text in the drawing ink (black); the zone
+    // is identified by the FILL it sits on and by the legend, which is what the
+    // fill and the legend are for. `t.color` is still the zone's line, and is
+    // still what the interactive pill's hairline reads — there the colour is an
+    // affordance, not the message.
+    ctx.fillStyle = style.labelPrimary.color
     ctx.fillText(chosen.name, chosen.x, nameY)
 
     if (chosen.metrics) {
@@ -824,7 +904,7 @@ export function drawZoneTags(
         ctx.lineWidth = CHROME.labelHalo
         ctx.strokeText(chosen.metrics, chosen.x, chosen.y + 7.5)
       }
-      ctx.fillStyle = C.labelSub
+      ctx.fillStyle = style.labelSecondary.color
       ctx.fillText(chosen.metrics, chosen.x, chosen.y + 7.5)
     }
   }
@@ -954,6 +1034,12 @@ export function drawComponent(v: PaintView, c: DocComponent, selected: boolean) 
       // shared module keeps its default so symbols.test.mjs still pins that the
       // glyph reads its seat count from the MODEL.
       implySeats: false,
+      // HAIRLINE WHILE SURVEYING (see SymbolSpec.weight). At `pen('thin')` a
+      // desk outline is 2 CSS px on a 1x screen — twice the wall beside it and
+      // seven times the reference's own furniture weight relative to its room
+      // enclosure. Below `hairlineBelowPx` the plan is being read as a plan, and
+      // the furniture is the texture, not the subject.
+      weight: Math.min(c.w, c.h) * v.scale < LOD.hairlineBelowPx ? 'hair' : 'thin',
       selected,
     },
     {

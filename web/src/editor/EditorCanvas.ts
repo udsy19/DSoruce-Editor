@@ -27,6 +27,7 @@ import {
   drawDimLabel,
   drawGlazing,
   drawGrid,
+  fillPlate,
   drawRoomSelection,
   drawRulers,
   drawSegment,
@@ -1557,25 +1558,23 @@ export class EditorCanvas {
 
     // Presentation: full-bleed paper white. Normal: gray mat everywhere with a
     // white floor plate over the building footprint, plus grid + axis.
+    this.updatePlate(st.walls)
     if (this.presentation) {
       ctx.fillStyle = C.surface
       ctx.fillRect(0, 0, w, h)
     } else {
-      ctx.fillStyle = C.mat
-      ctx.fillRect(0, 0, w, h)
       const bb = wallBbox(st.walls)
-      if (bb) {
-        const p0 = this.toScreen(bb.minX, bb.minY)
-        const p1 = this.toScreen(bb.maxX, bb.maxY)
-        ctx.fillStyle = C.surface
-        ctx.fillRect(p0.x, p0.y, p1.x - p0.x, p1.y - p0.y)
-      } else {
-        ctx.fillStyle = C.surface
-        ctx.fillRect(0, 0, w, h)
-      }
+      ctx.fillStyle = bb ? C.mat : C.surface
+      ctx.fillRect(0, 0, w, h)
+      // GRID FIRST, PAPER OVER IT. The grid is a working reference for the mat
+      // the building sits on; inside the boundary the reference sheet is
+      // measured white (spec `palette.grid`: 0 of 394 sampled px non-white).
+      // Drawing the plate after the grid is what stops construction lines
+      // running through every room — the grid stays, it just stops at the
+      // building.
       drawGrid(this.host, w, h)
+      if (bb) fillPlate(this.host, bb)
     }
-    this.updatePlate(st.walls)
     const tags = this.paintZones(st.zones)
 
     // Resolve the dynamic-input candidate once per frame (wall preview + chips +

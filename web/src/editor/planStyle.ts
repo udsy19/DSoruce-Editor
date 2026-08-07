@@ -42,10 +42,29 @@ export const TIER = {
 } as const
 export type Tier = keyof typeof TIER
 
-/** Base stroke in CSS px at 1× DPR, before tier multiplication. */
-const BASE_STROKE_PX = 0.4
-/** Clamp so hairlines stay visible and heavy tiers stay sane when zoomed in. */
-const MIN_STROKE_PX = 0.35
+/**
+ * Base stroke in CSS px at 1× DPR, before tier multiplication.
+ *
+ * RAISED from 0.4 (plan-quality pass). The RATIOS are the reference's contract;
+ * the base belongs to OUR output medium, and 0.4 put the wall tier at 0.8 CSS px
+ * — a sub-pixel line that a screen can only render as a ~60% grey ghost. The
+ * reference gets away with 0.29 pt walls because it is a 150-dpi *print*: at
+ * 2.08 px/pt its wall is 0.6 device px on a page that is never viewed 1:1. On a
+ * 1× screen the same nominal weight is simply a faded line, which is most of why
+ * the plan read as washed-out rather than drawn.
+ *
+ * At 0.5: furniture-tier 0.75 (clamped) · wall 1.0 · column 0.75 · room
+ * enclosure 3.5 · opening punch 4.25 — the measured ladder, landed on a screen.
+ */
+const BASE_STROKE_PX = 0.5
+/**
+ * Clamp so hairlines stay visible and heavy tiers stay sane when zoomed in.
+ *
+ * The floor was 0.35 px, which is not a hairline — it is a 35%-opacity smear of
+ * one. 0.75 is the thinnest mark that still reads as a LINE at 1× DPR and lands
+ * crisply on the device grid at 2×.
+ */
+const MIN_STROKE_PX = 0.75
 const MAX_STROKE_PX = 6
 
 /**
@@ -112,6 +131,21 @@ export const LOD = {
   /** Wall hatch, by the wall's on-screen thickness (CSS px). */
   hatchMinPx: 5,
   hatchFullPx: 13,
+  /**
+   * FURNITURE PEN, by the mark's smaller on-screen dimension (CSS px).
+   *
+   * Below this a symbol on the EDITOR canvas is drawn with the hairline pen
+   * instead of the thin one; at or above it, the thin pen. The one threshold in
+   * this table that is not a ramp, because a pen is discrete: an architect draws
+   * with a few weights, and half a pen does not exist.
+   *
+   * Set to `symbolFullPx`, deliberately, rather than to a number of its own. It
+   * is the same question the detail ramp already answers — is this object being
+   * SURVEYED or INSPECTED — so it gets the same answer, and the step in weight
+   * lands exactly where the glyph is finishing its fade-in and is therefore the
+   * least visible thing changing.
+   */
+  hairlineBelowPx: 17,
 } as const
 
 /** Hermite ramp — 0 below `edge0`, 1 above `edge1`, C1-continuous between. */
@@ -269,7 +303,14 @@ export const C = {
   mat: '#eef0f4', // outside the building footprint (a touch deeper so the plate lifts)
   gridMinor: 'rgba(23,26,30,0.035)',
   gridMajor: 'rgba(23,26,30,0.075)',
-  axis: 'rgba(45,91,214,0.18)',
+  // World origin (x=0 / y=0). A NEUTRAL, one step above the major grid it
+  // belongs to — it was `rgba(45,91,214,0.18)`, i.e. the UI brand accent, which
+  // put a blue cross the full width and height of the canvas across the drawing.
+  // Two rules at once: the accent belongs to UI chrome and the canvas has its
+  // own closed set (CLAUDE.md, "two palettes, never crossed"), and the origin is
+  // a construction line, not a highlight — the reference sheet has no such mark
+  // at all, and ours should not be the most saturated thing on the plan.
+  axis: 'rgba(23,26,30,0.16)',
   wall: '#2b313a', // interior partitions — medium
   // Matches DrawingCanvas FURNITURE_LINE so generated + imported plans read alike.
   furniture: '#565e69',
@@ -364,6 +405,68 @@ export function hexToRgb01(hex: string): [number, number, number] {
     parseInt(h.slice(2, 4), 16) / 255,
     parseInt(h.slice(4, 6), 16) / 255,
   ]
+}
+
+/**
+ * ZONE FILL, CORRECTED INTO THE REFERENCE'S MEASURED BAND — hue held, S and L
+ * replaced. The canvas's own view of {@link ZONE}, the way `lighten()` is the
+ * presentation view of it.
+ *
+ * `qbiq-plan-style-spec.json` → `palette.zone_fill_targets` is labelled *"THE
+ * ADOPTABLE RULE — apply to DSource hues"*: **S 85–100 %, L 80–92 %**, measured
+ * across nine reference zone fills (mean S 86.2, mean L 85.7). Phase 0 recorded
+ * this as a finding that CONTRADICTS the brief — the fills are high-saturation
+ * pastels, not near-white tints; *"it is the LIGHTNESS that carries the
+ * quietness, not desaturation"*. Our shipped fills sit well under the band on
+ * saturation (Workspace `#d9e7f4` measures **S 55.1, L 90.4**), so on screen the
+ * programme blocks read as ghosts of themselves and the plan lost the thing that
+ * makes the reference legible at a glance: which part of the floor is what.
+ *
+ * WHY A TRANSFORM AND NOT NEW HEXES IN {@link ZONE}. That table is the measured
+ * Laiout palette with its provenance ASSERTED, and it has exactly one owner:
+ * `export/printPlan.ts` derives `PRINT_ZONE_FILL` straight off it, so every
+ * sheet, workbook thumbnail and acceptance gate in `scripts/gates/` reads the
+ * same values. Editing it in place would (a) overwrite a measurement with a
+ * derivation, (b) move a graded deliverable's palette from a rendering change,
+ * and (c) leave `bench/style-gate.mjs`'s PALETTE COPY check — which parses hex
+ * literals out of the ZONE block — guarding the wrong set. A per-profile view
+ * changes the working surface and nothing else, and it is the pattern the table
+ * already uses in the other direction.
+ */
+export function zoneBandFill(hex: string): string {
+  const n = parseInt(hex.slice(1), 16)
+  const r = ((n >> 16) & 255) / 255
+  const g = ((n >> 8) & 255) / 255
+  const b = (n & 255) / 255
+  const max = Math.max(r, g, b)
+  const min = Math.min(r, g, b)
+  if (max === min) return hex // a true neutral has no hue to hold
+  const d = max - min
+  let h: number
+  if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6
+  else if (max === g) h = ((b - r) / d + 2) / 6
+  else h = ((r - g) / d + 4) / 6
+  // Mid-band on both axes: S 88 % (band 85–100), L 87 % (band 80–92). Chosen
+  // toward the light end of the lightness band so a room name still reads over
+  // the fill without a heavier halo.
+  const S = 0.88
+  const L = 0.87
+  const c = (1 - Math.abs(2 * L - 1)) * S
+  const x = c * (1 - Math.abs(((h * 6) % 2) - 1))
+  const m = L - c / 2
+  const seg = Math.floor(h * 6) % 6
+  const rgb = [
+    [c, x, 0],
+    [x, c, 0],
+    [0, c, x],
+    [0, x, c],
+    [x, 0, c],
+    [c, 0, x],
+  ][seg]
+  const to = (v: number) => Math.round((v + m) * 255)
+  return `#${[to(rgb[0]), to(rgb[1]), to(rgb[2])]
+    .map((v) => v.toString(16).padStart(2, '0'))
+    .join('')}`
 }
 
 export function hexToRgba(hex: string, a: number): string {
@@ -560,24 +663,27 @@ export interface PlanStyle {
   groundTint: string | null
 }
 
-export /**
- * Rayon's wall treatment (spec `target.wall_form`). Fine ~45 degree diagonal
- * hatch between the two faces, at the hatch tier so it sits under the outlines.
- * Spacing starts at the spec's 1/3-of-thickness; PROVISIONAL, tuned against
- * reference imagery, and changing it is a one-line edit here.
+/**
+ * WALL INTERIOR — empty, in BOTH profiles.
  *
- * Switch a profile to `{ kind: 'none' }` to get qbiq's unfilled double line
- * back, or `{ kind: 'solid', color }` for a Laiout-style grey wall. That is the
- * whole point of the union.
+ * This replaces `RAYON_WALL_HATCH`, a 45° diagonal fill between the two wall
+ * faces that shipped in both profiles. It was Rayon's grammar, not the
+ * reference's, and Phase 0 measured the reference directly:
+ * `qbiq-plan-style-spec.json` → `wall_poche` reads *"There is NO poche anywhere
+ * in the reference. Walls are drawn as thin DOUBLE LINES with unfilled
+ * interiors"* — 463 paths per page at the wall tier, all `fill=None`.
+ *
+ * On our own output it was worse than merely off-reference. Our imported plate
+ * walls are 0.2–0.3 m thick, so at plan zoom the hatch pitch (1/3 of thickness)
+ * fell to 1.5–2 px and the `fillWith` floor smeared it into a continuous grey
+ * band running the whole perimeter — a texture the eye reads as dirt around the
+ * edge of the drawing, competing with the linework it sits inside.
+ *
+ * The union still carries `hatch` and `solid`; switching a profile back is one
+ * word here, which was the point of widening it. Nothing else in the table
+ * changes.
  */
-const RAYON_WALL_HATCH: FillStyle = {
-  kind: 'hatch',
-  color: '#171a1e',
-  alpha: 0.34,
-  angleDeg: 45,
-  spacing: { ofThickness: 1 / 3 },
-  tier: 'furniture',
-}
+const WALL_UNFILLED: FillStyle = { kind: 'none' }
 
 /**
  * UNASSIGNED hatch — the editor-only "wasted floor" mark, SECONDARY to the
@@ -651,8 +757,8 @@ const PAPER: PlanStyle = {
   gridOpacity: 0,
   gridMinor: { stroke: 'rgba(23,26,30,0.035)', tier: 'furniture', z: 0 },
   gridMajor: { stroke: 'rgba(23,26,30,0.075)', tier: 'furniture', z: 0 },
-  wallCut: { stroke: BLACK, fill: RAYON_WALL_HATCH, tier: 'wall', z: 40 },
-  wallInterior: { stroke: BLACK, fill: RAYON_WALL_HATCH, tier: 'wall', z: 40 },
+  wallCut: { stroke: BLACK, fill: WALL_UNFILLED, tier: 'wall', z: 40 },
+  wallInterior: { stroke: BLACK, fill: WALL_UNFILLED, tier: 'wall', z: 40 },
   opening: { stroke: WHITE, tier: 'openingPunch', z: 45 },
   roomEnclosure: { stroke: BLACK, tier: 'roomEnclosure', z: 30 },
   furniture: { stroke: '#565e69', tier: 'furniture', z: 20 },
