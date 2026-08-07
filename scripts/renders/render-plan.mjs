@@ -252,21 +252,47 @@ const STYLES = [
  */
 const NOTES = {
   Reception__daylight_oak:
-    'DRIFT — the foreground reception desk is re-read as a raised floor plinth, and a framed ' +
-    'sign is invented on the far wall. Shell, glazed partition and the meeting room beyond are ' +
-    'correct; the furniture in the near third is not.',
-  Reception__premium_terrazzo:
-    'DRIFT — same lost reception desk as the daylight variant, plus a small invented logo at ' +
-    'bottom left.',
+    'HOLDS — the glazed partition and its mullion rhythm, the poseur table, the reception run ' +
+    'and the workstation floor beyond all track the base. The palette does not: the near ' +
+    'worktop reads as white laminate rather than the oak the prompt asked for.',
   Reception__evening_warm:
-    'HOLDS — the depth model keeps the reception desk a desk. Faint illegible lettering is ' +
-    'hallucinated on the glass partition.',
-  Conference_room__daylight_oak: 'HOLDS — table, chair positions, door and pendant all track the base. Illegible lettering appears in the fritted glass.',
-  Conference_room__premium_terrazzo: 'HOLDS — as above; illegible lettering in the fritted glass.',
+    'HOLDS, best of the three — the depth model keeps the foreground timber slab a timber slab ' +
+    'and the partition mullions exactly where the base put them.',
+  Reception__premium_terrazzo:
+    'HOLDS — same structure again; the terrazzo/sage palette lands cleanly, and the low bench ' +
+    'the base draws as a plinth is read as upholstered seating.',
+  Open_space__daylight_oak:
+    'HOLDS — bench rows, pendant runs and the full-height glazing all track. The window wall ' +
+    'gains an invented city beyond it, which the base (an empty exterior plane) does not have.',
+  Open_space__evening_warm:
+    'HOLDS — the depth model keeps every bench run, the pendant grid and the perimeter glazing ' +
+    'in place under a heavy warm grade; the ceiling reads as exposed soffit rather than the ' +
+    'base\'s flat slab.',
+  Open_space__premium_terrazzo:
+    'HOLDS with one violation — desks, pendants and glazing track, but a figure is invented ' +
+    'behind the desk banks despite the prompt\'s explicit "empty and unoccupied, no people".',
+  Work_stations__daylight_oak:
+    'HOLDS — desk banks, pendant runs, the window wall and the timber partition at the left all ' +
+    'track the base; the glazing again gains an invented city view.',
+  Work_stations__evening_warm:
+    'HOLDS — the strongest interior in the deck: desk banks, monitor arms, the pendant grid, ' +
+    'the window wall and the fluted partition on the left all sit where the base put them.',
+  Work_stations__premium_terrazzo: 'HOLDS — as above, with an invented skyline beyond the glazing.',
+  Conference_room__daylight_oak:
+    'HOLDS — table, the chair line against the wall, the timber-veneer door, the glazed ' +
+    'partition and the linear pendant all track the base.',
+  Conference_room__evening_warm: 'HOLDS — as above; the walnut panelling replaces the base\'s plaster wall, which is the style, not drift.',
+  Conference_room__premium_terrazzo: 'HOLDS — as above, with the sage acoustic panel the prompt asked for on the long wall.',
   Overview_aerial__evening_warm:
-    'HOLDS with licence — plate outline, mullion rhythm, meeting-room boxes and the open ' +
-    'circulation zone are all in place; individual desk runs are re-interpreted as continuous ' +
-    'benches.',
+    'HOLDS with licence — plate outline, the two wings, the meeting-room boxes, the reception ' +
+    'zone and the open circulation band are all in place, and the desk banks stay desks. It ' +
+    'invents a few small figures despite the "no people" instruction.',
+  Overview_aerial__daylight_oak:
+    'DRIFT — the plate outline, both wings, the meeting-room box and the reception corner are ' +
+    'correct, but the desk banks are re-read as LIBRARY SHELVING. At whole-floor scale the ' +
+    'edge model sees parallel desk runs as stacks; the depth model (evening) does not, and ' +
+    'that difference is the finding.',
+  Overview_aerial__premium_terrazzo: 'DRIFT — the same desks-as-shelving misreading as the daylight variant, from the same edge model.',
 }
 const noteFor = (view, style) => NOTES[`${view}__${style.replace(/-/g, '_')}`] ?? null
 
