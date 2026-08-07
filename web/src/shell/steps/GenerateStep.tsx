@@ -269,6 +269,8 @@ export function GenerateStep({
     )
   }
 
+  const activeIdx = candidates.findIndex((c) => c.seed === activeSeed)
+
   return (
     <div className="generate-step" data-testid="generate-step">
       <div className="generate-head">
@@ -292,46 +294,61 @@ export function GenerateStep({
         </button>
       </div>
 
-      <div className="generate-gallery">
-        {candidates.map((c, i) => {
-          const k = kpis[i]
-          const ws = k?.workstations ?? c.score.placed_desks
-          const ai = verdicts[c.seed]
-          const wins = badges[i] ?? []
-          const active = c.seed === activeSeed
-          return (
-            <article
-              key={c.seed}
-              className={`generate-alt${active ? ' on' : ''}`}
-              data-testid="generate-alt"
-            >
-              <button
-                type="button"
-                className="generate-alt-thumb"
-                onClick={() => setActiveSeed(c.seed)}
-                aria-pressed={active}
-                aria-label={`Select Alternative ${LETTER(i)} — ${STRATEGY_LABEL[c.strategy]}`}
+      {/* The comparison board. The gallery used to be `auto-fill` tracks across
+          the full width, so three cards filled three of FIVE tracks and 534px of
+          the viewport was dead (measured, 1491x812). Worse, the active card grew
+          by the height of its metrics strip and pushed "Open in editor" — the
+          primary action of the terminal step — 153px below the fold.
+          The strip now lives in a rail beside the gallery: the cards stay
+          uniform and short enough that all three CTAs sit above the fold, and
+          the horizontal space the rail occupies was empty anyway. */}
+      <div className="generate-board">
+        <div className="generate-gallery">
+          {candidates.map((c, i) => {
+            const k = kpis[i]
+            const ws = k?.workstations ?? c.score.placed_desks
+            const ai = verdicts[c.seed]
+            const wins = badges[i] ?? []
+            const active = c.seed === activeSeed
+            return (
+              <article
+                key={c.seed}
+                className={`generate-alt${active ? ' on' : ''}`}
+                data-testid="generate-alt"
               >
-                <img
-                  src={c.thumb}
-                  alt={`Alternative ${LETTER(i)} (${STRATEGY_LABEL[c.strategy]}) floor plan`}
-                  draggable={false}
-                />
-                <span className="generate-alt-letter">{LETTER(i)}</span>
-              </button>
-              <div className="generate-alt-body">
-                <div className="generate-alt-title">
-                  <span className="generate-alt-name">
-                    {LETTER(i)} · {STRATEGY_LABEL[c.strategy]}
-                  </span>
-                  <span className="generate-alt-score num">
-                    {Math.round(c.score.total)}
-                    <span className="generate-alt-score-of">/100</span>
-                  </span>
-                </div>
-                <p className="generate-alt-blurb">{STRATEGY_BLURB[c.strategy]}</p>
+                <button
+                  type="button"
+                  className="generate-alt-thumb"
+                  onClick={() => setActiveSeed(c.seed)}
+                  aria-pressed={active}
+                  aria-label={`Select Alternative ${LETTER(i)} — ${STRATEGY_LABEL[c.strategy]}`}
+                >
+                  <img
+                    src={c.thumb}
+                    alt={`Alternative ${LETTER(i)} (${STRATEGY_LABEL[c.strategy]}) floor plan`}
+                    draggable={false}
+                  />
+                  <span className="generate-alt-letter">{LETTER(i)}</span>
+                </button>
+                <div className="generate-alt-body">
+                  <div className="generate-alt-title">
+                    <span className="generate-alt-name">
+                      {LETTER(i)} · {STRATEGY_LABEL[c.strategy]}
+                    </span>
+                    <span className="generate-alt-score num">
+                      {Math.round(c.score.total)}
+                      <span className="generate-alt-score-of">/100</span>
+                    </span>
+                  </div>
+                  <p className="generate-alt-blurb">{STRATEGY_BLURB[c.strategy]}</p>
 
-                {wins.length > 0 && (
+                  {/* ALWAYS rendered, empty or not. `.generate-badges` reserves
+                      a row height so a card that wins no category still lines up
+                      with one that does — but the reservation only reserves
+                      anything if the element exists. Rendered conditionally, the
+                      un-badged cards were 19px shorter in their text block, and
+                      once the thumbnail took up the slack that showed as three
+                      plans at three different sizes. */}
                   <div className="generate-badges">
                     {wins.map((w) => (
                       <span key={w} className="generate-badge" data-testid="generate-badge">
@@ -339,65 +356,76 @@ export function GenerateStep({
                       </span>
                     ))}
                   </div>
-                )}
 
-                {/* The qbiq left summary strip for the ACTIVE alternative.
-                    `batch` is the whole candidate set, so the average tick is
-                    recomputed per generation and never a constant. */}
-                {active && k && <MetricsCard kpis={k} batch={kpis} compact />}
-
-                <dl className="generate-alt-metrics">
-                  <div>
-                    <dt>Workstations</dt>
-                    <dd className="num">{ws}</dd>
-                  </div>
-                  <div>
-                    <dt>m²/person</dt>
-                    {/* m²/person is per-seat — meaningless with 0 workstations,
-                        so don't imply a density that isn't there. */}
-                    <dd className="num">{k && ws > 0 ? k.densityM2.toFixed(1) : '—'}</dd>
-                  </div>
-                  <div>
-                    <dt>Efficiency</dt>
-                    <dd className="num">{k ? `${Math.round(k.efficiencyPct)}%` : '—'}</dd>
-                  </div>
-                </dl>
-
-                {aiPhase === 'pending' && (
-                  <div
-                    className="generate-alt-ai is-pending"
-                    data-testid="generate-alt-ai"
-                    aria-busy="true"
-                  >
-                    <span className="generate-alt-ai-badge">AI</span>
-                    <span className="generate-alt-ai-verdict">Assessing soft goals…</span>
-                  </div>
-                )}
-                {aiPhase === 'ready' &&
-                  (ai ? (
-                    <div className="generate-alt-ai" data-testid="generate-alt-ai">
-                      <span className="generate-alt-ai-badge">AI {Math.round(ai.score)}</span>
-                      <span className="generate-alt-ai-verdict">{ai.verdict}</span>
+                  <dl className="generate-alt-metrics">
+                    <div>
+                      <dt>Workstations</dt>
+                      <dd className="num">{ws}</dd>
                     </div>
-                  ) : (
-                    <div className="generate-alt-ai is-na" data-testid="generate-alt-ai">
+                    <div>
+                      <dt>m²/person</dt>
+                      {/* m²/person is per-seat — meaningless with 0 workstations,
+                          so don't imply a density that isn't there. */}
+                      <dd className="num">{k && ws > 0 ? k.densityM2.toFixed(1) : '—'}</dd>
+                    </div>
+                    <div>
+                      <dt>Efficiency</dt>
+                      <dd className="num">{k ? `${Math.round(k.efficiencyPct)}%` : '—'}</dd>
+                    </div>
+                  </dl>
+
+                  {aiPhase === 'pending' && (
+                    <div
+                      className="generate-alt-ai is-pending"
+                      data-testid="generate-alt-ai"
+                      aria-busy="true"
+                    >
                       <span className="generate-alt-ai-badge">AI</span>
-                      <span className="generate-alt-ai-verdict">No assessment returned.</span>
+                      <span className="generate-alt-ai-verdict">Assessing soft goals…</span>
                     </div>
-                  ))}
+                  )}
+                  {aiPhase === 'ready' &&
+                    (ai ? (
+                      <div className="generate-alt-ai" data-testid="generate-alt-ai">
+                        <span className="generate-alt-ai-badge">AI {Math.round(ai.score)}</span>
+                        <span className="generate-alt-ai-verdict">{ai.verdict}</span>
+                      </div>
+                    ) : (
+                      <div className="generate-alt-ai is-na" data-testid="generate-alt-ai">
+                        <span className="generate-alt-ai-badge">AI</span>
+                        <span className="generate-alt-ai-verdict">No assessment returned.</span>
+                      </div>
+                    ))}
 
-                <button
-                  type="button"
-                  className="cta generate-alt-open"
-                  data-testid="generate-alt-open"
-                  onClick={() => void openCandidate(c)}
-                >
-                  Open in editor <Icon name="caret" size={13} />
-                </button>
-              </div>
-            </article>
-          )
-        })}
+                  <button
+                    type="button"
+                    className="cta generate-alt-open"
+                    data-testid="generate-alt-open"
+                    onClick={() => void openCandidate(c)}
+                  >
+                    Open in editor <Icon name="caret" size={13} />
+                  </button>
+                </div>
+              </article>
+            )
+          })}
+        </div>
+
+        {/* The qbiq left summary strip for the ACTIVE alternative. `batch` is
+            the whole candidate set, so the average tick is recomputed per
+            generation and never a constant. It reads the SAME `kpis[i]` it read
+            inside the card — only where it is drawn changed. */}
+        {activeIdx >= 0 && kpis[activeIdx] && (
+          <aside className="generate-detail" data-testid="generate-detail">
+            <div className="generate-detail-head">
+              <span className="panel-eyebrow">Selected</span>
+              <span className="generate-detail-name">
+                {LETTER(activeIdx)} · {STRATEGY_LABEL[candidates[activeIdx].strategy]}
+              </span>
+            </div>
+            <MetricsCard kpis={kpis[activeIdx]} batch={kpis} compact />
+          </aside>
+        )}
       </div>
     </div>
   )

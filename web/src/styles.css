@@ -4265,6 +4265,27 @@ kbd {
   gap: 12px;
   min-height: 0;
 }
+/* BEFORE A PLATE LANDS there is no work split to occupy the 1fr row, so the
+   step was a 110px upload strip over 517px of empty grey (measured, 1491x812).
+   Empty, the step is instead ONE work area: the drop target takes the whole
+   left column at full height, and the readouts it is about to fill stand beside
+   it. Still no viewport units — the columns fill the wizard's work track. */
+.space-step.is-empty {
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 340px);
+  grid-template-rows: minmax(0, 1fr);
+  grid-auto-rows: auto;
+  gap: 14px;
+}
+.space-step.is-empty .space-err {
+  grid-column: 1 / -1;
+}
+/* Same breakpoint the loaded state stacks at (.space-readouts below). */
+@media (max-width: 900px) {
+  .space-step.is-empty {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(200px, 1fr) auto;
+  }
+}
 .space-drop {
   display: flex;
   align-items: center;
@@ -4275,6 +4296,80 @@ kbd {
   background: var(--surface-2);
   cursor: pointer;
   transition: border-color 0.12s, background 0.12s;
+}
+/* The empty step's drop target: a stage, not a strip. */
+.space-step.is-empty .space-drop {
+  flex-direction: column;
+  justify-content: center;
+  gap: 14px;
+  min-height: 0;
+  padding: 24px;
+  text-align: center;
+}
+.space-step.is-empty .space-drop-copy {
+  align-items: center;
+  gap: 6px;
+}
+.space-step.is-empty .space-drop-glyph {
+  width: 72px;
+  height: 72px;
+}
+.space-step.is-empty .space-drop-lead {
+  font-family: var(--font-display);
+  font-size: 24px;
+  letter-spacing: -0.01em;
+}
+.space-drop-cta {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 8px;
+  padding: 8px 18px;
+  border-radius: var(--r-pill);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: var(--shadow-sm);
+}
+/* The readouts this step is about to fill — same labels, same order as the
+   loaded state's metric tiles, every value an em dash. */
+.space-plate-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  padding: 16px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+.space-plate-preview-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+}
+.space-plate-read {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 0;
+  border-top: 1px solid var(--hairline);
+}
+.space-plate-read:first-child {
+  border-top: 0;
+}
+.space-plate-read dt {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.space-plate-read dd {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--faint);
 }
 .space-drop:hover,
 .space-drop.over {
@@ -4592,7 +4687,7 @@ kbd {
 .program-step {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 14px;
   min-height: 0;
   overflow-y: auto;
   overflow-x: clip;
@@ -4622,15 +4717,50 @@ kbd {
   color: var(--text);
   box-shadow: var(--shadow-sm);
 }
+/* Builder · anchor plan · summary. The anchor plan is a COLUMN, not a band
+   below the fold — see the note in ProgramStep.tsx. `flex:1; min-height:0`
+   makes the row fill the step's work track, so the plan column has a real
+   height to fit the drawing into; the step above it stays the single scroll
+   owner if the builder ever outgrows the track. */
 .program-body {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 260px;
   gap: 20px;
   align-items: start;
 }
+.program-body.has-anchors {
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 440px) 240px;
+  gap: 16px;
+  flex: 1 1 auto;
+  min-height: 0;
+  align-items: stretch;
+}
+@media (max-width: 1240px) {
+  .program-body.has-anchors {
+    grid-template-columns: minmax(0, 1fr) 260px;
+    flex: 0 1 auto;
+    align-items: start;
+  }
+  /* Two columns can't hold three: the plan drops under the builder, spanning
+     the builder column only — never the full width, which is what made it a
+     232px drawing in 1278px of margin. */
+  .program-body.has-anchors .program-anchors {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  .program-body.has-anchors .program-summary {
+    grid-row: 1 / span 2;
+  }
+}
 @media (max-width: 900px) {
-  .program-body {
+  .program-body,
+  .program-body.has-anchors {
     grid-template-columns: 1fr;
+  }
+  .program-body.has-anchors .program-anchors,
+  .program-body.has-anchors .program-summary {
+    grid-column: auto;
+    grid-row: auto;
   }
 }
 .program-main {
@@ -4865,22 +4995,37 @@ kbd {
 }
 
 /* Anchor pins — place rooms on the plan (workflow.md §3.5, Slice 6). */
+/* A STICKY RAIL, like the summary beside it — content-height, pinned to the top
+   of the step. Stretching it to the row instead was measured in Detailed mode,
+   where the room list makes the row 1495px tall and the plan canvas grew to
+   414x1347. Sticky also keeps the plan on screen while the room list scrolls,
+   which is what a pin-on-plan control is for. */
 .program-anchors {
-  margin: 16px 0 4px;
-  padding: 14px;
+  margin: 0;
+  padding: 12px;
   border: 1px solid var(--hairline);
   border-radius: var(--r-md);
   background: var(--surface);
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
+  min-height: 0;
+  min-width: 0;
+}
+.program-body.has-anchors .program-anchors {
+  position: sticky;
+  top: 0;
+  align-self: start;
 }
 .program-anchors-head {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
   flex-wrap: wrap;
+}
+.program-anchors-head .panel-eyebrow {
+  margin: 0;
 }
 .program-anchor-controls {
   display: inline-flex;
@@ -4919,13 +5064,27 @@ kbd {
 }
 /* Anchor pins are a secondary control, so this plan is a figure inside the
    step's scroll pane — modest and fixed, never the thing that greets you. */
+/* Taller than the old 340px and, in the rail, far narrower — which is what
+   actually made the drawing bigger. The plan is taller than it is wide, so it
+   fits to the NARROW axis: in a 1278px-wide band it rendered 233x260 with 518px
+   of empty mat on each side; in a 414px rail it renders 307x346 (measured off
+   the delivered pixels). A fixed height, not a flexed one: see the note on
+   .program-anchors. No viewport units. */
 .program-anchor-plan {
   position: relative;
-  height: 340px;
+  flex: 0 0 420px;
   border: 1px solid var(--hairline);
   border-radius: var(--r-md);
   background: var(--canvas-bg);
   overflow: hidden;
+}
+@media (max-width: 1240px) {
+  /* Stacked under the builder, the plan would be band-wide again — the exact
+     shape that wasted 82% of the box. Cap it at the rail's width. */
+  .program-anchor-plan {
+    flex: 0 0 340px;
+    max-width: 460px;
+  }
 }
 .program-anchors-list {
   list-style: none;
@@ -5051,11 +5210,11 @@ kbd {
   min-width: 0;
 }
 .generate-lead {
-  margin: 8px 0 0;
-  max-width: 62ch;
+  margin: 4px 0 0;
+  max-width: 92ch;
   color: var(--muted);
-  font-size: 13.5px;
-  line-height: 1.5;
+  font-size: 12.5px;
+  line-height: 1.4;
 }
 .generate-regenerate {
   flex: 0 0 auto;
@@ -5072,14 +5231,53 @@ kbd {
 .generate-regenerate:hover {
   background: var(--accent-amber-soft);
 }
+/* Gallery + the selected alternative's summary rail. `auto-FIT` (not auto-fill)
+   is load-bearing: auto-fill kept the empty tracks, so three cards sat in three
+   of five and left 534px of the viewport dead. auto-fit collapses the empty
+   tracks and the three cards stretch across the gallery column. */
+.generate-board {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 288px);
+  gap: 16px;
+  /* `stretch` (the default) is load-bearing on the GALLERY: `align-items:start`
+     here left it content-sized, so the cards never claimed the height the board
+     had. The rail opts out individually below. */
+  align-items: stretch;
+  /* Fill the work area rather than sitting on ~200px of dead grey: the cards
+     take the height and spend it on the plan thumbnail. If the window is too
+     short for the minimum card, `.generate-step` (the single scroll owner)
+     scrolls, exactly as before. */
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.generate-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  align-self: start;
+}
+.generate-detail-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.generate-detail-name {
+  font-size: 13px;
+  font-weight: 600;
+}
 .generate-gallery {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(248px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(232px, 1fr));
+  grid-auto-rows: minmax(0, 1fr);
+  gap: 14px;
+  min-height: 0;
 }
 .generate-alt {
   display: flex;
   flex-direction: column;
+  min-height: 0;
   border: 1.5px solid var(--hairline);
   border-radius: var(--r-md);
   background: var(--surface);
@@ -5092,9 +5290,16 @@ kbd {
   border-color: var(--accent);
   box-shadow: 0 0 0 1px var(--accent);
 }
+/* The thumbnail takes whatever height the card has left after its text, instead
+   of dictating the card's height from a fixed aspect ratio. Fixed 4/3 spent
+   240px of a 627px work area and pushed the card's CTA below the fold; letting
+   it FLEX means the plan grows into the space the board was wasting and shrinks
+   first when the window is short. `object-fit: contain` means it never crops. */
 .generate-alt-thumb {
   position: relative;
   display: block;
+  flex: 1 1 auto;
+  min-height: 132px;
   padding: 0;
   border: 0;
   border-bottom: 1px solid var(--hairline);
@@ -5104,8 +5309,7 @@ kbd {
 .generate-alt-thumb img {
   display: block;
   width: 100%;
-  height: auto;
-  aspect-ratio: 4 / 3;
+  height: 100%;
   object-fit: contain;
 }
 .generate-alt-letter {
@@ -5125,12 +5329,15 @@ kbd {
 /* `flex:1` + `margin-top:auto` on the CTA pins "Open in editor" to the bottom of
    every card, so three cards with different badge/verdict counts still line up
    their primary action on one row. */
+/* Content-sized, so all the card's slack goes to the thumbnail above rather
+   than opening a gap over the CTA. Every card's text block is the same height
+   (the badge row and the blurb both have floors), so the CTAs stay on one row. */
 .generate-alt-body {
-  flex: 1;
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 12px 13px 13px;
+  gap: 8px;
+  padding: 11px 12px 12px;
 }
 .generate-alt-title {
   display: flex;
@@ -5151,12 +5358,16 @@ kbd {
   font-weight: 500;
   color: var(--faint);
 }
-/* Clamped to two lines so a longer strategy blurb can't shove one card's
-   metrics out of line with its neighbours'. */
+/* Clamped AND floored at two lines: clamping alone stopped a long blurb pushing
+   a card's metrics out of line, but a SHORT one still shortened its card's text
+   block, and now that the thumbnail absorbs the slack that showed up as three
+   CTAs on three different rows. Two lines is the height every strategy blurb
+   gets, full or not. */
 .generate-alt-blurb {
   margin: 2px 0 0;
   font-size: 11.5px;
   line-height: 1.4;
+  min-height: calc(2 * 1.4 * 11.5px);
   color: var(--muted);
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -5191,7 +5402,7 @@ kbd {
   grid-template-columns: repeat(3, 1fr);
   gap: 8px;
   margin: 0;
-  padding: 10px 0;
+  padding: 8px 0;
   border-top: 1px solid var(--hairline);
   border-bottom: 1px solid var(--hairline);
 }
@@ -5241,6 +5452,35 @@ kbd {
 }
 .generate-alt-open svg {
   transform: rotate(-90deg);
+}
+/* Below the rail's width the board stacks — and then it must STOP filling the
+   height. Measured at 1100x812: with the rail on its own row the gallery's 1fr
+   row was 220px, the cards' text block did not fit, and `overflow:hidden`
+   clipped the badges, the metrics and the "Open in editor" CTA clean off.
+   Stacked, cards size to their content and `.generate-step` (the single scroll
+   owner) scrolls, as it did before this change.
+   THIS BLOCK MUST STAY BELOW the `.generate-alt-*` rules it overrides: media
+   queries carry no extra specificity, and the first attempt sat ABOVE them, so
+   the base rules won and the clipping survived the "fix" unchanged. */
+@media (max-width: 1180px) {
+  .generate-board {
+    grid-template-columns: minmax(0, 1fr);
+    /* `0 0 auto`, not `0 1 auto`: as a flex item it would otherwise SHRINK to
+       the step's height and squeeze its rows — measured, that is what left the
+       gallery row at 220px and clipped the CTAs. It must overflow and let the
+       step scroll. */
+    flex: 0 0 auto;
+  }
+  .generate-gallery {
+    grid-auto-rows: auto;
+  }
+  .generate-alt-thumb {
+    flex: 0 0 auto;
+  }
+  .generate-alt-thumb img {
+    height: auto;
+    aspect-ratio: 16 / 10;
+  }
 }
 
 /* ===========================================================================
@@ -5831,44 +6071,6 @@ kbd {
 /* The average tick reads as a benchmark mark, not as part of the fill: it sits
    ABOVE the track and is deliberately neutral ink, so "where I am" (accent) and
    "where the batch averages" (ink) never blur into one bar. */
-.metrics-bar-tick {
-  position: absolute;
-  top: -3px;
-  left: var(--at, 0%);
-  width: 2px;
-  height: 12px;
-  border-radius: 1px;
-  background: var(--ink);
-  transform: translateX(-1px);
-}
-
-/* ---------------------------------------------------------------------------
-   METRICS CARD — the qbiq left summary strip, on screen (ui/MetricsCard.tsx).
-   Figures, then three benchmarked ratio bars. The bar fill width and the
-   average tick position arrive as the custom properties --v and --at; every
-   other appearance decision lives here, per the standing rule.
-   --------------------------------------------------------------------------- */
-.metrics-card {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-  padding: 16px;
-  border: 1px solid var(--hairline);
-  border-radius: 10px;
-  background: var(--surface);
-}
-.metrics-card.is-compact { padding: 12px; gap: 12px; }
-.metrics-card-figures { display: flex; flex-direction: column; gap: 8px; margin: 0; }
-.metrics-card-figures > div { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
-.metrics-card-figures dt { color: var(--muted); font-size: 12px; }
-.metrics-card-figures dd { margin: 0; font-size: 14px; font-weight: 600; }
-.metrics-card-bars { display: flex; flex-direction: column; gap: 10px; }
-.metrics-bar-head { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-bottom: 4px; }
-.metrics-bar-track { position: relative; height: 6px; border-radius: 3px; background: var(--hairline); }
-.metrics-bar-fill { width: var(--v, 0%); height: 100%; border-radius: 3px; background: var(--accent); }
-/* The average tick reads as a BENCHMARK MARK, not as part of the fill: it sits
-   above the track in neutral ink, so "where this plan is" (accent) and "where
-   the batch averages" (ink) can never blur into one bar. */
 .metrics-bar-tick {
   position: absolute;
   top: -3px;

@@ -42,6 +42,17 @@ import { classifyZip, listZipEntries, readZipEntry, ZIP_ERROR_MESSAGE } from '..
  *  partition break, below a door leaf). The Space step exposes on/off only. */
 const HEAL_GAP_M = 0.25
 
+/** The pre-upload preview of this step's own readouts. Label + sub are copied
+ *  from the loaded state's `space-metric` tiles below, in their order, so the
+ *  empty step previews the screen it becomes. Values are never faked — the
+ *  loaded step supplies them. */
+const PLATE_READS: [string, string][] = [
+  ['Usable area', 'm² and sf'],
+  ['Components', 'furniture, by category'],
+  ['Rooms', 'traced by closed loop'],
+  ['Detected program', 'desks · meeting · collab'],
+]
+
 interface DetectedRoom {
   label: string
   areaM2: number
@@ -576,8 +587,15 @@ export function SpaceStep({
     })()
   }
 
+  // Before a plate lands there are no readouts to lay out, so the step used to
+  // be a ~110px upload strip sitting on ~517px of empty grey (measured at
+  // 1491x812). `is-empty` turns the whole work area INTO the drop target and
+  // puts the readouts the plate will fill beside it, so the step reads as being
+  // about the plan rather than about a file input.
+  const loaded = !!(drawing && readouts)
+
   return (
-    <div className="space-step" data-testid="space-step">
+    <div className={`space-step${loaded ? '' : ' is-empty'}`} data-testid="space-step">
       <label
         className={`space-drop${dragOver ? ' over' : ''}${drawing ? ' compact' : ''}`}
         data-testid="space-upload"
@@ -602,6 +620,7 @@ export function SpaceStep({
           <span className="space-drop-sub">
             DXF / DWG / ZIP (traced from linework) · or PNG / JPG (set the scale, then trace)
           </span>
+          {!loaded && <span className="space-drop-cta">Browse files</span>}
         </span>
         <input
           ref={inputRef}
@@ -612,6 +631,34 @@ export function SpaceStep({
           onChange={(e) => accept(e.target.files?.[0])}
         />
       </label>
+
+      {/* The readouts the plate is about to fill, in the SAME order and under the
+          SAME labels the loaded step uses (`space-metric-label` below) — so the
+          panel is a preview of this screen, not a marketing panel. Every value
+          is an em dash: nothing here is measured yet, and nothing pretends to
+          be. */}
+      {!loaded && (
+        <aside className="space-plate-preview" data-testid="space-plate-preview">
+          <div className="panel-eyebrow">Read straight off the plate</div>
+          <dl className="space-plate-preview-list">
+            {PLATE_READS.map(([label, sub]) => (
+              <div key={label} className="space-plate-read">
+                <dt>
+                  <span className="space-metric-label">{label}</span>
+                  <span className="space-metric-sub">{sub}</span>
+                </dt>
+                <dd className="num" aria-label="not measured yet">
+                  —
+                </dd>
+              </div>
+            ))}
+          </dl>
+          <p className="space-caveat">
+            Walls, doors, columns and keep-outs are traced from the linework — nothing is typed by
+            hand. The readouts replace these dashes the moment the file lands.
+          </p>
+        </aside>
+      )}
 
       {err && (
         <div className="space-err" role="alert" data-testid="space-error">
