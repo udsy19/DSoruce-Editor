@@ -2301,3 +2301,53 @@ Reverted.
    pursued.
 3. Re-derive the band clamp from the **wing's own block arithmetic**, not a
    boundary share. Expect to re-register three frozen `real_plate` baselines.
+
+---
+
+# FIX ROUND — Step 0: the orchestration hole is closed
+
+Three `--no-verify` commits shipped last session. Each was individually justified —
+the commit gate is tree-wide, parallel agents shared one working tree, and a red
+from someone else's in-flight test blocked every other workstream. **Each was also
+a hole R7 walked through**, and the third one is where that stops being a
+justification and starts being a habit.
+
+**One git worktree per agent**, the pattern this repo already uses for every
+sabotage run. Agents work detached at a known HEAD (`7332577`), return diffs, and
+never commit; the orchestrator integrates into main and commits **through** the
+gate. `--no-verify` is retired.
+
+```
+/private/tmp/q4-fix1  fix1  findings 1, 2, 7   metrics + mutators
+/private/tmp/q4-fix3  fix3  finding 3          capacity/spread — BLOCKS W1
+/private/tmp/q4-fix4  fix4  findings 4, 5, 6   three vacuous gates
+```
+
+File ownership is disjoint by construction, so integration cannot conflict:
+finding-set 1/2/7 owns `lib.rs` · `document.rs` · `metrics_tests.rs` ·
+`statsPanel.test.mjs`; finding 3 owns `layout/packing.rs` · `layout/regions.rs`;
+finding-set 4/5/6 owns `scripts/gates/deadspace-core.mjs` · `wallnet.rs` tests ·
+`bench/style-gate.mjs` · `bench/ladder-check.mjs` · `g10-one-action.mjs`.
+
+**Finding 8 (the generator furnishes lift cores and bills them as floor) is held,
+not forgotten.** It touches `layout/` and `document.rs` and would collide with both
+Rust agents. It also has a dependency the brief names: it must agree with W3a on
+*what a core is* before the deadspace band can be set — the reference's entire
+4.01% dead space sits inside a core we do not model.
+
+## R10, promoted this session and binding on every guard from here
+
+> **A falsification that perturbs one axis certifies one axis.**
+
+Earned three times over in one round, by three guards that were green and wrong:
+
+| guard | falsification varied | axis it needed |
+|---|---|---|
+| `composition.mjs` rhythm | aisle fill | **band-count parity** |
+| `metrics_can_never_be_impossible` | one zone retyped per step | **all zones at once** |
+| `deadspace-core` | desks deleted | **plate resolution** |
+
+Each was falsified, and each falsification moved along an axis the defect did not
+live on. From here every guard ships with **a one-line statement of which axes its
+falsification varies**, and the ADVERSARY verifies that claim rather than the
+guard's green.
