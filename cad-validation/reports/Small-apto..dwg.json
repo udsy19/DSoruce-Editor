@@ -1,0 +1,162 @@
+{
+  "file": "Small-apto..dwg",
+  "src": "/Users/udsy/Downloads/Small-apto..dwg",
+  "bytes": 176875,
+  "stages": {
+    "convert": {
+      "ok": true,
+      "ms": 31,
+      "dxfBytes": 924828,
+      "via": "dwg2dxf"
+    },
+    "parse": {
+      "ok": true,
+      "ms": 9,
+      "units": "ft",
+      "bounds": [
+        955.9535020258201,
+        552.3383338311565,
+        961.4581592371659,
+        557.84299104252
+      ],
+      "spanM": [
+        5.50465721134583,
+        5.504657211363451
+      ],
+      "layers": 18,
+      "entities": 1888,
+      "furniture": 0,
+      "byCat": {
+        "other": 558,
+        "furniture": 1129,
+        "dimension": 4,
+        "wall": 197
+      },
+      "byKind": {
+        "polyline": 1888
+      },
+      "degenerate": 0,
+      "nonFinite": 0,
+      "huge": 0
+    },
+    "heal": {
+      "ok": true,
+      "ms": 0,
+      "entitiesBefore": 1888,
+      "entitiesAfter": 1888,
+      "added": 0
+    },
+    "plate": {
+      "ok": true,
+      "ms": 1,
+      "method": "hull",
+      "vertices": 7,
+      "reportedAreaM2": 17.687499999883585,
+      "independentAreaM2": 17.6875,
+      "areaAgrees": true,
+      "reportedCoverage": 1,
+      "independentCoverage": null,
+      "coverageAgrees": null,
+      "offset": {
+        "x": 955.0785020258201,
+        "y": 551.4633338311565
+      },
+      "provenance": {
+        "method": "partition-envelope",
+        "phantomFraction": 0.13849058255912017,
+        "orthogonality": 0.5416471496403287,
+        "closingEdgeM": 2.5124689052802225,
+        "selfIntersections": 0,
+        "confidence": "high",
+        "reason": ""
+      },
+      "ringSpanM": [
+        5,
+        5
+      ]
+    },
+    "keepouts": {
+      "ok": true,
+      "ms": 0,
+      "count": 0
+    },
+    "entries": {
+      "ok": true,
+      "ms": 0,
+      "count": 1
+    },
+    "interiorWalls": {
+      "ok": true,
+      "ms": 0,
+      "count": 27
+    },
+    "normalize": {
+      "ok": true,
+      "ms": 0,
+      "total": 0,
+      "byCategory": {},
+      "unnamed": 0,
+      "zeroSize": 0,
+      "samples": []
+    }
+  },
+  "errors": [],
+  "warnings": [],
+  "dxfFacts": {
+    "insunitsCode": null,
+    "insunitsLabel": null,
+    "extmin": [
+      null,
+      null
+    ],
+    "extmax": [
+      null,
+      null
+    ],
+    "entityCounts": {
+      "SECTION": 7,
+      "ENDSEC": 7,
+      "CLASS": 21,
+      "TABLE": 9,
+      "VPORT": 1,
+      "ENDTAB": 9,
+      "LTYPE": 4,
+      "LAYER": 18,
+      "STYLE": 6,
+      "APPID": 16,
+      "DIMSTYLE": 4,
+      "BLOCK_RECORD": 97,
+      "BLOCK": 97,
+      "ENDBLK": 97,
+      "LINE": 1695,
+      "ARC": 255,
+      "ATTDEF": 88,
+      "SOLID": 83,
+      "LWPOLYLINE": 242,
+      "CIRCLE": 17,
+      "ELLIPSE": 4,
+      "INSERT": 131,
+      "MTEXT": 44,
+      "POINT": 132,
+      "ATTRIB": 120,
+      "SEQEND": 35,
+      "DICTIONARY": 32,
+      "ACDBDICTIONARYWDFLT": 1,
+      "ACDBPLACEHOLDER": 1,
+      "MLINESTYLE": 1,
+      "LAYOUT": 3,
+      "DICTIONARYVAR": 11,
+      "TABLESTYLE": 1,
+      "MATERIAL": 3,
+      "VISUALSTYLE": 24,
+      "SCALE": 17,
+      "MLEADERSTYLE": 2,
+      "XRECORD": 8,
+      "ACDBSECTIONVIEWSTYLE": 1,
+      "ACDBDETAILVIEWSTYLE": 1,
+      "SORTENTSTABLE": 1,
+      "EOF": 1
+    }
+  },
+  "totalMs": 50
+}

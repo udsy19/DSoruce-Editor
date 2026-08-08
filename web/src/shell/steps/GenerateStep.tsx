@@ -123,7 +123,21 @@ export function GenerateStep({
       setPhase('error')
       return
     }
-    const cands = res.candidates
+    // A candidate that placed nothing is a FAILED generation, not a weak one.
+    // The engine used to return three of them — scored, badged and offering
+    // "Open in editor" — for a document containing nothing, because every
+    // sub-score computed over an empty population returns its maximum
+    // (cad-validation/findings/F4-empty-plan-scored-as-success.md). Drop them
+    // here rather than downstream: a card the user cannot open is worse than
+    // no card, and a scored blank thumbnail is worse than both.
+    //
+    // `feasible === undefined` means a plan persisted before the field existed,
+    // which was only ever stored after a successful generate — treat as feasible.
+    const cands = res.candidates.filter((c) => c.score.feasible !== false)
+    if (cands.length === 0) {
+      setPhase('error')
+      return
+    }
     // Per-candidate KPIs from the SAME helper the branded report prints.
     const model = buildReportModel(
       cands.map((c, i) => ({

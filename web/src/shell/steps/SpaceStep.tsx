@@ -20,13 +20,13 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { DrawingView } from '../../import/DrawingView'
 import { CategoryPlan, type CategoryPlanGroup } from '../../ui/CategoryPlan'
 import { buildCategoryGroups, type EditorController } from '../../App'
-import { extractKeepouts, type Pt, type PlateResult } from '../../import/testfit'
+import { extractKeepouts, PLATE_FAILURE_MESSAGE, type Pt, type PlateResult } from '../../import/testfit'
 import { restrictDrawing } from '../../import/area'
 import { extractPlate } from '../../import/testfit'
 import type { PlateProvenance } from '../../import/plateQuality'
 import { logPlate, recordPlateOutcome } from '../../persist/plateLog'
 import { healWalls } from '../../import/heal'
-import { derivePlate } from '../../import/plate'
+import { derivePlate, derivePlateOutcome } from '../../import/plate'
 import { ROOM_TYPES, nextRoomRef, type RoomMarker, type RoomType } from '../../import/markers'
 import { bankCategoryForItem } from '../../materialBank/office'
 import { getProject, updateDraft, type SpaceReadoutsSummary } from '../../persist/projects'
@@ -36,6 +36,7 @@ import type { Drawing } from '../../import/types'
 import { isRasterFile, loadRasterBackdrop, type Backdrop } from '../../import/rasterImport'
 import { SF_PER_M2 } from '../../util/units'
 import { resumeDrawing } from '../resume'
+import { classifyZip, listZipEntries, readZipEntry, ZIP_ERROR_MESSAGE } from '../../import/zipEntry'
 
 /** Heal gap (m) persisted with the toggle — the healWalls default (a hairline
  *  partition break, below a door leaf). The Space step exposes on/off only. */
@@ -202,7 +203,9 @@ export function SpaceStep({
         // Shared with GenerateStep — see `shell/resume.ts` for why every step
         // that touches the plate has to go through one function.
         resumeDrawing(controller.current, rec)
-        readyRef.current?.(true)
+        // Same gate as a fresh upload: a resumed draft whose drawing yields no
+        // plate is no more complete than one that never traced.
+        readyRef.current?.(!!derivePlate(d, rec?.draft?.areaPolygon ?? null, rec?.draft?.heal?.on ?? true))
       }
       if (rec?.draft?.areaPolygon) setAreaPolygon(rec.draft.areaPolygon)
       if (rec?.draft?.markers) setMarkers(rec.draft.markers)
@@ -450,6 +453,69 @@ export function SpaceStep({
     })()
   }
 
+  /**
+   * A `.zip` wrapping a single CAD file is how block libraries and drawing sets
+   * are distributed — three of the four archives in the validation corpus are
+   * exactly that. Unwrap it and carry on with the file inside; the user should
+   * not have to extract it by hand to find out whether we can read it.
+   *
+   * Only an unambiguous single CAD entry is auto-unwrapped. Several, and we ask
+   * rather than guess which drawing they meant; none, and we say what the
+   * archive actually holds — `Library-of-furniture.zip` contains two JPEG
+   * catalogue scans and no CAD at all, which is worth stating plainly instead of
+   * failing as "not a valid drawing".
+   */
+  const acceptZip = (file: File) => {
+    setBusy(true)
+    setErr(null)
+    void (async () => {
+      try {
+        const buf = await file.arrayBuffer()
+        const listed = listZipEntries(buf)
+        if ('error' in listed) {
+          setErr(`Could not open ${file.name}: ${ZIP_ERROR_MESSAGE[listed.error]}.`)
+          return
+        }
+        const { cad, raster, other } = classifyZip(listed.entries)
+        if (cad.length === 0) {
+          const held = [
+            raster.length ? `${raster.length} image${raster.length === 1 ? '' : 's'}` : null,
+            other.length ? `${other.length} other file${other.length === 1 ? '' : 's'}` : null,
+          ]
+            .filter(Boolean)
+            .join(' and ')
+          setErr(
+            `${file.name} contains no DWG or DXF drawing${held ? ` — just ${held}` : ''}. ` +
+              `Upload the drawing itself, or an image of the plan if that is all you have.`,
+          )
+          return
+        }
+        if (cad.length > 1) {
+          setErr(
+            `${file.name} contains ${cad.length} drawings (${cad.map((e) => e.name).slice(0, 4).join(', ')}` +
+              `${cad.length > 4 ? ', …' : ''}). Extract the one you want and upload it.`,
+          )
+          return
+        }
+        const only = cad[0]
+        const read = await readZipEntry(buf, only)
+        if ('error' in read) {
+          setErr(`Could not read ${only.name} from ${file.name}: ${ZIP_ERROR_MESSAGE[read.error]}.`)
+          return
+        }
+        // Hand the inner file to the normal path, named as it is inside the
+        // archive so the .dwg/.dxf branch and any error message both read right.
+        const inner = new File([read.bytes as BlobPart], only.name.split('/').pop() ?? only.name)
+        setBusy(false)
+        accept(inner)
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : 'Could not read that archive.')
+      } finally {
+        setBusy(false)
+      }
+    })()
+  }
+
   const accept = (file: File | undefined) => {
     if (!file || busy) return
     if (isRasterFile(file)) {
@@ -457,8 +523,12 @@ export function SpaceStep({
       return
     }
     const name = file.name.toLowerCase()
+    if (name.endsWith('.zip')) {
+      acceptZip(file)
+      return
+    }
     if (!name.endsWith('.dxf') && !name.endsWith('.dwg')) {
-      setErr('Upload a .dxf / .dwg, or an image (.png / .jpg) floor plan.')
+      setErr('Upload a .dxf / .dwg / .zip, or an image (.png / .jpg) floor plan.')
       return
     }
     setBusy(true)
@@ -480,7 +550,8 @@ export function SpaceStep({
       setActiveTool('none')
       proposePlate(d)
       // Fresh upload → no sub-area yet, so the plate is the whole-floor hull.
-      const r = computeReadouts(d, derivePlate(d, null, healOn))
+      const plate = derivePlate(d, null, healOn)
+      const r = computeReadouts(d, plate)
       // Also drop any §3.5 anchor pins — they were pinned to the OLD plate.
       await updateDraft(projectId, {
         drawing: d,
@@ -490,7 +561,23 @@ export function SpaceStep({
         anchors: [],
       })
       hydratedRef.current = true
-      readyRef.current?.(true)
+      // No plate means there is nothing for the generator to build inside, so
+      // this step is NOT complete — the readouts already say "no plate traced".
+      // Previously readiness was signalled on "a file was uploaded" alone, and
+      // the wizard walked from here to "Pick a test-fit · 3 alternatives ·
+      // best 41/100" with three blank thumbnails, then on to the priced report
+      // (cad-validation/findings/F9-wizard-gating.md).
+      if (!plate) {
+        // Say WHICH stage failed, not just that one did: the three reasons need
+        // opposite fixes (unrecognised layers vs. a drafting gap vs. a wrong
+        // scale), and a generic message sends the user to the wrong one.
+        const outcome = derivePlateOutcome(d, null, healOn)
+        const why = outcome.ok ? '' : ` — ${PLATE_FAILURE_MESSAGE[outcome.reason]}`
+        setErr(
+          `No floor plate could be traced from this drawing, so there is nothing to fit into${why}.`,
+        )
+      }
+      readyRef.current?.(!!plate)
       setBusy(false)
     })()
   }
@@ -519,13 +606,13 @@ export function SpaceStep({
             {busy ? 'Reading drawing…' : drawing ? 'Replace floor plan' : 'Drop a CAD floor plan'}
           </span>
           <span className="space-drop-sub">
-            DXF / DWG (traced from linework) · or PNG / JPG (set the scale, then trace)
+            DXF / DWG / ZIP (traced from linework) · or PNG / JPG (set the scale, then trace)
           </span>
         </span>
         <input
           ref={inputRef}
           type="file"
-          accept=".dxf,.dwg,.png,.jpg,.jpeg,.webp,image/*"
+          accept=".dxf,.dwg,.zip,.png,.jpg,.jpeg,.webp,image/*"
           data-testid="space-upload-input"
           style={{ display: 'none' }}
           onChange={(e) => accept(e.target.files?.[0])}
@@ -777,6 +864,20 @@ export function SpaceStep({
                 the sub-area only.
               </div>
             )}
+            {/* Scale confidence is a DIFFERENT question from plate confidence,
+                and both can be wrong independently. The plate notice below asks
+                "is this the right outline?"; this one asks "is the drawing the
+                right SIZE?". A drawing can trace a perfect boundary at 30× the
+                true scale — it then places furniture and scores well, and every
+                area, cost and m²/person figure derived from it is wrong with no
+                outward sign. Five files in the validation corpus do exactly
+                that (cad-validation/STATUS.md). */}
+            {drawing?.scaleConfidence?.confidence === 'low' && (
+              <div className="space-plate-draft" data-testid="scale-confidence-notice" role="status">
+                <strong>Check the scale.</strong> {drawing.scaleConfidence.reason} Measure a known
+                dimension against the plan before trusting the areas below.
+              </div>
+            )}
             {plateDraft && (
               <div className="space-plate-draft" data-testid="plate-draft-notice" role="status">
                 <strong>Check the floor plate.</strong> {plateDraft.reason}{' '}
@@ -826,14 +927,26 @@ export function SpaceStep({
               </div>
             </div>
 
+            {/* Coverage is the fraction of the drawing's furniture that falls
+                inside the traced boundary — evidence the boundary is right. It
+                defaults to 1 when the drawing has NO furniture, which is a
+                sensible internal default (the plate ladder needs a sortable
+                number) but a vacuous claim to print: "100% furniture coverage"
+                appeared directly beneath "COMPONENTS 0", corroborating a
+                boundary that in one corpus file was a triangle missing the plan
+                entirely. With nothing to check against, say that instead — it
+                is both honest and more useful, because it tells the user the
+                boundary is unverified and why.
+                See cad-validation/findings/F8-vacuous-coverage-claim.md. */}
             <p className="space-caveat">
               Counts are exact. The boundary and room labels are best-effort where the walls don't
               fully close
               {readouts.plateMethod ? ` (traced by ${readouts.plateMethod}` : ''}
-              {readouts.plateMethod && readouts.plateCoverage != null
+              {readouts.plateMethod && readouts.plateCoverage != null &&
+                readouts.bom.reduce((s, g) => s + g.count, 0) > 0
                 ? `, ${Math.round(readouts.plateCoverage * 100)}% furniture coverage).`
                 : readouts.plateMethod
-                  ? ').'
+                  ? '; this drawing has no furniture to check the boundary against).'
                   : '.'}
             </p>
 
@@ -857,6 +970,25 @@ export function SpaceStep({
                   <span className="num">{readouts.program.amenities}</span>
                 </li>
               </ul>
+              {/* "COMPONENTS 9" beside four zeroes reads as a contradiction, and
+                  the two tallies genuinely count different things: COMPONENTS is
+                  every placed block, while the program counts only the ones that
+                  imply a workplace use. Seating is deliberately excluded — a desk
+                  and its chair are one workstation, so counting both would double
+                  it — which is why a drawing of nine chairs and nothing else is
+                  honestly all-zero here. Say that, rather than leave the reader to
+                  reconcile it. */}
+              {readouts.program.offices === 0 &&
+                readouts.program.conference === 0 &&
+                readouts.program.collab === 0 &&
+                readouts.program.amenities === 0 &&
+                readouts.bom.reduce((s, g) => s + g.count, 0) > 0 && (
+                  <p className="space-caveat" data-testid="program-empty-note">
+                    None of this drawing’s blocks imply a workplace use. Seating on its own does not
+                    — a desk and its chair are one workstation — so a plan of chairs, doors or
+                    fixtures counts here as zero even though the components above are real.
+                  </p>
+                )}
             </section>
 
             <section className="space-section" data-testid="space-markers">

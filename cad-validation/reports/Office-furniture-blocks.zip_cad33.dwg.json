@@ -1,0 +1,153 @@
+{
+  "file": "Office-furniture-blocks.zip/cad33.dwg",
+  "src": "/Users/udsy/.superset/worktrees/DSource-Editor/testing-edge-variations/cad-validation/raw/cad33.dwg",
+  "bytes": 922275,
+  "stages": {
+    "convert": {
+      "ok": true,
+      "ms": 125,
+      "dxfBytes": 4525802,
+      "via": "dwg2dxf"
+    },
+    "parse": {
+      "ok": true,
+      "ms": 72,
+      "units": "in",
+      "bounds": [
+        48.38731610175868,
+        45.052359376781354,
+        48.824091812690014,
+        45.48804239562487
+      ],
+      "spanM": [
+        0.43677571093133594,
+        0.4356830188435197
+      ],
+      "layers": 9,
+      "entities": 14939,
+      "furniture": 2,
+      "byCat": {
+        "furniture": 9033,
+        "other": 5906
+      },
+      "byKind": {
+        "polyline": 14921,
+        "text": 18
+      },
+      "degenerate": 0,
+      "nonFinite": 0,
+      "huge": 0
+    },
+    "heal": {
+      "ok": true,
+      "ms": 0,
+      "entitiesBefore": 14939,
+      "entitiesAfter": 14939,
+      "added": 0
+    },
+    "plate": {
+      "ok": false,
+      "ms": 5,
+      "reason": "derivePlate returned null"
+    },
+    "normalize": {
+      "ok": true,
+      "ms": 0,
+      "total": 2,
+      "byCategory": {
+        "Furniture": 2
+      },
+      "unnamed": 0,
+      "zeroSize": 1,
+      "samples": [
+        {
+          "raw": "tv_plan1",
+          "name": "Tv plan1",
+          "category": "Furniture",
+          "w": 0.003,
+          "h": 0.018
+        },
+        {
+          "raw": "mesa_office",
+          "name": "Mesa Office",
+          "category": "Furniture",
+          "w": 0.047,
+          "h": 0.02
+        }
+      ]
+    }
+  },
+  "errors": [
+    {
+      "stage": "plate",
+      "message": "No plate derived — App.tsx shows \"No wall geometry found in this drawing to derive a floor plate from.\""
+    }
+  ],
+  "warnings": [
+    {
+      "stage": "normalize",
+      "message": "1 furniture blocks have a degenerate (≤1cm) bbox"
+    }
+  ],
+  "dxfFacts": {
+    "insunitsCode": null,
+    "insunitsLabel": null,
+    "extmin": [
+      null,
+      null
+    ],
+    "extmax": [
+      null,
+      null
+    ],
+    "entityCounts": {
+      "SECTION": 7,
+      "ENDSEC": 7,
+      "CLASS": 19,
+      "TABLE": 9,
+      "VPORT": 1,
+      "ENDTAB": 9,
+      "LTYPE": 6,
+      "LAYER": 9,
+      "STYLE": 2,
+      "APPID": 21,
+      "DIMSTYLE": 2,
+      "BLOCK_RECORD": 43,
+      "BLOCK": 43,
+      "ENDBLK": 43,
+      "LINE": 11283,
+      "ARC": 3358,
+      "LWPOLYLINE": 846,
+      "CIRCLE": 56,
+      "SPLINE": 51,
+      "POLYLINE": 18,
+      "VERTEX": 881,
+      "SEQEND": 18,
+      "INSERT": 57,
+      "ELLIPSE": 162,
+      "TEXT": 12,
+      "WIPEOUT": 1,
+      "HATCH": 3,
+      "MTEXT": 6,
+      "VIEWPORT": 2,
+      "DICTIONARY": 38,
+      "ACDBDICTIONARYWDFLT": 1,
+      "ACDBPLACEHOLDER": 2,
+      "MLINESTYLE": 1,
+      "LAYOUT": 2,
+      "DICTIONARYVAR": 13,
+      "TABLESTYLE": 1,
+      "MATERIAL": 3,
+      "VISUALSTYLE": 26,
+      "SCALE": 17,
+      "MLEADERSTYLE": 1,
+      "XRECORD": 16,
+      "SORTENTSTABLE": 7,
+      "WIPEOUTVARIABLES": 1,
+      "ACDBSECTIONVIEWSTYLE": 1,
+      "ACDBDETAILVIEWSTYLE": 1,
+      "EOF": 1
+    }
+  },
+  "totalMs": 246
+}

@@ -1,0 +1,577 @@
+[
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AG.dwg",
+    "units": "m",
+    "preSpanM": [
+      11542.5,
+      3413.3
+    ],
+    "postSpanM": [
+      104.6,
+      71.8
+    ],
+    "preCount": {
+      "entities": 13240,
+      "furniture": 9
+    },
+    "postCount": {
+      "entities": 13138,
+      "furniture": 9
+    },
+    "droppedEntities": 102,
+    "droppedFurniture": 0,
+    "shrinkFactor": 110.3
+  },
+  {
+    "file": "Apartment-1.dwg",
+    "units": "m",
+    "preSpanM": [
+      282006.1,
+      751.8
+    ],
+    "postSpanM": [
+      37.7,
+      21.2
+    ],
+    "preCount": {
+      "entities": 5717,
+      "furniture": 7
+    },
+    "postCount": {
+      "entities": 5582,
+      "furniture": 0
+    },
+    "droppedEntities": 135,
+    "droppedFurniture": 7,
+    "shrinkFactor": 7480.3
+  },
+  {
+    "file": "Apartment-413201.dwg",
+    "units": "m",
+    "preSpanM": [
+      27.8,
+      14
+    ],
+    "postSpanM": [
+      27.8,
+      14
+    ],
+    "preCount": {
+      "entities": 1687,
+      "furniture": 0
+    },
+    "postCount": {
+      "entities": 1687,
+      "furniture": 0
+    },
+    "droppedEntities": 0,
+    "droppedFurniture": 0,
+    "shrinkFactor": 1
+  },
+  {
+    "file": "Apto.1404202.dwg",
+    "units": "m",
+    "preSpanM": [
+      5729.4,
+      12.5
+    ],
+    "postSpanM": [
+      30.2,
+      12.5
+    ],
+    "preCount": {
+      "entities": 7516,
+      "furniture": 0
+    },
+    "postCount": {
+      "entities": 7451,
+      "furniture": 0
+    },
+    "droppedEntities": 65,
+    "droppedFurniture": 0,
+    "shrinkFactor": 189.7
+  },
+  {
+    "file": "BUSNSS-Offcs_AN.dwg",
+    "units": "m",
+    "preSpanM": [
+      646.7,
+      257
+    ],
+    "postSpanM": [
+      646.7,
+      257
+    ],
+    "preCount": {
+      "entities": 12648,
+      "furniture": 0
+    },
+    "postCount": {
+      "entities": 12648,
+      "furniture": 0
+    },
+    "droppedEntities": 0,
+    "droppedFurniture": 0,
+    "shrinkFactor": 1
+  },
+  {
+    "file": "BUSNSS-Offcs-CwSp_AA.dwg",
+    "units": "m",
+    "preSpanM": [
+      52858.3,
+      1072.9
+    ],
+    "postSpanM": [
+      194.3,
+      71
+    ],
+    "preCount": {
+      "entities": 25029,
+      "furniture": 105
+    },
+    "postCount": {
+      "entities": 25028,
+      "furniture": 105
+    },
+    "droppedEntities": 1,
+    "droppedFurniture": 0,
+    "shrinkFactor": 272
+  },
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AA.dwg",
+    "units": "m",
+    "preSpanM": [
+      125.4,
+      114.4
+    ],
+    "postSpanM": [
+      125.4,
+      114.4
+    ],
+    "preCount": {
+      "entities": 1398,
+      "furniture": 50
+    },
+    "postCount": {
+      "entities": 1398,
+      "furniture": 50
+    },
+    "droppedEntities": 0,
+    "droppedFurniture": 0,
+    "shrinkFactor": 1
+  },
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AB.dwg",
+    "units": "m",
+    "preSpanM": [
+      134.5,
+      99.8
+    ],
+    "postSpanM": [
+      134.5,
+      99.8
+    ],
+    "preCount": {
+      "entities": 50394,
+      "furniture": 28
+    },
+    "postCount": {
+      "entities": 50394,
+      "furniture": 28
+    },
+    "droppedEntities": 0,
+    "droppedFurniture": 0,
+    "shrinkFactor": 1
+  },
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AC.dwg",
+    "units": "ft",
+    "preSpanM": [
+      77800.9,
+      78231.2
+    ],
+    "postSpanM": [
+      68.9,
+      37.3
+    ],
+    "preCount": {
+      "entities": 99410,
+      "furniture": 0
+    },
+    "postCount": {
+      "entities": 98920,
+      "furniture": 0
+    },
+    "droppedEntities": 490,
+    "droppedFurniture": 0,
+    "shrinkFactor": 1135.4
+  },
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AE.dwg",
+    "units": "m",
+    "preSpanM": [
+      50,
+      81.1
+    ],
+    "postSpanM": [
+      50,
+      81.1
+    ],
+    "preCount": {
+      "entities": 8203,
+      "furniture": 9
+    },
+    "postCount": {
+      "entities": 8203,
+      "furniture": 9
+    },
+    "droppedEntities": 0,
+    "droppedFurniture": 0,
+    "shrinkFactor": 1
+  },
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AF.dwg",
+    "units": "dm",
+    "preSpanM": [
+      14.1,
+      9.3
+    ],
+    "postSpanM": [
+      14.1,
+      9.3
+    ],
+    "preCount": {
+      "entities": 19394,
+      "furniture": 0
+    },
+    "postCount": {
+      "entities": 19394,
+      "furniture": 0
+    },
+    "droppedEntities": 0,
+    "droppedFurniture": 0,
+    "shrinkFactor": 1
+  },
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AG (1).dwg",
+    "units": "m",
+    "preSpanM": [
+      11542.5,
+      3413.3
+    ],
+    "postSpanM": [
+      104.6,
+      71.8
+    ],
+    "preCount": {
+      "entities": 13240,
+      "furniture": 9
+    },
+    "postCount": {
+      "entities": 13138,
+      "furniture": 9
+    },
+    "droppedEntities": 102,
+    "droppedFurniture": 0,
+    "shrinkFactor": 110.3
+  },
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AH.dwg",
+    "units": "m",
+    "preSpanM": [
+      170,
+      87.2
+    ],
+    "postSpanM": [
+      170,
+      87.2
+    ],
+    "preCount": {
+      "entities": 134735,
+      "furniture": 187
+    },
+    "postCount": {
+      "entities": 134735,
+      "furniture": 187
+    },
+    "droppedEntities": 0,
+    "droppedFurniture": 0,
+    "shrinkFactor": 1
+  },
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AI.dwg",
+    "units": "m",
+    "preSpanM": [
+      98.7,
+      65.4
+    ],
+    "postSpanM": [
+      98.7,
+      65.4
+    ],
+    "preCount": {
+      "entities": 10859,
+      "furniture": 51
+    },
+    "postCount": {
+      "entities": 10859,
+      "furniture": 51
+    },
+    "droppedEntities": 0,
+    "droppedFurniture": 0,
+    "shrinkFactor": 1
+  },
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AL.dwg",
+    "units": "in",
+    "preSpanM": [
+      53.9,
+      6.5
+    ],
+    "postSpanM": [
+      53.9,
+      6.5
+    ],
+    "preCount": {
+      "entities": 8356,
+      "furniture": 0
+    },
+    "postCount": {
+      "entities": 8356,
+      "furniture": 0
+    },
+    "droppedEntities": 0,
+    "droppedFurniture": 0,
+    "shrinkFactor": 1
+  },
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AM.dwg",
+    "units": "dm",
+    "preSpanM": [
+      18.7,
+      8.1
+    ],
+    "postSpanM": [
+      18.7,
+      8.1
+    ],
+    "preCount": {
+      "entities": 15524,
+      "furniture": 0
+    },
+    "postCount": {
+      "entities": 15524,
+      "furniture": 0
+    },
+    "droppedEntities": 0,
+    "droppedFurniture": 0,
+    "shrinkFactor": 1
+  },
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AN.dwg",
+    "units": "m",
+    "preSpanM": [
+      28.4,
+      62.6
+    ],
+    "postSpanM": [
+      28.4,
+      62.6
+    ],
+    "preCount": {
+      "entities": 2617,
+      "furniture": 35
+    },
+    "postCount": {
+      "entities": 2617,
+      "furniture": 35
+    },
+    "droppedEntities": 0,
+    "droppedFurniture": 0,
+    "shrinkFactor": 1
+  },
+  {
+    "file": "call-center-offices.dwg",
+    "units": "m",
+    "preSpanM": [
+      111.1,
+      10.7
+    ],
+    "postSpanM": [
+      111.1,
+      10.7
+    ],
+    "preCount": {
+      "entities": 862,
+      "furniture": 34
+    },
+    "postCount": {
+      "entities": 862,
+      "furniture": 34
+    },
+    "droppedEntities": 0,
+    "droppedFurniture": 0,
+    "shrinkFactor": 1
+  },
+  {
+    "file": "fast-food-Restaurant.dwg",
+    "units": "m",
+    "preSpanM": [
+      49.9,
+      21.7
+    ],
+    "postSpanM": [
+      49.9,
+      21.7
+    ],
+    "preCount": {
+      "entities": 7281,
+      "furniture": 19
+    },
+    "postCount": {
+      "entities": 7281,
+      "furniture": 19
+    },
+    "droppedEntities": 0,
+    "droppedFurniture": 0,
+    "shrinkFactor": 1
+  },
+  {
+    "file": "Small-apto..dwg",
+    "units": "m",
+    "preSpanM": [
+      18.1,
+      18.1
+    ],
+    "postSpanM": [
+      18.1,
+      18.1
+    ],
+    "preCount": {
+      "entities": 1888,
+      "furniture": 0
+    },
+    "postCount": {
+      "entities": 1888,
+      "furniture": 0
+    },
+    "droppedEntities": 0,
+    "droppedFurniture": 0,
+    "shrinkFactor": 1
+  },
+  {
+    "file": "Two-story-house-410202.dwg",
+    "units": "m",
+    "preSpanM": [
+      750.5,
+      125.8
+    ],
+    "postSpanM": [
+      28.7,
+      15.4
+    ],
+    "preCount": {
+      "entities": 2279,
+      "furniture": 14
+    },
+    "postCount": {
+      "entities": 1529,
+      "furniture": 14
+    },
+    "droppedEntities": 750,
+    "droppedFurniture": 0,
+    "shrinkFactor": 26.1
+  },
+  {
+    "file": "Hospital-equipment.zip/MOBILIARIO HOSPITAL.dwg",
+    "units": "m",
+    "preSpanM": [
+      45.6,
+      28.1
+    ],
+    "postSpanM": [
+      45.6,
+      28.1
+    ],
+    "preCount": {
+      "entities": 14166,
+      "furniture": 19
+    },
+    "postCount": {
+      "entities": 14166,
+      "furniture": 19
+    },
+    "droppedEntities": 0,
+    "droppedFurniture": 0,
+    "shrinkFactor": 1
+  },
+  {
+    "file": "Office-furniture-blocks.zip/cad33.dwg",
+    "units": "mm",
+    "preSpanM": [
+      323.9,
+      42.7
+    ],
+    "postSpanM": [
+      3.8,
+      0
+    ],
+    "preCount": {
+      "entities": 14949,
+      "furniture": 8
+    },
+    "postCount": {
+      "entities": 14949,
+      "furniture": 2
+    },
+    "droppedEntities": 0,
+    "droppedFurniture": 6,
+    "shrinkFactor": 85.2
+  },
+  {
+    "file": "Various-furniture-blocks.zip/muebles varios.dwg",
+    "units": "m",
+    "preSpanM": [
+      68,
+      28.3
+    ],
+    "postSpanM": [
+      68,
+      28.3
+    ],
+    "preCount": {
+      "entities": 19368,
+      "furniture": 9
+    },
+    "postCount": {
+      "entities": 19368,
+      "furniture": 9
+    },
+    "droppedEntities": 0,
+    "droppedFurniture": 0,
+    "shrinkFactor": 1
+  },
+  {
+    "file": "samples/furniture-plan.dwg (repo fixture — control)",
+    "units": "in",
+    "preSpanM": [
+      2460.5,
+      1882
+    ],
+    "postSpanM": [
+      38,
+      42.4
+    ],
+    "preCount": {
+      "entities": 1454,
+      "furniture": 633
+    },
+    "postCount": {
+      "entities": 1013,
+      "furniture": 533
+    },
+    "droppedEntities": 441,
+    "droppedFurniture": 100,
+    "shrinkFactor": 58
+  }
+]

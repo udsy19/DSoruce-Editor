@@ -1,0 +1,241 @@
+{
+  "file": "BUSNSS-Offcs-Trdtnl_AH.dwg",
+  "src": "/Users/udsy/Downloads/BUSNSS-Offcs-Trdtnl_AH.dwg",
+  "bytes": 837318,
+  "stages": {
+    "convert": {
+      "ok": true,
+      "ms": 68,
+      "dxfBytes": 2408929,
+      "via": "dwg2dxf"
+    },
+    "parse": {
+      "ok": true,
+      "ms": 127,
+      "units": "ft",
+      "bounds": [
+        -20.59818001808982,
+        5.737181783942039,
+        31.2058418376858,
+        32.32282867866436
+      ],
+      "spanM": [
+        51.804021855775616,
+        26.58564689472232
+      ],
+      "layers": 17,
+      "entities": 134735,
+      "furniture": 187,
+      "byCat": {
+        "annotation": 133483,
+        "other": 371,
+        "wall": 107,
+        "door": 519,
+        "furniture": 255
+      },
+      "byKind": {
+        "polyline": 134578,
+        "text": 157
+      },
+      "degenerate": 0,
+      "nonFinite": 0,
+      "huge": 0
+    },
+    "heal": {
+      "ok": true,
+      "ms": 2,
+      "entitiesBefore": 134735,
+      "entitiesAfter": 134780,
+      "added": 45
+    },
+    "plate": {
+      "ok": true,
+      "ms": 215,
+      "method": "hull",
+      "vertices": 11,
+      "reportedAreaM2": 885.3693422750596,
+      "independentAreaM2": 885.3693422750596,
+      "areaAgrees": true,
+      "reportedCoverage": 1,
+      "independentCoverage": 1,
+      "coverageAgrees": true,
+      "offset": {
+        "x": -21.59818001808982,
+        "y": 5.392554651533921
+      },
+      "provenance": {
+        "method": "hull",
+        "phantomFraction": 0.5572418880974773,
+        "orthogonality": 0.38461041294345605,
+        "closingEdgeM": 1.6575965003984479,
+        "selfIntersections": 0,
+        "confidence": "low",
+        "reason": "No closed building shell was found, so this boundary is a best-fit outline — 56% of it was bridged across gaps rather than traced. Confirm or adjust it."
+      },
+      "ringSpanM": [
+        51.804021855775616,
+        24.466807702085234
+      ]
+    },
+    "keepouts": {
+      "ok": true,
+      "ms": 4,
+      "count": 0
+    },
+    "entries": {
+      "ok": true,
+      "ms": 2,
+      "count": 5
+    },
+    "interiorWalls": {
+      "ok": true,
+      "ms": 4,
+      "count": 94
+    },
+    "normalize": {
+      "ok": true,
+      "ms": 0,
+      "total": 187,
+      "byCategory": {
+        "Furniture": 187
+      },
+      "unnamed": 0,
+      "zeroSize": 0,
+      "samples": [
+        {
+          "raw": "Mueble_Operador",
+          "name": "Mueble Operador",
+          "category": "Furniture",
+          "w": 0.763,
+          "h": 1.145
+        },
+        {
+          "raw": "Mueble_Operador",
+          "name": "Mueble Operador",
+          "category": "Furniture",
+          "w": 0.763,
+          "h": 1.145
+        },
+        {
+          "raw": "Mueble_Operador",
+          "name": "Mueble Operador",
+          "category": "Furniture",
+          "w": 0.987,
+          "h": 1.074
+        },
+        {
+          "raw": "Mueble_Operador",
+          "name": "Mueble Operador",
+          "category": "Furniture",
+          "w": 1.164,
+          "h": 0.673
+        },
+        {
+          "raw": "Teknion_Cover_1",
+          "name": "Teknion Cover 1",
+          "category": "Furniture",
+          "w": 0.529,
+          "h": 0.405
+        },
+        {
+          "raw": "Teknion_Cover_1",
+          "name": "Teknion Cover 1",
+          "category": "Furniture",
+          "w": 0.452,
+          "h": 0.607
+        },
+        {
+          "raw": "Teknion_Cover_1",
+          "name": "Teknion Cover 1",
+          "category": "Furniture",
+          "w": 0.529,
+          "h": 0.408
+        },
+        {
+          "raw": "Teknion_Cover_1",
+          "name": "Teknion Cover 1",
+          "category": "Furniture",
+          "w": 0.529,
+          "h": 0.408
+        }
+      ]
+    }
+  },
+  "errors": [],
+  "warnings": [],
+  "dxfFacts": {
+    "insunitsCode": null,
+    "insunitsLabel": null,
+    "extmin": [
+      null,
+      null
+    ],
+    "extmax": [
+      null,
+      null
+    ],
+    "entityCounts": {
+      "SECTION": 7,
+      "ENDSEC": 7,
+      "CLASS": 34,
+      "TABLE": 9,
+      "VPORT": 1,
+      "ENDTAB": 9,
+      "LTYPE": 7,
+      "LAYER": 17,
+      "STYLE": 2,
+      "APPID": 22,
+      "DIMSTYLE": 1,
+      "BLOCK_RECORD": 46,
+      "BLOCK": 45,
+      "ENDBLK": 45,
+      "ARC": 307,
+      "LINE": 2571,
+      "LWPOLYLINE": 1462,
+      "INSERT": 432,
+      "POLYLINE": 62,
+      "VERTEX": 617,
+      "SEQEND": 62,
+      "CIRCLE": 39,
+      "ELLIPSE": 3,
+      "SPLINE": 91,
+      "HATCH": 52,
+      "WIPEOUT": 3,
+      "TEXT": 156,
+      "MTEXT": 1,
+      "VIEWPORT": 2,
+      "DICTIONARY": 358,
+      "ACDBDICTIONARYWDFLT": 1,
+      "ACDBPLACEHOLDER": 1,
+      "MLINESTYLE": 1,
+      "LAYOUT": 2,
+      "DICTIONARYVAR": 14,
+      "TABLESTYLE": 1,
+      "MATERIAL": 3,
+      "VISUALSTYLE": 25,
+      "SCALE": 36,
+      "MLEADERSTYLE": 1,
+      "XRECORD": 414,
+      "ACDBSECTIONVIEWSTYLE": 2,
+      "ACDBDETAILVIEWSTYLE": 2,
+      "SORTENTSTABLE": 17,
+      "ACAD_EVALUATION_GRAPH": 3,
+      "BLOCKVISIBILITYPARAMETER": 1,
+      "BLOCKVISIBILITYGRIP": 1,
+      "BLOCKGRIPLOCATIONCOMPONENT": 14,
+      "BLOCKFLIPPARAMETER": 2,
+      "BLOCKFLIPGRIP": 2,
+      "BLOCKFLIPACTION": 2,
+      "BLOCKROTATIONPARAMETER": 3,
+      "BLOCKROTATIONGRIP": 3,
+      "BLOCKROTATEACTION": 3,
+      "ACDB_DYNAMICBLOCKPURGEPREVENTER_VERSION": 3,
+      "ACDB_BLOCKREPRESENTATION_DATA": 53,
+      "DBCOLOR": 1,
+      "WIPEOUTVARIABLES": 1,
+      "CELLSTYLEMAP": 1,
+      "EOF": 1
+    }
+  },
+  "totalMs": 435
+}

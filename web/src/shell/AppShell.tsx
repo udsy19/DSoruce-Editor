@@ -179,7 +179,12 @@ export function AppShell() {
           }}
           nextLabel="Next: Program"
           nextDisabled={!spaceReady}
-          disabledReason="Upload a floor plan to continue"
+          // Readiness now means "a floor plate was traced", not merely "a file
+          // arrived" — a drawing the tracer cannot find a shell in leaves this
+          // step incomplete, and the step itself explains why in red. Keep the
+          // hint generic enough to cover both, so it never contradicts an
+          // upload that did happen.
+          disabledReason="A floor plate is needed to continue"
         >
           <SpaceStep
             key={route.projectId}

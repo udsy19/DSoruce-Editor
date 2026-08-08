@@ -1,0 +1,229 @@
+{
+  "file": "fast-food-Restaurant.dwg",
+  "src": "/Users/udsy/Downloads/fast-food-Restaurant.dwg",
+  "bytes": 478717,
+  "stages": {
+    "convert": {
+      "ok": true,
+      "ms": 71,
+      "dxfBytes": 2704559,
+      "via": "dwg2dxf"
+    },
+    "parse": {
+      "ok": true,
+      "ms": 40,
+      "units": "m",
+      "bounds": [
+        301.41958358638755,
+        108.5802557658429,
+        351.2730611410027,
+        130.270255765843
+      ],
+      "spanM": [
+        49.853477554615154,
+        21.690000000000083
+      ],
+      "layers": 101,
+      "entities": 7281,
+      "furniture": 19,
+      "byCat": {
+        "other": 3193,
+        "door": 113,
+        "wall": 443,
+        "annotation": 24,
+        "furniture": 3508
+      },
+      "byKind": {
+        "polyline": 7111,
+        "text": 170
+      },
+      "degenerate": 0,
+      "nonFinite": 0,
+      "huge": 0
+    },
+    "heal": {
+      "ok": true,
+      "ms": 1,
+      "entitiesBefore": 7281,
+      "entitiesAfter": 7281,
+      "added": 0
+    },
+    "plate": {
+      "ok": true,
+      "ms": 97,
+      "method": "hull",
+      "vertices": 23,
+      "reportedAreaM2": 457.03125,
+      "independentAreaM2": 457.03125,
+      "areaAgrees": true,
+      "reportedCoverage": 1,
+      "independentCoverage": 1,
+      "coverageAgrees": true,
+      "offset": {
+        "x": 306.1845835863868,
+        "y": 110.8952557658425
+      },
+      "provenance": {
+        "method": "partition-envelope",
+        "phantomFraction": 0.12136908296513083,
+        "orthogonality": 0.8193621835814292,
+        "closingEdgeM": 2.5124689052802225,
+        "selfIntersections": 0,
+        "confidence": "high",
+        "reason": ""
+      },
+      "ringSpanM": [
+        37,
+        14.5
+      ]
+    },
+    "keepouts": {
+      "ok": true,
+      "ms": 0,
+      "count": 0
+    },
+    "entries": {
+      "ok": true,
+      "ms": 0,
+      "count": 9
+    },
+    "interiorWalls": {
+      "ok": true,
+      "ms": 3,
+      "count": 80
+    },
+    "normalize": {
+      "ok": true,
+      "ms": 0,
+      "total": 19,
+      "byCategory": {
+        "Door": 10,
+        "Furniture": 9
+      },
+      "unnamed": 0,
+      "zeroSize": 0,
+      "samples": [
+        {
+          "raw": "DOOR_075",
+          "name": "DOOR 075",
+          "category": "Door",
+          "w": 0.779,
+          "h": 0.75
+        },
+        {
+          "raw": "DOOR_075",
+          "name": "DOOR 075",
+          "category": "Door",
+          "w": 0.779,
+          "h": 0.75
+        },
+        {
+          "raw": "PUERTA_EMERGENCIA",
+          "name": "Puerta Emergencia",
+          "category": "Door",
+          "w": 1.335,
+          "h": 1.306
+        },
+        {
+          "raw": "PUERTA_INGRESO PRINCIPAL",
+          "name": "Puerta Ingreso Principal",
+          "category": "Door",
+          "w": 1.84,
+          "h": 0.936
+        },
+        {
+          "raw": "DOOR_075",
+          "name": "DOOR 075",
+          "category": "Door",
+          "w": 0.779,
+          "h": 0.75
+        },
+        {
+          "raw": "PUERTA_AREA DE BODEGA",
+          "name": "Puerta AREA DE Bodega",
+          "category": "Door",
+          "w": 0.45,
+          "h": 6.39
+        },
+        {
+          "raw": "PUERTA_AREA DE JUEGOS",
+          "name": "Puerta AREA DE Juegos",
+          "category": "Door",
+          "w": 1.245,
+          "h": 1.23
+        },
+        {
+          "raw": "DRN1",
+          "name": "DRN1",
+          "category": "Door",
+          "w": 2.01,
+          "h": 0.936
+        }
+      ]
+    }
+  },
+  "errors": [],
+  "warnings": [],
+  "dxfFacts": {
+    "insunitsCode": null,
+    "insunitsLabel": null,
+    "extmin": [
+      null,
+      null
+    ],
+    "extmax": [
+      null,
+      null
+    ],
+    "entityCounts": {
+      "SECTION": 7,
+      "ENDSEC": 7,
+      "CLASS": 15,
+      "TABLE": 9,
+      "VPORT": 1,
+      "ENDTAB": 9,
+      "LTYPE": 7,
+      "LAYER": 101,
+      "STYLE": 5,
+      "APPID": 9,
+      "DIMSTYLE": 2,
+      "BLOCK_RECORD": 60,
+      "BLOCK": 60,
+      "ENDBLK": 60,
+      "LWPOLYLINE": 787,
+      "ARC": 949,
+      "INSERT": 159,
+      "LINE": 4724,
+      "CIRCLE": 278,
+      "MLINE": 5,
+      "ELLIPSE": 224,
+      "SPLINE": 3,
+      "HATCH": 87,
+      "ATTDEF": 920,
+      "MTEXT": 8,
+      "POINT": 45,
+      "TEXT": 168,
+      "ATTRIB": 9,
+      "SEQEND": 9,
+      "DIMENSION": 2,
+      "DICTIONARY": 155,
+      "XRECORD": 102,
+      "ACDBPLACEHOLDER": 1,
+      "ACDBDICTIONARYWDFLT": 1,
+      "MATERIAL": 3,
+      "LAYOUT": 2,
+      "VISUALSTYLE": 25,
+      "SUN": 1,
+      "MLINESTYLE": 2,
+      "TABLESTYLE": 1,
+      "SCALE": 33,
+      "SORTENTSTABLE": 29,
+      "DICTIONARYVAR": 9,
+      "MLEADERSTYLE": 1,
+      "ACDBSECTIONVIEWSTYLE": 1,
+      "ACDBDETAILVIEWSTYLE": 1,
+      "EOF": 1
+    }
+  },
+  "totalMs": 226
+}

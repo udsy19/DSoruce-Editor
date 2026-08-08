@@ -1,0 +1,255 @@
+[
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AG.dwg",
+    "declaredUnits": "in",
+    "importerUnits": "in",
+    "totalArcs": 771,
+    "doorArcs": 5,
+    "modalDoorRadiusSrc": 1.125,
+    "modalSupport": "4/5",
+    "radiusAsImporterScalesItM": 0.029,
+    "unitsImpliedByDoors": [
+      "m"
+    ],
+    "scaleAgrees": false,
+    "correctionFactor": 39.3701
+  },
+  {
+    "file": "Apartment-1.dwg",
+    "error": "parse failed: Unexpected end of input: EOF group not read before end of file. Ended on code "
+  },
+  {
+    "file": "Apartment-413201.dwg",
+    "declaredUnits": "mm",
+    "importerUnits": "mm",
+    "totalArcs": 305,
+    "doorArcs": 16,
+    "modalDoorRadiusSrc": 0.855,
+    "modalSupport": "10/16",
+    "radiusAsImporterScalesItM": 0.001,
+    "unitsImpliedByDoors": [
+      "m"
+    ],
+    "scaleAgrees": false,
+    "correctionFactor": 1000
+  },
+  {
+    "file": "Apto.1404202.dwg",
+    "declaredUnits": "mm",
+    "importerUnits": "mm",
+    "totalArcs": 2669,
+    "doorArcs": 22,
+    "modalDoorRadiusSrc": 0.855,
+    "modalSupport": "6/22",
+    "radiusAsImporterScalesItM": 0.001,
+    "unitsImpliedByDoors": [
+      "m"
+    ],
+    "scaleAgrees": false,
+    "correctionFactor": 1000
+  },
+  {
+    "file": "BUSNSS-Offcs_AN.dwg",
+    "declaredUnits": "in",
+    "importerUnits": "in",
+    "totalArcs": 1850,
+    "doorArcs": 0,
+    "modalDoorRadiusSrc": null,
+    "modalSupport": null
+  },
+  {
+    "file": "BUSNSS-Offcs-CwSp_AA.dwg",
+    "declaredUnits": "in",
+    "importerUnits": "in",
+    "totalArcs": 358,
+    "doorArcs": 0,
+    "modalDoorRadiusSrc": null,
+    "modalSupport": null
+  },
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AA.dwg",
+    "declaredUnits": "in",
+    "importerUnits": "in",
+    "totalArcs": 3,
+    "doorArcs": 3,
+    "modalDoorRadiusSrc": 0.8971280665136874,
+    "modalSupport": "2/3",
+    "radiusAsImporterScalesItM": 0.023,
+    "unitsImpliedByDoors": [
+      "m"
+    ],
+    "scaleAgrees": false,
+    "correctionFactor": 39.3701
+  },
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AB.dwg",
+    "declaredUnits": "in",
+    "importerUnits": "in",
+    "totalArcs": 1726,
+    "doorArcs": 3,
+    "modalDoorRadiusSrc": 0.01436771305642205,
+    "modalSupport": "2/3",
+    "radiusAsImporterScalesItM": 0,
+    "unitsImpliedByDoors": [],
+    "scaleAgrees": false,
+    "correctionFactor": null
+  },
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AC.dwg",
+    "error": "convert failed"
+  },
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AE.dwg",
+    "declaredUnits": "in",
+    "importerUnits": "in",
+    "totalArcs": 313,
+    "doorArcs": 0,
+    "modalDoorRadiusSrc": null,
+    "modalSupport": null
+  },
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AF.dwg",
+    "error": "convert failed"
+  },
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AG (1).dwg",
+    "declaredUnits": "in",
+    "importerUnits": "in",
+    "totalArcs": 771,
+    "doorArcs": 5,
+    "modalDoorRadiusSrc": 1.125,
+    "modalSupport": "4/5",
+    "radiusAsImporterScalesItM": 0.029,
+    "unitsImpliedByDoors": [
+      "m"
+    ],
+    "scaleAgrees": false,
+    "correctionFactor": 39.3701
+  },
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AH.dwg",
+    "declaredUnits": "in",
+    "importerUnits": "in",
+    "totalArcs": 307,
+    "doorArcs": 13,
+    "modalDoorRadiusSrc": 1.765110187948761,
+    "modalSupport": "6/13",
+    "radiusAsImporterScalesItM": 0.045,
+    "unitsImpliedByDoors": [],
+    "scaleAgrees": false,
+    "correctionFactor": null
+  },
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AI.dwg",
+    "declaredUnits": "in",
+    "importerUnits": "in",
+    "totalArcs": 483,
+    "doorArcs": 49,
+    "modalDoorRadiusSrc": 0.02500000000006253,
+    "modalSupport": "13/49",
+    "radiusAsImporterScalesItM": 0.001,
+    "unitsImpliedByDoors": [],
+    "scaleAgrees": false,
+    "correctionFactor": null
+  },
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AL.dwg",
+    "declaredUnits": "in",
+    "importerUnits": "in",
+    "totalArcs": 2065,
+    "doorArcs": 0,
+    "modalDoorRadiusSrc": null,
+    "modalSupport": null
+  },
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AM.dwg",
+    "declaredUnits": "in",
+    "importerUnits": "in",
+    "totalArcs": 230,
+    "doorArcs": 0,
+    "modalDoorRadiusSrc": null,
+    "modalSupport": null
+  },
+  {
+    "file": "BUSNSS-Offcs-Trdtnl_AN.dwg",
+    "declaredUnits": "in",
+    "importerUnits": "in",
+    "totalArcs": 737,
+    "doorArcs": 50,
+    "modalDoorRadiusSrc": 0.003584785100020116,
+    "modalSupport": "24/50",
+    "radiusAsImporterScalesItM": 0,
+    "unitsImpliedByDoors": [],
+    "scaleAgrees": false,
+    "correctionFactor": null
+  },
+  {
+    "file": "call-center-offices.dwg",
+    "declaredUnits": "in",
+    "importerUnits": "in",
+    "totalArcs": 67,
+    "doorArcs": 0,
+    "modalDoorRadiusSrc": null,
+    "modalSupport": null
+  },
+  {
+    "file": "fast-food-Restaurant.dwg",
+    "declaredUnits": "m",
+    "importerUnits": "m",
+    "totalArcs": 949,
+    "doorArcs": 1,
+    "modalDoorRadiusSrc": 1.119249977557355,
+    "modalSupport": "1/1",
+    "radiusAsImporterScalesItM": 1.119,
+    "unitsImpliedByDoors": [
+      "m"
+    ],
+    "scaleAgrees": true,
+    "correctionFactor": 1
+  },
+  {
+    "file": "Small-apto..dwg",
+    "declaredUnits": "mm",
+    "importerUnits": "mm",
+    "totalArcs": 255,
+    "doorArcs": 0,
+    "modalDoorRadiusSrc": null,
+    "modalSupport": null
+  },
+  {
+    "file": "Two-story-house-410202.dwg",
+    "declaredUnits": "in",
+    "importerUnits": "in",
+    "totalArcs": 278,
+    "doorArcs": 0,
+    "modalDoorRadiusSrc": null,
+    "modalSupport": null
+  },
+  {
+    "file": "Hospital-equipment.zip/MOBILIARIO HOSPITAL.dwg",
+    "declaredUnits": "m",
+    "importerUnits": "m",
+    "totalArcs": 4070,
+    "doorArcs": 0,
+    "modalDoorRadiusSrc": null,
+    "modalSupport": null
+  },
+  {
+    "file": "Office-furniture-blocks.zip/cad33.dwg",
+    "declaredUnits": "m",
+    "importerUnits": "m",
+    "totalArcs": 3358,
+    "doorArcs": 0,
+    "modalDoorRadiusSrc": null,
+    "modalSupport": null
+  },
+  {
+    "file": "Various-furniture-blocks.zip/muebles varios.dwg",
+    "declaredUnits": "mm",
+    "importerUnits": "mm",
+    "totalArcs": 3286,
+    "doorArcs": 0,
+    "modalDoorRadiusSrc": null,
+    "modalSupport": null
+  }
+]

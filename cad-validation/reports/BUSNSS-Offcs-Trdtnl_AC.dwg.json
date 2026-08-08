@@ -1,0 +1,136 @@
+{
+  "file": "BUSNSS-Offcs-Trdtnl_AC.dwg",
+  "src": "/Users/udsy/Downloads/BUSNSS-Offcs-Trdtnl_AC.dwg",
+  "bytes": 6605206,
+  "stages": {
+    "convert": {
+      "ok": true,
+      "ms": 1544,
+      "dxfBytes": 10890729,
+      "via": "dwgread-json"
+    },
+    "parse": {
+      "ok": true,
+      "ms": 266,
+      "units": "ft",
+      "bounds": [
+        -13.776145885091989,
+        -0.2560033861712141,
+        55.14624431290226,
+        37.04140967950956
+      ],
+      "spanM": [
+        68.92239019799425,
+        37.29741306568078
+      ],
+      "layers": 33,
+      "entities": 98920,
+      "furniture": 0,
+      "byCat": {
+        "annotation": 86508,
+        "other": 1787,
+        "furniture": 6386,
+        "door": 3198,
+        "wall": 1041
+      },
+      "byKind": {
+        "polyline": 98858,
+        "text": 62
+      },
+      "degenerate": 0,
+      "nonFinite": 0,
+      "huge": 0
+    },
+    "heal": {
+      "ok": true,
+      "ms": 7,
+      "entitiesBefore": 98920,
+      "entitiesAfter": 99014,
+      "added": 94
+    },
+    "plate": {
+      "ok": true,
+      "ms": 50,
+      "method": "hull",
+      "vertices": 26,
+      "reportedAreaM2": 1140.963111676232,
+      "independentAreaM2": 1140.963111676232,
+      "areaAgrees": true,
+      "reportedCoverage": 1,
+      "independentCoverage": null,
+      "coverageAgrees": null,
+      "offset": {
+        "x": -14.776023965095066,
+        "y": -1.005591352594777
+      },
+      "provenance": {
+        "method": "hull",
+        "phantomFraction": 0.8967303726739971,
+        "orthogonality": 0.22660044349297045,
+        "closingEdgeM": 23.526289950998237,
+        "selfIntersections": 0,
+        "confidence": "low",
+        "reason": "No closed building shell was found, so this boundary is a best-fit outline — 90% of it was bridged across gaps rather than traced. Confirm or adjust it."
+      },
+      "ringSpanM": [
+        56.11238791835831,
+        30.63194195794473
+      ]
+    },
+    "keepouts": {
+      "ok": true,
+      "ms": 3,
+      "count": 3
+    },
+    "entries": {
+      "ok": true,
+      "ms": 3,
+      "count": 11
+    },
+    "interiorWalls": {
+      "ok": true,
+      "ms": 7,
+      "count": 228
+    },
+    "normalize": {
+      "ok": true,
+      "ms": 0,
+      "total": 0,
+      "byCategory": {},
+      "unnamed": 0,
+      "zeroSize": 0,
+      "samples": []
+    }
+  },
+  "errors": [],
+  "warnings": [],
+  "dxfFacts": {
+    "insunitsCode": 1,
+    "insunitsLabel": "in",
+    "extmin": [
+      null,
+      null
+    ],
+    "extmax": [
+      null,
+      null
+    ],
+    "entityCounts": {
+      "SECTION": 4,
+      "ENDSEC": 4,
+      "TABLE": 1,
+      "LAYER": 33,
+      "ENDTAB": 1,
+      "BLOCK": 19,
+      "ENDBLK": 19,
+      "ARC": 3616,
+      "INSERT": 528,
+      "LINE": 94736,
+      "CIRCLE": 139,
+      "LWPOLYLINE": 858,
+      "TEXT": 62,
+      "EOF": 1
+    }
+  },
+  "totalMs": 1934
+}
