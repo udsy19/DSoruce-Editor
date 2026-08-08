@@ -1,0 +1,155 @@
+{
+  "file": "BUSNSS-Offcs-Trdtnl_AL.dwg",
+  "src": "/Users/udsy/Downloads/BUSNSS-Offcs-Trdtnl_AL.dwg",
+  "bytes": 6850429,
+  "stages": {
+    "convert": {
+      "ok": true,
+      "ms": 242,
+      "dxfBytes": 8197663,
+      "via": "dwg2dxf"
+    },
+    "parse": {
+      "ok": true,
+      "ms": 99,
+      "units": "in",
+      "bounds": [
+        -45.01581527501918,
+        1.354354627971556e-69,
+        8.92338720824203,
+        6.459710374091076
+      ],
+      "spanM": [
+        53.93920248326121,
+        6.459710374091076
+      ],
+      "layers": 0,
+      "entities": 8356,
+      "furniture": 0,
+      "byCat": {
+        "other": 8356
+      },
+      "byKind": {
+        "polyline": 8349,
+        "text": 7
+      },
+      "degenerate": 0,
+      "nonFinite": 0,
+      "huge": 0
+    },
+    "heal": {
+      "ok": true,
+      "ms": 0,
+      "entitiesBefore": 8356,
+      "entitiesAfter": 8356,
+      "added": 0
+    },
+    "plate": {
+      "ok": true,
+      "ms": 12,
+      "method": "hull",
+      "vertices": 32,
+      "reportedAreaM2": 21.481912772760783,
+      "independentAreaM2": 21.48191277276079,
+      "areaAgrees": true,
+      "reportedCoverage": 1,
+      "independentCoverage": null,
+      "coverageAgrees": null,
+      "offset": {
+        "x": 0.22025685427534158,
+        "y": 0.985603734712788
+      },
+      "provenance": {
+        "method": "hull",
+        "phantomFraction": 1,
+        "orthogonality": 0.32724589910195007,
+        "closingEdgeM": 0.13673245753266539,
+        "selfIntersections": 0,
+        "confidence": "low",
+        "reason": "No closed building shell was found, so this boundary is a best-fit outline — 100% of it was bridged across gaps rather than traced. Confirm or adjust it."
+      },
+      "ringSpanM": [
+        7.6037677818256615,
+        4.46081277048935
+      ]
+    },
+    "keepouts": {
+      "ok": true,
+      "ms": 0,
+      "count": 0
+    },
+    "entries": {
+      "ok": true,
+      "ms": 0,
+      "count": 1
+    },
+    "interiorWalls": {
+      "ok": true,
+      "ms": 0,
+      "count": 0
+    },
+    "normalize": {
+      "ok": true,
+      "ms": 0,
+      "total": 0,
+      "byCategory": {},
+      "unnamed": 0,
+      "zeroSize": 0,
+      "samples": []
+    }
+  },
+  "errors": [],
+  "warnings": [],
+  "dxfFacts": {
+    "insunitsCode": null,
+    "insunitsLabel": null,
+    "extmin": [
+      null,
+      null
+    ],
+    "extmax": [
+      null,
+      null
+    ],
+    "entityCounts": {
+      "SECTION": 7,
+      "ENDSEC": 7,
+      "CLASS": 20,
+      "TABLE": 9,
+      "ENDTAB": 9,
+      "LTYPE": 1,
+      "APPID": 1,
+      "BLOCK_RECORD": 2,
+      "LINE": 3998,
+      "VERTEX": 26300,
+      "BLOCK": 1,
+      "ENDBLK": 1,
+      "POLYLINE": 899,
+      "SEQEND": 899,
+      "LWPOLYLINE": 1381,
+      "ARC": 2065,
+      "MTEXT": 7,
+      "CIRCLE": 13,
+      "INSERT": 1,
+      "VIEWPORT": 1,
+      "DICTIONARY": 108,
+      "ACDBDICTIONARYWDFLT": 1,
+      "ACDBPLACEHOLDER": 1,
+      "MLINESTYLE": 1,
+      "LAYOUT": 2,
+      "DICTIONARYVAR": 14,
+      "TABLESTYLE": 1,
+      "MATERIAL": 3,
+      "VISUALSTYLE": 25,
+      "SCALE": 36,
+      "MLEADERSTYLE": 1,
+      "XRECORD": 70,
+      "ACDBSECTIONVIEWSTYLE": 2,
+      "ACDBDETAILVIEWSTYLE": 2,
+      "SORTENTSTABLE": 28,
+      "CELLSTYLEMAP": 1,
+      "EOF": 1
+    }
+  },
+  "totalMs": 426
+}

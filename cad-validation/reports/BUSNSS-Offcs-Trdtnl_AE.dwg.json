@@ -1,0 +1,223 @@
+{
+  "file": "BUSNSS-Offcs-Trdtnl_AE.dwg",
+  "src": "/Users/udsy/Downloads/BUSNSS-Offcs-Trdtnl_AE.dwg",
+  "bytes": 504522,
+  "stages": {
+    "convert": {
+      "ok": true,
+      "ms": 48,
+      "dxfBytes": 1491695,
+      "via": "dwg2dxf"
+    },
+    "parse": {
+      "ok": true,
+      "ms": 26,
+      "units": "ft",
+      "bounds": [
+        5.723437022445004,
+        2.850567518493668,
+        20.963437022445014,
+        27.559585079350626
+      ],
+      "spanM": [
+        15.240000000000009,
+        24.709017560856957
+      ],
+      "layers": 14,
+      "entities": 8203,
+      "furniture": 9,
+      "byCat": {
+        "wall": 133,
+        "furniture": 1657,
+        "door": 112,
+        "annotation": 4813,
+        "other": 1488
+      },
+      "byKind": {
+        "polyline": 8202,
+        "text": 1
+      },
+      "degenerate": 0,
+      "nonFinite": 0,
+      "huge": 0
+    },
+    "heal": {
+      "ok": true,
+      "ms": 0,
+      "entitiesBefore": 8203,
+      "entitiesAfter": 8233,
+      "added": 30
+    },
+    "plate": {
+      "ok": true,
+      "ms": 3,
+      "method": "hull",
+      "vertices": 7,
+      "reportedAreaM2": 106.93750000000003,
+      "independentAreaM2": 106.9375,
+      "areaAgrees": true,
+      "reportedCoverage": 1,
+      "independentCoverage": 1,
+      "coverageAgrees": true,
+      "offset": {
+        "x": 4.848437022445004,
+        "y": 2.8126536243947666
+      },
+      "provenance": {
+        "method": "grid-contour",
+        "phantomFraction": 0.16720463294753504,
+        "orthogonality": 0.8917602828086726,
+        "closingEdgeM": 8,
+        "selfIntersections": 0,
+        "confidence": "low",
+        "reason": "No closed building shell was found, so this boundary was inferred from the wall linework — 17% of it was bridged across gaps rather than traced. Confirm or adjust it."
+      },
+      "ringSpanM": [
+        15,
+        8
+      ]
+    },
+    "keepouts": {
+      "ok": true,
+      "ms": 0,
+      "count": 0
+    },
+    "entries": {
+      "ok": true,
+      "ms": 0,
+      "count": 10
+    },
+    "interiorWalls": {
+      "ok": true,
+      "ms": 1,
+      "count": 53
+    },
+    "normalize": {
+      "ok": true,
+      "ms": 0,
+      "total": 9,
+      "byCategory": {
+        "Furniture": 9
+      },
+      "unnamed": 0,
+      "zeroSize": 0,
+      "samples": [
+        {
+          "raw": "A$C60296D31",
+          "name": "A$C60296D31",
+          "category": "Furniture",
+          "w": 0.579,
+          "h": 0.809
+        },
+        {
+          "raw": "TELEF2",
+          "name": "TELEF2",
+          "category": "Furniture",
+          "w": 0.073,
+          "h": 0.057
+        },
+        {
+          "raw": "A$C60296D31",
+          "name": "A$C60296D31",
+          "category": "Furniture",
+          "w": 0.579,
+          "h": 0.809
+        },
+        {
+          "raw": "A$C60296D31",
+          "name": "A$C60296D31",
+          "category": "Furniture",
+          "w": 0.579,
+          "h": 0.809
+        },
+        {
+          "raw": "Come4",
+          "name": "Come4",
+          "category": "Furniture",
+          "w": 0.486,
+          "h": 0.486
+        },
+        {
+          "raw": "Come4",
+          "name": "Come4",
+          "category": "Furniture",
+          "w": 0.486,
+          "h": 0.486
+        },
+        {
+          "raw": "labavo1",
+          "name": "labavo1",
+          "category": "Furniture",
+          "w": 0.102,
+          "h": 0.124
+        },
+        {
+          "raw": "labavo1",
+          "name": "labavo1",
+          "category": "Furniture",
+          "w": 0.102,
+          "h": 0.124
+        }
+      ]
+    }
+  },
+  "errors": [],
+  "warnings": [],
+  "dxfFacts": {
+    "insunitsCode": null,
+    "insunitsLabel": null,
+    "extmin": [
+      null,
+      null
+    ],
+    "extmax": [
+      null,
+      null
+    ],
+    "entityCounts": {
+      "SECTION": 7,
+      "ENDSEC": 7,
+      "CLASS": 19,
+      "TABLE": 9,
+      "VPORT": 1,
+      "ENDTAB": 9,
+      "LTYPE": 3,
+      "LAYER": 14,
+      "STYLE": 2,
+      "APPID": 24,
+      "DIMSTYLE": 1,
+      "BLOCK_RECORD": 15,
+      "BLOCK": 15,
+      "ENDBLK": 15,
+      "LINE": 2780,
+      "LWPOLYLINE": 404,
+      "INSERT": 41,
+      "ARC": 313,
+      "CIRCLE": 20,
+      "SPLINE": 87,
+      "ELLIPSE": 129,
+      "HATCH": 40,
+      "SOLID": 38,
+      "MTEXT": 1,
+      "VIEWPORT": 2,
+      "DICTIONARY": 114,
+      "ACDBDICTIONARYWDFLT": 1,
+      "ACDBPLACEHOLDER": 1,
+      "MLINESTYLE": 1,
+      "LAYOUT": 2,
+      "DICTIONARYVAR": 14,
+      "TABLESTYLE": 1,
+      "MATERIAL": 3,
+      "VISUALSTYLE": 25,
+      "SCALE": 36,
+      "MLEADERSTYLE": 1,
+      "XRECORD": 97,
+      "ACDBSECTIONVIEWSTYLE": 2,
+      "ACDBDETAILVIEWSTYLE": 2,
+      "SORTENTSTABLE": 7,
+      "CELLSTYLEMAP": 1,
+      "EOF": 1
+    }
+  },
+  "totalMs": 86
+}

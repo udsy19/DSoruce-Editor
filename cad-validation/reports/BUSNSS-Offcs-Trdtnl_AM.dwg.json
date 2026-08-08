@@ -1,0 +1,167 @@
+{
+  "file": "BUSNSS-Offcs-Trdtnl_AM.dwg",
+  "src": "/Users/udsy/Downloads/BUSNSS-Offcs-Trdtnl_AM.dwg",
+  "bytes": 941384,
+  "stages": {
+    "convert": {
+      "ok": true,
+      "ms": 77,
+      "dxfBytes": 3060227,
+      "via": "dwg2dxf"
+    },
+    "parse": {
+      "ok": true,
+      "ms": 50,
+      "units": "in",
+      "bounds": [
+        1.3972770155749947,
+        0.249192869895987,
+        6.145019290189064,
+        2.296632089945885
+      ],
+      "spanM": [
+        4.74774227461407,
+        2.047439220049898
+      ],
+      "layers": 17,
+      "entities": 15524,
+      "furniture": 0,
+      "byCat": {
+        "other": 8044,
+        "wall": 334,
+        "door": 177,
+        "furniture": 837,
+        "annotation": 6132
+      },
+      "byKind": {
+        "polyline": 15504,
+        "text": 20
+      },
+      "degenerate": 0,
+      "nonFinite": 0,
+      "huge": 0
+    },
+    "heal": {
+      "ok": true,
+      "ms": 1,
+      "entitiesBefore": 15524,
+      "entitiesAfter": 15535,
+      "added": 11
+    },
+    "plate": {
+      "ok": true,
+      "ms": 1,
+      "method": "hull",
+      "vertices": 8,
+      "reportedAreaM2": 1.299869572470531,
+      "independentAreaM2": 1.299869572470532,
+      "areaAgrees": true,
+      "reportedCoverage": 1,
+      "independentCoverage": null,
+      "coverageAgrees": null,
+      "offset": {
+        "x": 2.721237041855316,
+        "y": -0.7190619901947475
+      },
+      "provenance": {
+        "method": "hull",
+        "phantomFraction": 0,
+        "orthogonality": 0.8683326656603018,
+        "closingEdgeM": 0.05334000000000105,
+        "selfIntersections": 0,
+        "confidence": "high",
+        "reason": ""
+      },
+      "ringSpanM": [
+        2.4026561781237357,
+        0.612385504525987
+      ]
+    },
+    "keepouts": {
+      "ok": true,
+      "ms": 0,
+      "count": 0
+    },
+    "entries": {
+      "ok": true,
+      "ms": 0,
+      "count": 2
+    },
+    "interiorWalls": {
+      "ok": true,
+      "ms": 1,
+      "count": 0
+    },
+    "normalize": {
+      "ok": true,
+      "ms": 0,
+      "total": 0,
+      "byCategory": {},
+      "unnamed": 0,
+      "zeroSize": 0,
+      "samples": []
+    }
+  },
+  "errors": [],
+  "warnings": [],
+  "dxfFacts": {
+    "insunitsCode": null,
+    "insunitsLabel": null,
+    "extmin": [
+      null,
+      null
+    ],
+    "extmax": [
+      null,
+      null
+    ],
+    "entityCounts": {
+      "SECTION": 7,
+      "ENDSEC": 7,
+      "CLASS": 19,
+      "TABLE": 9,
+      "VPORT": 1,
+      "ENDTAB": 9,
+      "LTYPE": 7,
+      "LAYER": 17,
+      "STYLE": 4,
+      "APPID": 16,
+      "DIMSTYLE": 1,
+      "BLOCK_RECORD": 13,
+      "BLOCK": 13,
+      "ENDBLK": 13,
+      "ATTDEF": 1,
+      "LINE": 9776,
+      "SPLINE": 153,
+      "ELLIPSE": 8,
+      "ARC": 230,
+      "HATCH": 41,
+      "CIRCLE": 45,
+      "LWPOLYLINE": 52,
+      "TEXT": 13,
+      "INSERT": 13,
+      "ATTRIB": 1,
+      "SEQEND": 1,
+      "MTEXT": 7,
+      "VIEWPORT": 4,
+      "DICTIONARY": 70,
+      "ACDBDICTIONARYWDFLT": 1,
+      "ACDBPLACEHOLDER": 1,
+      "MLINESTYLE": 1,
+      "LAYOUT": 2,
+      "DICTIONARYVAR": 14,
+      "TABLESTYLE": 1,
+      "MATERIAL": 3,
+      "VISUALSTYLE": 25,
+      "SCALE": 33,
+      "MLEADERSTYLE": 1,
+      "XRECORD": 66,
+      "ACDBSECTIONVIEWSTYLE": 2,
+      "ACDBDETAILVIEWSTYLE": 2,
+      "SORTENTSTABLE": 3,
+      "CELLSTYLEMAP": 1,
+      "EOF": 1
+    }
+  },
+  "totalMs": 146
+}

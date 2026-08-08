@@ -1,0 +1,136 @@
+{
+  "file": "Apartment-1.dwg",
+  "src": "/Users/udsy/Downloads/Apartment-1.dwg",
+  "bytes": 370303,
+  "stages": {
+    "convert": {
+      "ok": true,
+      "ms": 197,
+      "dxfBytes": 578169,
+      "via": "dwgread-json"
+    },
+    "parse": {
+      "ok": true,
+      "ms": 23,
+      "units": "ft",
+      "bounds": [
+        1199.0715858408682,
+        594.9483367591715,
+        1210.5774867291605,
+        601.398302072084
+      ],
+      "spanM": [
+        11.505900888292217,
+        6.449965312912468
+      ],
+      "layers": 22,
+      "entities": 5582,
+      "furniture": 0,
+      "byCat": {
+        "other": 921,
+        "furniture": 3409,
+        "wall": 536,
+        "dimension": 2,
+        "door": 714
+      },
+      "byKind": {
+        "polyline": 5559,
+        "text": 23
+      },
+      "degenerate": 0,
+      "nonFinite": 0,
+      "huge": 0
+    },
+    "heal": {
+      "ok": true,
+      "ms": 2,
+      "entitiesBefore": 5582,
+      "entitiesAfter": 5610,
+      "added": 28
+    },
+    "plate": {
+      "ok": true,
+      "ms": 4,
+      "method": "hull",
+      "vertices": 13,
+      "reportedAreaM2": 40.34375000005821,
+      "independentAreaM2": 40.34375,
+      "areaAgrees": true,
+      "reportedCoverage": 1,
+      "independentCoverage": null,
+      "coverageAgrees": null,
+      "offset": {
+        "x": 1198.1965858408682,
+        "y": 594.5095980709995
+      },
+      "provenance": {
+        "method": "partition-envelope",
+        "phantomFraction": 0.06191200251210619,
+        "orthogonality": 0.5494690222949424,
+        "closingEdgeM": 2.75,
+        "selfIntersections": 0,
+        "confidence": "high",
+        "reason": ""
+      },
+      "ringSpanM": [
+        11.5,
+        5.75
+      ]
+    },
+    "keepouts": {
+      "ok": true,
+      "ms": 1,
+      "count": 0
+    },
+    "entries": {
+      "ok": true,
+      "ms": 1,
+      "count": 11
+    },
+    "interiorWalls": {
+      "ok": true,
+      "ms": 1,
+      "count": 88
+    },
+    "normalize": {
+      "ok": true,
+      "ms": 0,
+      "total": 0,
+      "byCategory": {},
+      "unnamed": 0,
+      "zeroSize": 0,
+      "samples": []
+    }
+  },
+  "errors": [],
+  "warnings": [],
+  "dxfFacts": {
+    "insunitsCode": 4,
+    "insunitsLabel": "mm",
+    "extmin": [
+      null,
+      null
+    ],
+    "extmax": [
+      null,
+      null
+    ],
+    "entityCounts": {
+      "SECTION": 4,
+      "ENDSEC": 4,
+      "TABLE": 1,
+      "LAYER": 22,
+      "ENDTAB": 1,
+      "BLOCK": 21,
+      "ENDBLK": 21,
+      "LWPOLYLINE": 518,
+      "LINE": 2889,
+      "CIRCLE": 60,
+      "ARC": 1596,
+      "TEXT": 158,
+      "INSERT": 59,
+      "EOF": 1
+    }
+  },
+  "totalMs": 232
+}

@@ -1,0 +1,219 @@
+{
+  "file": "Two-story-house-410202.dwg",
+  "src": "/Users/udsy/Downloads/Two-story-house-410202.dwg",
+  "bytes": 289582,
+  "stages": {
+    "convert": {
+      "ok": true,
+      "ms": 28,
+      "dxfBytes": 914899,
+      "via": "dwg2dxf"
+    },
+    "parse": {
+      "ok": true,
+      "ms": 7,
+      "units": "m",
+      "bounds": [
+        347.620891807353,
+        -51.07537427592893,
+        376.2761956553076,
+        -35.66211593315676
+      ],
+      "spanM": [
+        28.6553038479546,
+        15.413258342772167
+      ],
+      "layers": 19,
+      "entities": 1529,
+      "furniture": 14,
+      "byCat": {
+        "wall": 161,
+        "other": 249,
+        "furniture": 1119
+      },
+      "byKind": {
+        "polyline": 1509,
+        "text": 20
+      },
+      "degenerate": 0,
+      "nonFinite": 0,
+      "huge": 0
+    },
+    "heal": {
+      "ok": true,
+      "ms": 1,
+      "entitiesBefore": 1529,
+      "entitiesAfter": 1531,
+      "added": 2
+    },
+    "plate": {
+      "ok": true,
+      "ms": 12,
+      "method": "hull",
+      "vertices": 10,
+      "reportedAreaM2": 178.03125,
+      "independentAreaM2": 178.03125,
+      "areaAgrees": true,
+      "reportedCoverage": 1,
+      "independentCoverage": 1,
+      "coverageAgrees": true,
+      "offset": {
+        "x": 348.10447507711956,
+        "y": -48.22720134537305
+      },
+      "provenance": {
+        "method": "partition-envelope",
+        "phantomFraction": 0.49108101109559865,
+        "orthogonality": 0.848609434793536,
+        "closingEdgeM": 4,
+        "selfIntersections": 0,
+        "confidence": "low",
+        "reason": "No closed building shell was found, so this boundary was inferred from the partitions and furniture — 49% of it was bridged across gaps rather than traced. Confirm or adjust it."
+      },
+      "ringSpanM": [
+        25.75,
+        9.25
+      ]
+    },
+    "keepouts": {
+      "ok": true,
+      "ms": 0,
+      "count": 0
+    },
+    "entries": {
+      "ok": true,
+      "ms": 0,
+      "count": 2
+    },
+    "interiorWalls": {
+      "ok": true,
+      "ms": 0,
+      "count": 34
+    },
+    "normalize": {
+      "ok": true,
+      "ms": 0,
+      "total": 14,
+      "byCategory": {
+        "Furniture": 9,
+        "Door": 5
+      },
+      "unnamed": 0,
+      "zeroSize": 0,
+      "samples": [
+        {
+          "raw": "gazebo multifuncional plantas_dwg_2SAINVI1-127586-Level 1",
+          "name": "Gazebo Multifuncional Plantas Dwg 2SAINVI1",
+          "category": "Furniture",
+          "w": 0.446,
+          "h": 0.657
+        },
+        {
+          "raw": "gazebo multifuncional plantas_dwg_2SALAVI2-127588-Level 1",
+          "name": "Gazebo Multifuncional Plantas Dwg 2SALAVI2",
+          "category": "Furniture",
+          "w": 0.434,
+          "h": 0.334
+        },
+        {
+          "raw": "PUERTA",
+          "name": "Puerta",
+          "category": "Door",
+          "w": 0.741,
+          "h": 0.801
+        },
+        {
+          "raw": "M-Rec 13 6p",
+          "name": "M Rec 13 6p",
+          "category": "Furniture",
+          "w": 1.88,
+          "h": 1.18
+        },
+        {
+          "raw": "PUERTA",
+          "name": "Puerta",
+          "category": "Door",
+          "w": 0.9,
+          "h": 0.832
+        },
+        {
+          "raw": "gazebo multifuncional plantas_dwg_2SAINVI1-127586-Level 1",
+          "name": "Gazebo Multifuncional Plantas Dwg 2SAINVI1",
+          "category": "Furniture",
+          "w": 0.657,
+          "h": 0.446
+        },
+        {
+          "raw": "gazebo multifuncional plantas_dwg_2SALAVI2-127588-Level 1",
+          "name": "Gazebo Multifuncional Plantas Dwg 2SALAVI2",
+          "category": "Furniture",
+          "w": 0.334,
+          "h": 0.434
+        },
+        {
+          "raw": "PUERTA",
+          "name": "Puerta",
+          "category": "Door",
+          "w": 0.801,
+          "h": 0.741
+        }
+      ]
+    }
+  },
+  "errors": [],
+  "warnings": [],
+  "dxfFacts": {
+    "insunitsCode": null,
+    "insunitsLabel": null,
+    "extmin": [
+      null,
+      null
+    ],
+    "extmax": [
+      null,
+      null
+    ],
+    "entityCounts": {
+      "SECTION": 7,
+      "ENDSEC": 7,
+      "CLASS": 27,
+      "TABLE": 9,
+      "VPORT": 1,
+      "ENDTAB": 9,
+      "LTYPE": 6,
+      "LAYER": 19,
+      "STYLE": 4,
+      "APPID": 13,
+      "DIMSTYLE": 1,
+      "BLOCK_RECORD": 25,
+      "BLOCK": 25,
+      "ENDBLK": 25,
+      "LINE": 1432,
+      "ARC": 278,
+      "CIRCLE": 13,
+      "HATCH": 1,
+      "LWPOLYLINE": 45,
+      "INSERT": 40,
+      "ELLIPSE": 2,
+      "TEXT": 18,
+      "MTEXT": 2,
+      "DICTIONARY": 53,
+      "XRECORD": 35,
+      "ACDBPLACEHOLDER": 1,
+      "ACDBDICTIONARYWDFLT": 1,
+      "MATERIAL": 3,
+      "LAYOUT": 2,
+      "VISUALSTYLE": 25,
+      "MLINESTYLE": 1,
+      "TABLESTYLE": 1,
+      "SCALE": 17,
+      "SORTENTSTABLE": 11,
+      "DICTIONARYVAR": 9,
+      "MLEADERSTYLE": 1,
+      "ACDBSECTIONVIEWSTYLE": 1,
+      "ACDBDETAILVIEWSTYLE": 1,
+      "EOF": 1
+    }
+  },
+  "totalMs": 52
+}

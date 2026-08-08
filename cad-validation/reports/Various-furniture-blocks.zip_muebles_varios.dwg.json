@@ -1,0 +1,231 @@
+{
+  "file": "Various-furniture-blocks.zip/muebles varios.dwg",
+  "src": "/Users/udsy/.superset/worktrees/DSource-Editor/testing-edge-variations/cad-validation/raw/muebles varios.dwg",
+  "bytes": 922405,
+  "stages": {
+    "convert": {
+      "ok": true,
+      "ms": 119,
+      "dxfBytes": 4679255,
+      "via": "dwg2dxf"
+    },
+    "parse": {
+      "ok": true,
+      "ms": 112,
+      "units": "m",
+      "bounds": [
+        203.6753781565922,
+        165.8945867542206,
+        271.6824259113129,
+        194.1809024684874
+      ],
+      "spanM": [
+        68.00704775472073,
+        28.286315714266806
+      ],
+      "layers": 22,
+      "entities": 19368,
+      "furniture": 9,
+      "byCat": {
+        "other": 6684,
+        "wall": 119,
+        "furniture": 12535,
+        "glazing": 13,
+        "fixture": 16,
+        "annotation": 1
+      },
+      "byKind": {
+        "polyline": 19221,
+        "text": 147
+      },
+      "degenerate": 0,
+      "nonFinite": 0,
+      "huge": 0
+    },
+    "heal": {
+      "ok": true,
+      "ms": 0,
+      "entitiesBefore": 19368,
+      "entitiesAfter": 19374,
+      "added": 6
+    },
+    "plate": {
+      "ok": true,
+      "ms": 7,
+      "method": "hull",
+      "vertices": 4,
+      "reportedAreaM2": 1253.0000000000073,
+      "independentAreaM2": 1253,
+      "areaAgrees": true,
+      "reportedCoverage": 1,
+      "independentCoverage": 1,
+      "coverageAgrees": true,
+      "offset": {
+        "x": 202.8003781565922,
+        "y": 165.1778189800256
+      },
+      "provenance": {
+        "method": "partition-envelope",
+        "phantomFraction": 0.006872852233676976,
+        "orthogonality": 1,
+        "closingEdgeM": 28,
+        "selfIntersections": 0,
+        "confidence": "high",
+        "reason": ""
+      },
+      "ringSpanM": [
+        44.75,
+        28
+      ]
+    },
+    "keepouts": {
+      "ok": true,
+      "ms": 2,
+      "count": 0
+    },
+    "entries": {
+      "ok": true,
+      "ms": 0,
+      "count": 1
+    },
+    "interiorWalls": {
+      "ok": true,
+      "ms": 1,
+      "count": 1
+    },
+    "normalize": {
+      "ok": true,
+      "ms": 0,
+      "total": 9,
+      "byCategory": {
+        "Furniture": 9
+      },
+      "unnamed": 0,
+      "zeroSize": 3,
+      "samples": [
+        {
+          "raw": "L",
+          "name": "L",
+          "category": "Furniture",
+          "w": 0,
+          "h": 0.6
+        },
+        {
+          "raw": "L",
+          "name": "L",
+          "category": "Furniture",
+          "w": 0,
+          "h": 0.6
+        },
+        {
+          "raw": "L",
+          "name": "L",
+          "category": "Furniture",
+          "w": 0,
+          "h": 0.6
+        },
+        {
+          "raw": "TV-02",
+          "name": "TV 02",
+          "category": "Furniture",
+          "w": 0.861,
+          "h": 0.77
+        },
+        {
+          "raw": "TV-01",
+          "name": "TV 01",
+          "category": "Furniture",
+          "w": 0.849,
+          "h": 0.604
+        },
+        {
+          "raw": "RESTI-01",
+          "name": "RESTI 01",
+          "category": "Furniture",
+          "w": 1.5,
+          "h": 1.725
+        },
+        {
+          "raw": "SILLA-16",
+          "name": "SILLA 16",
+          "category": "Furniture",
+          "w": 0.45,
+          "h": 0.86
+        },
+        {
+          "raw": "SILLA-18",
+          "name": "SILLA 18",
+          "category": "Furniture",
+          "w": 0.522,
+          "h": 0.773
+        }
+      ]
+    }
+  },
+  "errors": [],
+  "warnings": [
+    {
+      "stage": "normalize",
+      "message": "3 furniture blocks have a degenerate (≤1cm) bbox"
+    }
+  ],
+  "dxfFacts": {
+    "insunitsCode": null,
+    "insunitsLabel": null,
+    "extmin": [
+      null,
+      null
+    ],
+    "extmax": [
+      null,
+      null
+    ],
+    "entityCounts": {
+      "SECTION": 7,
+      "ENDSEC": 7,
+      "CLASS": 11,
+      "TABLE": 9,
+      "VPORT": 1,
+      "ENDTAB": 9,
+      "LTYPE": 5,
+      "LAYER": 22,
+      "STYLE": 9,
+      "APPID": 3,
+      "DIMSTYLE": 7,
+      "BLOCK_RECORD": 294,
+      "BLOCK": 294,
+      "ENDBLK": 294,
+      "CIRCLE": 367,
+      "LINE": 15642,
+      "LWPOLYLINE": 644,
+      "ARC": 3287,
+      "POINT": 21,
+      "INSERT": 344,
+      "SPLINE": 2,
+      "HATCH": 1,
+      "POLYLINE": 8,
+      "VERTEX": 420,
+      "SEQEND": 8,
+      "TEXT": 147,
+      "SOLID": 42,
+      "TRACE": 1,
+      "VIEWPORT": 2,
+      "DICTIONARY": 45,
+      "ACDBDICTIONARYWDFLT": 1,
+      "ACDBPLACEHOLDER": 1,
+      "MLINESTYLE": 1,
+      "LAYOUT": 2,
+      "XRECORD": 1231,
+      "MATERIAL": 3,
+      "VISUALSTYLE": 26,
+      "TABLESTYLE": 1,
+      "SCALE": 17,
+      "MLEADERSTYLE": 1,
+      "DICTIONARYVAR": 9,
+      "ACDBSECTIONVIEWSTYLE": 1,
+      "ACDBDETAILVIEWSTYLE": 1,
+      "EOF": 1
+    }
+  },
+  "totalMs": 284
+}

@@ -22,6 +22,16 @@ import type { Category, DrawEntity, Drawing, FurnitureItem } from './types'
 // Units
 // ---------------------------------------------------------------------------
 
+/** Candidate source units, meters-per-unit. */
+const UNIT_SCALE: Record<string, number> = {
+  in: 0.0254,
+  ft: 0.3048,
+  mm: 0.001,
+  cm: 0.01,
+  dm: 0.1,
+  m: 1,
+}
+
 /** $INSUNITS code → meters-per-unit. Defaults to inches (AutoCAD arch default). */
 function metersPerUnit(insunits: unknown): { scale: number; label: string } {
   switch (Number(insunits)) {
@@ -35,9 +45,417 @@ function metersPerUnit(insunits: unknown): { scale: number; label: string } {
       return { scale: 0.01, label: 'cm' } // centimeters
     case 6:
       return { scale: 1, label: 'm' } // meters
+    case 14:
+      return { scale: 0.1, label: 'dm' } // decimeters
     default:
       return { scale: 0.0254, label: 'in' }
   }
+}
+
+/**
+ * How the drawing's scale was decided. `header` means $INSUNITS was confirmed
+ * against the geometry; `header-unverified` means the drawing offered no
+ * physical anchor and we took the header on trust — the one state that must
+ * never be reported to the user as a certainty.
+ */
+export type UnitsSource =
+  | 'header'
+  | 'door-anchor'
+  | 'furniture-anchor'
+  | 'wall-anchor'
+  | 'extent-anchor'
+  | 'header-unverified'
+
+/**
+ * A door swing arc's radius IS the door leaf width, and that is 0.75–1.10 m in
+ * every building code on earth (IBC 1010.1.1, NBC 2016 Part 4, DIN 18101).
+ * Widened to 0.65–1.30 m for cupboard leaves and drafting slop.
+ */
+const DOOR_LEAF_MIN_M = 0.65
+const DOOR_LEAF_MAX_M = 1.3
+
+/**
+ * A wall is two parallel lines a wall-assembly's thickness apart. Partitions
+ * run 75–150 mm, structural and party walls 200–400 mm; the band is widened at
+ * both ends for furring, cavity walls and drafting slop.
+ */
+const WALL_THICKNESS_MIN_M = 0.05
+const WALL_THICKNESS_MAX_M = 0.6
+
+/**
+ * A placed block in a floor plan is a human-scale object: a chair is 0.4–0.7 m
+ * across, a desk 1.2–1.8 m, a table 0.8–2.4 m, a bed ~2 m, a door leaf ~0.9 m.
+ * Almost nothing a person uses has a longest side outside 0.3–4 m.
+ *
+ * This band is a statement about furniture, not a measurement of this corpus —
+ * the distinction `.claude/rules/gate-independence.md` insists on. It is the
+ * anchor that settles drawings with no door swings at all, where the wall band
+ * (a factor of 12 wide) can be satisfied at more than one scale by coincidence.
+ */
+const FURNITURE_MIN_M = 0.3
+const FURNITURE_MAX_M = 4.0
+
+/**
+ * A building's long side. Weakest anchor, used only when neither doors nor wall
+ * pairs are measurable — a drawing's extent depends on how much sheet furniture
+ * travelled with it, so it can only catch gross errors, not adjudicate close
+ * calls.
+ */
+const BUILDING_MIN_M = 3
+const BUILDING_MAX_M = 1000
+
+/**
+ * Perpendicular gaps between parallel, overlapping wall lines — the population
+ * of candidate wall thicknesses, in SOURCE units.
+ *
+ * This is the anchor that settles the drawings the door anchor cannot. Several
+ * corpus files declare inches and carry 100–1800 wall segments inside a "3.4 m"
+ * extent: the extent alone cannot refute that (3.4 m clears the building floor)
+ * but a building whose walls are 2.5 mm thick is not a building.
+ *
+ * Cost is bounded by sampling the longest segments — wall faces are long, and
+ * pairing the longest few hundred finds the assembly thickness without going
+ * quadratic over every hatch tick in the drawing.
+ */
+function wallPairGaps(segments: [number, number, number, number][]): number[] {
+  const MAX_SAMPLE = 300
+  const longest = segments
+    .map((s) => ({ s, len: Math.hypot(s[2] - s[0], s[3] - s[1]) }))
+    .filter((e) => e.len > 0)
+    .sort((a, b) => b.len - a.len)
+    .slice(0, MAX_SAMPLE)
+
+  const gaps: number[] = []
+  for (let i = 0; i < longest.length; i++) {
+    const [ax0, ay0, ax1, ay1] = longest[i].s
+    const alen = longest[i].len
+    const ux = (ax1 - ax0) / alen
+    const uy = (ay1 - ay0) / alen
+    for (let j = i + 1; j < longest.length; j++) {
+      const [bx0, by0, bx1, by1] = longest[j].s
+      const blen = longest[j].len
+      const vx = (bx1 - bx0) / blen
+      const vy = (by1 - by0) / blen
+      // Parallel within ~2°: |cross| small.
+      if (Math.abs(ux * vy - uy * vx) > 0.035) continue
+      // Perpendicular offset of b's start from a's infinite line.
+      const gap = Math.abs((bx0 - ax0) * -uy + (by0 - ay0) * ux)
+      if (gap <= 0) continue
+      // They must overlap along the shared direction, else they are two
+      // different walls that merely happen to be parallel.
+      const t0 = (bx0 - ax0) * ux + (by0 - ay0) * uy
+      const t1 = (bx1 - ax0) * ux + (by1 - ay0) * uy
+      const lo = Math.min(t0, t1)
+      const hi = Math.max(t0, t1)
+      if (hi < alen * 0.25 || lo > alen * 0.75) continue
+      // A wall's two faces are close relative to its length; anything much
+      // further apart is the opposite side of a room, not the same wall.
+      if (gap > alen * 0.5) continue
+      gaps.push(gap)
+    }
+  }
+  return gaps
+}
+
+/**
+ * Decide the drawing's real unit.
+ *
+ * $INSUNITS is metadata written by whoever last saved the DWG, and across the
+ * validation corpus in `cad-validation/` it is frequently wrong: files declaring
+ * millimetres whose doors are 0.855 units wide (i.e. metres — a 1 mm door as
+ * read), and files declaring inches whose doors are 1.125 units wide (again
+ * metres — a 29 mm door). Those drawings imported 25×–1000× too small, which
+ * put every plate candidate under the 1 m² floor (no plate at all) or produced
+ * a 2–7 m² "office" the generator could not place a single desk in.
+ *
+ * So the header is a CANDIDATE, and the geometry is the judge. We prefer an
+ * anchor that is true by construction over one the file asserts about itself:
+ *
+ *   1. door-swing arc radii must land in the legal leaf-width band;
+ *   2. placed blocks must be human-scale objects;
+ *   3. gaps between parallel wall lines must be wall-assembly thicknesses;
+ *   4. the drawing's long side must be a building.
+ *
+ * Each is a POPULATION, and each candidate unit is scored by what fraction of
+ * each population it makes physical (see below). The header is scored first, so
+ * a correct header — the common case — is kept on ties and never second-guessed.
+ * With no measurable anchor at all we keep the header and say so, via
+ * `header-unverified`.
+ */
+function decideUnits(
+  insunits: unknown,
+  evidence: ScaleEvidence,
+): { scale: number; label: string; source: UnitsSource } {
+  const header = metersPerUnit(insunits)
+
+  const inBand = (v: number, s: number, lo: number, hi: number) => v * s >= lo && v * s <= hi
+  // Prefer the header's own unit on ties, then larger units, so a drawing that
+  // satisfies several candidates resolves the same way every run.
+  const order = [header.label, ...Object.keys(UNIT_SCALE).filter((u) => u !== header.label)]
+
+  // Each anchor is a POPULATION of measurements, and the question asked of a
+  // candidate unit is what FRACTION of that population it makes physical.
+  //
+  // A modal point estimate was not good enough. Door layers carry hinge arcs,
+  // handle arcs and radiused jambs alongside the leaf swings, and on several
+  // corpus files the most-repeated radius is the hardware, not the door — one
+  // file's modal "door" came out at 1 mm on 34 of 198 samples. Asking instead
+  // "which unit puts the most of these arcs in the legal leaf band?" uses the
+  // whole population, so a minority of hardware cannot outvote the doors.
+  //
+  // Weights reflect how hard each population is to fool: a door swing is
+  // unambiguous; a wall gap can be mimicked by hatch spacing; an extent depends
+  // on how much sheet furniture travelled with the plan.
+  const wallGaps = wallPairGaps(evidence.wallSegments)
+  const populations: [number[], number, number, UnitsSource, number][] = [
+    [evidence.doorRadii, DOOR_LEAF_MIN_M, DOOR_LEAF_MAX_M, 'door-anchor', 3],
+    [evidence.furnitureSizes, FURNITURE_MIN_M, FURNITURE_MAX_M, 'furniture-anchor', 2],
+    [wallGaps, WALL_THICKNESS_MIN_M, WALL_THICKNESS_MAX_M, 'wall-anchor', 2],
+    [evidence.extent > 0 ? [evidence.extent] : [], BUILDING_MIN_M, BUILDING_MAX_M, 'extent-anchor', 1],
+  ]
+
+  /** Fraction of a population this unit makes physical, or null if empty. */
+  const support = (vals: number[], s: number, lo: number, hi: number): number | null => {
+    if (vals.length === 0) return null
+    let n = 0
+    for (const v of vals) if (inBand(v, s, lo, hi)) n++
+    return n / vals.length
+  }
+
+  // A unit must make a real share of a population physical to earn its weight.
+  // Below this, the few that landed in band are coincidence.
+  const MIN_SUPPORT = 0.15
+
+  let bestLabel: string | null = null
+  let bestScore = 0
+  let bestSource: UnitsSource = 'header-unverified'
+  for (const unit of order) {
+    let score = 0
+    let strongest: UnitsSource | null = null
+    for (const [vals, lo, hi, source, weight] of populations) {
+      const frac = support(vals, UNIT_SCALE[unit], lo, hi)
+      if (frac == null || frac < MIN_SUPPORT) continue
+      score += weight * frac
+      if (strongest === null) strongest = source
+    }
+    // `order` puts the header first, so a strict > keeps the header on ties.
+    if (score > bestScore) {
+      bestScore = score
+      bestLabel = unit
+      bestSource = strongest ?? 'header-unverified'
+    }
+  }
+
+  if (bestLabel == null) return { ...header, source: 'header-unverified' }
+  return {
+    scale: UNIT_SCALE[bestLabel],
+    label: bestLabel,
+    source: bestLabel === header.label ? 'header' : bestSource,
+  }
+}
+
+interface ScaleEvidence {
+  doorRadii: number[]
+  /** Wall-category segments as [x0, y0, x1, y1], source units. */
+  wallSegments: [number, number, number, number][]
+  /** Longest side of each placed block's footprint, source units. */
+  furnitureSizes: number[]
+  extent: number
+}
+
+/**
+ * Grade the scale we settled on, by re-measuring the FINISHED drawing.
+ *
+ * The unit decision picks the best-supported candidate, but "best available"
+ * is not "right": across the validation corpus several drawings land on a unit
+ * that makes only a minority of their doors and walls physical, and today they
+ * are indistinguishable from the ones we got right — they trace a plate, place
+ * furniture and score well, all at (say) 30× the true size. Every area, cost
+ * and m²/person figure downstream is then wrong, silently.
+ *
+ * So this asks the finished metres-space geometry the same question the
+ * validation gate asks from outside: what fraction of the door swings are legal
+ * doors, and what fraction of the wall pairs are legal wall assemblies? The
+ * bands are the same external specifications used to choose the unit — they are
+ * a statement about buildings, not about this drawing.
+ *
+ * `low` does NOT mean the import is unusable. It means the size is unconfirmed,
+ * and nothing derived from it should be presented as a hard number.
+ */
+function assessScale(
+  entities: DrawEntity[],
+  furniture: FurnitureItem[],
+  source: UnitsSource,
+): { confidence: 'high' | 'low'; reason: string } {
+  // No anchor was measurable at all — we took the header on trust and said so.
+  if (source === 'header-unverified') {
+    return {
+      confidence: 'low',
+      reason:
+        'This drawing has no doors or wall pairs to measure, so its size is taken from the file’s own units setting and could not be checked.',
+    }
+  }
+
+  const ev = scaleEvidence(entities, furniture)
+  const share = (vals: number[], lo: number, hi: number): number | null =>
+    vals.length === 0 ? null : vals.filter((v) => v >= lo && v <= hi).length / vals.length
+
+  const doors = share(ev.doorRadii, DOOR_LEAF_MIN_M, DOOR_LEAF_MAX_M)
+  const walls = share(wallPairGaps(ev.wallSegments), WALL_THICKNESS_MIN_M, WALL_THICKNESS_MAX_M)
+
+  // Majority of either population physical → the size is corroborated.
+  const MAJORITY = 0.5
+  if ((doors != null && doors >= MAJORITY) || (walls != null && walls >= MAJORITY)) {
+    return { confidence: 'high', reason: '' }
+  }
+  if (doors == null && walls == null) {
+    return {
+      confidence: 'low',
+      reason:
+        'This drawing has no doors or wall pairs to measure, so its size could not be checked.',
+    }
+  }
+  const pct = (v: number | null) => (v == null ? 'none' : `${Math.round(v * 100)}%`)
+  return {
+    confidence: 'low',
+    reason:
+      `At the size we read this drawing at, only ${pct(doors)} of its door swings are door-width ` +
+      `and ${pct(walls)} of its wall pairs are wall-thickness, so the scale may be wrong — and every area below with it.`,
+  }
+}
+
+/** Multiply one entity's geometry by `s`, in place. Angles are unaffected. */
+function scaleEntity(e: DrawEntity, s: number): void {
+  if (e.pts) {
+    for (const p of e.pts) {
+      p[0] *= s
+      p[1] *= s
+    }
+  }
+  if (e.cx != null) e.cx *= s
+  if (e.cy != null) e.cy *= s
+  if (e.r != null) e.r *= s
+  if (e.tx != null) e.tx *= s
+  if (e.ty != null) e.ty *= s
+  if (e.h != null) e.h *= s
+}
+
+/**
+ * Door-swing radii and the raw extent, in SOURCE units, gathered before any
+ * scale is chosen. Reads top-level entities and block definitions alike, since
+ * on most real plans the door swing lives inside a block.
+ */
+/**
+ * Radius of the circle through three points, or null if they are collinear.
+ *
+ * Door swings arrive here as tessellated polylines — `flatten` turns every ARC
+ * into one — so the radius has to be recovered from the curve rather than read
+ * off a field. Recovering it geometrically is also what makes the measurement
+ * world-space-correct: a swing inside a block scaled by its INSERT yields the
+ * radius the building actually has, which reading `e.radius` off the raw entity
+ * never would.
+ */
+function circleThrough(
+  a: [number, number],
+  b: [number, number],
+  c: [number, number],
+): { cx: number; cy: number; r: number } | null {
+  const ax = a[0]
+  const ay = a[1]
+  const bx = b[0]
+  const by = b[1]
+  const cx = c[0]
+  const cy = c[1]
+  const d = 2 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by))
+  if (Math.abs(d) < 1e-12) return null // collinear: a straight polyline, not an arc
+  const a2 = ax * ax + ay * ay
+  const b2 = bx * bx + by * by
+  const c2 = cx * cx + cy * cy
+  const ux = (a2 * (by - cy) + b2 * (cy - ay) + c2 * (ay - by)) / d
+  const uy = (a2 * (cx - bx) + b2 * (ax - cx) + c2 * (bx - ax)) / d
+  const r = Math.hypot(ax - ux, ay - uy)
+  return Number.isFinite(r) && r > 0 ? { cx: ux, cy: uy, r } : null
+}
+
+/**
+ * The radius of a polyline that really is a circular arc, else null.
+ *
+ * Fitting a circle through three points of *any* polyline always succeeds — a
+ * door-layer rectangle, an L-shaped jamb and a leaf outline all yield a number,
+ * and feeding those to the scale anchor drowns the real swings in noise. So the
+ * fit is verified against every vertex: a tessellated arc has all of them on
+ * the circle, and nothing else does.
+ *
+ * Closed polylines are rejected outright — a door swing is an open arc; a
+ * closed one is a leaf, a knob or a column.
+ */
+function arcLikeRadius(pts: [number, number][], closed?: boolean): number | null {
+  if (closed || pts.length < 5) return null
+  const fit = circleThrough(pts[0], pts[pts.length >> 1], pts[pts.length - 1])
+  if (!fit) return null
+  const tol = fit.r * 0.02
+  for (const [x, y] of pts) {
+    if (Math.abs(Math.hypot(x - fit.cx, y - fit.cy) - fit.r) > tol) return null
+  }
+  return fit.r
+}
+
+function scaleEvidence(entities: DrawEntity[], furniture: FurnitureItem[]): ScaleEvidence {
+  const doorRadii: number[] = []
+  const wallSegments: [number, number, number, number][] = []
+  const furnitureSizes: number[] = []
+  const xs: number[] = []
+  const ys: number[] = []
+
+  const note = (e: DrawEntity) => {
+    if (e.category === 'door' && e.pts) {
+      const r = arcLikeRadius(e.pts, e.closed)
+      if (r != null) doorRadii.push(r)
+    }
+    if (e.pts) {
+      if (e.category === 'wall') {
+        for (let i = 0; i + 1 < e.pts.length; i++) {
+          const [ax, ay] = e.pts[i]
+          const [bx, by] = e.pts[i + 1]
+          wallSegments.push([ax, ay, bx, by])
+        }
+      }
+      for (const [x, y] of e.pts) {
+        if (!Number.isFinite(x) || !Number.isFinite(y)) continue
+        xs.push(x)
+        ys.push(y)
+      }
+    }
+  }
+
+  for (const e of entities) note(e)
+  // Door and window blocks are placed as furniture items; their swings are the
+  // best anchor a plan offers and must not be skipped just because the importer
+  // classed the INSERT as an item rather than shell linework.
+  for (const f of furniture) for (const e of f.entities) note(e)
+
+  // Robust extent: the 2nd–98th percentile span, NOT min→max. Real exports
+  // routinely carry a stray xref copy or a stranded vertex kilometres from the
+  // plan — one corpus file spans 323 km on min→max and 17 m on its actual
+  // drawing. A min→max extent hands this anchor an outlier and it then argues
+  // for a unit 1000× off, which is exactly the failure it exists to prevent.
+  const span = (vals: number[]): number => {
+    if (vals.length === 0) return 0
+    const s = [...vals].sort((a, b) => a - b)
+    const lo = s[Math.floor(s.length * 0.02)]
+    const hi = s[Math.min(s.length - 1, Math.floor(s.length * 0.98))]
+    return hi - lo
+  }
+
+  for (const f of furniture) {
+    const w = f.bbox[2] - f.bbox[0]
+    const h = f.bbox[3] - f.bbox[1]
+    if (w > 0 && h > 0 && Number.isFinite(w) && Number.isFinite(h)) {
+      furnitureSizes.push(Math.max(w, h))
+    }
+  }
+
+  return { doorRadii, wallSegments, furnitureSizes, extent: Math.max(span(xs), span(ys)) }
 }
 
 // ---------------------------------------------------------------------------
@@ -95,25 +513,76 @@ function insertMatrix(insert: RawEntity, block: RawBlock | undefined): Mat {
 // ---------------------------------------------------------------------------
 
 /** Map an AIA-style layer name + block name to a semantic Category. */
+/**
+ * Layer-name vocabulary, multilingual.
+ *
+ * Real-world CAD is not authored to AIA/NCS in English. Across a 24-file
+ * validation corpus (`cad-validation/`) the wall layers that actually appeared
+ * were `MURO`, `MUROS`, `Muro1`, `MURO-PROY`, `MURO-ACTUALES` (es), `PARED`
+ * (es), `MUR` (fr), `WAND` (de) — none of which the English-only patterns
+ * matched, so 13 of 21 parsed files classified ≥ 70 % of their linework as
+ * `other` and the plate tracer was handed no walls at all.
+ *
+ * Each entry is `[pattern, category]`, tested in order against the UPPERCASED
+ * layer name. Order matters: dimensions and decoration come first because
+ * their names often also contain a building-fabric word (`A-WALL-PATT` is
+ * hatch, not wall; `MURO000F` on a HATCH layer is fill, not fabric).
+ */
+const LAYER_VOCAB: [RegExp, Category][] = [
+  // --- Dimensions (their layers also contain ANNO) ---
+  [/DIM|ACOT|COTA|BEMA/, 'dimension'],
+
+  // --- Decoration and drafting furniture that is NOT building fabric ---
+  // Trees, planting, hatch/fill patterns, cut lines, title blocks, area tags.
+  // These are the "random elements" that wreck wall tracing: one corpus file
+  // carries 5 761 entities on `TREE J 1 100` alone, and hatch layers put dense
+  // parallel linework exactly where a wall detector looks for wall faces.
+  [/^TREE|[-_ ]TREE|VEGET|JARD|PLANT|ARBOL|LANDSCAP/, 'annotation'],
+  [/HATCH|^HAT$|[-_ ]PATT|RELLENO|TRAMA/, 'annotation'],
+  [/^CUT |[-_ ]CUT[-_ ]|^CUT$|SEGMENTED/, 'annotation'],
+  [/ANNO|TTLB|TEXT|TEXTO|AREA-IDEN|AREA\d|SCHD|NPLT|DEFPOINTS|LEYENDA|LEGEND/, 'annotation'],
+
+  // --- Glazing / windows ---
+  [/GLAZ|GLAZING|CURT|CWMG|MULLION|G-WINDOW|VENTAN|FINESTR|FENSTER|FENETRE|JANELA/, 'glazing'],
+
+  // --- Doors ---
+  [/(^|[-_ ])DOOR|PUERTA|PRTA|PORTA|TUER|PORTE|DOOR\d/, 'door'],
+
+  // --- Walls, columns, stairs — the building fabric the plate is traced from ---
+  [/WALL|MURO|MUROS|PARED|PARETE|^MUR[-_ 0-9]?|WAND|CASCO|SHELL/, 'wall'],
+  [/COL(U|UMN)?[-_ 0-9]|^COL$|PILAR|PILLAR|SAULE/, 'wall'],
+  [/RAILING|STAIR|ESCALERA|SCALA|TREPPE|BARANDA/, 'wall'],
+
+  // --- Casework ---
+  // The AIA discipline prefixes (`Q-`, `P-`, `E-`) are anchored to the start of
+  // the name: unanchored they match anywhere, so any layer merely *containing*
+  // "Q-" was silently classified casework (e.g. `ZZQQ-NOTHING`).
+  [/CASE|CASEWORK|CUPBD|SPCQ|^Q-/, 'casework'],
+
+  // --- Fixtures ---
+  [/PLUMB|SANR|SAN-FIX|SAN_FIX|^P-|BANO|BAÑO|ASEO|WC\d/, 'fixture'],
+  [/LITE|EQPM|^E-|LIGHT|ELEC|LUMIN/, 'fixture'],
+
+  // --- Furniture ---
+  [/FURN|MUEBLE|MUEBLES|MUEB|MOBILIARIO|^MOB[-_ 0-9]|^MOB$|MEBEL|ARREDI|MOBILIER|MOBEL/, 'furniture'],
+]
+
+/** Block-name patterns, applied when the layer name says nothing useful. */
+const BLOCK_VOCAB: [RegExp, Category][] = [
+  [/MULLION|GLAZED|CURTAIN|WINDOW|VENTANA/, 'glazing'],
+  [/\bDOOR\b|PUERTA|PORTA/, 'door'],
+  [/CUPBD|CASEWORK|COUNTERTOP|BOOKCASE/, 'casework'],
+  [/SINK|FAUCET|TOILET|FRIDGE|DISHWASHER|OVEN|MICROWAVE|ESPRESSO|INODORO|LAVABO/, 'fixture'],
+  [/SCONCE|TV|SCREEN|LOCKER/, 'fixture'],
+  [/DESK|CHAIR|TABLE|SOFA|SILLA|MESA|ESCRITORIO/, 'furniture'],
+]
+
 function categoryFor(layer: string, blockName = ''): Category {
   const L = (layer || '').toUpperCase()
   const B = (blockName || '').toUpperCase()
 
-  // Dimensions first (their layers also contain ANNO).
-  if (/DIM/.test(L)) return 'dimension'
-  // Annotation / text / title-blocks / area tags.
-  if (/ANNO|TTLB|TEXT|AREA-IDEN|SCHD|NPLT/.test(L)) return 'annotation'
-
-  if (/GLAZ|GLAZING|CURT|CWMG|MULLION|G-WINDOW/.test(L) || /MULLION|GLAZED|CURTAIN/.test(B))
-    return 'glazing'
-  if (/(^|[-_])DOOR/.test(L) || /\bDOOR\b/.test(B)) return 'door'
-  if (/WALL|COL|RAILING|STAIR/.test(L)) return 'wall'
-  if (/CASE|CASEWORK|CUPBD|SPCQ|Q-/.test(L) || /CUPBD|CASEWORK|COUNTERTOP|BOOKCASE/.test(B))
-    return 'casework'
-  if (/PLUMB|SANR|SAN-FIX|SAN_FIX|P-/.test(L) || /SINK|FAUCET|TOILET|FRIDGE|DISHWASHER|OVEN|MICROWAVE|ESPRESSO/.test(B))
-    return 'fixture'
-  if (/LITE|EQPM|E-|LIGHT|ELEC/.test(L) || /SCONCE|TV|SCREEN|LOCKER/.test(B)) return 'fixture'
-  if (/FURN/.test(L)) return 'furniture'
+  for (const [re, cat] of LAYER_VOCAB) if (re.test(L)) return cat
+  for (const [re, cat] of BLOCK_VOCAB) if (re.test(B)) return cat
 
   return 'other'
 }
@@ -546,10 +1015,19 @@ export function parseDrawing(dxfText: string): Drawing {
     tables?: { layer?: { layers?: Record<string, unknown> } }
   }
 
-  const { scale, label } = metersPerUnit(dxf.header?.$INSUNITS)
-  const root: Mat = [scale, 0, 0, scale, 0, 0] // world inches/mm → meters
   const blocks = dxf.blocks ?? {}
   const rawEntities = dxf.entities ?? []
+
+  // Flatten in SOURCE UNITS (root = identity), decide the scale from the
+  // flattened result, then scale once at the end.
+  //
+  // The scale evidence must be measured in world space, not in block-local
+  // space. A block inserted at scale 100 has internal coordinates 100× smaller
+  // than the building it draws, so reading door radii and wall gaps straight
+  // out of block definitions measures the wrong thing — and on real plans most
+  // doors and walls live inside blocks. Flattening first costs one pass and
+  // makes every anchor read the geometry the user will actually see.
+  const root: Mat = IDENTITY
 
   const layers = Object.keys(dxf.tables?.layer?.layers ?? {})
   const entities: DrawEntity[] = []
@@ -602,7 +1080,23 @@ export function parseDrawing(dxfText: string): Drawing {
     }
   }
 
+  // Everything above is in source units. Decide what they are from the
+  // flattened geometry, then convert to meters in one pass.
+  const { scale, label, source: unitsSource } = decideUnits(
+    dxf.header?.$INSUNITS,
+    scaleEvidence(entities, furniture),
+  )
+  if (scale !== 1) {
+    for (const e of entities) scaleEntity(e, scale)
+    for (const f of furniture) {
+      for (const e of f.entities) scaleEntity(e, scale)
+      f.bbox = [f.bbox[0] * scale, f.bbox[1] * scale, f.bbox[2] * scale, f.bbox[3] * scale]
+      f.origin = [f.origin[0] * scale, f.origin[1] * scale]
+    }
+  }
+
   // Drop mirrored/xref duplicate geometry that sits far from the main plan.
+  // Runs AFTER scaling because its threshold floor is an absolute 60 m.
   const kept = keepDominantCluster(entities, furniture)
 
   const bounds: [number, number, number, number] = [Infinity, Infinity, -Infinity, -Infinity]
@@ -612,5 +1106,13 @@ export function parseDrawing(dxfText: string): Drawing {
     bounds[0] = bounds[1] = bounds[2] = bounds[3] = 0
   }
 
-  return { units: label, bounds, layers, entities: kept.entities, furniture: kept.furniture }
+  return {
+    units: label,
+    unitsSource,
+    scaleConfidence: assessScale(kept.entities, kept.furniture, unitsSource),
+    bounds,
+    layers,
+    entities: kept.entities,
+    furniture: kept.furniture,
+  }
 }
