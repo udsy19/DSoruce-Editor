@@ -143,9 +143,17 @@ pub struct Component {
     /// tag at every zoom but one. Seat count is not a property of the zoom
     /// level; it is a property of the table.
     ///
-    /// NOT the same quantity as a room's `Zone::capacity_on()`, which is an
-    /// area rule-of-thumb for the ROOM. A tag never counts chairs and a glyph
+    /// NOT the same quantity as a room's `Zone::capacity_from_area()`, which is
+    /// an area rule-of-thumb for the ROOM. A tag never counts chairs and a glyph
     /// never renders room pax; they are different facts about different things.
+    ///
+    /// (F5) This read `Zone::capacity_on()` until now — Line A's name for the
+    /// same method, RETIRED in the merge in favour of Line B's
+    /// `capacity_from_area`. The merge adopted B's signature and left A's name
+    /// standing in this one doc comment, so the tree named a method that exists
+    /// nowhere in it. Doc-comment only: `capacity_on` has no code path here,
+    /// which is exactly why nothing caught it — `rustc` does not resolve names
+    /// inside `///`, and an intra-doc link would have.
     ///
     /// 0 = seats nobody (a door, a column, casework). `serde(default)` keeps
     /// every pre-seats snapshot and `.dsource` blob readable.

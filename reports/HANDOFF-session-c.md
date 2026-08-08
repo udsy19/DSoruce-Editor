@@ -4,11 +4,22 @@
 number is inherited, it says so. Nothing here is claimed from another session's
 ledger.
 
+> **CORRECTION (F4), and it is this document's own error, not an inherited one.**
+> The refs table below originally read *"25 → **33** retraction lines"*. **33 was
+> wrong.** The number is **32**: `grep -c RETRACT docs/audits/LOOP-LEDGER.md`
+> returns 32, and the interleave's own accounting table
+> (`LOOP-LEDGER.md`, §7 "Retraction accounting") states `premerge-line-a` 25 and
+> **this file, total 32**. So the document contradicted the ledger it was
+> reporting on, in the one direction — upward — that makes a merge look more
+> complete than it was. The digit is corrected in place below; it is called out
+> here rather than silently edited, because a stated number that moves without
+> comment is indistinguishable from a number nobody ever checked.
+
 ## Refs — all board-green, all disjoint from §2
 
 | ref | contents | state |
 |---|---|---|
-| `integration-ledger-interleave` @ `2f3b5fc` | **§3** — Line A's 1,309 missing ledger lines; 25 → **33** retraction lines; the R24 liveness amendment | battery 52/53, 1 named skip |
+| `integration-ledger-interleave` @ `2f3b5fc` | **§3** — Line A's 1,309 missing ledger lines; 25 → **32** retraction lines; the R24 liveness amendment | battery 52/53, 1 named skip |
 | `integration-backlog-r23` @ `bdc902d` | **§6 disjoint half** (R23 manifests, ground membership, groundConsumers, janitor) · **§5** board evidence · **§7** the cost gate | battery 53/54, 1 named skip · both boards green · cost gate RED by design |
 | `rescue/session-d-partial` @ `14989af` | session-d's 29 staged files, preserved non-destructively | untouched |
 | `premerge-line-a` / `premerge-line-b` | `048d99e` / `6e49ba3` | permanent |

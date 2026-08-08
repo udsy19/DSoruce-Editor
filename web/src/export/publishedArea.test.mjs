@@ -1,4 +1,5 @@
-// THE AREA A DELIVERABLE PRINTS IS THE AREA THE CORE MEASURED.
+// THE AREA A DELIVERABLE PRINTS IS THE AREA THE CORE MEASURED — and (F2) THE
+// SEAT COUNT IT PRINTS IS THE SEAT COUNT THAT AREA SUPPORTS.
 // Run from web/:  node src/export/publishedArea.test.mjs
 //
 // @covers: web/src/export/finishSchedule.ts
@@ -7,6 +8,9 @@
 // @covers: web/src/util/zoneGeom.ts
 // @covers: web/src/editor/stats.ts
 // @covers: crates/ds-core/src/cost.rs
+// @covers: crates/ds-core/src/zone.rs        — the seat-rate spec (F2)
+// @covers: crates/ds-core/src/lib.rs         — `zone_stats()` seat rows (F2)
+// @covers: crates/ds-core/src/quantity.rs    — `quantities()` seat rows (F2)
 //
 // ---------------------------------------------------------------------------
 // THE DEFECT THIS EXISTS FOR
@@ -191,9 +195,29 @@ const check = (ok, label) => {
 //      route `cost.rs:185` took inside the core, invisible to a census of
 //      symbols because it is a census of a quantity. Only the cross-surface
 //      comparison catches it, and it is the sole mechanism on that route.
-//      `web/src/util/areaCensus.test.mjs` is the instrument that closes it from
+//      `scripts/gates/area-census.mjs` is the instrument that closes it from
 //      the source side in BOTH languages, by detecting the arithmetic rather
 //      than the name.
+//
+//      **THIS LINE WAS WRONG AND IS CORRECTED (F3).** It named
+//      `web/src/util/areaCensus.test.mjs`, which is Line A's census — RETIRED
+//      in the merge in favour of Line B's `scripts/gates/area-census.mjs` and
+//      absent from this tree. The merge repointed mechanism 2 (the note eight
+//      lines below) and missed mechanism 3 in the same edit, so this file spent
+//      the merge citing a file that does not exist. The two are the same
+//      instrument doing the same job — a total detector of area ARITHMETIC in
+//      both languages, reconciled against a register — and the survivor is
+//      wired into the battery at `scripts/verify-all.sh:158` rather than
+//      globbed as a `*.test.mjs`, which is the only difference that matters to
+//      a reader looking for it.
+//
+//      VERIFIED HERE, not inherited: `web/src/util/areaCensus.test.mjs` does
+//      not exist; `area-census.mjs`'s register carries no `paint.ts` entry
+//      because there is no longer a site there to register — `paint.ts:20`
+//      imports `isDegenerateZoneShape`, a PREDICATE, and both room-tag branches
+//      (`:574` Poly, `:661` Rect) `continue` when the core row is missing
+//      instead of falling back to `?? Math.abs(a2) / 2` / `?? s.w * s.h`. The
+//      coverage is real; only the record was wrong.
 // **REPOINTED AT THE SURVIVING MECHANISM.** Line A named the ordering helper
 // `rawShapeAreaForOrderingOnly` — a magnitude with a warning in its name. Line B
 // replaced it with `compareZoneExtent`, which returns an ORDERING, so no m²
@@ -256,11 +280,18 @@ const ORDERING_ONLY = {
       declaresRaw = new RegExp(`export function ${RAW}\\b`).test(body)
       continue
     }
-    // NAMES-IT-BUT-DOES-NOT-CALL-IT, and the exemption is TWO-SIDED: each file
-    // must still carry no `import ... from '…zoneGeom'`, so the day one of them
-    // starts actually importing the helper it rejoins the allowlist instead of
-    // sitting behind a stale name-based skip.
-    if (rel === 'src/export/publishedArea.test.mjs' || rel === 'src/util/areaCensus.test.mjs') {
+    // NAMES-IT-BUT-DOES-NOT-CALL-IT, and the exemption is TWO-SIDED: this file
+    // must still carry no `import ... from '…zoneGeom'`, so the day it starts
+    // actually importing the helper it rejoins the allowlist instead of sitting
+    // behind a stale name-based skip.
+    //
+    // `src/util/areaCensus.test.mjs` was a second exemption here and is DELETED
+    // (F3): that file is Line A's retired census and is not in this tree, so the
+    // disjunct could never match. A dead exemption is worse than none — it is a
+    // standing licence for a path nobody is watching. Measured: removing it
+    // moves no check count, because an exemption for a file that does not exist
+    // never ran its check.
+    if (rel === 'src/export/publishedArea.test.mjs') {
       check(
         !/from\s*['"][^'"]*zoneGeom['"]/.test(body),
         `${rel} is exempt from the ${RAW} importer scan because it only NAMES the helper — but it now imports zoneGeom. Remove the exemption and declare it.`,
@@ -285,6 +316,204 @@ const ORDERING_ONLY = {
   )
   check(found.length > 0, `no file imports ${RAW} — the allowlist is vacuous`)
 }
+
+// ===========================================================================
+// F2 — THE SEAT COUNT A ROW PUBLISHES IS THE SEAT COUNT ITS PUBLISHED AREA
+//      SUPPORTS
+// ===========================================================================
+// THE DEFECT. The area half of this file was written because sheet A.09 billed
+// F1's zone 244 at 35.0 m² while the core measured 8.0 m². The seat half exists
+// because the SAME ROW published `area 8.0 m² · 5 pax` — five 6 m² workstations
+// inside eight square metres — from `Zone::capacity()`, which measured the RAW
+// shape while `area` came from the basis. Two numbers on one row, from two
+// different areas, contradicting each other in the reader's hand.
+//
+// It was fixed by making the area an ARGUMENT (`capacity_from_area(area)`) so a
+// published surface cannot get the raw one by accident. NOTHING GUARDED THE FIX
+// FROM THIS SIDE OF THE FENCE. Measured, in a disposable worktree: reverting the
+// two published call sites — `lib.rs:1221` (`zone_rows`) and `quantity.rs:539`
+// (`quantities`) — to `seat_estimate_for_ordering()` restores the headline
+// defect verbatim on BOTH surfaces —
+//
+//     F1 zone 244 "Open Workspace (2)"   8.0000 m²  1 pax  ->  5 pax
+//     F1 zone 245 "Open Workspace (3)"   3.6800 m²  0 pax  ->  2 pax
+//
+// — and, MEASURED IN THAT SAME WORKTREE, leaves `cargo test -p ds-core` at
+// **200 passed, 0 failed**. (The battery's 54/54 under the live defect is
+// inherited from the adversary round and is NOT re-measured here, because this
+// file is now in that battery and reds — the only honest form of the claim is
+// the Rust one.) Zone 245 is a second instance no report of the original defect
+// names, and F5 carries it too (17.9000 m² 2 -> 5, and 3.6800 m² 0 -> 2).
+// The Rust-side guard for this lives in `metrics_tests.rs`; this is the guard on
+// the published surfaces, which is where the number a client reads comes from.
+//
+// WHERE THE NUMBER GOES, and why no board catches it. `capacity` is not an
+// internal figure:
+//   * `web/src/editor/paint.ts:580` (Poly tag) and `:673` (Rect tag) print it on
+//     the canvas as `"8.0 m² · 5 pax"` — the room tag on every plan.
+//   * `web/src/export/kpis.ts:175` sums it over Meeting + Collaboration into
+//     `meetingSeats` -> `seats` -> the Density KPI (sqf/person, m²/person) on the
+//     alternatives comparison.
+//   * `web/src/App.tsx:1713` writes it as the `capacity` column of the exported
+//     plan CSV.
+// And no gate on either board grades the VALUE. G3's quantity truth
+// (`scripts/gates/g3-quantity-truth.py`) checks rooms, walls, doors and areas —
+// its Inventory loop reads `Room ID`, `Area (m2)`, `Area (sqf)` and nothing
+// else. The sheet board has no `capacity`/`pax` reference at all. The only
+// pre-existing JS assertion touching it is `core/mutatorGuards.test.mjs:187`,
+// which compares Σ capacity BEFORE against Σ capacity AFTER an off-plate zone —
+// a delta invariant that is satisfied by any two equal wrong numbers.
+// `qtoWorkbook.ts:69` declares `QtyRoom.capacity` but writes `headcount` into
+// the workbook, so the value reaches the type and not the cell — stated
+// precisely because "it reaches the workbook" would be the easy thing to write.
+//
+// INDEPENDENCE (.claude/rules/gate-independence.md, R2). The expected seat count
+// is derived from the rate SPEC — the table and the arithmetic parsed out of
+// `crates/ds-core/src/zone.rs` as text — and never by calling the function the
+// producer calls. The producer here is the compiled wasm; the sabotage above
+// changes which area that binary hands the rate table and changes nothing in the
+// source text this block reads, which is exactly why it reds.
+//
+// THE BLIND SPOT, stated rather than discovered later: one rate table, read by
+// the producer and by this gate. Change `Workspace => 6.0` to `5.0` and both
+// sides move together and this stays green. That is the same null this mission
+// already recorded for `zone::m2_per_seat`. What the two-sided read DOES catch
+// is the whole class the defect belongs to — a published seat count computed
+// from a different area than the published area beside it. Closing the rate null
+// needs a third, external anchor (a code figure), which is not in this file's
+// remit.
+//
+// WHAT IS MIRRORED AND WHAT IS RE-DERIVED. `zone_rows` has three arms —
+// furniture wins, then the plate-spanning zone, then the area rule. The ARM
+// STRUCTURE is read from `lib.rs` by a human and mirrored here; every NUMBER is
+// re-derived from `state()` (component `seats`, `reference`, `category`), which
+// is core state, not the producer's account of itself. NULL, reported: over the
+// full population the two-arm form (furniture, else the rate) explains 645 of
+// 645 rows exactly, so the plate-spanning arm is either never taken or never
+// distinguishable here; it is asserted against, not exempted, and a future
+// document that makes it differ will red and should be read, not silenced.
+// `quantities()` has ONE arm and is asserted unconditionally.
+//
+// R16 GRADE: **CHECK**, on both surfaces — it reds on a real reintroduced
+// defect, not merely on a hypothetical. The sabotage round below broke each part
+// of the mechanism in turn, including the enabling ones, and reports its nulls.
+//
+//   the defect, both published call sites reverted  RED 145/3752, exit 1,
+//                                                   naming 244 and 245 with
+//                                                   their numbers on 5 fixtures
+//   `.max(0.0)` dropped from the Rust formula
+//     (rebuilt wasm; every VALUE identical, because
+//      areas are non-negative)                      RED 1/3752 — the formula pin
+//                                                   is the ONLY thing that sees
+//                                                   it, so it is load-bearing
+//   a ninth ZoneType with no rate                   RED 1/3752 (domain reconcile)
+//   `capacity_from_area` renamed                    THROWS — a missing input is a
+//                                                   failure, not an empty table
+//   the gate's `Chair` exclusion dropped            RED 235/3752
+//   the gate's furniture arm dropped entirely       RED 202/3752
+//   population narrowed to F1 unedited              RED 10/3752 — all six seat
+//                                                   non-vacuity floors fire
+//   every row's published `zone_type` overwritten   seat verdicts BYTE-IDENTICAL
+//     to 'Amenity'                                    (only the type-parity
+//                                                      checks red) — the proof
+//                                                      that the rate is keyed off
+//                                                      the DOCUMENT, not the row
+//
+//   NULL — dropping ONLY the `!c.reference` filter from the gate's furniture
+//   re-derivation leaves it **3752/3752 green**. No reference component with
+//   `seats > 0` sits in any zone's `component_ids` anywhere in this population,
+//   so that clause is mirrored from `lib.rs` and graded by nothing. Recorded
+//   rather than removed: it is the correct filter, it is simply inert here.
+//
+//   OBSERVED, and left standing deliberately: a GROUND zone that contains
+//   seating furniture publishes a NON-ZERO seat count, because the furniture arm
+//   is evaluated before the type is consulted. 49 rows here do it, and THREE are
+//   on unedited fixtures, so it is not an artefact of the retype edit —
+//
+//     F4 zone  87 Circulation "Meeting Room 1"  28.92 m² -> 6 pax
+//     F5 zone  78 Circulation "Reception"       12.80 m² -> 4 pax
+//     F5 zone 281 Unassigned  "Unassigned"     110.21 m² -> 1 pax
+//
+//   — the last of which seats a person in floor the generator declared waste.
+//   `zone::tests::capacity_seats_nobody_exactly_where_the_usable_partition_does`
+//   proves only that the RATE TABLE returns 0 for ground; it says nothing about
+//   the published row, and the two are NOT the same claim. Whether furniture
+//   should out-rank the ground partition is a product question this gate has no
+//   standing to settle, so it pins today's answer and names it here instead of
+//   quietly encoding it.
+
+// --- the rate spec, read from the SPEC and never from the producer ----------
+const zoneSrc = fs.readFileSync(path.join(ROOT, 'crates/ds-core/src/zone.rs'), 'utf8')
+const stripLineComments = (s) => s.replace(/\/\/[^\n]*/g, '')
+
+/** The variant domain, from the ONE authoring point (`zone_domain!`). A ninth
+ *  variant lands here, so the completeness check below cannot go stale. */
+const ZONE_DOMAIN = (() => {
+  const at = zoneSrc.indexOf('\nzone_domain! {')
+  if (at < 0) throw new Error('zone.rs no longer invokes `zone_domain!` — the variant domain this gate reconciles against is gone, and a missing input is a failure')
+  const end = zoneSrc.indexOf('\n}\n', at)
+  if (end < 0) throw new Error('could not find the end of the `zone_domain!` invocation in zone.rs')
+  const body = stripLineComments(zoneSrc.slice(at, end))
+  return new Set([...body.matchAll(/^\s*(\w+)\s*:\s*(?:ground|service|program)\s*,/gm)].map((m) => m[1]))
+})()
+
+/** The rate table + the zero arm + the arithmetic, from `capacity_from_area`. */
+const RATE_SPEC = (() => {
+  const at = zoneSrc.indexOf('pub fn capacity_from_area')
+  if (at < 0) throw new Error('zone.rs no longer declares `pub fn capacity_from_area` — the rate spec this gate reads is gone, and a missing input is a failure')
+  const end = zoneSrc.indexOf('\n    }\n', at)
+  if (end < 0) throw new Error('could not find the end of `capacity_from_area` in zone.rs')
+  const body = stripLineComments(zoneSrc.slice(at, end))
+  const rate = new Map()
+  for (const m of body.matchAll(/ZoneType::(\w+)\s*=>\s*([0-9]+(?:\.[0-9]+)?)\s*,/g)) rate.set(m[1], Number(m[2]))
+  const zeroArm = body.match(/((?:ZoneType::\w+\s*\|\s*)+ZoneType::\w+|ZoneType::\w+)\s*=>\s*return\s+0\s*,/)
+  const seatsNobody = new Set(zeroArm ? [...zeroArm[1].matchAll(/ZoneType::(\w+)/g)].map((m) => m[1]) : [])
+  return { rate, seatsNobody, text: body.replace(/\s+/g, ' ').trim() }
+})()
+
+// The ARITHMETIC is half the spec. Pinning only the table would let `floor`
+// become `round` — +1 seat on most rooms — with this gate green, because the
+// gate would still be computing the old formula and calling it ground truth.
+const RATE_FORMULA = '(area / per).floor().max(0.0) as u32'
+check(
+  RATE_SPEC.text.includes(RATE_FORMULA),
+  `zone.rs's capacity_from_area no longer ends in \`${RATE_FORMULA}\`. This gate recomputes that expression in JS as its ground truth; if the Rust arithmetic changed, the ground truth is stale and every seat assertion below is measuring the previous release.`,
+)
+check(RATE_SPEC.rate.size > 0, 'parsed no `ZoneType::X => <rate>` arms out of capacity_from_area — the seat ground truth is about nothing')
+check(RATE_SPEC.seatsNobody.size > 0, 'parsed no `=> return 0` arm out of capacity_from_area — the seats-nobody half of the spec is about nothing')
+{
+  const both = [...RATE_SPEC.rate.keys()].filter((t) => RATE_SPEC.seatsNobody.has(t))
+  check(both.length === 0, `these zone types were parsed into BOTH the rate table and the seats-nobody arm, so the parse is wrong: ${both.join(', ')}`)
+  const covered = new Set([...RATE_SPEC.rate.keys(), ...RATE_SPEC.seatsNobody])
+  const missing = [...ZONE_DOMAIN].filter((t) => !covered.has(t))
+  const extra = [...covered].filter((t) => !ZONE_DOMAIN.has(t))
+  check(
+    missing.length === 0 && extra.length === 0,
+    `the parsed rate spec and the zone_domain! variant list disagree.\n        in the domain, no rate: ${JSON.stringify(missing)}\n        rated, not in the domain: ${JSON.stringify(extra)}\n        A new ZoneType must be given a rate (or the zero arm) AND be visible to this parse.`,
+  )
+  check(ZONE_DOMAIN.size >= 8, `zone_domain! parsed only ${ZONE_DOMAIN.size} variants — the parse has come loose from the file`)
+}
+
+/** GROUND TRUTH for a seat count: the rate spec applied to a published area.
+ *  A type the spec does not name is a FAILURE, never a skip. */
+const seatsSupportedBy = (zoneType, areaM2) => {
+  if (RATE_SPEC.seatsNobody.has(zoneType)) return 0
+  const per = RATE_SPEC.rate.get(zoneType)
+  if (per === undefined) {
+    throw new Error(`zone type "${zoneType}" appears on a published row but zone.rs's rate spec gives it neither a rate nor a seats-nobody arm — a missing input is a failure`)
+  }
+  return Math.max(0, Math.floor(areaM2 / per))
+}
+
+/** Σ seats of the furniture actually standing in a zone — re-derived from
+ *  `state()`, the document, and not from the row being graded. Mirrors the
+ *  FILTER `lib.rs::zone_rows` applies (non-reference, `Chair` excluded because a
+ *  chair is seating FOR a table that already reports those seats). */
+const furnitureSeatsIn = (zone, componentById) =>
+  zone.component_ids
+    .map((cid) => componentById.get(cid))
+    .filter((c) => c && !c.reference && c.category !== 'Chair')
+    .reduce((s, c) => s + (c.seats ?? 0), 0)
 
 const META = {
   project: 'Parity Probe',
@@ -409,6 +638,13 @@ let scheduledRows = 0
 let labelRows = 0
 let cappedStates = 0
 let enclosedStates = 0
+// F2 population counters — each is a claim the seat assertions depend on.
+let seatRowsQ = 0
+let seatRowsS = 0
+let seatRowsRated = 0 // non-ground rows whose seat count came from the area rule
+let seatRowsFurnished = 0 // rows where standing furniture overrode the rule
+let seatRowsGround = 0 // rows the seats-nobody arm covers
+let seatRowsNonZero = 0 // rows publishing a seat count > 0
 
 for (const { key, ed } of population()) {
   const state = ed.state()
@@ -422,6 +658,74 @@ for (const { key, ed } of population()) {
     return a.toFixed(1)
   }
   if (ed.metrics().metrics_error) cappedStates++
+
+  // --- the seat count on both published surfaces (F2) ----------------------
+  // Read straight off the two wasm exports a client-facing number comes from.
+  // Neither is compared to the other; each is compared to the rate spec.
+  {
+    const componentById = new Map(state.components.map((c) => [c.id, c]))
+    const zoneById = new Map(state.zones.map((z) => [z.id, z]))
+    const per = (t) => (RATE_SPEC.seatsNobody.has(t) ? 'seats nobody' : `${RATE_SPEC.rate.get(t)} m²/seat`)
+
+    // WHICH RATE APPLIES IS THE DOCUMENT'S ANSWER, NOT THE ROW'S. The rate is
+    // keyed by zone type, so a row that reported its own type would be choosing
+    // the yardstick it is measured against — the shape of every producer-
+    // metadata failure this repo has logged. `docType` reads `state()`; the
+    // row's published type is then asserted against it separately, so a
+    // divergence is NAMED rather than quietly followed.
+    const docType = (id) => {
+      const z = zoneById.get(id)
+      if (!z) throw new Error(`${key}: a published row names zone ${id}, which state() has no zone for — a missing input is a failure`)
+      return z.zone_type
+    }
+
+    // `quantities().rooms[].capacity` — ONE arm, so this is unconditional.
+    for (const r of ed.quantities().rooms) {
+      seatRowsQ++
+      const t = docType(r.roomId)
+      check(
+        r.zoneType === t,
+        `${key}: quantities() zone ${r.roomId} "${r.name}" publishes type ${r.zoneType} but the document says ${t} — the row is not describing the zone it names.`,
+      )
+      const want = seatsSupportedBy(t, r.areaM2)
+      check(
+        r.capacity === want,
+        `${key}: quantities() zone ${r.roomId} "${r.name}" bills ${r.capacity} pax on ${r.areaM2.toFixed(4)} m² — ${t} at ${per(t)} supports ${want}. A published seat count must be the seat count the published area of that same row supports.`,
+      )
+    }
+
+    // `zone_stats().capacity` — furniture wins, else the area rule.
+    for (const r of ed.zone_stats()) {
+      seatRowsS++
+      if (r.capacity > 0) seatRowsNonZero++
+      const z = zoneById.get(r.id)
+      if (!z) {
+        check(false, `${key}: zone_stats() row ${r.id} has no zone in state() — a missing input is a failure`)
+        continue
+      }
+      const t = docType(r.id)
+      check(
+        r.zone_type === t,
+        `${key}: zone_stats() zone ${r.id} "${r.label}" publishes type ${r.zone_type} but the document says ${t} — the row is not describing the zone it names. (\`zone_stats()\` is the UNFOLDED surface; the Unassigned->Circulation fold belongs to \`zone_stats_published()\`.)`,
+      )
+      const furnished = furnitureSeatsIn(z, componentById)
+      if (furnished > 0) {
+        seatRowsFurnished++
+        check(
+          r.capacity === furnished,
+          `${key}: zone_stats() zone ${r.id} "${r.label}" bills ${r.capacity} pax, but the ${furnished} seats its own furniture provides is what a furnished room seats. Furniture wins over the area rule (lib.rs::zone_rows).`,
+        )
+        continue
+      }
+      if (RATE_SPEC.seatsNobody.has(t)) seatRowsGround++
+      else seatRowsRated++
+      const want = seatsSupportedBy(t, r.area)
+      check(
+        r.capacity === want,
+        `${key}: zone_stats() zone ${r.id} "${r.label}" bills ${r.capacity} pax on ${r.area.toFixed(4)} m² — ${t} at ${per(t)} supports ${want}. An unfurnished room's seat count is its published area's seat count; a different answer means the row read a different area than the one it prints.`,
+      )
+    }
+  }
 
   // --- A.09 --------------------------------------------------------------
   const sheets = finishScheduleSheets(state, { meta: META, startNo: 9, zoneAreas })
@@ -475,10 +779,20 @@ check(scheduledRows > 100, `only ${scheduledRows} A.09 rows compared`)
 check(labelRows > 100, `only ${labelRows} plan labels compared`)
 check(cappedStates >= 5, `only ${cappedStates} capped states — the cap axis is thin`)
 check(enclosedStates >= 5, `only ${enclosedStates} states with enclosed rooms — the premium axis is thin`)
+// F2. Each arm has to be REACHED. A population that never furnishes a room, or
+// never leaves one unfurnished, grades one arm of a two-arm rule; a population
+// whose every seat count is 0 is satisfied by a producer that publishes 0.
+check(seatRowsQ > 100, `only ${seatRowsQ} quantities() seat rows compared`)
+check(seatRowsS > 100, `only ${seatRowsS} zone_stats() seat rows compared`)
+check(seatRowsRated > 100, `only ${seatRowsRated} unfurnished rated rows — the area-rule arm, the one the defect lived on, is thin`)
+check(seatRowsFurnished > 50, `only ${seatRowsFurnished} furniture-override rows — the furniture arm is thin`)
+check(seatRowsGround > 50, `only ${seatRowsGround} seats-nobody rows — the zero arm is thin`)
+check(seatRowsNonZero > 100, `only ${seatRowsNonZero} rows publish a non-zero seat count — an all-zero population is green for a producer that publishes nothing`)
 
 console.log(
   `\n${checks - failures}/${checks} checks green  (${scheduledRows} schedule rows, ` +
-    `${labelRows} plan labels, ${cappedStates} capped states, ${enclosedStates} states with enclosed rooms)`,
+    `${labelRows} plan labels, ${cappedStates} capped states, ${enclosedStates} states with enclosed rooms, ` +
+    `${seatRowsQ}+${seatRowsS} seat rows: ${seatRowsRated} rated / ${seatRowsFurnished} furnished / ${seatRowsGround} seats-nobody, ${seatRowsNonZero} non-zero)`,
 )
 if (failures > 0) {
   console.log(`PUBLISHED-AREA PARITY FAIL — ${failures} failing`)
