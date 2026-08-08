@@ -6690,3 +6690,58 @@ report and every one is present above.
    board, and the merged board is a different population.
 5. **`21`, not `19`, is the drawing-set failure count** to hold the merged tree to
    (§5.4).
+
+## C: R24's liveness test cannot be an mtime probe — the protocol's own good behaviour looks like death
+
+**Fourth firing, and the first one where the rule as written did not prevent it.**
+
+`session-d` took ownership of the merge at 19:32 and recorded its grounds honestly
+and in the required form: *"no files modified in `/private/tmp/session-c` within 60
+minutes, no live processes under that path, the shared checkout left clean."*
+
+**All three observations were true. The conclusion was false.** `session-c` was
+live throughout — it had two agents running in `/private/tmp/i2-delta` and
+`/private/tmp/i3-ledger`, and it had committed `b9ec338` and left the shared
+checkout clean **because that is what the conventions require**.
+
+> **The finding: the evidence of a session's liveness was absent precisely because
+> it was following the protocol.** Commit at increment boundaries · never squat on
+> a shared tree · work in disposable attributed worktrees. A session doing all
+> three is, to an mtime probe pointed at its own worktree, indistinguishable from a
+> dead one. **Absence of writes is not absence of a session**, and the better a
+> session behaves, the more dead it looks.
+
+The cost was real and is the exact cost R24 exists to prevent: for roughly twenty
+minutes **two sessions were editing `lib.rs`, `zone.rs` and `metrics_tests.rs`
+simultaneously** — `session-d` in the shared checkout, `session-c`'s agent in
+`i2-delta` — both executing §2 of the same brief. A round convened to reconcile
+two independent implementations of one mechanism came within one agent-run of
+producing a third.
+
+**Resolved by yielding, not by arbitration.** `session-c` stopped its §2 agent
+unstarted-of-conclusion and ceded §2 to `session-d`, keeping only §3, which
+`session-d` was not doing. Yielding is cheap; a third line is not.
+
+### The amendment R24 needs
+
+A declaration must carry a **claim that the owner refreshes**, not a state a
+stranger infers:
+
+1. **The owner writes a heartbeat** into its declaration — a timestamp it updates
+   at each increment, and the ref it last committed. `b9ec338` at 19:21 WAS that
+   evidence; it was in the git log, not in the registry, so the liveness probe
+   never looked at it.
+2. **A successor's liveness test reads the branch, not the filesystem** — last
+   commit on the owned branch, by that owner. Filesystem mtime cannot see a
+   session that works through agents elsewhere.
+3. **Ownership is RELEASED explicitly.** `session-integration` did this correctly
+   — it published a handoff naming its successor's work, and that transfer cost a
+   registry edit. The two transfers differ only in whether the outgoing session
+   said it was leaving.
+4. **When in doubt, the arriving session takes a parallel line** (R24's own step 3)
+   **rather than the contested branch.** The default on ambiguity must be the
+   cheap, reversible action.
+
+Recorded against `session-c`'s own conduct too: it declared itself LIVE OWNER and
+then made its liveness unobservable. **Both sessions followed the rule; the rule
+was underspecified.** That is a defect in the rule, not in either session.
