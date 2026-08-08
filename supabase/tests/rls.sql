@@ -63,6 +63,67 @@ begin
   return n;
 end $$;
 
+-- Run `stmt` as `uid`, then evaluate `observe` as the table owner, both inside a
+-- subtransaction that is ALWAYS rolled back. Returns '<rows>/<observation>', or
+-- '-1/denied' when the statement errored (a WITH CHECK violation raises, a USING
+-- violation silently filters — both are denials and both must be recognised).
+--
+-- WHY THE ROLLBACK, and why `affect_as` above is not enough. A privilege-
+-- escalation probe that WORKS mutates the fixture, and the mutation cascades:
+-- run against the unfixed policy, the very first version of these checks
+-- promoted the admin, let it delete the organisation for real, and took the
+-- projects, plans, grants and audit rows with it — the suite then died on a
+-- foreign key 130 lines later and emitted no check lines at all. Worse, the
+-- probes contaminated each other: once 'hijack the owner''s row' succeeded there
+-- was no owner row left, so 'an admin cannot demote the owner' matched zero rows
+-- and reported OK. A successful exploit was making the next check for the same
+-- exploit pass.
+--
+-- Rolling back makes every probe independent and leaves the database in the same
+-- state whether the policy is vulnerable or fixed, which is the only way the two
+-- runs are comparable. `observe` runs as the table owner, after the mutation and
+-- before the rollback, so it reads ground truth rather than what RLS would show
+-- the attacker.
+create or replace function pg_temp.probe_as(uid uuid, stmt text, observe text)
+returns text language plpgsql as $$
+declare n int; obs text; payload text;
+begin
+  begin
+    perform set_config('request.jwt.claim.sub', uid::text, false);
+    set local role authenticated;
+    execute stmt;
+    get diagnostics n = row_count;
+    reset role;
+    execute observe into obs;
+    -- The only way out of a plpgsql subtransaction with its writes discarded is
+    -- to raise; the measurement rides home in the message.
+    raise exception using errcode = 'ZZ001', message = n::text || '/' || coalesce(obs, 'null');
+  exception
+    when sqlstate 'ZZ001' then
+      get stacked diagnostics payload = message_text;
+      reset role;
+      return payload;
+    when others then
+      reset role;
+      return '-1/denied';         -- hard denial; the subtransaction wrote nothing
+  end;
+end $$;
+
+-- One probe, one run. Recording the verdict and the detail from a SINGLE call
+-- matters here: probe_as is not a pure function of its arguments on a vulnerable
+-- database (the first call escalates, and were it not rolled back the second
+-- would see a different world), so calling it once for the condition and again
+-- for the message would let the two disagree and print a detail that never
+-- happened. `accept` is the set of outcomes that count as a refusal.
+create or replace function pg_temp.check_probe(
+  name text, uid uuid, stmt text, observe text, variadic accept text[])
+returns void language plpgsql as $$
+declare got text;
+begin
+  got := pg_temp.probe_as(uid, stmt, observe);
+  perform pg_temp.check(name, got = any(accept), 'rows/observed = ' || got);
+end $$;
+
 -- ── fixture ──────────────────────────────────────────────────────────────────
 -- Two organisations. Studio has staff at every role plus two client projects;
 -- Rival is a completely separate tenant. `client_contact` belongs to NO org and
@@ -188,6 +249,234 @@ select pg_temp.check('admin CAN add an org member',
 select pg_temp.check('admin cannot DELETE the organisation (owner only)',
   pg_temp.affect_as('00000000-0000-0000-0000-0000000000a2',
     'delete from public.organisations where id = ''00000000-0000-0000-0000-00000000aa00''') <= 0);
+
+-- ── SELF-PROMOTION: the wall beside that door ────────────────────────────────
+-- The check above tests the DOOR — an admin cannot delete the organisation. It
+-- was true as written and one UPDATE from false: `org_members_update` gated on
+-- `>= 'admin'` alone, so an admin could rewrite its OWN membership row to
+-- 'owner' and then walk through that same door legitimately. The delete policy
+-- was never wrong; the roster was writable by the people it constrains.
+--
+-- Every probe asserts on the role ACTUALLY STORED afterwards, not merely on
+-- whether the statement threw. A policy that filters a row away and one that
+-- hard-denies are both refusals; an escalation that succeeds is a changed enum,
+-- and only the observation query can see it.
+--
+-- The five routes from 'admin' to 'owner', each closed by a different conjunct:
+-- rewrite your own row · rewrite a peer's · move the owner's row onto an
+-- accomplice · INSERT an accomplice at 'owner' · DELETE the owner and inherit
+-- the vacancy.
+
+-- An accomplice the admin controls, deliberately NOT a member: the INSERT route
+-- needs a free primary key, which no existing fixture user has.
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-0000000000a9', 'accomplice@studio.test');
+
+-- Route 1 — the measured defect. Unfixed, this observes '1/owner'.
+select pg_temp.check_probe('an admin cannot promote ITSELF to owner',
+  '00000000-0000-0000-0000-0000000000a2',
+  'update public.org_members set role = ''owner''
+    where org_id = ''00000000-0000-0000-0000-00000000aa00''
+      and user_id = ''00000000-0000-0000-0000-0000000000a2''',
+  'select role::text from public.org_members
+    where org_id = ''00000000-0000-0000-0000-00000000aa00''
+      and user_id = ''00000000-0000-0000-0000-0000000000a2''',
+  '0/admin', '-1/denied');
+
+-- The CONSEQUENCE, asserted rather than argued: the same DELETE the door check
+-- twenty lines above runs, but issued by an admin that has just promoted itself
+-- IN THE SAME subtransaction. On a vulnerable database this goes red while the
+-- identical check above stays green — which is the exact shape of the finding.
+select pg_temp.check_probe('a self-promoting admin still cannot delete the organisation',
+  '00000000-0000-0000-0000-0000000000a2',
+  'update public.org_members set role = ''owner''
+    where org_id = ''00000000-0000-0000-0000-00000000aa00''
+      and user_id = ''00000000-0000-0000-0000-0000000000a2'';
+   delete from public.organisations
+    where id = ''00000000-0000-0000-0000-00000000aa00''',
+  'select count(*)::text from public.organisations
+    where id = ''00000000-0000-0000-0000-00000000aa00''',
+  '0/1', '-1/denied');
+
+-- Route 2 — a peer rather than itself. Closed by the WITH CHECK role cap alone,
+-- so a fix that only excludes the actor's own row leaves this one open.
+select pg_temp.check_probe('an admin cannot promote a PEER to owner',
+  '00000000-0000-0000-0000-0000000000a2',
+  'update public.org_members set role = ''owner''
+    where org_id = ''00000000-0000-0000-0000-00000000aa00''
+      and user_id = ''00000000-0000-0000-0000-0000000000a5''',
+  'select role::text from public.org_members
+    where org_id = ''00000000-0000-0000-0000-00000000aa00''
+      and user_id = ''00000000-0000-0000-0000-0000000000a5''',
+  '0/viewer', '-1/denied');
+
+-- Route 3 — leave the role alone and move the ROW. Closed by the USING role cap
+-- and NOT by the WITH CHECK: the new row still says 'owner', which is perfectly
+-- legal for an owner's row, so a fix that caps only the value being written
+-- misses this entirely.
+select pg_temp.check_probe('an admin cannot move the owner''s row onto an accomplice',
+  '00000000-0000-0000-0000-0000000000a2',
+  'update public.org_members set user_id = ''00000000-0000-0000-0000-0000000000a9''
+    where org_id = ''00000000-0000-0000-0000-00000000aa00''
+      and user_id = ''00000000-0000-0000-0000-0000000000a1''',
+  'select count(*)::text from public.org_members
+    where org_id = ''00000000-0000-0000-0000-00000000aa00''
+      and user_id = ''00000000-0000-0000-0000-0000000000a9''',
+  '0/0', '-1/denied');
+
+select pg_temp.check_probe('an admin cannot demote the owner',
+  '00000000-0000-0000-0000-0000000000a2',
+  'update public.org_members set role = ''viewer''
+    where org_id = ''00000000-0000-0000-0000-00000000aa00''
+      and user_id = ''00000000-0000-0000-0000-0000000000a1''',
+  'select role::text from public.org_members
+    where org_id = ''00000000-0000-0000-0000-00000000aa00''
+      and user_id = ''00000000-0000-0000-0000-0000000000a1''',
+  '0/owner', '-1/denied');
+
+-- Route 4 — never touch an existing row at all. The UPDATE policy can be perfect
+-- and this still escalates, because INSERT carried no cap of its own.
+select pg_temp.check_probe('an admin cannot INSERT a new member at owner',
+  '00000000-0000-0000-0000-0000000000a2',
+  'insert into public.org_members (org_id, user_id, role) values
+     (''00000000-0000-0000-0000-00000000aa00'',
+      ''00000000-0000-0000-0000-0000000000a9'', ''owner'')',
+  'select count(*)::text from public.org_members
+    where org_id = ''00000000-0000-0000-0000-00000000aa00'' and role = ''owner''',
+  '0/1', '-1/denied');
+
+-- Route 5 — remove the owner and inherit the vacancy. Not escalation once INSERT
+-- is capped (nobody can mint a replacement), which is exactly why it must close:
+-- it would strand an organisation no one can ever own, or delete.
+select pg_temp.check_probe('an admin cannot remove the owner from the roster',
+  '00000000-0000-0000-0000-0000000000a2',
+  'delete from public.org_members
+    where org_id = ''00000000-0000-0000-0000-00000000aa00''
+      and user_id = ''00000000-0000-0000-0000-0000000000a1''',
+  'select count(*)::text from public.org_members
+    where org_id = ''00000000-0000-0000-0000-00000000aa00''
+      and user_id = ''00000000-0000-0000-0000-0000000000a1'' and role = ''owner''',
+  '0/1', '-1/denied');
+
+-- AROUND IT. The five routes above are the ones that were open. These are the
+-- ways a reader asks "yes, but could you not just —", answered by measurement
+-- rather than by reasoning about the policy text.
+
+-- UPSERT. `on conflict do update` is a third statement type with its own policy
+-- path: Postgres checks the INSERT's WITH CHECK for the proposed row AND the
+-- UPDATE's USING + WITH CHECK for the conflicting one. Believing that without
+-- testing it is exactly the kind of assumption this suite exists to refuse.
+select pg_temp.check_probe('an admin cannot self-promote via INSERT ... ON CONFLICT DO UPDATE',
+  '00000000-0000-0000-0000-0000000000a2',
+  'insert into public.org_members (org_id, user_id, role) values
+     (''00000000-0000-0000-0000-00000000aa00'',
+      ''00000000-0000-0000-0000-0000000000a2'', ''owner'')
+   on conflict (org_id, user_id) do update set role = ''owner''',
+  'select role::text from public.org_members
+    where org_id = ''00000000-0000-0000-0000-00000000aa00''
+      and user_id = ''00000000-0000-0000-0000-0000000000a2''',
+  '0/admin', '-1/denied');
+
+-- DELETE-then-INSERT, in one transaction. Removing your own row is allowed
+-- (leaving), so the question is whether you can come back higher. You cannot:
+-- the moment the row is gone `org_role_of` returns NULL for you, and NULL is not
+-- >= 'admin', so the INSERT half fails on the base gate rather than on the cap.
+select pg_temp.check_probe('an admin cannot leave and rejoin as owner',
+  '00000000-0000-0000-0000-0000000000a2',
+  'delete from public.org_members
+    where org_id = ''00000000-0000-0000-0000-00000000aa00''
+      and user_id = ''00000000-0000-0000-0000-0000000000a2'';
+   insert into public.org_members (org_id, user_id, role) values
+     (''00000000-0000-0000-0000-00000000aa00'',
+      ''00000000-0000-0000-0000-0000000000a2'', ''owner'')',
+  'select count(*)::text from public.org_members
+    where org_id = ''00000000-0000-0000-0000-00000000aa00'' and role = ''owner''',
+  '-1/denied');
+
+-- A second membership row in the same organisation is impossible by the primary
+-- key, but a row in ANOTHER organisation is not — so check the actor cannot
+-- carry a role across a tenant boundary by editing the org_id column. Refused by
+-- WITH CHECK: the new row's org is one where org_role_of is NULL.
+select pg_temp.check_probe('an admin cannot move its own membership into another org',
+  '00000000-0000-0000-0000-0000000000a2',
+  'update public.org_members set org_id = ''00000000-0000-0000-0000-00000000bb00''
+    where org_id = ''00000000-0000-0000-0000-00000000aa00''
+      and user_id = ''00000000-0000-0000-0000-0000000000a2''',
+  'select count(*)::text from public.org_members
+    where org_id = ''00000000-0000-0000-0000-00000000bb00''
+      and user_id = ''00000000-0000-0000-0000-0000000000a2''',
+  '0/0', '-1/denied');
+
+-- POSITIVE CONTROLS. A cap that also forbids legitimate role management is not a
+-- fix, it is a different outage. All three must stay green; the first two go red
+-- if the cap is written `<` instead of `<=`, the third if the own-row exclusion
+-- is applied to DELETE as well as UPDATE.
+
+select pg_temp.check_probe('an admin CAN still promote a viewer to designer',
+  '00000000-0000-0000-0000-0000000000a2',
+  'update public.org_members set role = ''designer''
+    where org_id = ''00000000-0000-0000-0000-00000000aa00''
+      and user_id = ''00000000-0000-0000-0000-0000000000a5''',
+  'select role::text from public.org_members
+    where org_id = ''00000000-0000-0000-0000-00000000aa00''
+      and user_id = ''00000000-0000-0000-0000-0000000000a5''',
+  '1/designer');
+
+select pg_temp.check_probe('an OWNER can promote an admin to owner',
+  '00000000-0000-0000-0000-0000000000a1',
+  'update public.org_members set role = ''owner''
+    where org_id = ''00000000-0000-0000-0000-00000000aa00''
+      and user_id = ''00000000-0000-0000-0000-0000000000a2''',
+  'select role::text from public.org_members
+    where org_id = ''00000000-0000-0000-0000-00000000aa00''
+      and user_id = ''00000000-0000-0000-0000-0000000000a2''',
+  '1/owner');
+
+-- The own-row exclusion guards NO escalation route — the role cap already blocks
+-- promotion whoever's row it is, and the falsification round proved it: deleting
+-- `user_id <> auth.uid()` from both clauses left all 61 other checks green. It
+-- earns its place on a different harm, the same one route 5 causes — an
+-- organisation stranded with no owner, which no admin can refill afterwards
+-- because INSERT is capped. Without this check that conjunct would be unguarded
+-- weight, and the honest move would have been to delete it instead.
+select pg_temp.check_probe('an owner cannot demote ITSELF and strand the org',
+  '00000000-0000-0000-0000-0000000000a1',
+  'update public.org_members set role = ''viewer''
+    where org_id = ''00000000-0000-0000-0000-00000000aa00''
+      and user_id = ''00000000-0000-0000-0000-0000000000a1''',
+  'select role::text from public.org_members
+    where org_id = ''00000000-0000-0000-0000-00000000aa00''
+      and user_id = ''00000000-0000-0000-0000-0000000000a1''',
+  '0/owner', '-1/denied');
+
+select pg_temp.check_probe('an admin can still remove ITSELF from the org (leaving is not escalation)',
+  '00000000-0000-0000-0000-0000000000a2',
+  'delete from public.org_members
+    where org_id = ''00000000-0000-0000-0000-00000000aa00''
+      and user_id = ''00000000-0000-0000-0000-0000000000a2''',
+  'select count(*)::text from public.org_members
+    where org_id = ''00000000-0000-0000-0000-00000000aa00''',
+  '1/5');
+
+-- The probes are only comparable across a fixed and an unfixed run if they left
+-- nothing behind. Asserted, not assumed — this is the check that reds if a
+-- future probe is added without going through probe_as.
+select pg_temp.check('the escalation probes left the roster untouched',
+  (select count(*) from public.org_members
+    where org_id = '00000000-0000-0000-0000-00000000aa00') = 6
+  and (select role from public.org_members
+        where org_id = '00000000-0000-0000-0000-00000000aa00'
+          and user_id = '00000000-0000-0000-0000-0000000000a1') = 'owner'
+  and (select role from public.org_members
+        where org_id = '00000000-0000-0000-0000-00000000aa00'
+          and user_id = '00000000-0000-0000-0000-0000000000a2') = 'admin'
+  and (select role from public.org_members
+        where org_id = '00000000-0000-0000-0000-00000000aa00'
+          and user_id = '00000000-0000-0000-0000-0000000000a5') = 'viewer'
+  and (select count(*) from public.organisations
+        where id = '00000000-0000-0000-0000-00000000aa00') = 1,
+  'roster is ' || (select count(*) from public.org_members
+    where org_id = '00000000-0000-0000-0000-00000000aa00')::text || ' rows');
 
 -- ── REVOKED-MEMBER: why 0001's owner-only policies are dropped ───────────────
 -- The designer personally created f101 (plans.owner = a3). If the superseded

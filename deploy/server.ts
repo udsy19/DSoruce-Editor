@@ -31,6 +31,7 @@ import {
   claudeInfo,
   claudeComplete,
   bankFetch,
+  guard,
 } from './apiCore'
 import { handleShareApi, sharePageId } from './shareStore'
 import { handlePackApi } from './packStore'
@@ -407,10 +408,58 @@ async function handleStatic(req: IncomingMessage, res: ServerResponse, pathname:
 
 // ---------------------------------------------------------------------------
 // Router
+//
+// AUTH POSTURE, in one place. `/api/agent` and `/api/claude` call guard() inside
+// apiCore, where it is a required parameter of agentComplete/claudeComplete so a
+// new adapter cannot forget it. The four routes below had no such forcing
+// function and simply never called it — `grep -c 'guard(' deploy/server.ts`
+// returned 0 while the guard sat imported one module away. That is the shape the
+// project already names as a hazard understood, localised, and left standing: the
+// mitigation existed, was applied at the two call sites someone was thinking
+// about, and the class stayed live everywhere else.
+//
+// Measured before this table existed, against a server with SUPABASE_URL set
+// (so the guard was in fail-closed 'required' mode) and no credentials sent:
+//   POST /api/plans      → 200, plan file overwritten
+//   DELETE /api/plans/x  → 200, plan file deleted
+//   POST /api/share/<id> → 200, published bundle overwritten
+//   POST /api/pack/file  → 200, artifact written
+//   POST /api/dwg        → 502, i.e. it reached the handler and spawned
+//
+// Stated as a table rather than a call at the top of each handler so the posture
+// of every /api/ route is readable in one screen, and so a route added later
+// shows up as an ABSENCE here rather than as a missing line buried in a handler.
+type AuthPosture = 'public' | 'authenticated' | 'writes-authenticated'
+
+function postureOf(pathname: string): AuthPosture {
+  if (pathname === '/api/plans' || pathname.startsWith('/api/plans/')) return 'authenticated'
+  if (pathname === '/api/dwg') return 'authenticated'
+  // A share link must open for a recipient who has no account — that IS the
+  // feature. Only publishing over an existing id is privileged.
+  if (pathname === '/api/share' || pathname.startsWith('/api/share/')) return 'writes-authenticated'
+  // GET /api/pack is a capability probe that leaks nothing; the POSTs write to
+  // disk and spawn the walkthrough renderer (measured at ~90 s to 36 min).
+  if (pathname === '/api/pack' || pathname.startsWith('/api/pack/')) return 'writes-authenticated'
+  // /api/agent and /api/claude guard themselves inside apiCore; /api/bank is an
+  // unauthenticated read-through proxy to a public catalogue and is unchanged by
+  // this commit.
+  return 'public'
+}
+
+function needsAuth(pathname: string, method: string): boolean {
+  const posture = postureOf(pathname)
+  if (posture === 'authenticated') return true
+  if (posture === 'writes-authenticated') return method !== 'GET' && method !== 'HEAD'
+  return false
+}
 
 async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const url = new URL(req.url ?? '/', 'http://internal')
   const p = url.pathname
+  if (needsAuth(p, req.method ?? 'GET')) {
+    const gate = await guard(req.headers)
+    if (!gate.ok) return sendJson(res, gate.deny.status, gate.deny.json)
+  }
   if (p === '/api/agent') return handleAgent(req, res)
   if (p === '/api/claude') return handleClaude(req, res)
   if (p === '/api/dwg') return handleDwg(req, res)
