@@ -62,6 +62,15 @@
       "does not cover."
     ],
     "rust": [
+      "COST, stated rather than avoided: `--list` needs the crate and its test",
+      "harness to COMPILE. Measured with an isolated CARGO_TARGET_DIR — 8.96 s",
+      "cold (no target dir at all), 0.17 s warm, 1.04 s warm after touching one",
+      "Rust source. verify-all.sh skips the Rust SUITE on a change with no Rust in",
+      "it; reconcile does NOT skip the LIST, so a JS-only battery run now pays that",
+      "compile where it used to pay nothing. Sampling, caching or skipping it would",
+      "each restore the very defect this pin exists for, and 'expensive' becoming",
+      "'skipped' is this mission's oldest failure.",
+      "",
       "`cargo test -p ds-core -- --list`, parsed for `<name>: test` lines. Names,",
       "never a count — and the parse is cross-checked against cargo's OWN",
       "`N tests, M benchmarks` summary line, so a regex that silently stops",

@@ -510,6 +510,20 @@ for (let i = 0; i < cmds.length; i++) {
 //          is cross-checked against cargo's own `N tests` summary so a regex
 //          that stops matching cannot pass as a shrinking population.
 //
+// THE COST, STATED RATHER THAN AVOIDED. `cargo test -p ds-core -- --list`
+// requires the crate and its test harness to COMPILE. Measured in a disposable
+// worktree with an isolated CARGO_TARGET_DIR: 8.96 s cold (no target dir at
+// all), 0.17 s warm, 1.04 s warm after touching one Rust source. verify-all.sh
+// skips the Rust SUITE on a change with no Rust in it; reconcile does NOT skip
+// the LIST, so on a JS-only change the battery now pays that compile where it
+// used to pay nothing.
+//
+// That is the trade, taken deliberately. Sampling a subset, caching the list, or
+// skipping it when Rust looks untouched would each restore the exact defect this
+// section exists for — a population that leaves the denominator — and "expensive"
+// becoming "skipped" is this mission's oldest failure. Nine seconds once, then
+// tenths, is the price of the 200 names being NAMES.
+//
 // R10 AXES: direction (a member gone and a member arrived are SEPARATE checks,
 // so a rename reads as one gone + one new and never as net zero) · derivation
 // anchor (remove the `done < <(…)` pipeline, or the `cargo test -p ds-core`
@@ -581,6 +595,18 @@ function rustRosterOnDisk() {
   }
   const names = [...r.stdout.matchAll(/^(\S+): test$/gm)].map((m) => m[1])
   // Cargo's own arithmetic, as the parser's independent check: `N tests, M benchmarks`.
+  //
+  // MEASURED OVERLAP, stated because a check whose absence changes nothing is a
+  // guard wearing a check's grade (R16). Sabotage E8 disabled this assertion AND
+  // broke the name parser to match only `zone::`, and the tree still went RED —
+  // the VANISHED check fired with `193 gone`. So this is NOT the only thing
+  // standing between a broken parse and a green board.
+  //
+  // It is kept, and it is not a tautology, because it is the only assertion that
+  // SEPARATES THE TWO CAUSES. Its message reads `7 parsed · 200 declared` — the
+  // parser broke. VANISHED's reads `193 gone` — indistinguishable, on its face,
+  // from someone deleting 193 tests. A scalar cannot settle which; two
+  // differently-derived numbers can.
   const declared = [...r.stdout.matchAll(/^(\d+) tests?, \d+ benchmark/gm)].reduce((a, m) => a + Number(m[1]), 0)
   return { names, declared }
 }
