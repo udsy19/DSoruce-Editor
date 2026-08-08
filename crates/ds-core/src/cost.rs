@@ -455,6 +455,73 @@ mod tests {
         );
     }
 
+    /// **The enclosed-room premium bills THE area basis — not the raw shape, and
+    /// not the merely plate-clipped shape.**
+    ///
+    /// R13/R16: a CHECK, not a guard. It is falsified by reverting one line —
+    /// `areas[i]` back to `z.area_on(plate_ref)` reds the cap half, and back to
+    /// `z.shape.area()` reds both halves. Every expected number below is
+    /// hand-derived from the geometry (`floor_area()` and the rectangles), never
+    /// read back out of `area_basis`, so the assertion cannot agree with a
+    /// wrong basis.
+    ///
+    /// R10 AXES: the two corrections the raw shape is missing are varied
+    /// SEPARATELY — plate clipping (a room straddling the boundary) and the
+    /// cap (zones that do not tile the floor). A fix that applied one and not
+    /// the other still reds.
+    ///
+    /// **Ported from Line A at the 2b integration, and it is the ONLY guard on
+    /// this property.** Line A measured that de-clipping `area_basis` left 199
+    /// of 200 Rust tests green; this is the one that reds. Without it, plate
+    /// clipping in the cost surface is guarded by nothing.
+    #[test]
+    fn enclosed_premium_reads_the_area_basis() {
+        // A 30 x 20 = 600 m² plate; one Meeting room straddling the right edge,
+        // 4 x 4 m centred at x = 29, so 27..30 is on the plate and 30..31 is not.
+        let mut doc = Document::default();
+        doc.walls = rect_plate(30.0, 20.0);
+        let floor = doc.floor_area();
+        assert!((floor - 600.0).abs() < 1e-6, "plate must be 600 m², got {floor}");
+        doc.zones
+            .push(enclosed_zone(29.0, 10.0, 4.0, 4.0, ZoneType::Meeting));
+
+        // --- axis 1: the plate clip. 3.0 x 4.0 = 12 m² on the plate, 16 raw. ---
+        let clipped = 3.0 * 4.0;
+        let raw = 4.0 * 4.0;
+        let want = floor * BASE_SHELL.0 + clipped * ENCLOSURE_PREMIUM.0;
+        let got = indicative_cost(&doc);
+        assert!(
+            (got - want).abs() < 1e-6,
+            "premium must bill the {clipped} m² ON the plate; got {got}, want {want}"
+        );
+        assert!(
+            (got - (floor * BASE_SHELL.0 + raw * ENCLOSURE_PREMIUM.0)).abs() > 1.0,
+            "billing the raw {raw} m² shape must be distinguishable from {clipped} m²"
+        );
+
+        // --- axis 2: the cap. Two plate-sized Amenity zones make the zones
+        // fail to tile the floor: Σ = 12 + 600 + 600 = 1212 against a 600 m²
+        // traced floor, so `area_basis` scales EVERY zone by k = nia / Σ. The
+        // premium must carry that factor; `area_on` does not have it.
+        for _ in 0..2 {
+            doc.zones
+                .push(enclosed_zone(15.0, 10.0, 30.0, 20.0, ZoneType::Amenity));
+        }
+        let sum = clipped + 600.0 + 600.0;
+        let k = floor / sum; // nia == Σ.min(floor) == floor here
+        let want_capped = floor * BASE_SHELL.0 + clipped * k * ENCLOSURE_PREMIUM.0;
+        let got_capped = indicative_cost(&doc);
+        assert!(
+            (got_capped - want_capped).abs() < 1e-6,
+            "capped premium must bill {:.4} m² (12 x {k:.6}); got {got_capped}, want {want_capped}",
+            clipped * k
+        );
+        assert!(
+            (got_capped - want).abs() > 1.0,
+            "the cap must MOVE the premium — otherwise this axis measures nothing"
+        );
+    }
+
     /// Reference furniture contributes zero to the indicative fit-out.
     #[test]
     fn reference_furniture_free() {

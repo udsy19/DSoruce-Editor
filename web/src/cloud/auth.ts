@@ -58,6 +58,23 @@ export async function signOut(): Promise<void> {
   await client.auth.signOut()
 }
 
+/** Authorization header for OUR OWN api routes (`/api/claude`, `/api/agent`),
+ *  which spend money upstream and are gated by `deploy/apiCore.ts`'s guard.
+ *
+ *  Returns `{}` — not an error — when cloud is disabled or nobody is signed in,
+ *  preserving this module's contract that importing it never forces the flag on:
+ *  a local dev server with `API_AUTH=off` keeps working unchanged, and a
+ *  production server answers 401 rather than silently spending on an unknown
+ *  caller. Read fresh per call so a refreshed token is picked up; supabase-js
+ *  serves this from memory unless the token is due for renewal. */
+export async function authHeaders(): Promise<Record<string, string>> {
+  const client = getClient()
+  if (!client) return {}
+  const { data } = await client.auth.getSession()
+  const token = data.session?.access_token
+  return token ? { authorization: `Bearer ${token}` } : {}
+}
+
 /** Subscribe to sign-in/out transitions. Returns an unsubscribe fn (no-op when
  *  cloud is disabled) so React effects can clean up. */
 export function onAuthChange(cb: (user: CloudUser | null) => void): () => void {

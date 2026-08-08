@@ -1,4 +1,5 @@
 import type { Candidate, Program } from '../types/program'
+import { authHeaders } from '../cloud/auth'
 /**
  * Claude-in-the-loop soft-goal evaluator (the vision's "judge the aesthetic
  * goals a metric can't"). Takes the autonomous search's top-K candidates and
@@ -83,7 +84,7 @@ export async function evaluateCandidates(
   try {
     const resp = await fetch('/api/claude', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', ...(await authHeaders()) },
       body: JSON.stringify({
         system: SYSTEM_PROMPT,
         messages: [{ role: 'user', content: buildPrompt(candidates, program, summaries) }],
@@ -123,6 +124,17 @@ function buildPrompt(
       '',
       `Option ${String.fromCharCode(65 + (i % 26))} (${c.strategy} strategy, seed ${c.seed}): total ${s.total.toFixed(1)} — capacity ${s.capacity.toFixed(0)}, adjacency ${s.adjacency.toFixed(0)}, circulation ${s.circulation.toFixed(0)}, density ${s.density.toFixed(0)}; ${s.placed_desks} desks placed.`,
     )
+    // Say when the score is not a measurement. `total`, `density`, `adjacency`
+    // and the rest are all measured on the floor plate; when the core could not
+    // identify one (`plate_state "unresolved"`) they rest on a bounding-box
+    // stand-in. A model handed a bare number cannot tell that from a bad layout,
+    // and neither could this prompt — the core had no channel to say it until
+    // `LayoutScore.plate_state` existed.
+    if (c.score.plate_state === 'unresolved') {
+      lines.push(
+        '  NOTE: the floor plate for this option could not be identified from its walls, so every score above is derived from a bounding-box fallback rather than a measured floor. Weigh it accordingly.',
+      )
+    }
     const extra = summaries?.[c.seed]
     if (extra) lines.push(extra)
   })

@@ -50,6 +50,28 @@ CLI equivalent: `vercel` (link) then `vercel --prod`.
 | `LLM_BASE_URL` | `/api/agent` | No | `https://api.openai.com/v1` |
 | `LLM_MODEL` | `/api/agent` | No | `gpt-4o-mini` |
 | `BANK_UPSTREAM` | `/api/bank` | No | `https://46.202.179.28.sslip.io` |
+| `SUPABASE_URL` | guard | **Yes in prod** — identity for the spending routes | — |
+| `SUPABASE_ANON_KEY` | guard | **Yes in prod** | — |
+| `API_AUTH` | guard | No | `required` when Supabase is configured, else `off` |
+| `ALLOWED_ORIGINS` | guard | No (recommended) | — (no origin check when unset) |
+| `API_RATE_PER_MIN` | guard | No | `20` |
+| `API_RATE_BURST` | guard | No | `40` |
+
+### The guard on `/api/claude` and `/api/agent`
+
+These two routes forward to a metered upstream on **your** key, so both are gated by
+`apiCore.guard()`: origin allowlist → Supabase bearer token (verified against the project's own
+`/auth/v1/user`) → per-user rate limit. The client attaches the token via `cloud/auth.authHeaders()`.
+
+**It fails closed.** Once `SUPABASE_URL` + `SUPABASE_ANON_KEY` are set, auth is required unless you
+explicitly set `API_AUTH=off` — so forgetting to configure it protects the endpoint rather than
+exposing it. Never set `API_AUTH=off` on a public host; the process logs a warning if you do.
+
+**Two limits worth knowing.** The rate limiter is per-process, so on Vercel it is per-instance and
+resets on cold start — a speed bump, not a wall. And an origin header is trivially forged outside a
+browser, so `ALLOWED_ORIGINS` is defence in depth, never the gate. **Set a hard monthly spend cap in
+the Anthropic console as the real backstop** — it is the only control that does not depend on this
+code being correct.
 
 Never commit keys — set them in Vercel. (Local dev reads `web/.env.local`.)
 

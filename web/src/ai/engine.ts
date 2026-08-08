@@ -57,14 +57,22 @@ export function applyLive(ec: EditorCanvas, calls: ToolCall[]): string | null {
 interface Snap {
   m: Metrics
   circ: CirculationScore | null
-  /** The CORE's density verdict (0..100), not ours — see `Editor::density_score`. */
-  density: number
+  /**
+   * The CORE's density verdict (0..100), not ours — see `Editor::density_score`.
+   *
+   * `undefined` when the core could not measure the floor plate (`plate_state
+   * "unresolved"`: the walls close, but on no face holding this plan). It used
+   * to arrive as a confident `0` in that state and this panel printed it as
+   * "the layout scorer's density rating" — a plan indistinguishable from a
+   * genuinely crammed one. We do not warn about a number we do not have.
+   */
+  density: number | undefined
 }
 function read(ed: Editor): Snap {
   const m = ed.metrics() as Metrics
   const walls = (ed.state() as DocState).walls.length
   const circ = walls > 0 ? (ed.circulation() as CirculationScore) : null
-  return { m, circ, density: ed.density_score() as number }
+  return { m, circ, density: ed.density_score() as number | undefined }
 }
 
 /** Dry-run: clone → apply → read → diff. The live editor is never touched. */
@@ -153,7 +161,12 @@ function buildDiff(before: Snap, after: Snap): PreviewDiff {
   // edit pushed it out, and by how much is the engine's own number. This panel
   // reports that verdict — it does not hold a second opinion about what "too
   // dense" is (it used to, against the wrong quantity, in the engine's name).
-  if (after.density < 100 && after.density < before.density - 1e-6) {
+  if (
+    after.density !== undefined &&
+    before.density !== undefined &&
+    after.density < 100 &&
+    after.density < before.density - 1e-6
+  ) {
     consequences.push({
       severity: 'warn',
       text: `Density leaves the professional band — the layout scorer's density rating drops to ${Math.round(after.density)}/100 (was ${Math.round(before.density)}).`,

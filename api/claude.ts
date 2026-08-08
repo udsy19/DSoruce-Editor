@@ -14,6 +14,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
     res.status(405).json({})
     return
   }
-  const r = await claudeComplete(readJsonBody(req))
+  const r = await claudeComplete(readJsonBody(req), req.headers)
   res.status(r.status).json(r.json)
 }

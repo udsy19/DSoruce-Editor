@@ -16,6 +16,7 @@ import type { LayoutScore, ZoneStat } from '../types/metrics'
 import type { Program } from '../types/program'
 import { ADJUST_PROGRAM_TOOL, CORRIDOR_M } from './llmSchema'
 import { openaiToolsToAnthropic, parseClaudeContent, type ClaudeContentBlock } from './claudeDriver'
+import { authHeaders } from '../cloud/auth'
 
 /** A validated, clamped program adjustment Claude proposes. Every field is
  *  optional — only what it wants to change survives the clamp. */
@@ -192,7 +193,7 @@ export async function proposeAdjustment(input: RefineInput, signal?: AbortSignal
   try {
     const resp = await fetch('/api/claude', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', ...(await authHeaders()) },
       body: JSON.stringify({
         system: REFINE_SYSTEM,
         messages: [{ role: 'user', content: buildRefinePrompt(input) }],

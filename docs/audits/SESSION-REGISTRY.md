@@ -131,6 +131,40 @@ in real time, against the round convened to fix it.
 
 ---
 
+### `session-d` — merge continuation, increment 2b · **LIVE, OWNER OF THE MERGE**
+
+- **Branch:** `integration` (from `b9ec338`) · **Worktree:** the shared checkout
+- **Scope:** §2–§6 of `qbiq-parity-integration-increment-2b.md` — the core-file
+  integration, the test-delta collapse, the ledger interleave, A's inheritance.
+- **Ownership taken by declaration, on the same grounds `session-c` used** — and
+  recorded here in the same form, so the transfer is auditable rather than
+  ambient:
+  - `session-c` committed `b9ec338` at **19:21:59** and showed **no further
+    writes**. Measured at 19:32: no files modified in `/private/tmp/session-c`
+    within 60 minutes, no live processes under that path, the shared checkout
+    left **clean**.
+  - `b9ec338` touched **none** of the three files this session had open
+    (`lib.rs`, `zone.rs`, `metrics_tests.rs`) — verified by
+    `git show --stat b9ec338 -- <those paths>`, which returned empty. The
+    collision was one of **ownership, not of text**.
+  - The pre-flight was **re-measured, not inherited**: freshness rebuild
+    (`make wasm` + `gen-zone-domain.mjs`), battery **53/53 `--full`**, gates board
+    **13/13 ALL GATES GREEN** with the integrity snapshot, Rust **200**, both tags
+    resolving, both prior increments carrying `gpgsig`.
+- **R24 fired against this session too, and that is the point of recording it.**
+  This session began work before reading the registry — it could not have read
+  it, because the registry arrived *in* `b9ec338`, 45 minutes after the session
+  opened against `411b041`. That is not an excuse, it is the **gap in the
+  protocol**: R24 tells a session to read the registry first, and cannot tell it
+  to re-read a file that did not exist when it started. **A session holding a
+  branch for an extended run must re-check the registry before each commit, not
+  only at birth.** Recorded as the protocol's fourth firing.
+- **The independence cost is inherited, not discharged.** `session-c` forfeited
+  its adversary role by taking the merge and undertook to repay it by dispatching
+  a separate adversary for §6. **This session inherits that debt**: it is the
+  merge's author and therefore may not certify it. The §6 verdict comes from an
+  agent that did not perform the merge, or it is not written.
+
 ## Branch and tag map
 
 | ref | is | reachable forever |
@@ -139,7 +173,7 @@ in real time, against the round convened to fix it.
 | `premerge-line-b` | tag → `6e49ba3` | ✔ |
 | `qbiq-parity-endgame` | Line A's branch, left at `048d99e` | ✔ |
 | `qbiq-parity-endgame-session-b` | Line B's branch | ✔ |
-| `integration` | the merge, owned by `session-integration` | live |
+| `integration` | the merge — `session-integration` → `session-c` → `session-d`, each by declaration | live |
 | `qbiq-parity-endgame-session-c` | this audit line | live |
 | `rescue/parallel-session` | an earlier third party's uncommitted work, preserved | ✔ |
 

@@ -338,14 +338,28 @@ const ORDERING_ONLY = {
 //     F1 zone 244 "Open Workspace (2)"   8.0000 m²  1 pax  ->  5 pax
 //     F1 zone 245 "Open Workspace (3)"   3.6800 m²  0 pax  ->  2 pax
 //
-// — and, MEASURED IN THAT SAME WORKTREE, leaves `cargo test -p ds-core` at
-// **200 passed, 0 failed**. (The battery's 54/54 under the live defect is
-// inherited from the adversary round and is NOT re-measured here, because this
-// file is now in that battery and reds — the only honest form of the claim is
-// the Rust one.) Zone 245 is a second instance no report of the original defect
-// names, and F5 carries it too (17.9000 m² 2 -> 5, and 3.6800 m² 0 -> 2).
-// The Rust-side guard for this lives in `metrics_tests.rs`; this is the guard on
-// the published surfaces, which is where the number a client reads comes from.
+// — verbatim: re-run on the MERGED tree it reds 145/3755, exit 1, naming 244 and
+// 245 with their numbers on all five fixtures. Zone 245 is a second instance no
+// report of the original defect names, and F5 carries it too (17.9000 m² 2 -> 5,
+// and 3.6800 m² 0 -> 2).
+//
+// **THE "NOTHING GUARDED IT" HALF IS RETRACTED, AND THE RETRACTION IS THE
+// MERGE'S DOING (F6).** This block used to close: "leaves `cargo test -p ds-core`
+// at **200 passed, 0 failed**" — i.e. this file was the sole detector. Re-measured
+// on the merged tree under the identical sabotage: **200 passed, 5 FAILED** —
+//     metrics_tests::the_published_seat_count_reads_the_area_the_row_bills
+//     metrics_tests::every_conjunct_is_declared_graded_and_reached
+//     metrics_tests::metrics_can_never_be_impossible
+//     metrics_tests::every_fixture_reports_possible_metrics
+//     metrics_tests::retyping_every_zone_cannot_produce_an_impossible_efficiency
+// §2 brought a Rust-side guard for exactly this quantity (conjunct
+// `M26.capacity.is_the_seat_count_the_billed_area_supports`, graded GUARD), so
+// the two lines converged on one defect from opposite sides of the wasm boundary
+// and this gate is now the SECOND detector, not the only one. Both are kept: the
+// Rust conjunct grades the core's arithmetic, this grades the number that leaves
+// through `#[wasm_bindgen]` and reaches a client's hand, and neither subsumes the
+// other. The old sentence is left visible here rather than deleted, because "the
+// only thing that catches X" is precisely the kind of claim that rots silently.
 //
 // WHERE THE NUMBER GOES, and why no board catches it. `capacity` is not an
 // internal figure:
@@ -368,11 +382,18 @@ const ORDERING_ONLY = {
 // precisely because "it reaches the workbook" would be the easy thing to write.
 //
 // INDEPENDENCE (.claude/rules/gate-independence.md, R2). The expected seat count
-// is derived from the rate SPEC — the table and the arithmetic parsed out of
+// is derived from the rate SPEC — the table (`zone::m2_per_seat`) and the
+// arithmetic (`Zone::capacity_from_area`) parsed out of
 // `crates/ds-core/src/zone.rs` as text — and never by calling the function the
 // producer calls. The producer here is the compiled wasm; the sabotage above
 // changes which area that binary hands the rate table and changes nothing in the
 // source text this block reads, which is exactly why it reds.
+//
+// CORRECTION, recorded rather than quietly adapted to (F6). An earlier report of
+// this mission stated that **"`zone::m2_per_seat` does not exist in this tree"**.
+// That was TRUE WHEN WRITTEN and is FALSE NOW: §2 introduced it as the standalone
+// rate table, and it is `zone.rs:393` on this merge. The parse above was repointed
+// at it for that reason, not because the earlier report was mistaken.
 //
 // THE BLIND SPOT, stated rather than discovered later: one rate table, read by
 // the producer and by this gate. Change `Workspace => 6.0` to `5.0` and both
@@ -398,17 +419,44 @@ const ORDERING_ONLY = {
 // defect, not merely on a hypothetical. The sabotage round below broke each part
 // of the mechanism in turn, including the enabling ones, and reports its nulls.
 //
-//   the defect, both published call sites reverted  RED 145/3752, exit 1,
-//                                                   naming 244 and 245 with
-//                                                   their numbers on 5 fixtures
-//   `.max(0.0)` dropped from the Rust formula
-//     (rebuilt wasm; every VALUE identical, because
-//      areas are non-negative)                      RED 1/3752 — the formula pin
-//                                                   is the ONLY thing that sees
-//                                                   it, so it is load-bearing
-//   a ninth ZoneType with no rate                   RED 1/3752 (domain reconcile)
-//   `capacity_from_area` renamed                    THROWS — a missing input is a
+// **RE-RUN IN FULL ON THE MERGED TREE (F6)**, because §2 moved this gate's
+// subject and a sabotage table inherited across a refactor is a claim about the
+// previous release. Counts are /3755 here, not /3752: +2 are the linkage checks
+// the two-anchor split made necessary, +1 is `src/cloud/tenancy.ts`, a file the
+// merge added to the retired-name scan's population.
+//
+//   the defect, both published call sites reverted  RED 145/3755, exit 1,
+//     (rebuilt wasm in the disposable copy;           naming 244 and 245 with
+//      md5 0f8914b6 -> 2679f46b, verified)            their numbers on 5 fixtures
+//   `.max(0.0)` dropped from the Rust formula        RED 1/3755 — the formula pin
+//                                                   is STILL the only thing that
+//                                                   sees it after the refactor,
+//                                                   so it is load-bearing
+//   a ninth ZoneType with no rate                    RED 1/3755 (domain reconcile)
+//   `m2_per_seat` reads a DIFFERENT table from       RED 1/3755 (linkage) — new,
+//     the one `capacity_from_area` calls               and only reachable once the
+//                                                     spec lived in two items
+//   `None` stops meaning zero seats                  RED 1/3755 (linkage) — new
+//     (`else { return 0 }` -> `return 1 }`)
+//   `m2_per_seat` renamed                            THROWS — a missing input is a
 //                                                   failure, not an empty table
+//
+//   NULL, and it cost a fix: the FIRST run of the rename sabotage came back
+//   **3755/3755 GREEN**. `rustItemBody` anchored with `indexOf` on the bare name,
+//   so `m2_per_seat_RENAMED` still contained the anchor and the parse happily read
+//   the renamed function. The pre-§2 code had the same prefix hazard
+//   (`indexOf('pub fn capacity_from_area')`) and nothing had ever exercised it.
+//   Anchors now end in `(` and the helper refuses one that does not; re-run, the
+//   rename throws. A sabotage that comes back green is the most useful result in
+//   the table.
+//
+//   NULL, unresolved and NOT this file's to close: a "restore" that did not
+//   restore. `rsync -a` put the pristine `crates/` back with its ORIGINAL mtimes,
+//   older than the sabotage edit, so `wasm-pack` skipped the rebuild and the
+//   sabotaged binary survived a restore that reported success — 145 failures that
+//   would have been attributed to the next sabotage in line. Caught only by
+//   md5-ing the artifact. Any future round here must verify the RESTORE bit the
+//   same way it verifies the sabotage bit.
 //   the gate's `Chair` exclusion dropped            RED 235/3752
 //   the gate's furniture arm dropped entirely       RED 202/3752
 //   population narrowed to F1 unedited              RED 10/3752 — all six seat
@@ -446,6 +494,34 @@ const ORDERING_ONLY = {
 const zoneSrc = fs.readFileSync(path.join(ROOT, 'crates/ds-core/src/zone.rs'), 'utf8')
 const stripLineComments = (s) => s.replace(/\/\/[^\n]*/g, '')
 
+/** The source text of a Rust item, from its declaration line to the first line
+ *  that is exactly its closing brace at `indent`. A declaration that is not
+ *  there is a FAILURE — never an empty body, which would make every seat
+ *  assertion below vacuously true about a table with no rows.
+ *
+ *  **`decl` MUST END IN `(`, and the sabotage round is why.** The first draft
+ *  anchored on the bare name, inheriting the prefix-match the pre-§2 parse had
+ *  (`indexOf('pub fn capacity_from_area')`). Renaming `m2_per_seat` to
+ *  `m2_per_seat_RENAMED` then left the gate **3755/3755 GREEN**, because the new
+ *  name still CONTAINS the old one and the parse read the renamed function's
+ *  table as though nothing had moved. Measured, not reasoned about — the null
+ *  that produced this line. The open paren makes the anchor an identifier
+ *  boundary, so a rename is the throw the "missing input is a FAILURE" arm
+ *  promises. */
+const rustItemBody = (decl, indent) => {
+  if (!decl.endsWith('(')) throw new Error(`rustItemBody anchor \`${decl}\` must end in \`(\` or it prefix-matches a renamed item`)
+  const at = zoneSrc.indexOf(decl)
+  if (at < 0) {
+    throw new Error(
+      `zone.rs no longer declares \`${decl}\` — part of the rate spec this gate reads as text is gone, and a missing input is a failure`,
+    )
+  }
+  const close = `\n${' '.repeat(indent)}}\n`
+  const end = zoneSrc.indexOf(close, at)
+  if (end < 0) throw new Error(`could not find the end of \`${decl}\` in zone.rs`)
+  return stripLineComments(zoneSrc.slice(at, end))
+}
+
 /** The variant domain, from the ONE authoring point (`zone_domain!`). A ninth
  *  variant lands here, so the completeness check below cannot go stale. */
 const ZONE_DOMAIN = (() => {
@@ -457,18 +533,43 @@ const ZONE_DOMAIN = (() => {
   return new Set([...body.matchAll(/^\s*(\w+)\s*:\s*(?:ground|service|program)\s*,/gm)].map((m) => m[1]))
 })()
 
-/** The rate table + the zero arm + the arithmetic, from `capacity_from_area`. */
+/** The rate table + the seats-nobody arm + the arithmetic.
+ *
+ *  **TWO ANCHORS SINCE §2, and this gate's subject moved under it (F6).** When
+ *  this gate was written the table was inlined in `capacity_from_area`, and one
+ *  `indexOf('pub fn capacity_from_area')` reached the whole spec. §2 extracted
+ *  the table into a standalone `pub(crate) fn m2_per_seat(ZoneType) ->
+ *  Option<f64>`, leaving the method as a lookup plus the formula. The old parse
+ *  then found no arms and the gate DID THE RIGHT THING — it reported
+ *  `parsed no ZoneType::X => <rate> arms … the seat ground truth is about
+ *  nothing` and threw on the first published `ClosedOffice` row, rather than
+ *  grading 3752 checks against an empty table. That red is the
+ *  "a missing input is a FAILURE, never a skip" arm firing, and it is why this
+ *  repair is a repoint rather than a rewrite.
+ *
+ *  So: the TABLE and the seats-nobody set come from `m2_per_seat`; the
+ *  ARITHMETIC comes from `capacity_from_area`. Splitting the spec across two
+ *  items adds a third thing to check that did not exist before — the LINKAGE,
+ *  asserted below, because a gate reading a rate table the producer no longer
+ *  consults is measuring a dead file. */
 const RATE_SPEC = (() => {
-  const at = zoneSrc.indexOf('pub fn capacity_from_area')
-  if (at < 0) throw new Error('zone.rs no longer declares `pub fn capacity_from_area` — the rate spec this gate reads is gone, and a missing input is a failure')
-  const end = zoneSrc.indexOf('\n    }\n', at)
-  if (end < 0) throw new Error('could not find the end of `capacity_from_area` in zone.rs')
-  const body = stripLineComments(zoneSrc.slice(at, end))
+  // The TABLE — `m2_per_seat`, a free function at column 0.
+  const table = rustItemBody('pub(crate) fn m2_per_seat(', 0)
   const rate = new Map()
-  for (const m of body.matchAll(/ZoneType::(\w+)\s*=>\s*([0-9]+(?:\.[0-9]+)?)\s*,/g)) rate.set(m[1], Number(m[2]))
-  const zeroArm = body.match(/((?:ZoneType::\w+\s*\|\s*)+ZoneType::\w+|ZoneType::\w+)\s*=>\s*return\s+0\s*,/)
-  const seatsNobody = new Set(zeroArm ? [...zeroArm[1].matchAll(/ZoneType::(\w+)/g)].map((m) => m[1]) : [])
-  return { rate, seatsNobody, text: body.replace(/\s+/g, ' ').trim() }
+  for (const m of table.matchAll(/ZoneType::(\w+)\s*=>\s*([0-9]+(?:\.[0-9]+)?)\s*,/g)) rate.set(m[1], Number(m[2]))
+  // `None` IS the seats-nobody case — `m2_per_seat`'s doc comment says so in as
+  // many words ("`None` means the type seats nobody"). The old spelling of this
+  // same arm, when the table was inlined, was `=> return 0`.
+  const noneArm = table.match(/((?:ZoneType::\w+\s*\|\s*)+ZoneType::\w+|ZoneType::\w+)\s*=>\s*return\s+None\s*,/)
+  const seatsNobody = new Set(noneArm ? [...noneArm[1].matchAll(/ZoneType::(\w+)/g)].map((m) => m[1]) : [])
+  // The ARITHMETIC — a method at column 4 inside `impl Zone`.
+  const method = rustItemBody('pub fn capacity_from_area(', 4)
+  return {
+    rate,
+    seatsNobody,
+    table: table.replace(/\s+/g, ' ').trim(),
+    text: method.replace(/\s+/g, ' ').trim(),
+  }
 })()
 
 // The ARITHMETIC is half the spec. Pinning only the table would let `floor`
@@ -479,8 +580,23 @@ check(
   RATE_SPEC.text.includes(RATE_FORMULA),
   `zone.rs's capacity_from_area no longer ends in \`${RATE_FORMULA}\`. This gate recomputes that expression in JS as its ground truth; if the Rust arithmetic changed, the ground truth is stale and every seat assertion below is measuring the previous release.`,
 )
-check(RATE_SPEC.rate.size > 0, 'parsed no `ZoneType::X => <rate>` arms out of capacity_from_area — the seat ground truth is about nothing')
-check(RATE_SPEC.seatsNobody.size > 0, 'parsed no `=> return 0` arm out of capacity_from_area — the seats-nobody half of the spec is about nothing')
+// THE LINKAGE (new with the two-anchor split). The table above is ground truth
+// only while the method the producer calls is the method that reads it. If
+// `capacity_from_area` grew its own rates back, or reached a different table,
+// this gate would be grading the wrong file and every value would still agree
+// with itself. Both halves are pinned: WHICH table, and what `None` means.
+const RATE_OWNER = 'm2_per_seat(self.zone_type)'
+check(
+  RATE_SPEC.text.includes(RATE_OWNER),
+  `capacity_from_area no longer reads \`${RATE_OWNER}\`. The rate table this gate parses out of \`m2_per_seat\` is only ground truth while it is the table the producer consults; a method with its own rates would leave this gate grading a file nothing calls.`,
+)
+const RATE_NONE_IS_ZERO = 'else { return 0 }'
+check(
+  RATE_SPEC.text.includes(RATE_NONE_IS_ZERO),
+  `capacity_from_area no longer spells \`${RATE_NONE_IS_ZERO}\` for the \`None\` rate. \`seatsSupportedBy\` below encodes None -> 0 seats; if the Rust turned None into a default rate, or a panic, this gate's zero arm is a different rule from the producer's.`,
+)
+check(RATE_SPEC.rate.size > 0, 'parsed no `ZoneType::X => <rate>` arms out of m2_per_seat — the seat ground truth is about nothing')
+check(RATE_SPEC.seatsNobody.size > 0, 'parsed no `=> return None` arm out of m2_per_seat — the seats-nobody half of the spec is about nothing')
 {
   const both = [...RATE_SPEC.rate.keys()].filter((t) => RATE_SPEC.seatsNobody.has(t))
   check(both.length === 0, `these zone types were parsed into BOTH the rate table and the seats-nobody arm, so the parse is wrong: ${both.join(', ')}`)
@@ -489,7 +605,7 @@ check(RATE_SPEC.seatsNobody.size > 0, 'parsed no `=> return 0` arm out of capaci
   const extra = [...covered].filter((t) => !ZONE_DOMAIN.has(t))
   check(
     missing.length === 0 && extra.length === 0,
-    `the parsed rate spec and the zone_domain! variant list disagree.\n        in the domain, no rate: ${JSON.stringify(missing)}\n        rated, not in the domain: ${JSON.stringify(extra)}\n        A new ZoneType must be given a rate (or the zero arm) AND be visible to this parse.`,
+    `the parsed rate spec and the zone_domain! variant list disagree.\n        in the domain, no rate: ${JSON.stringify(missing)}\n        rated, not in the domain: ${JSON.stringify(extra)}\n        A new ZoneType must be given a rate in \`m2_per_seat\` (or joined its \`return None\` arm) AND be visible to this parse.`,
   )
   check(ZONE_DOMAIN.size >= 8, `zone_domain! parsed only ${ZONE_DOMAIN.size} variants — the parse has come loose from the file`)
 }

@@ -2,6 +2,7 @@ import type { AgentDriver, DriverContext, DriverResult, ToolCall } from './contr
 import type { Program } from '../types/program'
 import { OPENAI_TOOLS, buildSystem } from './llmSchema'
 import { evaluatorAvailable } from './evaluator'
+import { authHeaders } from '../cloud/auth'
 
 /**
  * Claude assistant driver. Speaks the Anthropic Messages API through the
@@ -78,7 +79,7 @@ export class ClaudeDriver implements AgentDriver {
   async interpret(text: string, ctx: DriverContext): Promise<DriverResult> {
     const resp = await fetch('/api/claude', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', ...(await authHeaders()) },
       body: JSON.stringify({
         system: buildSystem(ctx),
         messages: [...this.history.slice(-8), { role: 'user', content: text }],

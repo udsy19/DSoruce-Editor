@@ -90,6 +90,23 @@ run "tsc --noEmit" bash -c 'cd web && pnpm typecheck'
 while IFS= read -r t; do
   run "node ${t#web/src/}" node "$t"
 done < <(cd web && find src -name '*.test.mjs' | sed 's|^|web/|' | sort)
+
+# The glob above only reaches `web/src`. These three assert on the SERVER and
+# DATABASE halves — the API guard, the billing arithmetic, and the RLS policies —
+# and were invisible to it, which `scripts/gates/reconcile.mjs` correctly called
+# out: an asserting file nobody runs has never graded a commit. They run from
+# `web/` because that is where their esbuild/vite dependency resolves from.
+#
+# rls.test.mjs needs a reachable Postgres and SKIPs cleanly (exit 0) without one,
+# so a machine with no database does not turn the battery red for the wrong
+# reason — but a skip is not a pass. It prints SKIP; read it.
+run "node deploy/apiCore.test.mjs (API guard + LLM gateway)" \
+  bash -c 'cd web && node ../deploy/apiCore.test.mjs'
+run "node deploy/llmPricing.test.mjs (billing arithmetic)" \
+  bash -c 'cd web && node ../deploy/llmPricing.test.mjs'
+run "node supabase/tests/rls.test.mjs (tenancy policies)" \
+  bash -c 'node supabase/tests/rls.test.mjs'
+
 run "deadspace (core-derived)" node scripts/gates/deadspace-core.mjs --max-dead 0.10
 run "style-gate" node bench/style-gate.mjs
 run "accent-univalence" node bench/accent-univalence.mjs

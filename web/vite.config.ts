@@ -6,6 +6,7 @@ import path from 'node:path'
 import { promises as fs } from 'node:fs'
 import { OPENAI_TOOLS, buildSystem } from './src/ai/llmSchema'
 import { dwgConvertPlugin } from './src/import/dwgConvert'
+import { guard } from '../deploy/apiCore'
 import { handleShareApi, sharePageId } from '../deploy/shareStore'
 import { handlePackApi } from '../deploy/packStore'
 
@@ -39,6 +40,15 @@ function agentProxy(): Plugin {
           res.end('{}')
           return
         }
+        // LOCKSTEP with deploy/apiCore.ts: the same guard, not a copy of it.
+        // Inert in normal local dev (no SUPABASE_URL -> API_AUTH defaults off);
+        // set SUPABASE_URL + SUPABASE_ANON_KEY to exercise the real gate here.
+        const gate = await guard(req.headers)
+        if (!gate.ok) {
+          res.statusCode = gate.deny.status
+          res.end(JSON.stringify(gate.deny.json))
+          return
+        }
         if (!configured) {
           res.statusCode = 503
           res.end(JSON.stringify({ error: 'No LLM endpoint configured' }))
@@ -46,6 +56,16 @@ function agentProxy(): Plugin {
         }
         try {
           const body = await readJson(req)
+          // LOCKSTEP with deploy/apiCore.ts `agentComplete`: buildSystem
+          // dereferences context.zones/.program, so a malformed body threw a
+          // TypeError and surfaced as a 500. Validate at the boundary here too,
+          // or dev and prod disagree about what a bad request looks like.
+          const ctx = body.context
+          if (!ctx || !Array.isArray(ctx.zones) || !ctx.program) {
+            res.statusCode = 400
+            res.end(JSON.stringify({ error: 'context.zones (array) and context.program are required' }))
+            return
+          }
           const messages = [
             { role: 'system', content: buildSystem(body.context) },
             ...(Array.isArray(body.history) ? body.history : []),
@@ -103,6 +123,15 @@ function claudeProxy(): Plugin {
         if (req.method !== 'POST') {
           res.statusCode = 405
           res.end('{}')
+          return
+        }
+        // LOCKSTEP with deploy/apiCore.ts: the same guard, not a copy of it.
+        // Inert in normal local dev (no SUPABASE_URL -> API_AUTH defaults off);
+        // set SUPABASE_URL + SUPABASE_ANON_KEY to exercise the real gate here.
+        const gate = await guard(req.headers)
+        if (!gate.ok) {
+          res.statusCode = gate.deny.status
+          res.end(JSON.stringify(gate.deny.json))
           return
         }
         if (!apiKey) {
