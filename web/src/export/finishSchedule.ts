@@ -49,6 +49,7 @@ import {
 } from './sheet'
 import type { SheetSetMeta } from './sheetSet'
 import type { DocState, DocZone } from '../types/doc'
+import { publishedAreaText } from '../util/publishedArea'
 import type { ZoneAreas } from '../types/metrics'
 import { roomDisplayNames } from './roomNaming'
 import { CEILING_HEIGHT } from './services'
@@ -318,11 +319,14 @@ function scheduleRows(state: DocState, zoneAreas: ZoneAreas): Row[] {
       type: roomTypeLabel(z),
       spec: FINISH_SPEC[key],
       ceilHt: `${CEILING_HEIGHT.toFixed(2)} m`,
-      // A zone with no core row prints `NaN`, deliberately. `0.0` is a
-      // plausible-looking number that ships; `NaN` is not, and this column is
-      // read back and compared against the workbook by
-      // `scripts/gates/area-identity.mjs` either way.
-      area: (zoneAreas.get(z.id) ?? NaN).toFixed(1),
+      // **THROWS on a zone the core never measured** — Line A's discipline,
+      // which replaces Line B's `NaN`. `NaN` was better than `0.0` (it cannot
+      // ship unnoticed) but it is still a value travelling down a path that
+      // should not exist: a zone with no core row is a plumbing bug in the
+      // CALLER, and the caller is where it should stop. One rounding rule too —
+      // `publishedAreaText` is the only `toFixed` for an area, so the schedule
+      // and the plan label cannot disagree in the last digit.
+      area: publishedAreaText(zoneAreas, z.id),
     }
   })
 }

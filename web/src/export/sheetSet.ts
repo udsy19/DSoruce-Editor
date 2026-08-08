@@ -29,6 +29,7 @@ import type { ReportMeta } from './report'
 import { buildTakeoffModel } from './takeoff'
 import type { TakeoffFurnitureRow, TakeoffSummaryRow } from './takeoff'
 import type { DocState, DocComponent, DocZone } from '../types/doc'
+import { publishedAreaText } from '../util/publishedArea'
 import type { ZoneAreas } from '../types/metrics'
 import { zoneBBox, zoneCenter as zoneShapeCenter } from '../util/zoneGeom'
 import type { Drawing } from '../import/types'
@@ -828,7 +829,11 @@ export function zoneBoxOnSheet(
  *  dimension strings and leaves holding the names, so the opening-tag pass that
  *  follows on A.02 sees both. `ink` is where the type goes: A.02 queues it so
  *  that every tag knockout is painted before any name (see {@link InkSink}). */
-function roomLabels(
+// Exported so Line A's `publishedArea.test.mjs` can drive it directly and read
+// the AREA STRINGS IT ACTUALLY DREW — the value, not a proxy for it (R20). Its
+// peers on this module (`placeNear`, `openingSchedule`, `labelLeader`) are
+// exported for the same reason.
+export function roomLabels(
   p: Page,
   state: DocState,
   map: (x: number, y: number) => { x: number; y: number },
@@ -849,10 +854,11 @@ function roomLabels(
     const c = zoneCenter(z.shape)
     const pt = map(c.x, c.y)
     const name = (names.get(z.id) ?? (z.label || `ROOM ${String(n).padStart(2, '0')}`)).toUpperCase()
-    // The core's number or nothing: a label with no area still names the room,
-    // whereas a label carrying a raw shape extent is a wrong fact on a sheet.
-    const coreArea = zoneAreas.get(z.id)
-    const area = coreArea === undefined ? '' : `${coreArea.toFixed(1)} m²`
+    // Line A's throw replaces Line B's silent-empty. B reasoned that a label
+    // with no area still names the room — true, but it makes a missing core row
+    // INVISIBLE, and the whole class this mission chases is the wrong number
+    // that nobody reads. Same single rounding rule as the schedule.
+    const area = `${publishedAreaText(zoneAreas, z.id)} m²`
     const areaW = textWidth(area, 7.5)
     // The same fit ladder the services sheets use (`roomLabelForms`): try every
     // position for the full name first, and only then a smaller / wrapped /
