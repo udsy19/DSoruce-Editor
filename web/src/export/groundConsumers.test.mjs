@@ -153,39 +153,65 @@ ok(
 )
 
 // ---------------------------------------------------------------------------
-// A synthetic document: one 4x4 m zone per ZoneType, laid in a row, each with
-// one Desk at its centre. Pure data — no generator involvement, so the
-// population under test is exactly the type space and nothing else.
+// A synthetic document: one zone per ZoneType, laid in a row.
+//
+// **THE SYMMETRY IS BROKEN ON PURPOSE — every zone has a DISTINCT area and a
+// DISTINCT desk count.** This fixture used to give every zone 16 m² and exactly
+// one desk, and that uniformity silently downgraded three assertions below from
+// membership tests to CARDINALITY tests: with all areas equal, `shared` is
+// `|sharedTypes| x 16` and cannot say WHICH types were summed, so swapping
+// `Core` for `Amenity` in the consumer's mix set PASSED. With one desk per zone
+// the same was true of privacy — swapping `Workspace` for `Meeting` in the open
+// set PASSED. A fixture whose members are interchangeable cannot distinguish a
+// set from its size, however carefully the assertion is written.
+//
+//   zone i : 4 m wide x (2 + i) m tall  -> areas 8, 12, 16, 20 ... all distinct
+//   zone i : (i + 1) desks              -> desk weights 1, 2, 3, 4 ... all distinct
+//
+// Both sequences are strictly increasing, so no subset of them sums to the same
+// number as a different subset of the same size — which is precisely the
+// property that lets the assertions below name a MEMBER rather than a count.
+// The non-degeneracy is asserted, not assumed (see the two checks after this
+// block): a future edit that flattens the areas again must be a red, not a
+// silent return to measuring nothing.
 // ---------------------------------------------------------------------------
 
 const ZONE_W = 4
+const zoneH = (i) => 2 + i
+const deskCount = (i) => i + 1
+const syntheticAreaOf = (i) => ZONE_W * zoneH(i)
 const zones = ALL_TYPES.map((t, i) => ({
   id: 100 + i,
   zone_type: t,
   label: `Zone ${t}`,
-  shape: { kind: 'Rect', x: i * ZONE_W + ZONE_W / 2, y: ZONE_W / 2, w: ZONE_W, h: ZONE_W },
+  shape: { kind: 'Rect', x: i * ZONE_W + ZONE_W / 2, y: zoneH(i) / 2, w: ZONE_W, h: zoneH(i) },
   component_ids: [],
   origin: 'Drawn',
 }))
-const components = ALL_TYPES.map((t, i) => ({
-  id: 200 + i,
-  category: 'Desk',
-  x: i * ZONE_W + ZONE_W / 2,
-  y: ZONE_W / 2,
-  w: 1.4,
-  h: 0.7,
-  rotation: 0,
-  seats: 1,
-  decision: 'Open',
-  reference: false,
-  label: 'Desk',
-  mirror: false,
-  price_inr: null,
-  product_id: null,
-}))
+// (i + 1) desks in zone i, stacked near its bottom edge so every one of them
+// falls inside even the shortest zone (2 m tall, one desk).
+const components = ALL_TYPES.flatMap((t, i) =>
+  Array.from({ length: deskCount(i) }, (_, k) => ({
+    id: 200 + i * 100 + k,
+    category: 'Desk',
+    x: i * ZONE_W + ZONE_W / 2,
+    y: 0.4 + k * 0.15,
+    w: 1.4,
+    h: 0.7,
+    rotation: 0,
+    seats: 1,
+    decision: 'Open',
+    reference: false,
+    label: 'Desk',
+    mirror: false,
+    price_inr: null,
+    product_id: null,
+  })),
+)
 const W = ALL_TYPES.length * ZONE_W
+const H = Math.max(...ALL_TYPES.map((_, i) => zoneH(i)))
 const walls = [
-  [[0, 0], [W, 0]], [[W, 0], [W, ZONE_W]], [[W, ZONE_W], [0, ZONE_W]], [[0, ZONE_W], [0, 0]],
+  [[0, 0], [W, 0]], [[W, 0], [W, H]], [[W, H], [0, H]], [[0, H], [0, 0]],
 ].map(([a, b], i) => ({
   id: 300 + i,
   a: { x: a[0], y: a[1] },
@@ -196,6 +222,24 @@ const walls = [
   height_m: null,
 }))
 const state = { zones, components, walls, keepouts: [], entries: [], anchors: [], selection: null, next_id: 999 }
+
+// THE SYMMETRY BREAK IS ITSELF CHECKED. Every assertion below that names a
+// member rather than a count depends on these two being true; if a later edit
+// flattens the fixture, these reds say so instead of the membership checks
+// quietly degrading into cardinality checks again — which is exactly how the
+// previous version passed while measuring nothing.
+ok(
+  'the fixture gives every zone a DISTINCT area (membership is separable from cardinality)',
+  new Set(ALL_TYPES.map((_, i) => syntheticAreaOf(i))).size === ALL_TYPES.length,
+  `areas ${JSON.stringify(ALL_TYPES.map((_, i) => syntheticAreaOf(i)))} contain a duplicate — ` +
+    'two interchangeable zones make an area sum unable to name which types it summed',
+)
+ok(
+  'the fixture gives every zone a DISTINCT desk count',
+  new Set(ALL_TYPES.map((_, i) => deskCount(i))).size === ALL_TYPES.length,
+  `desk counts ${JSON.stringify(ALL_TYPES.map((_, i) => deskCount(i)))} contain a duplicate — ` +
+    'equal weights make a desk ratio unable to name which zones were open',
+)
 
 // ---------------------------------------------------------------------------
 // 1. planGraphic.planRoomList — a GROUND zone is never a schedulable room
@@ -234,6 +278,28 @@ for (const t of ALL_TYPES) {
   }
 }
 
+// THE MISSING UPPER BOUND. Everything above is one-sided: it asserts ground
+// types are ABSENT and never that anything is PRESENT, so a consumer that
+// scheduled no rooms at all — or widened `NON_ROOM_ZONES` to swallow real room
+// types — satisfied every check. Measured on the previous version: widening
+// `NON_ROOM_ZONES` by two genuine room types took the room list 6 -> 4 and
+// PASSED. A set is pinned by both of its sides or by neither.
+//
+// `planGraphic` excludes GROUND + `Core` (a WC or riser is a real room but is
+// not scheduled here), so the complement — every other published type — must
+// appear. Derived from the core's fold, not spelled out, so it follows the
+// domain.
+for (const t of ALL_TYPES) {
+  if (!GROUND.has(t) && t !== 'Core') {
+    ok(
+      `planRoomList INCLUDES non-ground room type '${t}'`,
+      listed.has(t),
+      `'${t}' is neither ground nor Core yet no row names it — the consumer is excluding ` +
+        'more than the fold, which the ground-only assertions above cannot see',
+    )
+  }
+}
+
 // ---------------------------------------------------------------------------
 // 2. kpis — ground is OPEN (privacy) and ground area is SHARED (space mix)
 // ---------------------------------------------------------------------------
@@ -260,31 +326,52 @@ for (const c of components) ed.add_component(c.category, c.x, c.y, c.w, c.h)
 const snapshot = ed.snapshot()
 const kpis = computeAltKpis({ id: 'gc', name: 'ground-consumers', snapshot })
 
-// The space mix's `shared` bucket is GROUND + Core. Every ground zone here is
-// 16 m², so shared must be at least the ground zones' area — read as a VALUE.
-// EQUALITY, not `>=`. The first version of this asserted `shared >= groundArea`
-// and would NOT have redded on the very sabotage it exists to catch: narrowing
-// the mix set to Circulation-only takes shared 48 -> 32 m², still >= the 32 m² of
-// ground. A bound that the defect satisfies is not a check — R19's demonstration
-// standard applied to my own assertion.
+// The space mix's `shared` bucket is GROUND + Core, read as a VALUE.
+//
+// EQUALITY, not `>=`. The first version asserted `shared >= groundArea` and would
+// NOT have redded on the sabotage it exists to catch: narrowing the mix set to
+// Circulation-only takes shared 48 -> 32 m², still >= the 32 m² of ground. A
+// bound the defect satisfies is not a check.
+//
+// **AND EQUALITY WAS STILL NOT ENOUGH.** `wantShared` was `sharedTypes.size x 16`
+// — with a uniform fixture, the size of the set and not its members. Swapping
+// `Core` for `Amenity` in the consumer's mix leaves the count at 3 and the
+// product at 48 m², and the assertion PASSED on a mix that had stopped billing
+// Core. The expectation is now the SUM OF THE PARTICULAR ZONES' AREAS, which
+// with the areas all distinct is unique to that exact membership.
 const sharedTypes = new Set([...GROUND, 'Core'])
-const wantShared = sharedTypes.size * ZONE_W * ZONE_W
+const wantShared = ALL_TYPES.reduce((s, t, i) => (sharedTypes.has(t) ? s + syntheticAreaOf(i) : s), 0)
 ok(
-  'kpis.spaceMix.shared is exactly the GROUND + Core area',
+  'kpis.spaceMix.shared is exactly the area of the GROUND + Core zones (by membership)',
   Math.abs((kpis.spaceMix?.shared ?? 0) - wantShared) < 1e-6,
-  `shared ${kpis.spaceMix?.shared?.toFixed(2)} m², expected ${wantShared.toFixed(2)} m² ` +
-    `for {${[...sharedTypes].join(',')}} — the mix no longer follows the fold`,
+  `shared ${kpis.spaceMix?.shared?.toFixed(2)} m², expected ${wantShared.toFixed(2)} m² for ` +
+    `{${[...sharedTypes].join(',')}} = ${ALL_TYPES.filter((t) => sharedTypes.has(t)).map((t) => `${t}:${syntheticAreaOf(ALL_TYPES.indexOf(t))}`).join(' + ')}` +
+    ' — the mix is summing a different set of types',
 )
 
-// Privacy: a desk standing in a GROUND zone is open-plan, never private. With
-// one desk per type, privacy% can never exceed the non-open share.
+// Privacy: a desk standing in a GROUND zone is open-plan, never private.
+//
+// This was a BOUND over a uniform population — `privacy <= (|types| - |open|) /
+// |types|` — which is the open set's SIZE and not its members. Swapping
+// `Workspace` for `Meeting` in the consumer's open set holds the size at 3, so
+// the ceiling never moved and the assertion PASSED while privacy was being
+// computed over the wrong rooms.
+//
+// With (i + 1) desks in zone i the desks are weighted, so the ratio is unique to
+// the exact set of zones the consumer treated as open — and the assertion is an
+// EQUALITY against that ratio. The expectation is derived from the property
+// (ground is open-plan, and so is the open workspace floor), never read from the
+// consumer's own set.
 const openTypes = new Set([...GROUND, 'Workspace'])
-const maxPrivatePct = ((ALL_TYPES.length - openTypes.size) / ALL_TYPES.length) * 100
+const totalDesks = ALL_TYPES.reduce((s, _t, i) => s + deskCount(i), 0)
+const enclosedDesks = ALL_TYPES.reduce((s, t, i) => (openTypes.has(t) ? s : s + deskCount(i)), 0)
+const wantPrivacyPct = (enclosedDesks / totalDesks) * 100
 ok(
-  'kpis.privacyPct counts desks in GROUND zones as OPEN',
-  (kpis.privacyPct ?? 0) <= maxPrivatePct + 1e-6,
-  `privacy ${kpis.privacyPct?.toFixed(1)}% > ${maxPrivatePct.toFixed(1)}% — ` +
-    'a desk standing on ground was counted as enclosed',
+  'kpis.privacyPct is exactly the desk-weighted share outside the OPEN set (by membership)',
+  Math.abs((kpis.privacyPct ?? 0) - wantPrivacyPct) < 1e-6,
+  `privacy ${kpis.privacyPct?.toFixed(3)}%, expected ${wantPrivacyPct.toFixed(3)}% ` +
+    `(${enclosedDesks}/${totalDesks} desks outside {${[...openTypes].join(',')}}) — ` +
+    'the consumer is treating a different set of zones as open-plan',
 )
 
 // ---------------------------------------------------------------------------

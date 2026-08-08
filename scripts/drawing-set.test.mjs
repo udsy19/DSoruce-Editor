@@ -105,6 +105,12 @@ const WHY_SHEET = (() => {
   return m
 })()
 const DUMP = process.argv.includes('--dump') ? process.argv[process.argv.indexOf('--dump') + 1] : null
+/** `--manifest <path>` — write the sorted list of every check this run ran.
+ *  SG5 diffs it against the committed pin, so a check that disappears is named
+ *  rather than merely subtracted. */
+const MANIFEST_OUT = process.argv.includes('--manifest')
+  ? process.argv[process.argv.indexOf('--manifest') + 1]
+  : null
 
 // A3 landscape sheet geometry — pdf.ts PAGE_W/PAGE_H, sheet.ts MARGIN/RES/
 // TITLE_BLOCK_H, sheetSet.ts PANEL_W/planBox(). Re-stated here on purpose (see
@@ -381,10 +387,33 @@ let checks = 0
 /** Recorded, not thrown — see the header. One red check may not silence the
  *  cases that come after it. */
 const failures = []
-const ok = (cond, msg) => {
+
+/** EVERY CHECK IS NAMED, and the names are the pin (R23).
+ *
+ *  SG5 used to pin this file's check COUNT. A count cannot tell a check that
+ *  vanished from a check that was added somewhere else, so three separate loss
+ *  events — 27 named checks in total — went by masked behind larger increases,
+ *  and the pin stayed green through all of them. `manifest` is the list SG5
+ *  compares by MEMBERSHIP; `--manifest <path>` writes it.
+ *
+ *  Names are authored at the call site, never inferred from the failure message.
+ *  A regex over messages was the alternative and it is the weaker instrument:
+ *  messages embed counts, coordinates and md5s, so the normalisation rule
+ *  becomes a second thing that can drift, and a check whose message is reworded
+ *  reads as one check retired and another born. */
+const manifest = []
+const ok = (checkName, cond, msg) => {
   checks++
+  manifest.push(checkName)
   if (!cond) failures.push(msg)
   return cond
+}
+/** A check with no assertion of its own — the digest fast path and the
+ *  case-level catch both increment the counter. They are members of the
+ *  manifest like any other; an unnamed member is exactly the hole R23 closes. */
+const tally = (checkName) => {
+  checks++
+  manifest.push(checkName)
 }
 
 /**
@@ -425,6 +454,13 @@ function displayGroups(zones) {
  * Nothing here is read from the producer: the room set + geometry come from the
  * core state, the label positions from the PDF bytes.
  */
+/** Disambiguates a check name when one display name covers several zones.
+ *  `displayGroups` re-numbers shared base names so every group has exactly one
+ *  member, and a group of two would itself be the duplicate-name defect — but
+ *  the manifest must stay injective even on the day that invariant breaks, or a
+ *  loss and a gain would cancel inside one name. */
+const suffix = (group, z) => (group.length > 1 ? `#${z.id}` : '')
+
 function checkRoomLabels(caseName, sheetNo, page, state, map) {
   // GROUND IS ONE CLASS, AND THIS FILE HELD THE LAST HAND-WRITTEN COPY.
   //
@@ -461,6 +497,7 @@ function checkRoomLabels(caseName, sheetNo, page, state, map) {
   for (const [name, group] of byName) {
     const hits = page.ops.text.filter((t) => t.str.toUpperCase() === name && t.size === 8 && t.font === 'F2')
     ok(
+      `rooms/${caseName}/${sheetNo}/${name}/drawn-once`,
       hits.length === group.length,
       `${where}: '${name}' is drawn ${hits.length}x for ${group.length} zone(s) — ` +
         'the sheet and the model do not name the same set of rooms',
@@ -494,7 +531,8 @@ function checkRoomLabels(caseName, sheetNo, page, state, map) {
     const area = page.ops.text.find(
       (a) => a.size === 7.5 && Math.abs(a.y - (cy + 7)) < 0.05 && Math.abs(a.x + textWidth(a.str, 7.5) / 2 - cx) < 0.05,
     )
-    ok(area != null, `${where}: room '${name}' has a name but no area line under it`)
+    ok(`rooms/${caseName}/${sheetNo}/${name}${suffix(group, z)}/area-line`, area != null,
+      `${where}: room '${name}' has a name but no area line under it`)
     const w = Math.max(nameW, area ? textWidth(area.str, 7.5) : 0) + 4
     const label = { x: cx - w / 2, y: cy - 13, w, h: 26 }
 
@@ -520,6 +558,7 @@ function checkRoomLabels(caseName, sheetNo, page, state, map) {
     })
     if (lead) led.push(name)
     ok(
+      `rooms/${caseName}/${sheetNo}/${name}${suffix(group, z)}/leader`,
       lead != null || gap < 6,
       `${where}: room '${name}' label clears its own footprint by ${gap.toFixed(1)} pt with no leader ` +
         'line back to it — a label that sits off every room it could name is unattributable',
@@ -550,7 +589,7 @@ for (const name of CASES) {
   } catch (err) {
     // A structural throw (a malformed PDF, an unparsed content op) is this
     // case's failure and nobody else's — the remaining cases still get graded.
-    checks++
+    tally(`case-threw/${name}`)
     failures.push(`${name}: ${err.message}`)
   }
 }
@@ -569,6 +608,7 @@ async function runCase(name) {
   //    the document's own opening count calls for.
   const cont = pages.length - BASE_SHEETS
   ok(
+    `structure/${name}/sheet-count-not-short`,
     cont >= 0,
     `${name}: the set has ${pages.length} sheets and ${BASE_SHEETS} are unconditional — a short set means a ` +
       'sheet builder threw and was swallowed by its try-wrapper (classically the two section sheets, with no GL context)',
@@ -576,7 +616,8 @@ async function runCase(name) {
   const allText = pages.flatMap((p) => p.ops.text.map((t) => t.str))
   for (const [title, want] of SHEET_TITLES) {
     const n = allText.filter((s) => s === title).length
-    ok(n === want, `${name}: sheet banner '${title}' appears ${n}x across the set, expected ${want}`)
+    ok(`structure/${name}/banner/${title}`, n === want,
+      `${name}: sheet banner '${title}' appears ${n}x across the set, expected ${want}`)
   }
   // Every page past the unconditional set is a continuation sheet, and they are
   // the LAST pages — so a set that dropped a sheet and grew a continuation one
@@ -585,6 +626,7 @@ async function runCase(name) {
     .map((p, i) => (p.ops.text.some((t) => t.str === CONT_TITLE) ? i : -1))
     .filter((i) => i >= 0)
   ok(
+    `structure/${name}/continuation-banners`,
     contBanners.length === Math.max(0, cont) && contBanners.every((i) => i >= BASE_SHEETS),
     `${name}: ${contBanners.length} sheet(s) carry '${CONT_TITLE}' (at ${contBanners.map((i) => i + 1).join(',') || 'nowhere'}) ` +
       `for ${cont} page(s) past the ${BASE_SHEETS} unconditional sheets`,
@@ -593,6 +635,7 @@ async function runCase(name) {
   // 2. determinism — an independent second render, byte for byte
   const twin = await renderSheetSet(name)
   ok(
+    `determinism/${name}/byte-identical`,
     Buffer.compare(pdf, twin.pdf) === 0,
     `${name}: two independent renders of the same document differ (${pdf.length} vs ${twin.pdf.length} B) — ` +
       'the drawing set is not deterministic',
@@ -613,8 +656,9 @@ async function runCase(name) {
   //    next case being rendered at all (D-F).
   if (!UPDATE) {
     const want = recorded.cases[name]
-    if (!ok(want != null, `${name}: no recorded baseline for this case`)) return
+    if (!ok(`baseline/${name}/case-present`, want != null, `${name}: no recorded baseline for this case`)) return
     ok(
+      `baseline/${name}/sheet-count`,
       want.sheets.length === digest.length,
       `${name}: baseline has ${want.sheets.length} sheets, this render has ${digest.length}`,
     )
@@ -624,21 +668,24 @@ async function runCase(name) {
     // side, so a bare `--update` that dropped the reasons is red on the next
     // run rather than quietly authoritative.
     ok(
+      `baseline/${name}/why-attribution`,
       want.sheets.every((w) => typeof w.why === 'string' && w.why.trim().length >= 12),
       `${name}: ${want.sheets.filter((w) => !w?.why).length} baseline sheet row(s) carry no attribution — ` +
         're-record with --why "<what moved the ink>"',
     )
     for (const d of digest) {
       const w = want.sheets[d.sheet - 1]
-      if (!ok(w != null, `${name} sheet ${d.sheet}: the baseline has no row for this sheet`)) continue
+      if (!ok(`baseline/${name}/sheet-${d.sheet}/row-present`, w != null,
+        `${name} sheet ${d.sheet}: the baseline has no row for this sheet`)) continue
       if (w.md5 === d.md5) {
-        checks++
+        tally(`baseline/${name}/sheet-${d.sheet}/digest`)
         continue
       }
       const dump = path.join(REPO, `out/drawing-set.${name}.sheet${d.sheet}.txt`)
       fs.mkdirSync(path.dirname(dump), { recursive: true })
       fs.writeFileSync(dump, d.rows.join('\n'))
       ok(
+        `baseline/${name}/sheet-${d.sheet}/digest`,
         false,
         `${name} sheet ${d.sheet}: content digest changed\n` +
           `    was  ${w.md5}  (${w.text} text / ${w.line} line / ${w.rect} rect / ${w.image} image ops)\n` +
@@ -648,6 +695,20 @@ async function runCase(name) {
       )
     }
   }
+}
+
+// THE MANIFEST IS WRITTEN WHATEVER THE COLOUR. A red run's coverage is still
+// coverage, and a gate that could only read the manifest of a green run would be
+// blind exactly when a check vanished alongside a failure.
+if (MANIFEST_OUT) {
+  const dup = manifest.filter((n, i) => manifest.indexOf(n) !== i)
+  if (dup.length > 0) {
+    console.error(`REFUSED: ${dup.length} duplicate check name(s), e.g. ${dup.slice(0, 3).join(', ')}.`)
+    console.error('  A manifest with a repeated name cannot distinguish a loss from a gain.')
+    process.exit(2)
+  }
+  fs.mkdirSync(path.dirname(path.resolve(MANIFEST_OUT)), { recursive: true })
+  fs.writeFileSync(MANIFEST_OUT, [...manifest].sort().join('\n') + '\n')
 }
 
 if (UPDATE) {
