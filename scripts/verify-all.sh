@@ -4,9 +4,11 @@
 #   bash scripts/verify-all.sh              # staged-aware: Rust suite only if Rust changed
 #   bash scripts/verify-all.sh --full       # always run everything
 #
-# A skipped step is COUNTED and NAMED (see `skip()` below). Quote a floor number
-# only from `--full`; `48/49, 1 skipped` is not the same measurement as `49/49`.
-#   VERIFY_SELFTEST=1 bash scripts/verify-all.sh   # append a deliberately failing step
+# A skipped step is COUNTED and NAMED — whether THIS FILE declined to run it
+# (`skip()`) or the step itself ran and measured nothing (`run()`'s skip
+# detection). Quote a floor number only from `--full`; `48/49, 1 skipped` is not
+# the same measurement as `49/49`.
+#   VERIFY_SELFTEST=1 bash scripts/verify-all.sh   # append the lying fixtures
 #
 # WHY THIS EXISTS. Twice in one working session a commit landed on a red signal —
 # once a red style gate, once a red Rust suite. Same cause both times: the
@@ -30,10 +32,80 @@ FULL=0
 [ "${1:-}" = "--full" ] && FULL=1
 
 declare -a NAMES=() CODES=() SKIPPED=()
+
+# A STEP THAT EXITS 0 WITHOUT MEASURING IS NOT GREEN.
+#
+# The `skip()` facility below fixed R8 for the steps THIS FILE decides not to
+# run. It could not see the other half: a step that runs, discovers its subject
+# is absent, prints a skip notice and exits 0. `run()` captured its stdout and
+# printed it only on failure, so the notice never reached the log, `SKIPPED[]`
+# stayed empty, and the board printed a silent `62/62`.
+#
+# MEASURED at 1e12952: `supabase/tests/rls.test.mjs` — the ONLY instrument for
+# the entire RLS authorization model, 50 checks with a database — printed
+# `SKIP: no reachable Postgres`, exited 0, and was tallied ✓. The comment beside
+# its `run` line said "It prints SKIP; read it", and the runner it lived in
+# discarded the string. It has never graded a commit on this machine.
+#
+# So the reading is removed from this loop too. Two detectors, because neither
+# alone is sufficient:
+#
+#   EXIT 77 — the canonical protocol going forward (autotools' skip code). A
+#             step that cannot measure exits 77. Unambiguous, not text.
+#   A DECLARED SKIP ON STDOUT — an exit-0 step whose own output opens a line
+#             with uppercase `SKIP`. This is the existing repo convention (12
+#             sites print `SKIP: <reason>`), so codifying it converts every one
+#             of them without editing a single test file — which is the point:
+#             a fix that named rls.test.mjs would re-create the class one file
+#             over. Lowercase `(skipped …)` is deliberately NOT matched: those
+#             four sites drop SOME checks and still measure, and a partial skip
+#             is degraded coverage, not an unmeasured step.
+#
+# WHAT THIS CANNOT SEE, STATED RATHER THAN BURIED. A step that skips silently —
+# exit 0, no marker — still counts green. The detector is fed by the step's own
+# declaration, so the step chooses whether to declare; what it can no longer
+# choose is whether a declaration is COUNTED. Closing the residue means every
+# step reporting a check count the runner can floor, which is a change to all 62
+# steps, not to this one. Named here so it is a known hole, not an assumed one.
+#
+# THE CENSUS behind those numbers, re-derived rather than quoted: every
+# `process.exit(0)` outside node_modules, classified by hand. TWELVE are
+# whole-step skips that print `SKIP:` and are now caught — 11 under `web/src`
+# (8 guarding `web/src/wasm`, 2 guarding `dwg2dxf`, 1 guarding `bench/fixtures`)
+# plus `supabase/tests/rls.test.mjs`. Four more notices are lowercase PARTIAL
+# skips (`dwgJson`, `dwgVerify`, `zipEntry` ×2) which still measure and are
+# deliberately left green. The rest are success exits or flag-gated CLI modes
+# (`area-census --list`, `reconcile --update-roster`), and the battery passes no
+# flags, so none of them can fire from here.
+#
+# R10 AXES: channel (exit 77 and an exit-0 declaration are separate detectors,
+# so VSKIP77 and VSKIP0 below are separate fixtures) · bookkeeping (a detected
+# skip must leave the numerator AND stay in the denominator) · anchoring
+# (lowercase partial-skip notices must NOT be swallowed as whole-step skips).
+readonly EXIT_SKIP=77
+
+# The step's own skip declaration, verbatim, or empty if it made none.
+skip_declaration() {
+  printf '%s\n' "$1" | grep -m1 -E '^[[:space:]]*SKIP(PED)?([^[:alpha:]]|$)' | sed 's/^[[:space:]]*//'
+  return 0
+}
+
 run() {                       # run <name> <command...>
   local name="$1"; shift
-  local out
-  out="$("$@" 2>&1)"; local rc=$?
+  local out rc reason
+  out="$("$@" 2>&1)"; rc=$?
+  reason=""
+  if [ $rc -eq $EXIT_SKIP ]; then
+    reason="$(skip_declaration "$out")"
+    [ -z "$reason" ] && reason="$(printf '%s\n' "$out" | grep -v '^[[:space:]]*$' | tail -1)"
+    [ -z "$reason" ] && reason="exited $EXIT_SKIP and said nothing"
+  elif [ $rc -eq 0 ]; then
+    reason="$(skip_declaration "$out")"
+  fi
+  if [ -n "$reason" ]; then
+    skip "$name" "$reason"
+    return 0
+  fi
   NAMES+=("$name"); CODES+=("$rc")
   if [ $rc -ne 0 ]; then
     printf '\033[1;31m  ✗ %s\033[0m (exit %d)\n' "$name" "$rc"
@@ -99,7 +171,11 @@ done < <(cd web && find src -name '*.test.mjs' | sed 's|^|web/|' | sort)
 #
 # rls.test.mjs needs a reachable Postgres and SKIPs cleanly (exit 0) without one,
 # so a machine with no database does not turn the battery red for the wrong
-# reason — but a skip is not a pass. It prints SKIP; read it.
+# reason — but a skip is not a pass. It used to say "It prints SKIP; read it",
+# and the runner it said that in threw the string away; `run()` now detects the
+# declaration and the summary NAMES the step. Supply a database
+# (`PGHOST`/`PGPORT`/`PGUSER`) and the row goes green with 50 checks; without
+# one it is a named skip, and the whole authorization model is unmeasured.
 run "node deploy/apiCore.test.mjs (API guard + LLM gateway)" \
   bash -c 'cd web && node ../deploy/apiCore.test.mjs'
 run "node deploy/llmPricing.test.mjs (billing arithmetic)" \
@@ -176,11 +252,31 @@ run "area-census (one area, both languages)" node scripts/gates/area-census.mjs
 
 run "gate reconciliation" node scripts/gates/reconcile.mjs
 
-# THE LYING STEP (GSELF pattern). A battery that cannot detect its own false
-# green is not a battery. This step exits 1 while printing nothing alarming; the
-# scoreboard below must report it red, and the script must exit non-zero.
+# THE LYING STEPS (GSELF pattern), one per way this board can be lied to. A
+# battery that cannot detect its own false green is not a battery, and these are
+# permanent fixtures, not a one-off falsification: each is the negative case of a
+# mechanism above, run every time somebody asks for the self-test.
+#
+#   VSELF   — exits 1 while printing nothing alarming. Must be reported RED and
+#             must make the script exit non-zero.
+#   VSKIP0  — THE DEFECT THIS FILE WAS FIXED FOR: exits 0 having measured
+#             nothing, declaring it on stdout. Must be reported SKIPPED and
+#             NAMED, never ✓. Before the fix this printed a green tick.
+#   VSKIP77 — the same claim over the exit-code channel. Separate fixture
+#             because it is a separate detector; deleting either arm of the
+#             `if` in `run()` must red exactly one of these two.
+#   VSKIPRED— THE DANGEROUS DIRECTION, and the reason the exit-0 detector is
+#             gated on `rc -eq 0`. A step that FAILS while also printing a skip
+#             notice must stay RED; laundering a failure into a named skip would
+#             be a worse defect than the silent green this fix removed, because
+#             a skip reads as "nobody looked" rather than "this is broken".
+#
+# Expected board: 2 skipped, 2 red, denominator +4.
 if [ "${VERIFY_SELFTEST:-0}" = "1" ]; then
   run "VSELF (deliberately failing)" bash -c 'echo "everything is fine"; exit 1'
+  run "VSKIP0 (exit 0, measured nothing)" bash -c 'echo "SKIP: deliberately measured nothing"; exit 0'
+  run "VSKIP77 (exit 77, measured nothing)" bash -c 'echo "subject absent"; exit 77'
+  run "VSKIPRED (exit 1 while printing SKIP)" bash -c 'echo "SKIP: a failure wearing a skip notice"; exit 1'
 fi
 
 failed=0

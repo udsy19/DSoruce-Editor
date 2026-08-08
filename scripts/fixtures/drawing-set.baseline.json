@@ -165,8 +165,8 @@
           "line": 2040,
           "rect": 808,
           "image": 2,
-          "md5": "3a6b7fe3661a6d4d8ec818d66d08fd42",
-          "why": "Landed work between 46908c6 (last re-record) and 49502e5, attributed by op-level dump-diff: seeded A.02 label/dimension placement (189 rows moved, identical op counts, overall dim 38.20 m -> 17.50 m); seeded A.04 services clustering (floor boxes 4 -> 10, TOTAL 176 -> 182); dwg A.01/A.02/A.03/A.04/A.09 all trace to the document gaining one 0.98 m2 desk-footprint Workspace zone, Open Workspace (12), plus a zone-id shift 216/217/220 -> 222/223/225. No missing ink; every drift traces to a landed fix."
+          "md5": "271f07ca4fc67a440196591076e5e726",
+          "why": "Merge 0218e26 (main -> integration) brought web/src/import/dxf.ts block-name classification. Attributed by file-revert: reverting dxf.ts ALONE restores 3a6b7fe3 byte-for-byte; reverting the wasm, plate.ts and testfit.ts each leave 271f07ca. It reclassifies 14 blocks door -> casework, every one a cupboard whose NAME contains \"Door\" (CW Cupbd - 80h x 24d - 1 Door - 4 shelves; CW Cupbd Ohead - 1 Door) — the old matcher read the leaf count as an architectural door. One spurious entry at (17.80, 42.03) therefore disappears (2 -> 1), and the only zone that changes is the ground residual Unassigned (id 308): two vertices x=19 -> x=18.75, bbox IDENTICAL, area 89.63 -> 88.30 m2. Programmed area is unchanged at 836.6096 m2 and no program room moves. Only the RCP moves because services.ts rooms() centres the ceiling field on zoneCenter (centroid) and sizes it from zoneBBox, and unlike the print path it does NOT fold ground zones out; the centroid shift of (-0.2565, +0.0876) m at the sheet scale of 13.41 pt/m predicts dy = +1.175 pt and the observed shift is +1.17/+1.18. 146 rows in 5 contiguous runs, all pure translation, op counts identical (112 text / 2040 line / 808 rect / 2 image), no ink lost, 23 of 24 dumped sheets byte-identical, 328 of 329 checks already green. Improvement, re-recorded."
         },
         {
           "sheet": 6,
