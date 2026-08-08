@@ -131,8 +131,13 @@ export function getProject(id: string): Promise<ProjectRecord | undefined> {
   return dbGet<ProjectRecord>('projects', id)
 }
 
-/** Patch a record (id + createdAt preserved; bumps updatedAt). */
-export async function updateProject(
+/**
+ * The read-modify-write itself, **unchained**. Private, and the only body that
+ * touches the store, so `enqueue` below is the single place serialisation is
+ * decided. Callers that are already inside the chain use this; everything
+ * outside goes through `updateProject`.
+ */
+async function applyPatch(
   id: string,
   patch: Partial<Omit<ProjectRecord, 'id' | 'createdAt'>>,
 ): Promise<ProjectRecord> {
@@ -141,6 +146,15 @@ export async function updateProject(
   const next: ProjectRecord = { ...cur, ...patch, id, createdAt: cur.createdAt, updatedAt: new Date().toISOString() }
   await dbPut('projects', next)
   return next
+}
+
+/** Patch a record (id + createdAt preserved; bumps updatedAt). Serialised per
+ *  id against every other write to the same project — see `enqueue`. */
+export function updateProject(
+  id: string,
+  patch: Partial<Omit<ProjectRecord, 'id' | 'createdAt'>>,
+): Promise<ProjectRecord> {
+  return enqueue(id, () => applyPatch(id, patch))
 }
 
 export function deleteProject(id: string): Promise<void> {
@@ -169,23 +183,49 @@ export function deleteProject(id: string): Promise<void> {
  * identity so the effect would not fire during the awaited write). That fixed
  * the instance and left the class: ANY two overlapping draft writes lose data.
  * Chaining per id fixes the class, and costs one map.
+ *
+ * **The first chaining fix was ITSELF a local mitigation, and the class stayed
+ * live for eight weeks behind it.** It queued `updateDraft` only. `updateProject`
+ * performs the same read-modify-write, with the same `await` between read and
+ * write, on the same record — and was not on the queue. `GenerateStep` calls it
+ * (`{chosenPlanId}`) while the Space and Program steps have fire-and-forget
+ * `void updateDraft(...)` calls in flight, and `...cur` copies `draft`
+ * transitively, so an `updateProject` that never mentions the draft still writes
+ * a stale one over it. Reproduced by sweeping the interleavings: **2 of 14 lose
+ * data — at one gap the uploaded floor plate is discarded, at another
+ * `chosenPlanId`.** A single ordering passing is why one harness reported green.
+ *
+ * That is this repo's own documented tell: *a comment explaining why a hazard
+ * cannot bite HERE is evidence the hazard is live somewhere else.* The comment
+ * above named the class correctly and the fix reached one function.
+ *
+ * So the queue is now keyed on the RECORD, not on the writer: `enqueue` is the
+ * one serialisation point and `applyPatch` the one store write. A future writer
+ * is on the chain by construction unless it deliberately calls `applyPatch`.
  */
-const draftWrites = new Map<string, Promise<unknown>>()
+const recordWrites = new Map<string, Promise<unknown>>()
 
-export function updateDraft(id: string, patch: Partial<ProjectDraft>): Promise<ProjectRecord> {
-  const run = async (): Promise<ProjectRecord> => {
-    const cur = await getProject(id)
-    if (!cur) throw new Error(`No project with id ${id}`)
-    return updateProject(id, { draft: { ...cur.draft, ...patch } })
-  }
-  // Chain onto whatever is already in flight for this project, so the read
-  // always sees the previous write. `.catch` keeps one rejected write from
-  // poisoning the queue — each caller still receives its own rejection.
-  const prev = draftWrites.get(id) ?? Promise.resolve()
-  const next = prev.then(run, run)
-  draftWrites.set(
+/**
+ * Run `job` after every write already queued for `id`, so its read always sees
+ * the previous write. `.catch` keeps one rejected write from poisoning the
+ * queue — each caller still receives its own rejection.
+ */
+function enqueue<T>(id: string, job: () => Promise<T>): Promise<T> {
+  const prev = recordWrites.get(id) ?? Promise.resolve()
+  const next = prev.then(job, job)
+  recordWrites.set(
     id,
     next.catch(() => undefined),
   )
   return next
+}
+
+export function updateDraft(id: string, patch: Partial<ProjectDraft>): Promise<ProjectRecord> {
+  return enqueue(id, async () => {
+    const cur = await getProject(id)
+    if (!cur) throw new Error(`No project with id ${id}`)
+    // `applyPatch`, NOT `updateProject`: we are already inside the chain, and
+    // re-entering it here would wait on ourselves and never resolve.
+    return applyPatch(id, { draft: { ...cur.draft, ...patch } })
+  })
 }

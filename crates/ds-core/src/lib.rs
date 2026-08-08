@@ -1314,8 +1314,28 @@ impl Editor {
     /// So the AI preview warned the user off layouts the engine was perfectly
     /// happy with, in the engine's name. Whether a plan is professionally dense
     /// is one question with one answer; this is it.
-    pub fn density_score(&self) -> f64 {
-        layout::density_of_doc(&self.doc)
+    ///
+    /// **`None` — `undefined` across the wasm boundary — when the plate is
+    /// `Unresolved`**, and that is the whole reason the return type is not a bare
+    /// `f64`. Density is m² per seat: with no identifiable floor there is no
+    /// numerator, and the honest answer is that we could not measure, not a
+    /// number. It used to return a confident **0.000/100** in that state — the
+    /// most extreme value on the scale, indistinguishable from a genuinely
+    /// crammed plan — and `ai/engine.ts` printed it verbatim as "the layout
+    /// scorer's density rating". This is `Metrics::metrics_error`'s convention,
+    /// not a new one: an unmeasurable value surfaces as a STATE the caller can
+    /// see, absent across the boundary, never as an assertion and never as a
+    /// number that looks like the others.
+    ///
+    /// `Open` still returns a number. `PlateResolution`'s own doc comment says
+    /// the bounding box is "a reasonable stand-in" there, and it is the ordinary
+    /// case for a plate imported as loose segments; `Unresolved` is the state
+    /// that means the walls DO close and no face holds this plan.
+    pub fn density_score(&self) -> Option<f64> {
+        match self.doc.plate_resolution() {
+            document::PlateResolution::Unresolved => None,
+            _ => Some(layout::density_of_doc(&self.doc)),
+        }
     }
 
     // ----- Undo primitive: lossless Document snapshot/restore (Conflict §5).
@@ -2321,5 +2341,296 @@ mod tests {
             });
         }
         doc
+    }
+
+    /// **A source scan for `mod basis`, and an honest statement of what it does
+    /// NOT close.**
+    ///
+    /// This file already carries the precedent twice —
+    /// [`every_mutator_bumps_the_revision`] and
+    /// [`every_f64_mutator_is_guarded_against_non_finite_input`] both scan our
+    /// own source, because the failure they prevent is *a line somebody writes
+    /// next year* and no behavioural test can enumerate code that does not exist
+    /// yet. `mod basis` had no such guard. It has one now.
+    ///
+    /// # ROUTES CLOSED
+    ///
+    /// **Naming, in production code, anywhere in this crate.** A non-`#[cfg(test)]`
+    /// site outside `mod basis` that calls `effective_zone_areas` or
+    /// `raw_zone_areas_unscaled` fails here. `rustc` already refuses the first
+    /// (`E0603`/`E0425`) — what it does NOT refuse is somebody *widening the
+    /// exemption*: delete the `#[cfg(test)]` from `raw_zone_areas_unscaled` and
+    /// the compiler goes quiet while a production reader of the raw vector
+    /// appears. That is the route this scan owns, and it is the reason a
+    /// compiler-enforced boundary still wants a scan.
+    ///
+    /// **New recompute sites.** A production `Zone::area_on` / `ZoneShape::area_on`
+    /// call outside `mod basis` must be REGISTERED below with a reason. Adding
+    /// one silently fails here.
+    ///
+    /// # ROUTES NOT CLOSED — stated, because a guard that claims more than it
+    /// covers is worse than none
+    ///
+    /// 1. **A registered recompute site is registered, not fixed.** Registering
+    ///    means "a NEW one fails"; it does not mean the registered one is gone.
+    ///    `cost.rs`'s enclosed-room premium WAS such a site — a live second owner
+    ///    feeding `indicative_cost`/`indicative_carbon`, 2.20% divergent from the
+    ///    panel at F5 `Focus Room 1`. It was routed through `area_basis` in the
+    ///    same round, its entry deleted, and the deletion was forced by this test
+    ///    failing as a stale exemption rather than noticed by a reader. What
+    ///    remains registered is `zone.rs` (the accessor's own definition) and
+    ///    `score.rs` (a rank-only penalty, never billed).
+    /// 2. **Recompute by any other arithmetic.** `w * h` on a `Rect` shape,
+    ///    `polygon_area` on a zone's own polygon, a bbox difference — all
+    ///    re-derive the same quantity without naming anything this scan looks
+    ///    for. **A census of a symbol cannot see a census of a quantity**, which
+    ///    is exactly how `cost.rs` stayed invisible to the R14 claim.
+    /// 3. **Everything outside this crate.** This walks `crates/ds-core/src`.
+    ///    The R14 entry was RETRACTED BY NAME for asserting a global negative
+    ///    from a crate-local instrument: `rustc` cannot see `web/src/export/`,
+    ///    and neither can this. **Scoped claim: no unregistered production site
+    ///    IN THIS CRATE reads the raw per-zone areas.** Nothing more.
+    ///
+    ///    The four TS owners this route could not reach — `finishSchedule.ts`,
+    ///    `sheetSet.ts`, `services.ts`, `editor/stats.ts` — were closed in the
+    ///    same round from the other side: three published the raw shape area
+    ///    (sheet A.09 billed 35.0 m² against the workbook's 8.0 on an UNEDITED
+    ///    fixture) and the fourth wrote a field nothing read. Their guard is
+    ///    `web/src/export/publishedArea.test.mjs`, which anchors the delivered
+    ///    page ops against `Editor.quantities()`. Two instruments, one per
+    ///    language, neither claiming the other's territory — the R14 retraction
+    ///    was about a census asserting reach it did not have, and the fix is
+    ///    coverage on both sides, not a wider claim from one.
+    /// 4. **Strings.** Line comments are stripped (so the many prose references
+    ///    to these names do not fire); a call spelled inside a string literal
+    ///    would be missed, and is not a call.
+    #[test]
+    fn no_unregistered_production_site_reads_the_raw_per_zone_areas() {
+        // (file suffix, the exact trimmed source line, why it is allowed)
+        //
+        // Keyed on the LINE, not on the file: a second `area_on` call in an
+        // already-registered file still fails. An entry that no longer matches
+        // anything also fails — a stale exemption is how a real gap hides behind
+        // an old excuse.
+        const REGISTERED: [(&str, &str, &str); 1] = [(
+            "zone.rs",
+            "self.shape.area_on(plate)",
+            "the accessor's OWN definition: `Zone::area_on` delegating to \
+             `ZoneShape::area_on`. This is the function `mod basis` calls, not a \
+             second reader of it.",
+        )];
+        // TWO entries stood beside it and BOTH were deleted the same way — by the
+        // site being routed through `area_basis`, so the exemption stopped matching
+        // and this test failed as a stale one. `cost.rs` (the enclosed-room premium)
+        // went at integration. `score.rs` — `.map(|z| z.area_on(plate_poly.as_deref()))`,
+        // the `unassigned_penalty` numerator — goes here.
+        //
+        // Its stated ground was: "Not a published area and never billed: a relative
+        // penalty compared only against itself." **A scoped truth presented without
+        // its scope.** True of the AREA; false of the NUMBER derived from it —
+        // `unassigned_penalty` is a serialized `LayoutScore` field, and `total` is an
+        // absolute 0..100 rendered in the candidate gallery, printed as "best N/100",
+        // and pasted into the Claude evaluator's prompt. Nothing about that is
+        // compared only against itself.
+        //
+        // Its second clause — "sharing the cap-scaled basis would make a candidate's
+        // score depend on whether its zones happened to overlap" — was measured and
+        // is backwards. NOT sharing made it depend on overlap: the un-de-overlapped
+        // sum billed the same floor twice and put the debit at 15.2783 points on a
+        // term specified at ~1.8. Sharing makes it depend on overlap not at all for
+        // every generated candidate (zones tile, `k == 1`, byte-identical) and bounds
+        // it at 10 for a hand-edited one.
+        //
+        // Sized from the table rather than hard-coded: `[false; 3]` against a
+        // 2-entry table was left here by the `cost.rs` deletion, and a fourth entry
+        // would have panicked with an index-out-of-bounds — red by crash, naming no
+        // cause.
+        let mut used = [false; REGISTERED.len()];
+
+        let root = concat!(env!("CARGO_MANIFEST_DIR"), "/src");
+        let mut files: Vec<std::path::PathBuf> = Vec::new();
+        collect_rs(std::path::Path::new(root), &mut files);
+        files.sort();
+        assert!(
+            files.len() >= 20,
+            "the crate walk found {} .rs files — the instrument is the finding",
+            files.len()
+        );
+
+        // Test-only FILES, derived from the `#[cfg(test)] mod <name>;`
+        // declarations rather than hard-coded, so a new one is picked up.
+        let mut test_only: Vec<String> = Vec::new();
+        for f in &files {
+            let src = std::fs::read_to_string(f).expect("readable");
+            for (i, _) in src.match_indices("#[cfg(test)]") {
+                let rest = src[i..].trim_start_matches("#[cfg(test)]").trim_start();
+                if let Some(name) = rest.strip_prefix("mod ") {
+                    if let Some(semi) = name.find(';') {
+                        if !name[..semi].contains('{') {
+                            test_only.push(format!("{}.rs", name[..semi].trim()));
+                        }
+                    }
+                }
+            }
+        }
+        assert!(
+            test_only.iter().any(|m| m == "metrics_tests.rs"),
+            "the test-only module derivation found {test_only:?} — it must at least \
+             find `metrics_tests`, or it is stripping nothing"
+        );
+
+        let mut offences: Vec<String> = Vec::new();
+        let mut production_lines = 0usize;
+        for f in &files {
+            let name = f.file_name().unwrap().to_string_lossy().to_string();
+            if test_only.contains(&name) {
+                continue;
+            }
+            let src = std::fs::read_to_string(f).expect("readable");
+            let prod = strip_test_items(&strip_line_comments(&src));
+            // `mod basis` is the sanctioned owner: its whole body is exempt.
+            let prod = strip_named_mod(&prod, "mod basis {");
+            for (lineno, raw) in prod.lines().enumerate() {
+                let line = raw.trim();
+                if line.is_empty() {
+                    continue;
+                }
+                production_lines += 1;
+                // The BARE name, not `name(`. Matching the call paren left
+                // `strip_line_comments` inert (sabotage S3d stayed green): no
+                // production comment spells these with a paren, so the transform
+                // guarded nothing. Matching the bare name closes a real route —
+                // a `use`, a re-export, a function pointer — and makes the
+                // comment stripper load-bearing, which S3d now proves.
+                let names = line.contains("effective_zone_areas")
+                    || line.contains("raw_zone_areas_unscaled");
+                let recompute = line.contains(".area_on(");
+                if !names && !recompute {
+                    continue;
+                }
+                if names {
+                    offences.push(format!(
+                        "{name}: a production site NAMES the raw per-zone areas — \
+                         `{line}`. `mod basis` is the only owner; if the \
+                         `#[cfg(test)]` on `raw_zone_areas_unscaled` was removed, \
+                         put it back"
+                    ));
+                    continue;
+                }
+                match REGISTERED.iter().position(|(fs, l, _)| name.ends_with(fs) && line == *l) {
+                    Some(i) => used[i] = true,
+                    None => offences.push(format!(
+                        "{name} (line ~{}): a production site RECOMPUTES a zone's area \
+                         — `{line}`. Read it from `crate::area_basis` instead, or \
+                         register it in this test with the reason it must not",
+                        lineno + 1
+                    )),
+                }
+            }
+        }
+        assert!(
+            production_lines > 5000,
+            "only {production_lines} production lines survived stripping — the \
+             stripper has eaten the crate and the scan is vacuous"
+        );
+        assert!(offences.is_empty(), "{}", offences.join("\n"));
+        for (i, (f, l, _)) in REGISTERED.iter().enumerate() {
+            assert!(
+                used[i],
+                "the registered exemption {f}: `{l}` no longer matches any production \
+                 line. If the site was routed through `area_basis`, DELETE the entry \
+                 — a stale exemption covers nothing and hides the next one"
+            );
+        }
+    }
+
+    fn collect_rs(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+        for e in std::fs::read_dir(dir).expect("src/ is readable") {
+            let p = e.expect("dir entry").path();
+            if p.is_dir() {
+                collect_rs(&p, out);
+            } else if p.extension().is_some_and(|x| x == "rs") {
+                out.push(p);
+            }
+        }
+    }
+
+    /// `//`-to-end-of-line, blanked rather than deleted so line numbers survive.
+    /// Doc comments in this crate quote these names constantly; a scan that read
+    /// them would report the prose instead of the code.
+    fn strip_line_comments(src: &str) -> String {
+        src.lines()
+            .map(|l| match l.find("//") {
+                Some(i) => l[..i].to_string(),
+                None => l.to_string(),
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    /// Blank out every `#[cfg(test)]` / `#[test]` item by brace balance (or to
+    /// the `;` for a bare `mod x;`), preserving line count.
+    fn strip_test_items(src: &str) -> String {
+        let mut keep: Vec<bool> = vec![true; src.len()];
+        for attr in ["#[cfg(test)]", "#[test]"] {
+            for (i, _) in src.match_indices(attr) {
+                let tail = &src[i..];
+                let brace = tail.find('{');
+                let semi = tail.find(';');
+                let end = match (brace, semi) {
+                    (Some(b), Some(s)) if s < b => i + s + 1,
+                    (Some(b), _) => {
+                        let mut depth = 0i32;
+                        let mut e = src.len();
+                        for (o, ch) in tail[b..].char_indices() {
+                            match ch {
+                                '{' => depth += 1,
+                                '}' => {
+                                    depth -= 1;
+                                    if depth == 0 {
+                                        e = i + b + o + 1;
+                                        break;
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                        e
+                    }
+                    (None, Some(s)) => i + s + 1,
+                    (None, None) => src.len(),
+                };
+                for k in keep.iter_mut().take(end).skip(i) {
+                    *k = false;
+                }
+            }
+        }
+        src.char_indices()
+            .map(|(i, c)| if keep[i] || c == '\n' { c } else { ' ' })
+            .collect()
+    }
+
+    /// Blank out one named module's body by brace balance.
+    fn strip_named_mod(src: &str, head: &str) -> String {
+        let Some(i) = src.find(head) else { return src.to_string() };
+        let from = i + head.len() - 1;
+        let mut depth = 0i32;
+        let mut end = src.len();
+        for (o, ch) in src[from..].char_indices() {
+            match ch {
+                '{' => depth += 1,
+                '}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        end = from + o + 1;
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        src.char_indices()
+            .map(|(k, c)| if k < i || k >= end || c == '\n' { c } else { ' ' })
+            .collect()
     }
 }

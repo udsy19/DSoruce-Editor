@@ -9,6 +9,16 @@
 
 import type { ZoneType } from './doc'
 
+/**
+ * Whether a plate-derived number is a MEASUREMENT or a stand-in — the three
+ * tags `document::PlateResolution::tag()` emits, with ONE owner on this side.
+ *
+ * Named because two interfaces carry it (`Metrics` and `LayoutScore`) and it was
+ * previously spelled out inline in one of them and absent from the other, so the
+ * union could drift in exactly the way a shared tag must not.
+ */
+export type PlateState = 'traced' | 'open' | 'unresolved'
+
 export interface Metrics {
   floor_area: number
   wall_count: number
@@ -39,7 +49,7 @@ export interface Metrics {
    * and showing it in the same slot is how "GEA 1 m²" read as a fact rather than
    * as a broken wall loop. Optional only for documents metered by an older core.
    */
-  plate_state?: 'traced' | 'open' | 'unresolved'
+  plate_state?: PlateState
   /**
    * Whether these numbers are a MEASUREMENT — absent (`undefined`; `None`
    * crosses the wasm boundary that way) normally, a sentence naming the
@@ -121,6 +131,24 @@ export interface LayoutScore {
   entry_adjacency: number
   total: number
   placed_desks: number
+  /**
+   * Points deducted from `total` for floor the plan wastes: 10 x the
+   * `Unassigned` share of the plate, so always in `[0, 10]`.
+   *
+   * **This interface did not carry it, and the Rust struct always sent it.** A
+   * TS type that under-describes the wasm payload cannot be read as a contract:
+   * the field a defect was measured ON — Line A's 15.28-point un-de-overlapped
+   * penalty, against a term specified at ~1.8 — was invisible to every TS
+   * consumer and to `tsc`. Landed at the 2b integration with `plate_state`.
+   */
+  unassigned_penalty: number
+  /**
+   * Whether the numbers above are a measurement — the same three tags, from the
+   * same owner, as `Metrics.plate_state`. On `"unresolved"` the floor is a
+   * bounding-box stand-in and every plate-derived sub-score (and `total`) rests
+   * on it; show that state rather than the score.
+   */
+  plate_state: PlateState
 }
 export interface CirculationScore {
   score: number

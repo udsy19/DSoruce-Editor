@@ -216,11 +216,28 @@ export class Editor {
      * So the AI preview warned the user off layouts the engine was perfectly
      * happy with, in the engine's name. Whether a plan is professionally dense
      * is one question with one answer; this is it.
-     * @returns {number}
+     *
+     * **`None` — `undefined` across the wasm boundary — when the plate is
+     * `Unresolved`**, and that is the whole reason the return type is not a bare
+     * `f64`. Density is m² per seat: with no identifiable floor there is no
+     * numerator, and the honest answer is that we could not measure, not a
+     * number. It used to return a confident **0.000/100** in that state — the
+     * most extreme value on the scale, indistinguishable from a genuinely
+     * crammed plan — and `ai/engine.ts` printed it verbatim as "the layout
+     * scorer's density rating". This is `Metrics::metrics_error`'s convention,
+     * not a new one: an unmeasurable value surfaces as a STATE the caller can
+     * see, absent across the boundary, never as an assertion and never as a
+     * number that looks like the others.
+     *
+     * `Open` still returns a number. `PlateResolution`'s own doc comment says
+     * the bounding box is "a reasonable stand-in" there, and it is the ordinary
+     * case for a plate imported as loose segments; `Unresolved` is the state
+     * that means the walls DO close and no face holds this plan.
+     * @returns {number | undefined}
      */
     density_score() {
         const ret = wasm.editor_density_score(this.__wbg_ptr);
-        return ret;
+        return ret[0] === 0 ? undefined : ret[1];
     }
     /**
      * The fixture ids, in order, so a harness enumerates rather than hard-codes.

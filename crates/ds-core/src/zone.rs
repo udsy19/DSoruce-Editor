@@ -356,29 +356,49 @@ impl Zone {
         self.capacity_from_area(self.area())
     }
 
+    /// Seats the `area` a caller supplies, at `m2_per_seat`'s rate. The rate
+    /// table is NOT inlined here: it is one owner, so a gate can re-derive a
+    /// published seat count from a published area without consuming this
+    /// method's arithmetic.
     pub fn capacity_from_area(&self, area: f64) -> u32 {
-        let per = match self.zone_type {
-            ZoneType::Workspace => 6.0,     // m² per workstation
-            ZoneType::Meeting => 2.5,       // m² per seat
-            ZoneType::Collaboration => 3.0, // m² per seat
-            ZoneType::ClosedOffice => 9.0,  // 1–2 person cellular
-            ZoneType::Amenity => 4.0,       // m² per seat
-            // Circulation and Core seat nobody; Unassigned seats nobody BY
-            // DEFINITION — it is floor the generator failed to use, and giving
-            // it a nominal capacity would let waste inflate the headcount the
-            // plan claims it can hold.
-            //
-            // This arm is a fourth spelling of `!is_usable_zone`, and it stays
-            // spelled out ON PURPOSE: an exhaustive match is what makes a NEW
-            // `ZoneType` a compile error here rather than a silent 0. Replacing
-            // it with a derived early-return would trade that for an unreachable
-            // branch, which R16 rules decorative coverage. Instead the two are
-            // tied by a CHECK — `capacity_seats_nobody_exactly_where_the_usable_partition_does`
-            // below — which reds if either side moves without the other.
-            ZoneType::Circulation | ZoneType::Core | ZoneType::Unassigned => return 0,
-        };
+        let Some(per) = m2_per_seat(self.zone_type) else { return 0 };
         (area / per).floor().max(0.0) as u32
     }
+}
+
+/// **THE seat-rate table** — m² of floor per seat, by `ZoneType`. One owner, so
+/// a gate can re-derive a published seat count from a published area without
+/// consuming the producer's arithmetic.
+///
+/// `None` means the type seats nobody: Circulation and Core seat nobody, and
+/// `Unassigned` seats nobody BY DEFINITION — it is floor the generator failed to
+/// use, and giving it a nominal capacity would let waste inflate the headcount
+/// the plan claims it can hold.
+///
+/// **The `None` arm is a fourth spelling of `!is_usable_zone`, and it stays
+/// spelled out ON PURPOSE:** an exhaustive match is what makes a NEW `ZoneType`
+/// a compile error here rather than a silent 0. Replacing it with a derived
+/// early-return would trade that for an unreachable branch, which R16 rules
+/// decorative coverage. Instead the two are tied by a CHECK —
+/// `capacity_seats_nobody_exactly_where_the_usable_partition_does` below — which
+/// reds if either side moves without the other.
+///
+/// **Both lines' fixes survive here, because they solve different halves.** Line
+/// B made the SIGNATURE take the area, so a published surface cannot get the raw
+/// one by accident; Line A extracted the TABLE, so the gate that checks a seat
+/// count has a path to the rate that does not run through the method it grades.
+/// Inlining the table back into `capacity_from_area` would restore a single
+/// owner in name while removing the independent path — the shape gate
+/// independence exists to prevent.
+pub(crate) fn m2_per_seat(t: ZoneType) -> Option<f64> {
+    Some(match t {
+        ZoneType::Workspace => 6.0,     // m² per workstation
+        ZoneType::Meeting => 2.5,       // m² per seat
+        ZoneType::Collaboration => 3.0, // m² per seat
+        ZoneType::ClosedOffice => 9.0,  // 1–2 person cellular
+        ZoneType::Amenity => 4.0,       // m² per seat
+        ZoneType::Circulation | ZoneType::Core | ZoneType::Unassigned => return None,
+    })
 }
 
 /// Typed failure reasons for zone ops, so the AI can report *why* an op can't
@@ -568,5 +588,32 @@ mod tests {
         // Circulation / Core always 0.
         assert_eq!(mk(ZoneType::Circulation, 10.0, 6.0).capacity_from_area(60.0), 0);
         assert_eq!(mk(ZoneType::Core, 10.0, 6.0).capacity_from_area(60.0), 0);
+
+        // **THE RATE TABLE, pinned by VALUE.** `M26` re-derives a published seat
+        // count from a published area through `m2_per_seat`, so the conjunct is
+        // independent of `capacity_from_area`'s body — which makes this the only
+        // place the rates themselves are checked. Every variant, so a new
+        // `ZoneType` cannot be added with a silent rate.
+        for (t, per) in [
+            (ZoneType::Workspace, Some(6.0)),
+            (ZoneType::Meeting, Some(2.5)),
+            (ZoneType::Collaboration, Some(3.0)),
+            (ZoneType::ClosedOffice, Some(9.0)),
+            (ZoneType::Amenity, Some(4.0)),
+            (ZoneType::Circulation, None),
+            (ZoneType::Core, None),
+            (ZoneType::Unassigned, None),
+        ] {
+            assert_eq!(m2_per_seat(t), per, "{t:?} rate");
+            // …and `capacity_from_area` is that rate and nothing else.
+            let want = per.map_or(0, |p| (100.0f64 / p).floor() as u32);
+            assert_eq!(mk(t, 10.0, 10.0).capacity_from_area(100.0), want, "{t:?} capacity_from_area");
+        }
+
+        // The area is the ARGUMENT, not the shape: a 60 m² shape billed at 8 m²
+        // seats 1, not 10. This is the defect the E5 round closed, as a value —
+        // the same one `lib.rs`'s `zone_rows` comment names as "five 6 m²
+        // workstations inside eight square metres".
+        assert_eq!(mk(ZoneType::Workspace, 10.0, 6.0).capacity_from_area(8.0), 1);
     }
 }
