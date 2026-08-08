@@ -1,7 +1,11 @@
-// RECONCILE — every gate that EXISTS is a gate that RUNS.
+// RECONCILE — every gate that EXISTS is a gate that RUNS, and every TEST that
+// was ever pinned is a test that still exists (section 5, F1).
 //
 //   node scripts/gates/reconcile.mjs            # verdict
 //   node scripts/gates/reconcile.mjs --explain  # + the three derived sets
+//   node scripts/gates/reconcile.mjs --update-roster --why '<attribution>'
+//                                               # re-record the test rosters;
+//                                               # --why is REQUIRED (section 5)
 //
 // THE DEFECT THIS EXISTS FOR. `bench/ladder-check.mjs`, `bench/lod-sweep.mjs`
 // and `bench/export-parity.mjs` were written, falsified, ledgered — and invoked
@@ -468,6 +472,232 @@ for (let i = 0; i < cmds.length; i++) {
   check(fs.existsSync(abs), `${ids[i] ?? `CMDS[${i}]`} names a real file: gates/${m[1]}`, 'declared, missing on disk')
 }
 
+// ---------------------------------------------------------------------------
+// 5. THE ROSTERS (F1) — the two largest populations, as MANIFESTS OF NAMES
+// ---------------------------------------------------------------------------
+//
+// THE DEFECT. Everything above reconciles GATES. The two biggest populations on
+// the battery are not gates: the 43 globbed `web/src/**/*.test.mjs` files and
+// the 200 `#[test]` functions in `ds-core`. Both are DISCOVERED FROM THE
+// ARTIFACT BEING GRADED — `find src -name '*.test.mjs'` and cargo's own harness
+// discovery — so a deleted test does not lower the numerator, it leaves the
+// population and takes the denominator with it.
+//
+// MEASURED in a disposable worktree off 56af276: delete `statsPanel.test.mjs`
+// and `zone::tests::capacity_rules` (one of only two guards on
+// `capacity_from_area`) and the tree is FULLY GREEN —
+// `VERIFY OK — 53/53 steps green`, `199 passed; 0 failed`, `reconcile OK`.
+// Nothing named the loss. That is the R8 defect verify-all.sh's own header
+// documents, fixed for the `skip()` path only.
+//
+// And THIS FILE could already see it and threw it away: the census below printed
+// `83 file(s) … 43 globbed by a runner` before the deletion and `82 … 42` after,
+// and still exited `reconcile OK`. The number was printed, never asserted.
+// CLAUDE.md:198 has stated the rule the whole time — Rust tests "counted BY
+// NAME, because a matching number with a missing name is a regression."
+//
+// INDEPENDENCE. The pin (`scripts/fixtures/test-roster.manifest.json`) is the
+// only hand-declared side; it is authored, reviewed and re-recorded with
+// attribution. Both disk sides are re-derived per run from something that is not
+// the pin, and neither is a re-implementation of the runner:
+//
+//   JS   — the shell pipeline is EXTRACTED FROM verify-all.sh's own source (the
+//          text inside `done < <( … )`) and RUN. Reconciling against a second
+//          hand-written walker would let the two drift; reconciling against the
+//          runner's literal command cannot. Delete the pipeline and the
+//          extraction fails RED rather than reconciling against nothing.
+//   RUST — `cargo test -p ds-core -- --list`. Names, not a count, and the parse
+//          is cross-checked against cargo's own `N tests` summary so a regex
+//          that stops matching cannot pass as a shrinking population.
+//
+// R10 AXES: direction (a member gone and a member arrived are SEPARATE checks,
+// so a rename reads as one gone + one new and never as net zero) · derivation
+// anchor (remove the `done < <(…)` pipeline, or the `cargo test -p ds-core`
+// invocation, from verify-all.sh — the roster's coverage claim dies with the
+// runner that backs it) · parse integrity (the `: test` matcher against cargo's
+// own total) · subject existence (a missing or unparseable pin is a FAILURE,
+// never a skip) · provenance (`--update-roster` is refused without `--why`, and
+// refused when it would change nothing).
+
+const ROSTER_PIN = path.join(ROOT, 'scripts/fixtures/test-roster.manifest.json')
+const VERIFY_ALL = path.join(ROOT, 'scripts/verify-all.sh')
+const UPDATE_ROSTER = process.argv.includes('--update-roster')
+const ROSTER_WHY = (() => {
+  const i = process.argv.indexOf('--why')
+  const v = i > 0 ? process.argv[i + 1] : null
+  return v && !v.startsWith('--') ? v : null
+})()
+
+/**
+ * The JS side, taken from the RUNNER'S OWN PIPELINE rather than re-walked.
+ *
+ * Exactly one `done < <( … )` is expected. If verify-all.sh grows a second
+ * globbed loop this reds — correctly: a second glob is a second population, and
+ * this roster would be silently pinning only one of them.
+ */
+function jsRosterOnDisk() {
+  if (!fs.existsSync(VERIFY_ALL)) return { err: 'scripts/verify-all.sh is gone — there is no runner to reconcile against' }
+  const pipes = [...read(VERIFY_ALL).matchAll(/^done < <\((.+)\)\s*$/gm)].map((m) => m[1])
+  if (pipes.length !== 1) {
+    return {
+      err: `verify-all.sh has ${pipes.length} \`done < <( … )\` pipeline(s), expected exactly 1 — ` +
+        'the JS roster derivation has lost its anchor in the runner (0), or the runner grew a ' +
+        'second globbed population this pin does not cover (2+)',
+    }
+  }
+  const r = spawnSync('bash', ['-c', pipes[0]], { cwd: ROOT, encoding: 'utf8' })
+  if (r.status !== 0) return { err: `the runner's own pipeline failed (exit ${r.status}): ${pipes[0]}` }
+  return { names: r.stdout.split('\n').map((s) => s.trim()).filter(Boolean), how: pipes[0] }
+}
+
+/** The Rust side, from cargo's own discovery. A missing cargo is a FAILURE. */
+function rustRosterOnDisk() {
+  const env = { ...process.env, PATH: `${process.env.HOME}/.cargo/bin:${process.env.PATH ?? ''}` }
+  const r = spawnSync('cargo', ['test', '-p', 'ds-core', '--', '--list'], {
+    cwd: ROOT,
+    encoding: 'utf8',
+    env,
+    maxBuffer: 64 * 1024 * 1024,
+  })
+  if (r.error || r.status !== 0) {
+    const tail = (r.stderr ?? '').trim().split('\n').slice(-3).join(' | ')
+    return {
+      err: `cargo test -p ds-core -- --list failed (${r.error?.code ?? `exit ${r.status}`}) — ` +
+        `a missing input is a FAILURE, never a skip. ${tail}`,
+    }
+  }
+  const names = [...r.stdout.matchAll(/^(\S+): test$/gm)].map((m) => m[1])
+  // Cargo's own arithmetic, as the parser's independent check: `N tests, M benchmarks`.
+  const declared = [...r.stdout.matchAll(/^(\d+) tests?, \d+ benchmark/gm)].reduce((a, m) => a + Number(m[1]), 0)
+  return { names, declared }
+}
+
+const jsDisk = jsRosterOnDisk()
+const rustDisk = rustRosterOnDisk()
+
+let pin = null
+let pinErr = ''
+try {
+  pin = JSON.parse(read(ROSTER_PIN))
+  if (!pin.js || !pin.rust || !Array.isArray(pin.updates)) { pin = null; pinErr = 'malformed: needs `js`, `rust` and `updates`' }
+} catch (e) {
+  pinErr = e.code === 'ENOENT' ? 'missing on disk' : `unparseable: ${e.message}`
+}
+
+// -- re-record, with attribution ---------------------------------------------
+if (UPDATE_ROSTER) {
+  if (!pin) {
+    console.error(`REFUSED: ${rel(ROSTER_PIN)} ${pinErr}. --update-roster re-records an existing pin; it does not mint one.`)
+    process.exit(1)
+  }
+  if (!ROSTER_WHY) {
+    console.error(
+      "REFUSED: --update-roster needs --why '<attribution>'.\n" +
+        'A manifest anyone can regenerate on a whim is a count with extra steps. Name what moved:\n' +
+        "  the fix, the ruling, or the retirement that added or removed each member.",
+    )
+    process.exit(1)
+  }
+  if (jsDisk.err || rustDisk.err) {
+    console.error(`REFUSED: cannot re-record against a broken derivation.\n  ${jsDisk.err ?? ''}\n  ${rustDisk.err ?? ''}`)
+    process.exit(1)
+  }
+  const apply = (side, disk) => {
+    const cur = pin[side]
+    const sorted = [...disk].sort()
+    const added = sorted.filter((n) => !(n in cur))
+    const removed = Object.keys(cur).filter((n) => !sorted.includes(n))
+    // Existing members KEEP the reason they were pinned with. A re-record may
+    // not launder an old member's provenance by restating a new one.
+    pin[side] = Object.fromEntries(sorted.map((n) => [n, cur[n] ?? ROSTER_WHY]))
+    return { added, removed }
+  }
+  const j = apply('js', jsDisk.names)
+  const u = apply('rust', rustDisk.names)
+  const moved = j.added.length + j.removed.length + u.added.length + u.removed.length
+  if (moved === 0) {
+    console.error('REFUSED: --update-roster with no difference. A no-op re-record that rewrites the provenance log is how the log becomes decoration.')
+    process.exit(1)
+  }
+  pin.updates.push({
+    when: new Date().toISOString().slice(0, 10),
+    why: ROSTER_WHY,
+    js: { added: j.added, removed: j.removed },
+    rust: { added: u.added, removed: u.removed },
+  })
+  fs.writeFileSync(ROSTER_PIN, JSON.stringify(pin, null, 2) + '\n')
+  // THE WRITE IS PROVED, NOT REPORTED. "A success message is not evidence that
+  // anything changed" — gate-independence, the tooling-layer section. Re-read.
+  const back = JSON.parse(read(ROSTER_PIN))
+  for (const [side, d] of [['js', j], ['rust', u]]) {
+    for (const n of d.added) if (!(n in back[side])) throw new Error(`write did not take: ${side}/${n} absent after write`)
+    for (const n of d.removed) if (n in back[side]) throw new Error(`write did not take: ${side}/${n} still present after write`)
+  }
+  if (back.updates.length !== pin.updates.length) throw new Error('write did not take: updates[] not appended')
+  console.log(`roster re-recorded — js +${j.added.length}/-${j.removed.length}, rust +${u.added.length}/-${u.removed.length}, verified by re-read`)
+  for (const [side, d] of [['js', j], ['rust', u]]) {
+    for (const n of d.added) console.log(`  + ${side}  ${n}`)
+    for (const n of d.removed) console.log(`  - ${side}  ${n}`)
+  }
+  process.exit(0)
+}
+
+// -- reconcile, both directions, per roster ----------------------------------
+console.log()
+check(pin !== null, `the test-roster pin is present and well-formed: ${rel(ROSTER_PIN)}`, `${pinErr} — without it this section pins nothing at all`)
+check(!jsDisk.err, "the JS roster derivation runs verify-all.sh's own glob pipeline", jsDisk.err)
+check(!rustDisk.err, "the Rust roster derivation runs cargo's own test list", rustDisk.err)
+// The roster is a claim that these populations are GRADED. That claim dies with
+// the runner behind it, so the runner is re-checked here (the JS half is the
+// extraction above; this is the Rust half).
+check(
+  fs.existsSync(VERIFY_ALL) && read(VERIFY_ALL).includes('cargo test -p ds-core'),
+  'verify-all.sh still runs the Rust suite this roster pins',
+  'nothing invokes `cargo test -p ds-core` any more — a roster over a suite no runner runs pins a population that grades nothing',
+)
+if (rustDisk.names) {
+  check(
+    rustDisk.names.length === rustDisk.declared && rustDisk.declared > 0,
+    `the Rust name parse agrees with cargo's own total (${rustDisk.names.length} parsed · ${rustDisk.declared} declared)`,
+    'the `<name>: test` matcher and cargo\'s `N tests` summary disagree — the parser is dropping names, ' +
+      'and a shrinking parse is indistinguishable from a shrinking suite',
+  )
+}
+
+const nameList = (a) => a.slice(0, 12).join(' · ') + (a.length > 12 ? ` … +${a.length - 12} more` : '')
+
+for (const [side, disk, label] of [
+  ['js', jsDisk, 'JS test file'],
+  ['rust', rustDisk, 'Rust test'],
+]) {
+  if (!pin || !disk.names) continue // already red above; a second red would be noise
+  const pinned = Object.keys(pin[side])
+  const got = new Set(disk.names)
+  const want = new Set(pinned)
+  const lost = pinned.filter((n) => !got.has(n))
+  const gained = disk.names.filter((n) => !want.has(n))
+  // NON-VACUITY, both sides. Strict equality over two empty sets is green, and
+  // it is the one way this could pin nothing while reporting a clean board.
+  check(pinned.length > 0, `the pin names ${label}s at all (${pinned.length} pinned)`, `pin.${side} is empty — an equality over nothing is green for the wrong reason`)
+  check(disk.names.length > 0, `the ${label} derivation found members (${disk.names.length} on disk)`, 'the derivation returned nothing; it is not reaching the population')
+  // BOTH DIRECTIONS, AS TWO CHECKS. One equality would report "the roster moved"
+  // and make the reader do the diff — which is exactly what a count did. A
+  // rename must read as one GONE and one NEW, never as net zero.
+  check(
+    lost.length === 0,
+    `no pinned ${label} has VANISHED (${pinned.length} pinned)`,
+    `${lost.length} gone: ${nameList(lost)}\n          ` +
+      'recover it, or retire it deliberately: node scripts/gates/reconcile.mjs --update-roster --why "<why it went>". ' +
+      'Never let it leave the population silently — that is F1.',
+  )
+  check(
+    gained.length === 0,
+    `no UNPINNED ${label} has appeared (${disk.names.length} on disk)`,
+    `${gained.length} new: ${nameList(gained)}\n          ` +
+      're-pin deliberately, having read what it asserts: node scripts/gates/reconcile.mjs --update-roster --why "<what it covers>"',
+  )
+}
+
 console.log()
 if (fails > 0) {
   console.log(`RECONCILE FAIL: ${fails} check(s) — the board does not describe the gates on disk.`)
@@ -488,4 +718,11 @@ console.log(
     `${Object.keys(NOT_A_GRADER).length} producers/hand tools, ` +
     `${Object.keys(ASSERTING_ELSEWHERE).length} on a named board, 0 unclassified. ` +
     `Scope: *.mjs|js|ts|tsx|py|sh outside node_modules|target|dist|out|research|docs|reports and outside lib/|adapters/|fixtures/.`,
+)
+console.log(
+  `  test rosters (F1), by NAME: ${Object.keys(pin?.js ?? {}).length} JS test file(s) and ` +
+    `${Object.keys(pin?.rust ?? {}).length} Rust test(s) pinned in ${rel(ROSTER_PIN)}, ` +
+    `both reconciled in both directions against the runner's own glob and cargo's own list. ` +
+    `Scope: these two populations only — every other N/N on the battery is still a ratio ` +
+    `whose denominator is discovered from the artifact it grades.`,
 )
