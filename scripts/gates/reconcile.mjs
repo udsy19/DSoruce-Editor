@@ -185,6 +185,19 @@ const QUARANTINED = {
       'against 8.6). A generator change, not a gate fix.',
     cmd: ['scripts/gates/composition.mjs', '--gate'],
   },
+  'scripts/gates/cost-reconciliation.mjs': {
+    why:
+      'the two rupee formulas disagree TERM BY TERM at HEAD: cost.rs bills the base shell on GEA and ' +
+      "stats.ts's buildElements bills it on NIA (12 of 18 documents, worst F3 at 695.1480 m² = ₹97,32,072.62 — " +
+      'the six that agree are exactly those where GEA == NIA); the two furniture keyword ladders price 5 of ' +
+      '34 categories differently (Meeting ₹2,500 vs ₹1,20,000, Double Door ₹2,500 vs ₹25,000, Counter, ' +
+      'Settee, Banquette); and both sides filter `w.generated`, so 131.30 m of transplanted interior ' +
+      'partition bills ₹0 on BOTH surfaces. A core change, not a gate fix — and cost.rs is owned by ' +
+      'another session, so the gate ships before the fix by design (reports/INTEGRATION-5-merged-board.md §5: ' +
+      'writing the fix first produces a gate calibrated to the fix, and this defect already survived a ' +
+      'reconciliation that stopped one term short).',
+    cmd: ['scripts/gates/cost-reconciliation.mjs'],
+  },
 }
 
 const EXEMPT = new Set([...Object.keys(NOT_A_BATTERY_GATE), ...Object.keys(QUARANTINED)])
