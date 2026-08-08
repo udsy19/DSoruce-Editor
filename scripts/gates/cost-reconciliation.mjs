@@ -101,14 +101,20 @@
 // WHAT THIS GATE IS BLIND TO — stated, because a scope not written down is a
 // scope nobody can check
 // ---------------------------------------------------------------------------
-//   * RATE CORRECTNESS. The rates are extracted FROM the core, so this measures
-//     agreement, not truth. Change `BASE_SHELL` to ₹14,500 in `cost.rs` and the
-//     extracted rate follows it; the gate stays exactly as red as it is now.
-//     What it DOES catch is drift: the panel's implied rates are checked against
-//     the extracted ones (§3), so a rate moved on one side only is red. Whether
-//     ₹14,000/m² is the right number for a Bengaluru CAT-B fit-out is a question
-//     for the sources cited in `cost.rs`, not for a reconciliation. This is the
-//     same null this mission already recorded for `m2_per_seat`.
+//   * RATE CORRECTNESS, and the blind spot is NARROWER than it first looks —
+//     the first draft of this paragraph was wrong and the sabotage round said so.
+//     It claimed that changing `BASE_SHELL` to ₹14,500 in `cost.rs` would leave
+//     the gate "exactly as red as it is now", because the extracted rate follows
+//     the change. MEASURED (S3: cost.rs edited, wasm rebuilt): 20 of 212, not 19.
+//     The extracted rate does follow — and §3 then catches the panel's ₹14,000
+//     failing to. A rate moved on ONE side is red.
+//     The true null is BOTH SIDES IN LOCKSTEP. MEASURED (S3b: cost.rs 14_000 →
+//     14_500 AND stats.ts FLOOR 11_000 → 11_500): 19 of 212, identical to
+//     baseline. Two agreeing implementations of a wrong rate are invisible to a
+//     reconciliation, by definition — whether ₹14,000/m² is right for a
+//     Bengaluru CAT-B fit-out is a question for the sources cited in `cost.rs`.
+//     This is the same shape as the `m2_per_seat` null already on this mission's
+//     record.
 //   * CARBON. `indicative_carbon` is the structurally-paired second output and
 //     is not reconciled here. The rates travel as `(cost, carbon)` tuples in
 //     `cost.rs` and as `{cost, co2}` records in `stats.ts`, so the same
@@ -147,6 +153,48 @@
 //   PROVENANCE  — §5's transplant: identical geometry, `generated` true vs
 //                 false. The one axis where the two surfaces AGREE and are both
 //                 wrong, so it is measured against geometry, not across surfaces.
+//
+// ---------------------------------------------------------------------------
+// SABOTAGE RECORD — run in a disposable worktree, baseline 19 of 213 red.
+// Nulls are listed, not omitted; two sabotages falsified this file's own claims.
+// ---------------------------------------------------------------------------
+//   S1  panelOf feeds the panel GEA (test-side)      19 → 7    12 base rows green,
+//         §3b's 5 and §5's 2 untouched — the three findings are independent.
+//   S2  cost.rs bills the base shell on NIA, wasm     19 → 7    THE REAL FIX greens
+//         rebuilt (product-side)                              every base row.
+//         FIRST RUN OF S2 WENT 19 → 47, NOT GREEN, and that is why §1.1 and §1.2
+//         look the way they do: the old single-probe instrument divided by a zero
+//         headline and misread the enclosure rate as ₹20,000. The gate could not
+//         have gone green on the fix it demands. Found only because the round was
+//         run exhaustively rather than to a checklist.
+//   S3  cost.rs BASE_SHELL 14_000 → 14_500 only       19 → 20   §3 catches it. This
+//         REFUTED the blind-spot paragraph above, which claimed 19.
+//   S3b same, plus stats.ts FLOOR 11_000 → 11_500     19 → 19   THE TRUE NULL: a
+//         rate wrong on BOTH sides in lockstep is invisible, by definition.
+//   S4  stats.ts FLOOR 11_000 → 11_500 only           19 → 20   §3 rate parity.
+//   S5  stats.ts furnGroup gains `counter`            19 → 18   exactly the Counter
+//         row clears; the other four categories stay.
+//   S6a partition ablation aimed at a BOUNDARY wall   19 → 50   §1.4's guard fires.
+//   S6b same wall, guard DELETED                      19 → 47   NOT a null, but not
+//         a clean catch either: the bad rate escapes §1.4 and is caught downstream
+//         by §3, which reports it as "the panel's rate disagrees" — a true red
+//         with a FALSE CAUSE, accusing stats.ts of the instrument's error. The
+//         guard's value is attribution, not detection.
+//   S7  extracted enclosure rate corrupted ×1.5       19 → 36   §4c fires on 13
+//         documents and refuses to blame the base term. Not a tautology. It stays
+//         silent on the all-Workspace states, which have no enclosure term — the
+//         population axis doing visible work.
+//   S8  population cut to one fixture                 19/213 → 13/117  the `docs >= 15`
+//         floor reds rather than the gate passing on a thin population.
+//   S9  §5 transplants an EMPTY interior set          19 → 19   count unchanged, but
+//         the composition is not: the non-vacuity floor fires as the core row goes
+//         green (0 expected vs 0 billed). Vacuity caught, not passed.
+//   S11 NULL — §4c neutered                           19 → 19   as predicted: a
+//         change that only REMOVES coverage can never red a red tree, so its green
+//         means nothing. Recorded so nobody reads it as evidence.
+//   S10 web/src/wasm removed                          exit 1 with the missing-subject
+//         message — never a green skip.
+//   Restored: 19 of 213, matching baseline exactly.
 
 import fs from 'node:fs'
 import os from 'node:os'
@@ -281,31 +329,89 @@ console.log('§1 rate table, extracted from the core by ablation (no source pars
 
 const RATES = {}
 
-// §1.1 BASE SHELL, and the core's BASIS for it.
-// A bare plate has NO zones, so NIA = 0 while GEA = 600. A model billing the base
-// shell per m² of NIA would return ₹0 here. That single document therefore
-// separates the rate from the basis without assuming either.
+// §1.1 BASE SHELL — the RATE and the BASIS, determined together, by two probes.
+//
+// TWO PROBES, NOT ONE, AND THE SABOTAGE ROUND IS WHY. The first version used the
+// bare plate alone: NIA = 0 while GEA = 600, so a per-NIA model bills ₹0 and a
+// per-GEA one bills ₹84,00,000, and the basis reads straight off. That is true,
+// and it is only half a instrument — it can OBSERVE a GEA basis and can only
+// INFER a NIA one from a zero. Sabotage S2 built the actual fix (cost.rs billing
+// on NIA, wasm rebuilt) and the gate did not go green: it went red at 47 with
+// `RATES.base = 0`, a divide-by-zero and an `Infinity m²` in every row. The
+// guard fired and said the right thing, so nothing false was reported — but a
+// gate that cannot go green when the defect is fixed is not measuring the
+// defect, it is measuring today.
+//
+// So the basis is DERIVED from a pair that separates the two candidates in both
+// directions. P2 adds one WORKSPACE zone — deliberately not an enclosed type, so
+// the enclosure premium cannot move and the base shell is the only term that can
+// differ between the two documents:
+//
+//   headline(P1) > 0 and headline(P2) == headline(P1)  ⇒ basis GEA (NIA appeared
+//       and changed nothing), rate = headline(P1) / GEA
+//   headline(P1) == 0 and headline(P2) > 0             ⇒ basis NIA, rate =
+//       headline(P2) / NIA(P2)
+//
+// Anything else is a shape neither branch describes, and is a failure rather
+// than a default.
 {
-  const ed = bare()
-  const m = ed.metrics()
-  check(near(m.net_internal_area, 0), '§1.1 the base-rate probe has NIA = 0', `NIA ${m.net_internal_area} — the probe no longer separates rate from basis; the extraction below is void`)
-  check(near(m.gross_external_area, 600), '§1.1 the base-rate probe has GEA = 600 m²', `GEA ${m.gross_external_area} — a 30×20 plate must measure 600 m²`)
-  check(m.indicative_cost > 0, '§1.1 the core bills a bare plate', `headline ${m.indicative_cost} — with NIA = 0 a per-NIA base shell would bill 0; the core billing 0 too would make the basis unobservable here`)
-  RATES.base = m.indicative_cost / m.gross_external_area
-  RATES.baseBasis = 'GEA'
-  ed.free()
+  const p1 = bare()
+  const m1 = p1.metrics()
+  const p2 = bare()
+  p2.add_zone('Workspace', 5, 5, 4, 4, 'base basis probe')
+  const m2 = p2.metrics()
+  const rooms2 = p2.quantities().rooms
+
+  check(near(m1.gross_external_area, 600) && near(m2.gross_external_area, 600), '§1.1 both base probes measure a 600 m² plate', `GEA ${m1.gross_external_area} / ${m2.gross_external_area}`)
+  check(near(m1.net_internal_area, 0), '§1.1 probe P1 has NIA = 0', `NIA ${m1.net_internal_area} — P1 must carry no zone, or the two probes stop separating the bases`)
+  check(rooms2.length === 1 && m2.net_internal_area > 0, '§1.1 probe P2 has exactly one zone and a positive NIA', `${rooms2.length} room(s), NIA ${m2.net_internal_area}`)
+
+  const geaLike = m1.indicative_cost > 0 && near(m1.indicative_cost, m2.indicative_cost)
+  const niaLike = near(m1.indicative_cost, 0) && m2.indicative_cost > 0
+  check(
+    geaLike !== niaLike,
+    '§1.1 the core\'s base-shell BASIS is determined by the probe pair',
+    `P1 (GEA ${m1.gross_external_area}, NIA ${m1.net_internal_area}) bills ${inr(m1.indicative_cost)} and ` +
+      `P2 (GEA ${m2.gross_external_area}, NIA ${m2.net_internal_area}) bills ${inr(m2.indicative_cost)} — ` +
+      `that is neither the GEA shape nor the NIA shape, so a third term moved between two documents that ` +
+      `differ only by one non-enclosed zone. Every rate below would be measuring it.`,
+  )
+  if (geaLike) {
+    RATES.base = m1.indicative_cost / m1.gross_external_area
+    RATES.baseBasis = 'GEA'
+  } else if (niaLike) {
+    RATES.base = m2.indicative_cost / m2.net_internal_area
+    RATES.baseBasis = 'NIA'
+  } else {
+    RATES.base = NaN
+    RATES.baseBasis = 'indeterminate'
+  }
+  p1.free(); p2.free()
 }
 
 // §1.2 ENCLOSED-ROOM PREMIUM, per m² of the area `quantities()` reports.
+//
+// BY RETYPE, NOT BY ADDING A ROOM — also from S2. Adding a Meeting zone to a
+// bare plate moves the enclosure term AND, under a NIA basis, the base term with
+// it; the first version read the enclosure rate as ₹20,000/m² (= 14,000 + 6,000)
+// against the true ₹6,000 the moment the core was put on NIA. A retype changes
+// the zone's TYPE and not its area, so the base term is fixed under either
+// basis — and that is asserted across the edit rather than assumed.
 {
   const ed = bare()
-  const before = ed.metrics().indicative_cost
-  ed.add_zone('Meeting', 5, 5, 4, 4, 'rate probe')
-  const m = ed.metrics()
+  const zid = ed.add_zone('Workspace', 5, 5, 4, 4, 'enclosure rate probe')
+  const m0 = ed.metrics()
   const rooms = ed.quantities().rooms
+  ed.set_zone_type(zid, 'Meeting')
+  const m1 = ed.metrics()
   check(rooms.length === 1, '§1.2 the enclosure probe has exactly one room', `quantities() reports ${rooms.length}`)
-  check(near(m.gross_external_area, 600), '§1.2 adding a zone left GEA alone', `GEA moved to ${m.gross_external_area}; the enclosure Δ would carry a base-shell change`)
-  RATES.enclosure = (m.indicative_cost - before) / rooms[0].areaM2
+  check(
+    near(m0.gross_external_area, m1.gross_external_area) && near(m0.net_internal_area, m1.net_internal_area),
+    '§1.2 the retype moved no area',
+    `GEA ${m0.gross_external_area}→${m1.gross_external_area}, NIA ${m0.net_internal_area}→${m1.net_internal_area} — ` +
+      `the Δ below would carry a base-shell change and be read as an enclosure rate`,
+  )
+  RATES.enclosure = (m1.indicative_cost - m0.indicative_cost) / rooms[0].areaM2
   ed.free()
 }
 
@@ -655,7 +761,13 @@ console.log('\n§5 provenance — identical geometry, generated vs imported')
   // solid. The expectation is therefore at the SOLID rate for the whole set —
   // deliberately conservative: A bills the glazed runs far higher.
   const expected = interiorM * RATES.solid
-  const billed = mb.indicative_cost - mb.gross_external_area * RATES.base
+  // B's only other term is the base shell, and it is subtracted ON THE BASIS
+  // §1.1 DERIVED — not on GEA. Hardcoding GEA here reported B's partition term
+  // as −₹84,00,000 under sabotage S2's NIA-billing core: the verdict was still
+  // red, and the rupee figure beside it was nonsense. A gate quoting a wrong
+  // number is not saved by reaching the right verdict.
+  const baseQty = RATES.baseBasis === 'NIA' ? mb.net_internal_area : mb.gross_external_area
+  const billed = mb.indicative_cost - baseQty * RATES.base
   check(
     near(billed, expected, 1e-6),
     '§5 · TERM partition: the core bills imported interior partitions',
