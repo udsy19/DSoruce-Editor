@@ -4799,3 +4799,113 @@ part of what it leaves:
 **"The brief is a hypothesis" is a standing convention on every agent dispatch
 from here on** — the same discipline that falsified this round's own A-as-base
 recommendation by measurement.
+# C: R24 — the rule fired against the round convened to fix it
+
+`session-c` opened Step 0 of the integration round, tagged both pre-merge refs,
+verified Line A directly, and — while measuring — watched a **second session
+commit `a3d5258` "Integration 1/2"** onto a new `integration` branch in the shared
+checkout. Two orchestrators, one integration, neither declared. **R24 firing in
+real time, inside the round promoted from its cause.**
+
+Resolved as R24 prescribes rather than by racing: integration is a **named phase
+with one owner**. `session-integration` owns the merge. `session-c` took a
+declared parallel line and the **adversary** role instead.
+
+> **This is strictly better than the brief's default**, and the reason is the
+> mission's own standing rule. A fix authored by the finder is calibrated to the
+> finding; a merge audited by its author is that defect one level up. Step 3.3 —
+> *"sabotage the surviving zone-244 fix and confirm the retired line's tests didn't
+> leave a green shadow"* — is precisely the check the merge's author is least able
+> to run against themselves.
+
+`docs/audits/SESSION-REGISTRY.md` now carries the protocol and four declarations
+(`session-a` and `session-b` retroactively, both FINISHED; `session-integration`
+LIVE and owning the merge; `session-c` LIVE and auditing). A declaration is
+retired by marking it FINISHED, never deleted — a line that ended is evidence.
+
+## C: Step 0 — Line A's claim is licensed by measurement
+
+`048d99e`, fresh wasm, in `/private/tmp/ds-wt-line-a`:
+**`VERIFY OK — 51/51 steps green`** · sheet board **5/6, SG5 FAIL (29 checks, 27
+failing)** · **`drawing-set FAIL (339 checks)`, 21 failures.**
+
+A's ledger claimed 51/51 and it reproduces. **The inversion holds — B is base.**
+The plan may now rest on a run rather than on a line's account of itself.
+
+## C: three corrections to the premises the merge rests on
+
+**1. Four of the five "drawing-set round" files are in the MERGE BASE.**
+`drawing-set.test.mjs`, `drawing-set.baseline.json`, `sg5-board-integrity.mjs` and
+the design doc are all in `49502e5`. **Only `sg7-area-identity.mjs` is unique to
+Line B.** B's unique contribution is the FIX and the provenance-bearing baseline,
+not the fixture's existence — which its own report implies when it says the
+fixture was *"red at base with 19 failures for 73 commits."* **This changes the
+port:** a file present on both sides is a content **reconciliation**, not a copy,
+and `drawing-set.baseline.json` now has two divergent versions over a shared
+ancestor. A plan treating them as "B's files, absent from A" overwrites A's side
+silently.
+
+**2. A's "27 failing" is mostly MY setup, not Line A.** ~25 of them read
+`no scoreboard line` / `the gate produced nothing` — SG5 grades the
+deliverable-pack board's output and I had not run that board in a fresh worktree.
+Only 2 are Line A state. **The artifact-independent number is 21 drawing-set
+failures**, `dwg A.01 ×6 · A.02 ×6 · sheets 3,4,5,6,11 · seeded 3,4,6,11`. The
+brief says 19; I measured 21 and will hold the merged tree to 21.
+
+> **The general form:** a gate that reads another board's output fails loudly and
+> in bulk when that board has not run, and those failures look exactly like defects
+> in the subject. *A missing input is a FAILURE, never a skip* — but it must also
+> not be reported as 25 separate defects in the tree. Observation about SG5,
+> recorded not fixed; `session-c` writes no source.
+
+**3. Exit criterion 1 contradicts Step 1.** Step 1 says *"B is base, A ports on,
+A's 9 unique files"*; Exit 1 still says *"A-based … B's 24 files ported."* Step 1
+carries the inversion, the measurement agrees with it, and the closing audit must
+not be run against the stale sentence.
+
+## C: a measurement I am NOT claiming
+
+While I ran in the shared checkout it already held the in-progress port (11
+staged paths). `drawing-set PASS (329)` and sheet board `7/8` taken there are
+**B-plus-partial-port, not Line B**, and are recorded only so nobody later mistakes
+them for a Line B baseline. Cited as evidence for nothing.
+
+**Both pre-merge refs are tagged and permanently reachable:**
+`premerge-line-a` → `048d99e` · `premerge-line-b` → `6e49ba3`.
+## C: the merge changed hands by declaration, not by drift
+
+`session-integration` published `qbiq-parity-integration-increment-2b.md` and
+stopped. `session-c` verified before taking it: no writes for ~90 min, worktree
+clean, and the claimed board **re-measured rather than inherited** — freshness
+precondition (`make wasm`, `gen-zone-domain.mjs`) then
+**`VERIFY OK — 53/53 steps green`**, both tags resolving, 35 GiB free.
+
+**That is the whole of R24 working.** The first transfer in this mission cost 27
+conflicting files and two ledgers because neither line knew of the other. This one
+cost a registry edit, because the outgoing session **declared its successor's work
+instead of stopping silently.** A handoff document is a declaration; the registry
+records who acted on it.
+
+> **The independence this costs is stated, not hidden.** `session-c` held the
+> adversary role *because* a merge audited by its author is a finder-authored fix
+> one level up. Taking the merge forfeits that, and the forfeit is repaid the only
+> way it can be: **a separate ADVERSARY is dispatched for §6** — R19, the producer
+> never certifies its own work. If that adversary cannot be run, the verdict is
+> **not written**, rather than written weakly.
+
+### The ledger interleave, first instance — both sides kept
+
+Porting `session-c`'s Step 0 entries onto `integration` conflicted in
+`docs/audits/LOOP-LEDGER.md`, both sides appending at EOF. Resolved by a rule, not
+by a choice: **every conflict hunk keeps BOTH sides, ours then theirs.** For two
+append-only ledgers that is the only lossless resolution — and it is §3's
+requirement arriving early, on a two-line hunk instead of on two full tails.
+Verified after: zero conflict markers survive, all four `C:` entries present.
+
+**Correction carried into the continuation brief:** §4.3 still states the
+doc-comment grep's *"yield doubles"* on the merged tree. Measured across four refs
+— base **85**, A **94**, B **97**, `a3d5258` **99** — it does not. 85 hits are
+inherited from the merge base and common to both lines; only **21 are
+line-authored**. The union tops out near 106. **Sweep base-first:** the inherited
+85 predate the fork and neither line ever swept them, while the 21 were written by
+sessions that had the class in mind.
