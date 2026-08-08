@@ -16,12 +16,22 @@
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
-const url = import.meta.env.VITE_SUPABASE_URL
-const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+// `import.meta.env` is a Vite-ism. This module is now reachable from the AI
+// call sites (they attach a bearer token to /api/claude), and those are bundled
+// for NODE by the `.test.mjs` harness and by scripts/ — where `import.meta.env`
+// is undefined and reading through it threw at module-eval time, taking the
+// whole bundle down before a single assertion ran. Defaulting to an empty bag
+// keeps this module INERT off-Vite, which is exactly the contract stated above,
+// instead of exploding. Fixes the class, not just the one call site.
+const env: Record<string, string | undefined> =
+  (import.meta as unknown as { env?: Record<string, string | undefined> }).env ?? {}
+
+const url = env.VITE_SUPABASE_URL
+const anonKey = env.VITE_SUPABASE_ANON_KEY
 
 /** True when the operator opted into cloud sync AND supplied a project. */
 export function cloudEnabled(): boolean {
-  return import.meta.env.VITE_CLOUD_SYNC === '1' && !!url && !!anonKey
+  return env.VITE_CLOUD_SYNC === '1' && !!url && !!anonKey
 }
 
 // One shared client per tab. supabase-js persists the auth session in

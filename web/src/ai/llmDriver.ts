@@ -1,5 +1,6 @@
 import { AgentDriver, DriverContext, DriverResult, ToolCall } from './contract'
 import type { Program } from '../types/program'
+import { authHeaders } from '../cloud/auth'
 interface ProxyResponse {
   content: string | null
   tool_calls: { name: string; arguments: string | Record<string, unknown> }[]
@@ -22,7 +23,7 @@ export class LlmDriver implements AgentDriver {
   async interpret(text: string, ctx: DriverContext): Promise<DriverResult> {
     const resp = await fetch('/api/agent', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', ...(await authHeaders()) },
       body: JSON.stringify({ text, context: ctx, history: this.history.slice(-8) }),
     })
     if (!resp.ok) throw new Error(`agent proxy ${resp.status}: ${(await resp.text()).slice(0, 200)}`)

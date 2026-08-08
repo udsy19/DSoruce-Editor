@@ -866,13 +866,104 @@ User showed Rayon drawing-set PDFs as the output bar (`docs/reference/rayon-outp
   newer, last-write-wins both directions, idempotent, offline-safe; additive `syncedAt/remoteRev`; dev
   `/api/plans` middleware (mirrors deploy/server.ts). Library sync row + auto-sync on open. Two-device
   E2E verified. (Live once deployed; delete-tombstones deferred.)
+- [x] **Schema as code — `supabase/migrations/`.** The plan schema previously existed only as a fenced
+  SQL block inside `docs/design/cloud-sync.md`, applied by hand to a project this repo cannot reach:
+  no reproducible stand-up, no way to test a policy before it was live. `0001_plans_cloud_sync.sql`
+  transcribes it idempotently (a no-op against the live DB); `0002_tenancy.sql` builds on it.
+- [x] **Multi-tenancy (Phase 1).** `organisation → project → plan`, with membership at the org level and
+  `project_grants` for external access, following the extension path `cloud-sync.md` §9 sketched. Roles
+  are a native Postgres enum in ascending privilege (`viewer < reviewer < designer < admin < owner`), so
+  policies compare with `>=` — no rank table. `reviewer` maps onto the document model's existing
+  decision lifecycle (open → in-review → confirmed). Deliberately **no separate "workspace" level**: the
+  org is the workspace, and the second axis is per-project grants, which is what the GCC client-contact
+  case actually needs (see one project, nothing else in the org). Membership lookups go through
+  `SECURITY DEFINER` oracles (`org_role_of` / `project_role_of`) so `org_members` policies cannot
+  recurse; every RLS predicate column is indexed. Existing rows are backfilled into a personal org
+  before `org_id` goes `NOT NULL`, and `plans.org_id` defaults to the caller's org so a pre-tenancy
+  client keeps working. **0001's owner-only policies are DROPPED, not supplemented** — Postgres ORs
+  permissive policies, so leaving them would mean a revoked member keeps every plan they created.
+  `supabase/tests/` — **28 checks against a real Postgres**, run as the `authenticated` role with a JWT
+  claim set, not read-and-agreed-with. Sabotage round: all 8 mutations go red, including losing
+  `SECURITY DEFINER` (recursion) and removing the backfill (the migration itself fails).
+- [x] **First-run + integrity (`0003`, `0004`).** Two gaps found by probing 0002 against a real
+  Postgres rather than reasoning about it. **0003** — a user created *after* the backfill had no
+  organisation, so `plans.org_id`'s default resolved to NULL and their very first save was refused
+  (`new row violates row-level security policy`). Closed with an idempotent `ensure_personal_org()`
+  RPC rather than the usual trigger on `auth.users`, so an invited member adopts the org they were
+  invited to instead of accumulating an empty personal one. **0004** — nothing tied `plans.org_id` to
+  `plans.project_id`, so a plan could claim org A while its project lived in org B: not a privilege
+  escalation (the insert policy demands designer on both) but a visibility and aggregation lie. Closed
+  with a composite FK onto `projects (id, org_id)` — declarative, no trigger body to drift.
+- [x] **Cloud writer is tenancy-aware.** `SupabaseSyncProvider.put()` now denormalizes
+  `org_id`/`project_id`/`floor_label`/`floor_index` out of the blob; a plan filed under a project takes
+  that project's org (the composite FK makes guessing an error, not a silent inconsistency), and an
+  unfiled plan falls back to `ensurePersonalOrg()`. `cloud/tenancy.ts` adds `pushProject()` — which must
+  run before any plan referencing it — plus `orgOfProject()` and the org/member/project readers.
+  **37 RLS checks green; sabotage: 11 of 11 mutations red.**
+- [ ] Tenancy UI — org switcher, member management, invitations (table exists, no email flow), and
+  calling `pushProject()` from the project save path. The data layer is wired end to end; no screen
+  drives it yet.
+- [ ] `ProjectRecord.logo` still travels as an inlined `data:` URL locally. `projects.logo_url` is a URL
+  column and `pushProject()` deliberately does NOT carry the base64 across — the logo waits for the
+  object store rather than being smuggled over in the wrong shape.
+- [ ] Move project logos and plan thumbnails out of the row (`logo_url` is already a URL column, but
+  `ProjectRecord.logo` and `SavedPlan.thumb` are still inlined `data:` URLs client-side). This is the
+  unbounded-egress line in the costing model.
 
 ## Track J — Deploy / infra
 - [x] Production bundle: single Node `dsource-api` (SPA + `/api/agent|claude|dwg|bank|plans`), systemd
   unit, Caddy site, idempotent `deploy.sh`. Verified locally end-to-end.
 - [ ] **Actually deploy** — blocked: SSH to VPS denied (1Password agent locked). Unlock → `./deploy/deploy.sh`
   → live at `https://app.46.202.179.28.sslip.io`.
-- [ ] Prod reverse-proxy hardening for the API routes (dev-only proxies today).
+- [x] **Guard on the token-spending proxies.** `/api/claude` and `/api/agent` previously accepted any
+  POST with no identity, no quota and no origin check — the entire variable cost of the product was an
+  open endpoint. `apiCore.guard()` now gates both: origin allowlist → Supabase bearer verified against
+  `/auth/v1/user` (no JWT library, works with HS256 and asymmetric keys, 60 s identity cache) →
+  per-user token bucket. It sits INSIDE `claudeComplete`/`agentComplete`, whose signatures now require
+  the request headers, so a new adapter cannot reach the upstream without passing the guard — omitting
+  it is a type error, not a silent hole. **Fails closed:** with a Supabase project configured, auth is
+  required unless `API_AUTH=off` is set explicitly, so a forgotten env var protects rather than exposes.
+  One implementation, used by all three runtimes (`deploy/server.ts`, `api/*.ts`, and the dev
+  middlewares in `web/vite.config.ts`, which import `guard` rather than carrying a copy). Client side,
+  `cloud/auth.authHeaders()` attaches the token at all five spending call sites and returns `{}` when
+  cloud is off, so local dev is unchanged. `deploy/apiCore.test.mjs` — 24 checks, whose load-bearing
+  assertion is negative: **on every denied path the upstream is never contacted** (counted through an
+  injected fetch, not taken from the handler's own account). Sabotage round: all 7 mutations go red —
+  removing either `guard()` call, flipping the fail-closed default, making identity always succeed,
+  disabling the rate limiter, disabling the origin check, and removing the identity cache.
+- [x] **LLM gateway + per-tenant usage ledger (`0005`, `deploy/llmGateway.ts`, `deploy/llmPricing.ts`).**
+  The guard bounded *requests*; this bounds *money* — twenty cheap calls and twenty expensive ones look
+  identical to a rate limiter. Order is the design: resolve tenant → check budget → call upstream →
+  record usage. Checking after the call is a report, not a limit; recording before it bills for calls
+  that never happened. Over budget returns **402** (`budget_exhausted`), not 429 — the fix is a billing
+  decision, not a retry. **Money is integer nanodollars** (`bigint`), never floats: $3/MTok is exactly
+  3000n per token, so a month sums without drift (asserted over 100k calls). **Each row stores the rate
+  version that priced it**, so Sonnet 5's intro rate lapsing on 2026-08-31 cannot retroactively rewrite
+  what July cost. An unknown model is recorded with `unpriced: true` and zero cost — flagged, never
+  guessed. The gateway acts with the CALLER'S bearer token, not a service-role key, so RLS is the
+  boundary and this code is just a client; it never sends `user_id` (the insert policy pins it). A
+  failed ledger write is logged loudly but never fails the request — the tokens are already spent.
+  **50 RLS checks + 19 pricing checks + 19 gateway checks green; sabotage 8/8 red.**
+- [ ] Distributed rate limiting. The token bucket in `apiCore.ts` is still per-process — a real cap on
+  the single VPS service, a speed bump on serverless where it is per-instance. The *spend* cap above is
+  now durable (it reads the shared ledger), so this is about request pacing, not cost. The backstop
+  remains a hard cap in the Anthropic console, which does not depend on any of this code being correct.
+- [x] **Both spending routes meter through one gateway.** `/api/agent` now runs the same
+  resolve→check→call→record path as `/api/claude`. `normalizeUsage` maps that route's OpenAI-shaped
+  `usage` (prompt_tokens/completion_tokens) onto the ledger's vocabulary, so one table answers "what did
+  this org spend" regardless of provider. Note `gpt-4o-mini` is not on an Anthropic rate card, so agent
+  rows land `unpriced: true` — flagged for alerting, not silently free. Adding OpenAI rates is one entry
+  in `RATES` once the production driver is decided.
+- [x] **Boundary validation on `/api/agent`.** `buildSystem` dereferences `context.zones`/`.program`
+  with no guard, so a malformed POST threw a TypeError and surfaced as a **500** — an operator reading
+  logs would see a server fault where the truth is a bad request. Now a 400, in `apiCore.ts` *and* the
+  dev middleware, which reimplements this route and would otherwise disagree with prod about what a bad
+  request looks like.
+- [ ] Nothing sets `org_budgets` yet: every org is uncapped until an admin writes a row. The enforcement
+  path is tested and live; the UI to configure it is not built.
+- [ ] `agentComplete` dereferences `body.context.zones` and `body.context.program` with no validation, so
+  a malformed POST throws instead of returning 400. Found while writing the guard test; the guard denies
+  such a request before it matters when auth is on, but it is still a 500 waiting to happen.
 
 ## Track K — Multiplayer (`docs/design/multiplayer.md`)
 - [x] Architecture (op-log + relay sequencing).

@@ -89,7 +89,7 @@ async function handleAgent(req: IncomingMessage, res: ServerResponse): Promise<v
     return sendJson(res, r.status, r.json)
   }
   if (req.method !== 'POST') return sendJson(res, 405, {})
-  const r = await agentComplete(await readJson(req))
+  const r = await agentComplete(await readJson(req), req.headers)
   sendJson(res, r.status, r.json)
 }
 
@@ -102,7 +102,7 @@ async function handleClaude(req: IncomingMessage, res: ServerResponse): Promise<
     return sendJson(res, r.status, r.json)
   }
   if (req.method !== 'POST') return sendJson(res, 405, {})
-  const r = await claudeComplete(await readJson(req))
+  const r = await claudeComplete(await readJson(req), req.headers)
   sendJson(res, r.status, r.json)
 }
 

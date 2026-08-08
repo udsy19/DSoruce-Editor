@@ -244,8 +244,16 @@ The owner-only model is the floor; sharing is a purely additive extension:
 - **Phase 1 — background reconcile.** Point the existing `persist/sync.ts` LWW loop at
   `SupabaseSyncProvider`; auto-push on save, auto-pull on open; surface sync status in the library.
 - **Phase 2 — sharing.** `plan_shares` + share UI; Realtime library updates.
-- **Phase 3 — teams + scale.** Workspaces/memberships; Storage offload for thumbnails; retention +
-  rate limits; optional CRDT/versioned merge for concurrent edits.
+- **Phase 3 — teams + scale.** ~~Workspaces/memberships~~ **SHIPPED as `supabase/migrations/0002_tenancy.sql`**
+  — organisations + roles + projects + per-project grants + audit log, 28 RLS checks against a real
+  Postgres (`supabase/tests/`). Note the shape differs from the §9 sketch in one deliberate way: the
+  organisation IS the workspace, and the second access axis is `project_grants` rather than a
+  separate always-one-per-org level — that is what the external client-contact case needs. Still
+  open: Storage offload for thumbnails; retention + rate limits; CRDT/versioned merge.
+
+  ⚠️ The schema in §5 above is now **transcribed into `supabase/migrations/0001_plans_cloud_sync.sql`**.
+  That file, not this document, is the source of truth — and it must never be re-applied after 0002
+  (it would resurrect the superseded owner-only policies).
 
 ---
 

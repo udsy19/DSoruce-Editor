@@ -19,6 +19,7 @@ import type { Program, RoomReq } from '../types/program'
 import type { Strategy } from '../editor/EditorCanvas'
 import { openaiToolsToAnthropic, parseClaudeContent, type ClaudeContentBlock } from './claudeDriver'
 import { CORRIDOR_M, CORRIDOR_RANGE_TEXT } from './llmSchema'
+import { authHeaders } from '../cloud/auth'
 
 /** Every room kind the Rust generator understands — mirrors `layout::SpaceKind`,
  *  and `src/coreParity.test.mjs` proves it still does by parsing the enum out of
@@ -337,7 +338,7 @@ export async function proposeDesign(ctx: DesignContext, signal?: AbortSignal): P
     try {
       const resp = await fetch('/api/claude', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', ...(await authHeaders()) },
         body,
         signal,
       })
