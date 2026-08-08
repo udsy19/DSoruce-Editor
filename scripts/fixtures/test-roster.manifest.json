@@ -389,6 +389,26 @@
           "metrics_tests::the_basis_conjuncts_are_enumerated"
         ]
       }
+    },
+    {
+      "when": "2026-08-08",
+      "why": "main's DWG/DXF import hardening arrives via f42b196 (merge origin/main): category = the layer/block category vocabulary in dxf.ts categoryFor; dwgJson = the LibreDWG-JSON to DXF transcoder; dwgVerify = the DWG to DXF conversion integrity check; units = geometry-anchored unit inference in decideUnits; zipEntry = the minimal ZIP reader. Rust: an_empty_plan_is_infeasible_and_never_outscores_a_real_one pins that a plate too small to place anything scores as infeasible rather than emitting a vacuous score. All six read and confirmed asserting before pinning; none replaces a retired member.",
+      "js": {
+        "added": [
+          "web/src/import/category.test.mjs",
+          "web/src/import/dwgJson.test.mjs",
+          "web/src/import/dwgVerify.test.mjs",
+          "web/src/import/units.test.mjs",
+          "web/src/import/zipEntry.test.mjs"
+        ],
+        "removed": []
+      },
+      "rust": {
+        "added": [
+          "layout::tests::an_empty_plan_is_infeasible_and_never_outscores_a_real_one"
+        ],
+        "removed": []
+      }
     }
   ],
   "js": {
@@ -417,6 +437,9 @@
     "web/src/export/workbook.test.mjs": "initial pin — the F1 roster, established from a green tree at 56af276",
     "web/src/import/area.test.mjs": "initial pin — the F1 roster, established from a green tree at 56af276",
     "web/src/import/areaTool.test.mjs": "initial pin — the F1 roster, established from a green tree at 56af276",
+    "web/src/import/category.test.mjs": "main's DWG/DXF import hardening arrives via f42b196 (merge origin/main): category = the layer/block category vocabulary in dxf.ts categoryFor; dwgJson = the LibreDWG-JSON to DXF transcoder; dwgVerify = the DWG to DXF conversion integrity check; units = geometry-anchored unit inference in decideUnits; zipEntry = the minimal ZIP reader. Rust: an_empty_plan_is_infeasible_and_never_outscores_a_real_one pins that a plate too small to place anything scores as infeasible rather than emitting a vacuous score. All six read and confirmed asserting before pinning; none replaces a retired member.",
+    "web/src/import/dwgJson.test.mjs": "main's DWG/DXF import hardening arrives via f42b196 (merge origin/main): category = the layer/block category vocabulary in dxf.ts categoryFor; dwgJson = the LibreDWG-JSON to DXF transcoder; dwgVerify = the DWG to DXF conversion integrity check; units = geometry-anchored unit inference in decideUnits; zipEntry = the minimal ZIP reader. Rust: an_empty_plan_is_infeasible_and_never_outscores_a_real_one pins that a plate too small to place anything scores as infeasible rather than emitting a vacuous score. All six read and confirmed asserting before pinning; none replaces a retired member.",
+    "web/src/import/dwgVerify.test.mjs": "main's DWG/DXF import hardening arrives via f42b196 (merge origin/main): category = the layer/block category vocabulary in dxf.ts categoryFor; dwgJson = the LibreDWG-JSON to DXF transcoder; dwgVerify = the DWG to DXF conversion integrity check; units = geometry-anchored unit inference in decideUnits; zipEntry = the minimal ZIP reader. Rust: an_empty_plan_is_infeasible_and_never_outscores_a_real_one pins that a plate too small to place anything scores as infeasible rather than emitting a vacuous score. All six read and confirmed asserting before pinning; none replaces a retired member.",
     "web/src/import/dxf.test.mjs": "initial pin — the F1 roster, established from a green tree at 56af276",
     "web/src/import/heal.test.mjs": "initial pin — the F1 roster, established from a green tree at 56af276",
     "web/src/import/mergeOrient.test.mjs": "initial pin — the F1 roster, established from a green tree at 56af276",
@@ -425,6 +448,8 @@
     "web/src/import/plate.test.mjs": "initial pin — the F1 roster, established from a green tree at 56af276",
     "web/src/import/plateQuality.test.mjs": "initial pin — the F1 roster, established from a green tree at 56af276",
     "web/src/import/testfit.test.mjs": "initial pin — the F1 roster, established from a green tree at 56af276",
+    "web/src/import/units.test.mjs": "main's DWG/DXF import hardening arrives via f42b196 (merge origin/main): category = the layer/block category vocabulary in dxf.ts categoryFor; dwgJson = the LibreDWG-JSON to DXF transcoder; dwgVerify = the DWG to DXF conversion integrity check; units = geometry-anchored unit inference in decideUnits; zipEntry = the minimal ZIP reader. Rust: an_empty_plan_is_infeasible_and_never_outscores_a_real_one pins that a plate too small to place anything scores as infeasible rather than emitting a vacuous score. All six read and confirmed asserting before pinning; none replaces a retired member.",
+    "web/src/import/zipEntry.test.mjs": "main's DWG/DXF import hardening arrives via f42b196 (merge origin/main): category = the layer/block category vocabulary in dxf.ts categoryFor; dwgJson = the LibreDWG-JSON to DXF transcoder; dwgVerify = the DWG to DXF conversion integrity check; units = geometry-anchored unit inference in decideUnits; zipEntry = the minimal ZIP reader. Rust: an_empty_plan_is_infeasible_and_never_outscores_a_real_one pins that a plate too small to place anything scores as infeasible rather than emitting a vacuous score. All six read and confirmed asserting before pinning; none replaces a retired member.",
     "web/src/persist/draftRace.test.mjs": "initial pin — the F1 roster, established from a green tree at 56af276",
     "web/src/persist/file.test.mjs": "initial pin — the F1 roster, established from a green tree at 56af276",
     "web/src/persist/plans.test.mjs": "initial pin — the F1 roster, established from a green tree at 56af276",
@@ -475,6 +500,7 @@
     "geometry::tests::rect_segment_dist_is_zero_on_contact_and_exact_otherwise": "initial pin — the F1 roster, established from a green tree at 56af276",
     "geometry::tests::the_work_meter_is_per_thread_so_a_parallel_suite_cannot_move_it": "initial pin — the F1 roster, established from a green tree at 56af276",
     "geometry::tests::tracer_snaps_nearby_endpoints_into_one_loop": "initial pin — the F1 roster, established from a green tree at 56af276",
+    "layout::tests::an_empty_plan_is_infeasible_and_never_outscores_a_real_one": "main's DWG/DXF import hardening arrives via f42b196 (merge origin/main): category = the layer/block category vocabulary in dxf.ts categoryFor; dwgJson = the LibreDWG-JSON to DXF transcoder; dwgVerify = the DWG to DXF conversion integrity check; units = geometry-anchored unit inference in decideUnits; zipEntry = the minimal ZIP reader. Rust: an_empty_plan_is_infeasible_and_never_outscores_a_real_one pins that a plate too small to place anything scores as infeasible rather than emitting a vacuous score. All six read and confirmed asserting before pinning; none replaces a retired member.",
     "layout::tests::anchor_bumps_count_when_kind_absent": "initial pin — the F1 roster, established from a green tree at 56af276",
     "layout::tests::anchor_consumes_one_of_a_requested_kind": "initial pin — the F1 roster, established from a green tree at 56af276",
     "layout::tests::anchored_generate_is_deterministic_and_keeps_anchors": "initial pin — the F1 roster, established from a green tree at 56af276",
