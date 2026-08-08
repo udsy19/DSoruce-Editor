@@ -537,12 +537,25 @@ const ROSTER_WHY = (() => {
  */
 function jsRosterOnDisk() {
   if (!fs.existsSync(VERIFY_ALL)) return { err: 'scripts/verify-all.sh is gone — there is no runner to reconcile against' }
-  const pipes = [...read(VERIFY_ALL).matchAll(/^done < <\((.+)\)\s*$/gm)].map((m) => m[1])
+  // ANCHORED TO THE WHOLE CONSTRUCT, not to the pipeline alone: the loop must
+  // read a name AND `run node` on it AND be fed by the glob. The pipeline on its
+  // own is a list; only the loop makes it a population that grades commits.
+  // (Measured: the first version of the Rust half of this section matched
+  // `cargo test -p ds-core` ANYWHERE in the runner's source, and the E2 sabotage
+  // — replace the `run` line with a `skip`, leave the two comment mentions —
+  // came back `reconcile OK`. Same family, so both halves are anchored to the
+  // invocation now.)
+  const pipes = [
+    ...read(VERIFY_ALL).matchAll(
+      /^while IFS= read -r (\w+); do\n\s*run "[^"]*" node "\$\1"\n\s*done < <\((.+)\)\s*$/gm,
+    ),
+  ].map((m) => m[2])
   if (pipes.length !== 1) {
     return {
-      err: `verify-all.sh has ${pipes.length} \`done < <( … )\` pipeline(s), expected exactly 1 — ` +
-        'the JS roster derivation has lost its anchor in the runner (0), or the runner grew a ' +
-        'second globbed population this pin does not cover (2+)',
+      err: `verify-all.sh has ${pipes.length} \`while read … run node … done < <( … )\` loop(s), expected exactly 1 — ` +
+        'the JS roster derivation has lost its anchor in the runner (0: the glob is gone, or it no ' +
+        'longer feeds a loop that actually RUNS each file), or the runner grew a second globbed ' +
+        'population this pin does not cover (2+)',
     }
   }
   const r = spawnSync('bash', ['-c', pipes[0]], { cwd: ROOT, encoding: 'utf8' })
@@ -650,10 +663,16 @@ check(!rustDisk.err, "the Rust roster derivation runs cargo's own test list", ru
 // The roster is a claim that these populations are GRADED. That claim dies with
 // the runner behind it, so the runner is re-checked here (the JS half is the
 // extraction above; this is the Rust half).
+// ANCHORED TO THE INVOCATION, NOT THE STRING. `includes('cargo test -p ds-core')`
+// was the first version and it is the export-parity code-path-specificity defect
+// verbatim: the E2 sabotage replaced the `run` line with a `skip` and left the
+// two comment mentions of the same string, and this came back GREEN with nothing
+// running the Rust suite at all. Found by the sabotage round, not by review.
 check(
-  fs.existsSync(VERIFY_ALL) && read(VERIFY_ALL).includes('cargo test -p ds-core'),
-  'verify-all.sh still runs the Rust suite this roster pins',
-  'nothing invokes `cargo test -p ds-core` any more — a roster over a suite no runner runs pins a population that grades nothing',
+  fs.existsSync(VERIFY_ALL) && /^\s*run\s+"[^"]*"\s+cargo\s+test\s+-p\s+ds-core\s*$/m.test(read(VERIFY_ALL)),
+  'verify-all.sh still RUNS the Rust suite this roster pins',
+  'no `run "…" cargo test -p ds-core` line in the runner — a roster over a suite no runner runs pins ' +
+    'a population that grades nothing. A comment mentioning the command does not count.',
 )
 if (rustDisk.names) {
   check(

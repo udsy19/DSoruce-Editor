@@ -48,12 +48,18 @@
   "how_each_side_is_derived": {
     "js": [
       "The on-disk side is NOT re-implemented here. reconcile.mjs extracts the",
-      "shell pipeline out of verify-all.sh's own source — the text inside",
-      "`done < <( … )` on the line that feeds the JS test loop — and RUNS it.",
-      "So the roster is reconciled against what the runner will actually execute,",
-      "not against a second walker that can drift from it. Change the glob and the",
-      "derivation changes with it; delete the pipeline and the extraction fails RED",
-      "rather than quietly reconciling against nothing."
+      "shell pipeline out of verify-all.sh's own source and RUNS it. So the roster",
+      "is reconciled against what the runner will actually execute, not against a",
+      "second walker that can drift from it. Change the glob and the derivation",
+      "changes with it; delete the pipeline and the extraction fails RED rather",
+      "than quietly reconciling against nothing.",
+      "",
+      "The extraction is anchored to the WHOLE CONSTRUCT — `while IFS= read -r t;",
+      "do run \"…\" node \"$t\"; done < <( … )` — and not to the pipeline alone,",
+      "because a glob that no longer feeds a loop that RUNS each file is a list,",
+      "not a population. Exactly one such loop is expected: zero means the anchor",
+      "is gone, two means the runner grew a second globbed population this pin",
+      "does not cover."
     ],
     "rust": [
       "`cargo test -p ds-core -- --list`, parsed for `<name>: test` lines. Names,",
@@ -61,9 +67,17 @@
       "`N tests, M benchmarks` summary line, so a regex that silently stops",
       "matching cannot masquerade as a shrinking population.",
       "",
-      "reconcile also asserts verify-all.sh still invokes `cargo test -p ds-core`.",
-      "A roster reconciled against a suite no runner runs is a pin on a population",
-      "that grades nothing."
+      "reconcile also asserts verify-all.sh still invokes `cargo test -p ds-core`,",
+      "anchored to the `run \"…\" cargo test -p ds-core` LINE and not to the string",
+      "anywhere in the file. A roster reconciled against a suite no runner runs is",
+      "a pin on a population that grades nothing.",
+      "",
+      "That anchoring is not decoration — it is a defect the sabotage round found",
+      "in this very guard. The first version matched the string anywhere; sabotage",
+      "E2 replaced the `run` line with a `skip` and left the two COMMENT mentions",
+      "of the same command, and reconcile returned `reconcile OK`, exit 0, with",
+      "nothing running the Rust suite. Same family as export-parity's code-path",
+      "specificity axis, found by breaking the mechanism rather than by review."
     ]
   },
   "update_discipline": [
