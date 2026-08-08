@@ -458,6 +458,145 @@ select pg_temp.check_probe('an admin can still remove ITSELF from the org (leavi
     where org_id = ''00000000-0000-0000-0000-00000000aa00''',
   '1/5');
 
+-- ── STRANDING: an organisation must never reach zero owners ──────────────────
+-- 0006 closed route 5 from below (an ADMIN may not delete the owner's row) and
+-- left it open from above. `owner <= owner` is true, so the owner may delete
+-- ITSELF, and the org lands on zero owners with no way back: measured on this
+-- schema, the remaining admin's self-promotion is `UPDATE 0`, its
+-- `INSERT … 'owner'` raises, `ensure_personal_org()` adopts the same stranded
+-- org without seating anyone, and `DELETE FROM organisations` affects 0 rows.
+-- Every one of those refusals is correct and each is already asserted above —
+-- which is precisely the shape of the harm. 0006 made the exit unreachable
+-- while leaving the entrance open, converting a self-healing state into a
+-- permanent one. The permanence therefore needs no new check; the entrance does.
+--
+-- The same harm is already guarded one statement type over, on UPDATE, by
+-- 'an owner cannot demote ITSELF and strand the org'. That check is green. This
+-- section is the DELETE half of the identical property.
+--
+-- The property is NOT "you may not delete your own row" — 0006 rejects that
+-- reading in as many words, because it would trap people in organisations, and
+-- the safe exit (promote a successor, then leave) has to keep working. It is
+-- narrower: an organisation must never reach zero owners. So the last owner may
+-- not remove itself; an owner with a co-owner may.
+
+-- A second organisation with TWO owners. Studio cannot express the co-owner
+-- cases — it has exactly one — and widening Studio's roster would move the
+-- counts every check above asserts on. Fresh users, so no membership count
+-- elsewhere in this file changes.
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-0000000000a6', 'owner-a@duo.test'),
+  ('00000000-0000-0000-0000-0000000000a7', 'owner-b@duo.test'),
+  ('00000000-0000-0000-0000-0000000000a8', 'admin@duo.test');
+
+-- The `org_creator_is_owner` trigger seats d1; d2 is the co-owner that makes
+-- leaving legal, d3 the admin that makes it illegal again once they have gone.
+insert into public.organisations (id, name, slug, created_by) values
+  ('00000000-0000-0000-0000-00000000cc00', 'Duo', 'duo',
+   '00000000-0000-0000-0000-0000000000a6');
+insert into public.org_members (org_id, user_id, role) values
+  ('00000000-0000-0000-0000-00000000cc00', '00000000-0000-0000-0000-0000000000a7', 'owner'),
+  ('00000000-0000-0000-0000-00000000cc00', '00000000-0000-0000-0000-0000000000a8', 'admin');
+
+-- THE DEFECT. Unfixed this observes '1/0': one row deleted, zero owners left.
+select pg_temp.check_probe('the LAST owner cannot leave and strand the org',
+  '00000000-0000-0000-0000-0000000000a1',
+  'delete from public.org_members
+    where org_id = ''00000000-0000-0000-0000-00000000aa00''
+      and user_id = ''00000000-0000-0000-0000-0000000000a1''',
+  'select count(*)::text from public.org_members
+    where org_id = ''00000000-0000-0000-0000-00000000aa00'' and role = ''owner''',
+  '0/1', '-1/denied');
+
+-- The same delete wearing a CTE and a USING join. A predicate attached to the
+-- simple form and not to the row can be walked around by reshaping the
+-- statement, so the reshaped form is measured rather than argued about.
+select pg_temp.check_probe('nor by routing that delete through a CTE and USING',
+  '00000000-0000-0000-0000-0000000000a1',
+  'with victim as (
+     select org_id, user_id from public.org_members
+      where org_id = ''00000000-0000-0000-0000-00000000aa00''
+        and user_id = ''00000000-0000-0000-0000-0000000000a1'')
+   delete from public.org_members m using victim v
+    where m.org_id = v.org_id and m.user_id = v.user_id',
+  'select count(*)::text from public.org_members
+    where org_id = ''00000000-0000-0000-0000-00000000aa00'' and role = ''owner''',
+  '0/1', '-1/denied');
+
+-- THE CASE THAT KILLS THE OBVIOUS FIX, and the reason this is not a policy
+-- conjunct. An RLS `USING` predicate is evaluated per row against the
+-- STATEMENT'S snapshot, so a `count(owners) > 1` conjunct is true for BOTH rows
+-- of a two-owner org and one statement removes them both. Measured against
+-- exactly that candidate: '2/0' — `DELETE 2`, zero owners. The guard has to see
+-- the end of the statement, not the start of it.
+select pg_temp.check_probe('nor can ONE statement remove both owners at once',
+  '00000000-0000-0000-0000-0000000000a6',
+  'delete from public.org_members
+    where org_id = ''00000000-0000-0000-0000-00000000cc00''
+      and role = ''owner''',
+  'select count(*)::text from public.org_members
+    where org_id = ''00000000-0000-0000-0000-00000000cc00'' and role = ''owner''',
+  '0/2', '-1/denied');
+
+-- TRUNCATE fires no row-level trigger and is governed by a table privilege
+-- rather than by RLS, so it is the one statement that would walk past the guard
+-- entirely. `authenticated` holds select/insert/update/delete and nothing else;
+-- this asserts that, rather than trusting the grant list to stay that way.
+select pg_temp.check_probe('nor by TRUNCATE, which fires no row trigger at all',
+  '00000000-0000-0000-0000-0000000000a1',
+  'truncate public.org_members',
+  'select count(*)::text from public.org_members
+    where org_id = ''00000000-0000-0000-0000-00000000aa00'' and role = ''owner''',
+  '-1/denied');
+
+-- POSITIVE CONTROLS. A guard that also forbids the safe exit is not a fix, it is
+-- the trap 0006 explicitly declined to build. All four must stay green.
+
+select pg_temp.check_probe('an owner CAN leave when a co-owner remains',
+  '00000000-0000-0000-0000-0000000000a7',
+  'delete from public.org_members
+    where org_id = ''00000000-0000-0000-0000-00000000cc00''
+      and user_id = ''00000000-0000-0000-0000-0000000000a7''',
+  'select count(*)::text from public.org_members
+    where org_id = ''00000000-0000-0000-0000-00000000cc00'' and role = ''owner''',
+  '1/1');
+
+-- The safe exit, in the order 0006 prescribes: name a successor, then go. Both
+-- statements in one subtransaction, so what is asserted is that the sequence
+-- works — not that each half works in isolation.
+select pg_temp.check_probe('promote-then-leave: the last owner CAN leave after naming a successor',
+  '00000000-0000-0000-0000-0000000000a1',
+  'update public.org_members set role = ''owner''
+    where org_id = ''00000000-0000-0000-0000-00000000aa00''
+      and user_id = ''00000000-0000-0000-0000-0000000000a2'';
+   delete from public.org_members
+    where org_id = ''00000000-0000-0000-0000-00000000aa00''
+      and user_id = ''00000000-0000-0000-0000-0000000000a1''',
+  'select count(*)::text from public.org_members
+    where org_id = ''00000000-0000-0000-0000-00000000aa00'' and role = ''owner''',
+  '1/1');
+
+select pg_temp.check_probe('an owner can still remove a MEMBER''s row',
+  '00000000-0000-0000-0000-0000000000a1',
+  'delete from public.org_members
+    where org_id = ''00000000-0000-0000-0000-00000000aa00''
+      and user_id = ''00000000-0000-0000-0000-0000000000a5''',
+  'select count(*)::text from public.org_members
+    where org_id = ''00000000-0000-0000-0000-00000000aa00''',
+  '1/5');
+
+-- Deleting the organisation is not stranding it, it is deleting it, and the
+-- roster cascades away underneath. A guard that cannot tell those apart makes
+-- an owned organisation undeletable — the same permanence, entered from the
+-- other side. This is the check that reds if that distinction is dropped.
+select pg_temp.check_probe('deleting the organisation still takes its roster with it',
+  '00000000-0000-0000-0000-0000000000a1',
+  'delete from public.organisations
+    where id = ''00000000-0000-0000-0000-00000000aa00''',
+  'select count(*)::text from public.org_members
+    where org_id = ''00000000-0000-0000-0000-00000000aa00''',
+  '1/0');
+
 -- The probes are only comparable across a fixed and an unfixed run if they left
 -- nothing behind. Asserted, not assumed — this is the check that reds if a
 -- future probe is added without going through probe_as.
@@ -474,9 +613,19 @@ select pg_temp.check('the escalation probes left the roster untouched',
         where org_id = '00000000-0000-0000-0000-00000000aa00'
           and user_id = '00000000-0000-0000-0000-0000000000a5') = 'viewer'
   and (select count(*) from public.organisations
-        where id = '00000000-0000-0000-0000-00000000aa00') = 1,
+        where id = '00000000-0000-0000-0000-00000000aa00') = 1
+  -- the stranding probes above, under the same guard
+  and (select count(*) from public.org_members
+        where org_id = '00000000-0000-0000-0000-00000000cc00') = 3
+  and (select count(*) from public.org_members
+        where org_id = '00000000-0000-0000-0000-00000000cc00' and role = 'owner') = 2,
   'roster is ' || (select count(*) from public.org_members
-    where org_id = '00000000-0000-0000-0000-00000000aa00')::text || ' rows');
+    where org_id = '00000000-0000-0000-0000-00000000aa00')::text || ' rows, duo is '
+    || (select count(*) from public.org_members
+         where org_id = '00000000-0000-0000-0000-00000000cc00')::text || ' rows / '
+    || (select count(*) from public.org_members
+         where org_id = '00000000-0000-0000-0000-00000000cc00' and role = 'owner')::text
+    || ' owners');
 
 -- ── REVOKED-MEMBER: why 0001's owner-only policies are dropped ───────────────
 -- The designer personally created f101 (plans.owner = a3). If the superseded
