@@ -3568,7 +3568,1425 @@ change. The defect was the silence, not the skip. Floor numbers are quoted from
 
 ---
 
-# R17/R18 — ONE QUANTITY, TWO LANGUAGES: the census with an instrument that can see
+# THE INTERLEAVE — two lines forked here, and both tails follow
+
+Everything above this line is the **shared merge base, `49502e5`** — 3 567 lines,
+**byte-identical in both pre-merge trees** (verified: `head -3567` of
+`premerge-line-a:docs/audits/LOOP-LEDGER.md` and of the `-b` mirror have the same
+md5, `2faa586e…`). Nothing above was authored by either line, and nothing above was
+touched by this interleave.
+
+From here the ledger forks. Two orchestrators wrote one mission without knowing of
+each other — the condition R24 was later promoted to prevent — and each appended to
+its own copy of this file:
+
+| line | ref | tail | ledger commits | authored retractions |
+|---|---|---|---|---|
+| **A** | `premerge-line-a` = `048d99e` | **1 309 lines** | **7** (07:35 → 13:54, 2026-08-07) | **6** |
+| **B** | `premerge-line-b` = `6e49ba3` | **1 101 lines** | **1** (14:44, 2026-08-07) | **2** |
+| integration + `session-c` | `b9ec338` | 243 lines | 3 | 0 |
+
+Both tails are **pure appends** over the identical base — neither line edited a
+line the other also edited, anywhere in the first 3 567. The merge is therefore a
+concatenation problem, not a conflict-resolution problem, and losslessness is
+achievable exactly rather than approximately.
+
+## The ordering used, and why a true chronology is NOT derivable
+
+**A faithful global interleave of the two sequences cannot be derived, and none is
+fabricated here.** The reason is mechanical:
+
+* **Line A's tail carries real internal chronology.** Its 1 309 lines arrived in
+  **seven** commits across six hours, so every A entry can be placed against the
+  commit that introduced it. That table is below and it is derived, not asserted.
+* **Line B's tail carries none.** Its 1 101 lines — R17/R18, R12-amended, R19,
+  belief four, R20/R21, belief five, R22: *eight verdicts and six rule promotions* —
+  arrived in **one commit**, `6e49ba3`, at 14:44. There are no entry timestamps and
+  no intermediate commits to bisect. B's internal order is knowable only as "the
+  order B wrote them in the file", which is the order preserved below.
+* **The one cross-line timestamp that exists is misleading.** B's single ledger
+  commit (14:44) is later than every one of A's (13:54 latest), but that orders the
+  *writes*, not the *work*. B's tail describes eight belief rounds and a disk
+  exhaustion; that work plainly overlaps A's six hours rather than following it.
+  Interleaving A and B by commit timestamp would produce a clean-looking chronology
+  that is false in the only sense a reader would care about.
+
+**So the ordering is: clearly-tagged per-line blocks, in commit order — Line A's
+tail entire, then Line B's tail entire, then the integration session's.** Commit
+order is what puts A first (all seven of A's ledger commits precede B's one). No
+timestamps were invented, and no entry was moved relative to its own line's
+sequence. An honest stated ordering beats a fabricated chronology.
+
+**Within Line A, the chronology IS derivable, and is recorded** — each entry
+against the commit that introduced it, by ledger length at each commit:
+
+| # | commit | time | A-tail lines | entries introduced |
+|---|---|---|---|---|
+| 1 | `5ed35ef` | 07:35 | 1–217 | R14 across the crate boundary · R14/R15/R16 · INTEGRATION (the two halves collided) |
+| 2 | `c6c02d2` | 08:32 | 218–383 | R17 — the census of a QUANTITY |
+| 3 | `d55b104` | 09:18 | 384–566 | Belief four, item 1 — the clip gets its guard |
+| 4 | `24f66ea` | 11:02 | 567–683 | E5 — the seat count in the column beside the area |
+| 5 | `8adfb0d` | 11:32 | 684–1002 | BELIEF FOUR — NOT BELIEVED · HANDOFF |
+| 6 | `d0b0260` | 13:38 | 1003–1202 | F1 — THE PLATE HAD TWO OWNERS |
+| 7 | `048d99e` | 13:54 | 1203–1309 | INTEGRATION — F1 landed · HANDOFF REVISION 2 |
+
+## How to read the tags
+
+Every **top-level entry heading** below carries its line: `A:`, `B:`, `I:`
+(`session-integration`) or `C:` (`session-c`, which already used the convention).
+The tag is a **prefix added to the heading line and nothing else** — no heading text
+was reworded, and no sub-heading, body line, table or number was altered anywhere in
+either tail. The nineteen prefixed lines are enumerated in the losslessness proof.
+
+**The reconciliation — the rule mapping table, the replication register, the
+`paint.ts` finding, the scoping of A's belief verdicts, and the places where the two
+lines CONTRADICT each other — is at the very end of this file**, after all three
+tails. It is written there because it cites all of them.
+
+---
+
+
+---
+
+# ══════════ LINE A — the post-fork tail ══════════
+
+**1 309 lines · 7 commits · `5ed35ef` (07:35) → `048d99e` (13:54), 2026-08-07 ·
+tagged `A:` · 6 authored retractions.** Absent from `integration` until this
+interleave; recovered whole from `premerge-line-a`. Entry-to-commit mapping is in
+the interleave preamble above. Line A's board at close: **Rust 203 · battery 51/51 ·
+board 36 CHECKS · 8 GUARDS**, and **every verdict below is scoped to that tree** —
+see the reconciliation, §4.
+
+---
+
+
+---
+
+# A: R14 across the crate boundary — the census instrument was the defect
+
+## The two survivors, closed
+
+`zoneGeom.zoneArea` had **11 invocation lines in 9 files**, not the ~15 the brief
+estimated, and the split was **3 PUBLISH · 7 ORDER-ONLY · 1 DEAD**.
+
+> **RETRACTED BY NAME.** The brief listed `services.ts:139` as a fourth publishing
+> consumer. `Room.area` is **written and never read** — the interface is private
+> and no `.area` reference exists in the file or the tree. Deleted. Three of four
+> named consumers were real; a prescribed fix is a hypothesis, and the count in
+> the report was one of its terms.
+
+`takeoff.ts:140` reads the raw shape **correctly**: `Document::zone_index_at`
+(`document.rs:197`) chooses on `z.shape.area()`, so moving that site to the basis
+would have made the Furniture Elements column and the Headcount column bucket
+differently. Verified on all four levels rather than read off its comment. **The
+brief's "migrate every consumer" would have introduced a defect here.**
+
+**Beyond the report:** the divergence was live on the **seeded demo pack the sheet
+gates already grade** — zone 193 "Open Workspace" printed **668.5 m²** on A.09
+against a workbook billing **550.6** (testfit pack: 687.6 vs 540.9). Confirmed
+after the fix from the delivered PDF via `pdftotext`, a third-party extractor:
+**22/22 rows match the core**.
+
+## R14 — three mechanisms, each costed by measurement, not asserted
+
+1. **NAME.** `zoneArea` is gone; the raw helper is `rawShapeAreaForOrderingOnly`.
+   Reimporting is `TS2305`, the analogue of Rust's `E0425`.
+2. **ALLOWLIST.** The gate derives every importer from the **filesystem** and reds
+   on one not declared ordering-only.
+3. **VALUE.** Neither source scan sees a site that recomputes `w * h`.
+
+A.09-back-on-raw is **2 edits, compiles**, 226 red; +1 allowlist line, still 225
+red; **no edit satisfies the value check while the divergence exists.** The
+**recompute** route is **1 edit, typechecks clean, 0 allowlist and 0 name failures,
+197 value failures** — on that route the check is not a backstop, it is the only
+mechanism. `cost.rs:185` proved that by shipping.
+
+## Survivor 2 — the false mirror, retracted in place
+
+`cost.rs:185` `z.area_on(plate_ref)` against `stats.ts:271-273` — *"the two
+enclosure premiums agree"* — were **2.20% apart** (F5 `Focus Room 1` 8.4672 vs
+7.5096). Both now read `area_basis`; the comment is retracted **with its numbers**,
+and its premise ("enclosed rooms lie fully inside the plate") is named as the
+non-invariant it was — a user drags a room over the boundary, and F5 does.
+`ENCLOSURE_PREMIUM`'s rate pair is registered in `coreParity.test.mjs`.
+
+**Still unregistered mirrors, reported not silently widened into this change:** the
+other rate families in that same "keep in lockstep" note — `BASE_SHELL`,
+`PARTITION_*`, `DOOR`, furniture.
+
+## The gate — 1156 checks, auto-discovered, no runner edit
+
+`web/src/export/publishedArea.test.mjs`. ARTIFACT: the `Page.ops` the sheet
+builders emit, the content stream `pdf.ts` serialises verbatim, glyph runs
+recovered and numbers parsed back out. GROUND TRUTH: `Editor.quantities()
+.rooms[].areaM2` — a wasm export nothing in `web/src/export/` consumes. Both
+populations, 5 fixtures × (unedited + 4 edits), 10 capped states.
+
+Watched fail first: **452 of 953 red at HEAD**, naming zone 244 35.0-vs-8.0 and
+F4-retyped's **23 of 24 on A.09 and 23 of 24 on the plan label**. **1156/1156**
+after. `verify-all.sh`'s `find` loop discovers it — R12 satisfied with no runner
+edit.
+
+## The sabotage round — 18 run, and the null result IS the finding
+
+**`area_basis` de-clipped — BOTH surfaces moving together — left this gate GREEN
+and all 196 pre-existing Rust tests GREEN.** A real regression in the core's single
+owner of per-zone area, invisible to `metrics_can_never_be_impossible` and to
+`golden_generate_output_is_frozen`. Only `enclosed_premium_reads_the_area_basis`,
+added this round, caught it. The gate's green is correct — it measures agreement,
+not the basis. The Rust suite's green was not.
+
+**"The basis is plate-clipped" had no guard at all** — not a guard that rotted, one
+never written. **Named, not fixed. Carried to belief four as an open item.**
+
+Second null: the gate's `/* */` comment strip guards nothing today (every prose
+mention of the retired name is `//`). Kept as insurance, declared inert.
+
+---
+
+# A: R14/R15/R16 — the conjuncts become a list, the census becomes the exports
+
+## Survivor 3 — `mod basis` has the scan `lib.rs` already carried twice
+
+`no_unregistered_production_site_reads_the_raw_per_zone_areas` walks the crate at
+test time, strips line comments, `#[cfg(test)]`/`#[test]` items, test-only modules
+derived from their own declarations, and `mod basis` itself.
+
+**What it closes that `rustc` does not:** widening the exemption. Delete the
+`#[cfg(test)]` from `raw_zone_areas_unscaled` and the compiler goes quiet while a
+production reader appears — S3b RED. Every enabling transform was sabotaged too:
+`strip_test_items` RED · `strip_named_mod` RED · test-only derivation RED · crate
+walk RED (*"found 13 .rs files — the instrument is the finding"*) · stripped-source
+-empty RED.
+
+**A NULL RESULT, and it changed the guard.** Matching `area_on(` *with the call
+paren* left `strip_line_comments` **inert** — S3d green, the transform guarding
+nothing. Switched to bare-name matching, which also closes a real route (a `use`,
+a re-export, a fn pointer): **S3d2 RED** on `conform.rs`. **Third sighting of *a
+guard that was never attached*.**
+
+**Scoped claim: no unregistered production site IN THIS CRATE.** Recompute by other
+arithmetic (`w*h`, `polygon_area`, a bbox difference) is invisible — *a census of a
+symbol cannot see a census of a quantity*, which is exactly how `cost.rs` escaped
+R14. The R14 retraction is restated as the instrument's own scope rather than
+repeated as an apology.
+
+## Survivor 4 (R15) — the census is the export list, the coverage is a witness
+
+`pub_fns` is now the crate's ONE Rust source scanner; both `lib.rs` mutator guards
+were each re-implementing the same parse. **55 exports = 21 readers + 34 mutators**,
+brace-balanced out of the `#[wasm_bindgen] impl Editor` block.
+
+**Read-surface coverage 4 of 21 → 16 of 21.** Save/reopen (`snapshot`/`restore`/
+`from_snapshot`), `state`, `get_cad_json`, `qto_schedule`, `wall_types`,
+`wall_outlines`, `plate`, `zone_at`, `circulation`, `layout_score` and
+`density_score` are now graded **per mutation step**. `circulation` is guarded on
+the **document's** wall count — never the producer's own `CirculationScore::empty`
+flag — and the census asserts the guarded arm is reached 1205 times, so it is a
+guard and not a skip.
+
+The covered side is a **run-time witness** (`Ledger::read` at the point of use),
+not a list — deliberately, because two artifact-derived lists agree with each other
+about what is missing. S4a/b/c/d all RED: a new export, a removed read, a stale
+exemption, a typo'd name.
+
+Five exemptions (`new`, `revision`, `zones`, `layout_diag`, `fixture_ids`), each
+with a justification the test rejects under 40 chars. `zones` is exempt precisely
+because a conjunct comparing it to `doc.zones` would be a value compared against
+itself — the R16 tautology this same round deleted two of.
+
+> **The R15 retraction is DISCHARGED**, not merely acknowledged. Save/reopen and
+> export ARE in the battery now.
+
+## Survivor 5 (R16) — 39 conjuncts: 35 CHECKS and 4 GUARDS, counted apart
+
+One test held ~17 unenumerated conjuncts. The board now prints **`35 CHECKS
+(370 950 evaluations) · 4 GUARDS (115 627, NOT counted as checks)`** and fails on
+an undeclared conjunct, a declared-but-never-reached one, and an empty note.
+
+| | verdict | measured |
+|---|---|---|
+| **T1** `efficiency_pct > 100` | **DELETED** | removing the clamp ALONE left it green; **two** independent breakages are needed (S-T1c, 102.469% on F4-retyped). A statement needing two breakages guards nothing |
+| **T2** `traced && nia > gea` | **GUARD — the brief is OVERTURNED here** | R16's own separator is *break the mechanism*: drop `net_internal_area`'s Traced clamp → **RED**. Panic-instrumenting proves *never fires*, which guards and tautologies **share**; it does not separate them |
+| **S01** `to_string(&doc).is_ok()` | **DELETED in the same round it was written** | serde_json does **not** refuse NaN — it writes `null` and returns `Ok`. Measured, not assumed |
+
+**M08 replaces T1** with the property the clamp cannot fake: efficiency equals the
+ratio re-derived from the document. The basis sabotage T1 slept through reds M08
+eight times.
+
+> **RETRACTED BY NAME:** `lib.rs`'s `no_zone_mutator_can_write_a_document_that_
+> cannot_reopen` doc comment — *"serde_json refuses to serialize NaN/±∞, which
+> makes 'did this write a non-finite number?' and 'can this still be saved?' the
+> same question."* **False on the write side**; the refusal is on the READ side,
+> which the test's own repro quotes two lines above. Corrected in place.
+
+**Second null result:** S02 could not see a component dropped on reopen — geometry
+survives it untouched — until the inventory facets were added. S-S02b now RED ×18.
+
+**M24 is a GUARD BY DERIVATION**, implied by M14 ∧ M19 ∧ M20 ∧ M21 and strictly
+weaker; it never reds alone in any sabotage. Kept for its m²-naming message,
+excluded from the check count.
+
+**Measured, not fixed:** `circulation().circulation_ratio` exceeds 1 by up to
+**1.010254** (seed 7 from F2) — a cell-counted walkable area over a polygon area, a
+discretization overshoot. S11 bounds it **below only** and says so; bounding it at
+1 would assert a promise the surface never made.
+
+---
+
+# A: INTEGRATION — the two halves collided exactly where they were built to
+
+**R11 deltas declared BEFORE the merge:** Rust 196 → **200** · battery 49 → **50** ·
+22 files · **and one predicted RED**, named in advance: the basis scan's registered
+exemption for `cost.rs` must go stale, because the other half routed that very line
+through `area_basis`.
+
+**Verified after:** Rust **200 passed / 0 failed** · battery **50/50 `--full`** ·
+and the predicted red fired verbatim —
+
+```
+the registered exemption cost.rs: `let a = z.area_on(plate_ref);` no longer
+matches any production line. If the site was routed through `area_basis`,
+DELETE the entry — a stale exemption covers nothing and hides the next one
+```
+
+Cherry-picks were textually clean; **the only conflict was semantic**, and the
+scan's stale-exemption arm (falsified as S3c) is what surfaced it. Resolved by
+deleting the entry per its own written instruction — **neither half weakened to
+absorb the other.** Two doc-comment claims the merge invalidated were corrected in
+the same change: route 1's "live second owner … addressed elsewhere" (it is
+addressed *here*), and route 3's list of four unreachable TS owners (closed from
+the other side, by `publishedArea.test.mjs`).
+
+Two instruments, one per language, neither claiming the other's territory. The R14
+retraction was about a census asserting reach it did not have; the fix is coverage
+on both sides, not a wider claim from one.
+
+**Cost:** `cargo test -p ds-core` 38 s → **200 s**. `circulation::evaluate` and
+`layout::score` are ~65 ms per evaluation; the battery is computed once into a
+`OnceLock` read by three tests, because three runs of an identical deterministic
+population would be eight minutes of duplicated work.
+
+## Open, carried to belief four
+
+1. **"The basis is plate-clipped" is unguarded** — de-clipping `area_basis` left
+   all 196 pre-existing Rust tests green. Whether the merged tree's new conjuncts
+   catch it is **untested**: the two halves were built in isolation and this
+   sabotage has not been re-run against their union.
+2. `circulation_ratio` > 1 by 1.010254 — measured, unbounded above by design.
+3. Unregistered rate mirrors: `BASE_SHELL`, `PARTITION_*`, `DOOR`, furniture.
+4. The `/* */` comment strip in `publishedArea.test.mjs` is inert insurance.
+
+---
+
+# A: R17 — the census of a QUANTITY, and the fourth publisher nobody named
+
+## Why a third census
+
+Per-zone area has been unified twice and certified twice by counting a NAME.
+`cost.rs:185` recomputed `z.area_on(plate_ref)` inline, matched no symbol scan,
+and shipped. S18 measured the TypeScript twin: an inline `w * h` with no import
+typechecks clean and scores **0** allowlist failures and **0** name failures.
+**A census of a symbol cannot see a recompute** — measured twice, and the second
+time inside the instrument written to close the first.
+
+`web/src/util/areaCensus.test.mjs` detects the ARITHMETIC in both languages —
+`.area()`/`.area_on(` in Rust; in JS/TS a shoelace kernel whose four operands are
+all coordinates, a `w * h` off a shape-like binding, or a surviving area-claiming
+name — and reconciles what it finds against a written register in BOTH
+directions. **5 CHECK KINDS — unregistered · count · stale · open-ratchet ·
+non-vacuity — evaluated 60 times, and 0 GUARDS.** Nothing in it is an identity by
+construction; every assertion compares the disk against the register. Both
+numbers are printed, because counting evaluations as checks is how a board
+inflates.
+
+## The gap, measured on the unfixed merged tree
+
+| instrument | files | Rust files | production fns |
+|---|---|---|---|
+| `grep -E 'zoneArea\|shapeArea\|polyArea\|rawShapeAreaForOrderingOnly'` | 8 | **0** | n/a |
+| this detector | **19** | **9** | **26** (14 Rust · 12 JS/TS) |
+
+The two populations share exactly **one** file, `util/zoneGeom.ts`. Seven of the
+grep's eight compute nothing — they import the helper or quote its retired name
+in prose. The grep's Rust population is empty **by construction**: no Rust file
+contains any of those identifiers.
+
+## The three claimed publishers — verified, and one claim corrected in its letter
+
+Watched RED first, on `5ed35ef` with only the census added: `FAIL (60 checks, 2
+failing)`, naming `paint.ts::drawZones (2 hits)` and `Scene3D.tsx::card (4 hits)`.
+
+| site | verdict | reaches |
+|---|---|---|
+| `three/Scene3D.tsx:216,220` | **PUBLISHES** | pick-card `subtitle`, `:225` |
+| `editor/paint.ts:566-573` (Poly) | **PUBLISHES** | canvas room tag, `paint.ts:938 stroked(chosen.metrics…)` |
+| `editor/paint.ts:653` (Rect) | **PUBLISHES** | same tag |
+
+> **CORRECTED IN ITS LETTER, not overturned.** The brief called these "two
+> `?? s.w * s.h` fallbacks". One is (`:653`); the other (`:573`) is
+> `?? Math.abs(a2) / 2`, an inlined shoelace. The substance — two painter
+> fallbacks, one of them a degeneracy quantity spent as a published m² — holds
+> exactly. At `:573` a single shoelace served the epsilon `|a2| < 1e-6` **and**
+> the published area; the fix splits them, and only the epsilon survives.
+
+All three are FALLBACK arms behind `stat?.area`, the core basis. **Scoped claim:
+the fallback is reached whenever `zone_stats()` yields no row for a zone —
+coded for at `EditorCanvas.ts:793`, which returns `[]` when the binding is
+absent. No live in-app repro was constructed, so this is a latent publisher on
+the primary path, not a measured divergence.** It is fixed regardless, because
+`util/publishedArea.ts` states the rule these three broke: *never fall back to
+the shape — printing a plausible wrong number is how this class hides.*
+
+`takeoff.ts:140` was left alone, as the previous entry requires.
+
+## The fourth publisher, which no brief named
+
+**`crates/ds-core/src/zone.rs:274` — `Zone::capacity`, `(self.area() / per)`.** A
+published seat count off the RAW shape. It reaches `quantity.rs:539`, billing
+`capacity` in the row whose `area_m2` two lines up comes from `area_basis` under
+a comment retracting that exact defect for the area — and `lib.rs:1156`, the
+unfurnished fallback behind the "N pax" on every canvas tag. An unfurnished room
+hanging off the plate reports seats for floor its own area column does not bill.
+
+**NOT FIXED, and registered as `open` rather than reclassified.** The complete
+fix moves `lib.rs:1156` too, and `lib.rs` is owned by a concurrent change;
+fixing only `quantity.rs` would make the workbook and the Zones tab disagree
+about seats in order to close a gap about area. The `open` kind is ratcheted
+EXACTLY in both directions — S7 (a new entry, no bump) and S8 (the site fixed,
+entry stale) are both RED — so it is a recorded debt, not a producer's veto.
+
+This is the E7 shape again: **a gate written before the fix audits it; a gate
+written after can only confirm it.** The brief named three; the instrument named
+four.
+
+## Sabotage round — 28 cases, 24 RED, 4 NULL
+
+Disposable copy (`/private/tmp/e3-sab`), never the tree. Every edit asserts its
+anchor before writing and re-reads after.
+
+RED: S1 unregistered `w*h` · S2 unregistered `.area()` · S3 stale entry · S4 a
+second hit inside a registered fn · S5/S6 each real defect restored · S7/S8 the
+open ratchet both ways · S9 an unjustified open entry · T1/T2 comment strips ·
+T3 `rustTestRanges` · T4 the test-filename arm · T5 `enclosingFn` rule 1 ·
+T8/T9 each file walk · T10a/b/c each detector · T11 the whole `JS_SKIP` ·
+T13 test-context routing · T15/T16 enabling+defect pairs · T17 a mis-resolved
+`REPO`.
+
+**The four nulls, which are the useful part:**
+
+| null | reading |
+|---|---|
+| **T6** `enclosingFn` rule 3 (`const X = wrapper(() =>`) | Inert on the FIXED tree. It was load-bearing on the unfixed one — it is what made the fail-first message name `card` instead of `switchMode` — and went inert the moment the recompute it attributed was deleted. |
+| **T7** `enclosingFn` rule 2 (column-0 = module scope) | Inert. No hit at column 0 that is not itself a declaration exists today. |
+| **T12** `blankLiterals` → identity | Inert. No `#[cfg(test)]` item's brace matching is disturbed by a literal in this crate. Kept as insurance, declared inert. |
+| **T14** the three non-vacuity floors → 0 | Inert **alone**. T15 shows why: a broken walk still reds through the STALE REGISTER arm, 16 failures with the floors at 0. They are belt-and-braces over that arm and name the cause in one line instead of sixteen. Not the guard. |
+
+**Three of my own sabotages were defective, and each defect was the same one.**
+T10a/T10c *renamed* a detector instead of disabling it, leaving the original
+regex live under a new key; T11 replaced only the bare `'node_modules'` entry
+while `'web/node_modules'` still covered the directory; and T11's copy had
+`node_modules` as a SYMLINK, which `Dirent.isDirectory()` reports false for, so
+the tree was never walked either way. All three first reported **GREEN**. This
+is the `implySeats`-in-the-wrong-file failure exactly: **a sabotage that does not
+sabotage produces a null result indistinguishable from an inert guard.** Corrected
+and re-run; all four are RED. The lesson generalises past this file — a null
+result is only evidence after the sabotage is shown to have bitten.
+
+## Two defects the round found in the instrument itself
+
+1. **A hang, not a failure.** Sabotaging a detector to `new RegExp('$^', 'g')`
+   spun `while (re.exec(line))` forever: a global regex matching the empty string
+   never advances `lastIndex`. **A battery gate that hangs is worse than one that
+   is wrong — the board never returns to report it.** Both scan loops now advance
+   on a zero-length match, turning the hang into an absurd count the reconcile arm
+   reds on.
+2. **A crash, not a report.** T17 (a `REPO` one level too high) made the walk
+   climb out of the repo and CRASH. Non-zero, so the battery would have gone red —
+   but red-by-crash names no cause. Subject existence now runs BEFORE the walks
+   and reports in words: `FAIL (1 checks, 1 failing)`.
+
+## Disposition of the incoming `sg7-area-identity.mjs` — DROPPED
+
+Its assertion already exists, with strictly wider coverage. SG7 compares A.09's
+area column and the plan labels against `Editor.quantities()` on **2 rendered
+packs**; `export/publishedArea.test.mjs` compares the same two surfaces against
+the same ground truth over **5 fixtures × 10 states, 1158 checks**, and needs no
+rendered artifact. Its one genuine addition — reading the delivered PDF through
+poppler rather than the `Page.ops` — was already run once against this fix and
+recorded above (22/22 rows). Landing it would put a second implementation of one
+contract in `scripts/gates/sheets/`, requiring a runner edit, on a board that
+reds uninvoked gates. `.claude/rules/no-bloat.md`: reuse, do not fork.
+
+**Carried:** nothing standing re-derives areas from the DELIVERED PDF bytes; the
+one such measurement is a recorded one-off, not a gate.
+
+## R12 — wired with no runner edit
+
+`web/src/util/areaCensus.test.mjs` is discovered by `verify-all.sh`'s
+`find src -name '*.test.mjs'` loop. It is deliberately NOT in `scripts/gates/` or
+`bench/`, the two directories `reconcile.mjs` derives its gate population from,
+so it cannot become an orphan there. Re-measured: **`reconcile OK — 24 gate(s) on
+disk, all invoked`**.
+
+**Board: Rust 200 · battery 51/51 with `--full`.**
+
+## Open, carried forward
+
+1. `zone.rs::capacity` publishes a raw-shape seat count. Registered `open`,
+   ratcheted, blocked on `lib.rs`.
+2. Rust free functions computing an area under a non-`.area(` name
+   (`geometry::polygon_area`, `rect_polygon_clip_area`) are outside the
+   detector by declared scope — a different quantity with its own owner. A
+   per-zone recompute written as `polygon_area(poly_points(pts))` in a new file
+   is invisible to this instrument.
+3. `enclosingFn` rules 2 and 3, and `blankLiterals`, are inert insurance.
+4. Everything carried by the previous entry is unchanged **by this change**.
+
+---
+
+# A: Belief four, item 1 — the clip gets its guard, and the first guard written for it was inert
+
+## Step A, re-measured on the merged tree — the carried item is narrowed, by name
+
+The carried item read: *"de-clipping `area_basis` left all 196 pre-existing Rust
+tests green … whether the merged tree's new conjuncts catch it is untested."*
+Both halves are now measured, in a disposable worktree with an **isolated**
+target dir, and run **twice** for an independent second reading:
+
+```
+de-clip (`z.area_on(plate_ref)` → `z.area()`)  →  199 passed / 1 failed   [both runs]
+  cost::tests::enclosed_premium_reads_the_area_basis
+  "premium must bill the 12 m² ON the plate; got 8496000, want 8472000"
+```
+
+**RETRACTED BY NAME, from this round's own brief:** the merged conjuncts do
+**not** catch it. All 39 stay green; so do
+`every_conjunct_is_declared_graded_and_reached`,
+`every_published_wasm_surface_is_exercised_or_exempt`,
+`no_unregistered_production_site_reads_the_raw_per_zone_areas`,
+`golden_generate_output_is_frozen`, and every `layout::tests` NIA/GEA assertion.
+The 39-conjunct round and the wasm surface census, built in isolation and merged,
+add **nothing** to this stage.
+
+**Also narrowed:** "no guard at all" is too strong for the merged tree. There is
+exactly one — `enclosed_premium_reads_the_area_basis`, added the previous round —
+and it reaches the basis through `indicative_cost`, on a plate that is a plain
+rectangle.
+
+## Step B — the stages nobody had probed are the guarded ones
+
+| stage disabled | red | by |
+|---|---|---|
+| plate clip | **1** | `cost::tests::enclosed_premium_reads_the_area_basis` |
+| de-overlap, non-spanning | **5** | `nia_never_exceeds_gea_under_room_heavy_tilted_plates` · `stress_insights_invariants_over_shape_space` · `axis_aligned_plates_are_never_de_overlapped` · `unassigned_counts_in_nia_but_never_in_usable` · `walking_area_is_unified_no_white_floor` |
+| de-overlap, spanning | **3** | the first two + `oriented_fill_insights_are_correct_nia_le_gea_and_pax_is_seated` |
+| cap | **4** | `enclosed_premium…` · `metrics_can_never_be_impossible` · `every_conjunct_is_declared_graded_and_reached` · `retyping_every_zone_cannot_produce_an_impossible_efficiency`; conjuncts M18 ×1143, M22 ×1164, M15 ×48, M08 ×17 |
+
+**The brief expected these to be unguarded. Three of the four stages are
+guarded, and no guard was written for them.** The reason is structural, not
+luck: the de-overlap and the cap both move `Σ areas` against `doc.floor_area()`,
+a document quantity the basis does not produce. The clip does not — it moves
+every reader by the same amount. That is
+`.claude/rules/gate-independence.md`'s "never calibrate against the population
+under test" in its area form, and it is why the clip alone needed something new.
+
+## Two instrument failures, both findings
+
+**A shared `CARGO_TARGET_DIR` across git worktrees serves a STALE test binary.**
+The first B run reported the de-overlap sabotage failing with the de-clip
+sabotage's panic string — byte-identical, down to `got 8496000` — for a patch
+that cannot touch that fixture (it has no Workspace zone). It was the previous
+worktree's binary: cargo's `-C metadata` collides across worktrees at the same
+commit, and freshness is mtime-based, so a worktree patched before the previous
+build finished is judged fresh. Re-run isolated, that sabotage **passes** that
+test. Every number in this entry comes from an isolated target dir, and every log
+carries the `git diff` of the sabotage that produced it in its own header.
+
+Second, smaller: seven parallel falsification builds exhausted the disk and
+produced no results at all — re-run sequentially with `cargo clean -p ds-core`
+between, which is also what makes the stale-binary route impossible.
+
+## The first anchor was inert, and the census is what said so
+
+The obvious independent bound is a box bound — `zone ⊆ bbox(zone) ∧ plate ⊆
+bbox(plate) ⟹ area(zone ∩ plate) ≤ area(bbox(zone) ∩ bbox(plate))` — exact,
+O(1), reading nothing the basis produces. It was written, registered, and
+`every_conjunct_is_declared_graded_and_reached` **refused it**: graded zero times
+in 1 200 evaluations. Counted:
+
+```
+zones under a traced plate  10 001
+the CLIP bites (area_on < area)  349
+the BOX BOUND bites                0
+```
+
+`add_zone`/`resize_zone` refuse an off-plate shape, so no edit can push a zone
+past the plate's own extent. The clip's real work is the case `area_on`'s own doc
+comment names: a **rectangular zone on a non-rectangular plate**, hanging into a
+notch that is entirely inside the bounding box. **A box bound is structurally
+incapable of guarding this clip.** Deleted in the round it was written, like T1
+and S01 before it — and it was deleted only because the R16 census exists to fail
+on a conjunct graded zero times.
+
+## What shipped — one conjunct and one test, both on the clip and nothing else
+
+**M25 `basis.bills_no_floor_outside_the_plate` — CHECK**, graded 376 times.
+Ground truth is the plate POLYGON, read by two primitives the clip path never
+calls: `area_on` clips with `rect_polygon_clip_area` → `clip_rect_to_polygon`
+(Sutherland–Hodgman); M25 reads `point_in_polygon` (even-odd ray cast) and
+`dist_to_polygon` (point-to-segment). Different algorithms over the same
+document geometry, so agreement is evidence and not transcription.
+
+The statement is exact rather than a tolerance. If a rect corner is outside the
+plate at distance `d` from the boundary, every point within `d` is outside too,
+and the rect contains that corner's quarter-disc for `d ≤ w/2, h/2` — so at
+least `π d²/4` is off the floor and `area(zone ∩ plate) ≤ area(zone) − π d²/4`.
+De-overlap only subtracts and the cap only scales by `k ≤ 1`, so it is checked
+against the UNCAPPED vector, where the clip is the only stage that can have
+moved it. Graded only where the geometry certifies a cut (`d ≥ 5 cm`, below
+which `point_in_polygon` is ambiguous by its own doc comment), so the
+evaluation count IS the non-vacuity figure.
+
+**`the_area_basis_clips_each_zone_to_the_plate_polygon` — the value, not the
+inequality.** An L-shaped plate (30 × 20 less a 10 × 10 notch, floor 500 m²)
+with an 8 × 4 room at (18, 12.5) hanging into the notch: 24 m² on the floor,
+8 m² off it. M25 can certify only π·2²/4 ≈ 3.14 m² of that 8 and would accept
+any basis billing up to 28.86; this pins 24.0. The expected number is arithmetic
+on the rectangle coordinates, re-derived by splitting the L into two disjoint
+rectangles, never read back out of `area_basis` or `area_on` — and the test
+asserts its own subject first (`floor == 500`), so it cannot silently measure a
+different shape.
+
+Board: **36 CHECKS · 4 GUARDS** (was 35 · 4). Rust **201** (was 200). No guard
+was added for the de-overlap or the cap: they are guarded, measured above, and
+writing more would have duplicated `assert_insights_invariants`.
+
+## Integration — and what the parallel-session review settled
+
+**R11, declared then verified.** `c6c02d2` (census): Rust 200 → **200 identical by
+name**, battery 50 → **51**, `publishedArea` 1156 → **1158**. `83c8e39` (clip
+guard): Rust 200 → **201**, battery **51/51**, CHECKS 35 → **36**. Both hit
+exactly; both cherry-picks textually clean.
+
+**The parallel session's tree, reviewed and disposed.** A second session had 34
+files of uncommitted work in the shared checkout, overlapping this round. It is
+preserved at `refs/heads/rescue/parallel-session` and was reviewed file by file
+rather than adopted or discarded wholesale:
+
+| their work | disposition |
+|---|---|
+| `area-census.mjs`, `sg7-area-identity.mjs` | **additive** — ported as `web/src/util/areaCensus.test.mjs`; `sg7` dropped, its assertion strictly narrower than `publishedArea.test.mjs` |
+| `Scene3D.tsx` / `paint.ts` recompute publishers | **additive** — independently verified and fixed |
+| `ZoneAreas` threaded into call sites (`types/metrics.ts`) | **converged** — `util/publishedArea.ts` is the same mechanism, reached independently |
+| the area fix across `crates/` + `web/src/export/` | **superseded** by `3c19d16`, which is committed, gate-verified, and watched failing first |
+
+> **A note on the review method, because it nearly produced a false finding.**
+> Diffing that tree against `956125e` showed a `verify-all.sh` change
+> byte-identical to this session's skip fix, which read as two sessions
+> independently emitting identical bash. It was neither: the snapshot was taken
+> from a working tree that already contained `49502e5`, so the diff base predated
+> our own commit and our own work bled through. **A diff is only as meaningful as
+> its base**, and an "impossible coincidence" is the tell that the base is wrong.
+> Re-based against `49502e5`, their distinct contribution is the census and the
+> three publishers — exactly what was taken.
+
+**Instrument note carried forward for every future sabotage round:** do not share
+`CARGO_TARGET_DIR` across git worktrees. Cargo's `-C metadata` collides across
+worktrees at one commit and freshness is mtime-based, so a sabotage worktree can
+be served the PREVIOUS sabotage's binary and report its panic string verbatim.
+That produced one byte-identical false reading this round, caught only because the
+string named a fixture the patch could not touch.
+
+**Promoted from the census round — a new failure mode, named:** *a sabotage that
+does not sabotage produces a null indistinguishable from an inert guard.* Three of
+that round's sabotages first reported FALSE GREEN — a detector renamed rather than
+disabled, a skip-list entry another entry still covered, and a walk that never
+entered a symlinked directory. Every sabotage must be verified to have taken
+effect before its result is believed. This is the `implySeats`-wrong-file lesson
+on a new surface, and it is the reason the four declared nulls in `areaCensus`
+were re-confirmed rather than accepted.
+
+## Open, carried to belief four
+
+1. **The fourth publisher is FIXED-PENDING, not fixed.** `zone.rs:261`
+   `Zone::capacity()` = `self.area() / per` on the RAW shape, published at
+   `quantity.rs:539` beside an `area_m2` that comes from `area_basis`, and at
+   `lib.rs:1156`. Registered `open` with an exact two-way ratchet. **Dispatched.**
+2. Nothing standing re-derives areas from **delivered PDF bytes** — `sg7`'s one
+   unique capability, run once manually (22/22) and not made standing.
+3. `circulation_ratio` exceeds 1 by up to 1.010254 — cell-counted area over
+   polygon area. Bounded below only, by design, and said so.
+4. Unregistered rate mirrors: `BASE_SHELL`, `PARTITION_*`, `DOOR`, furniture.
+5. Four inert enabling transforms in `areaCensus` (T6, T7, T12, T14) and one in
+   `publishedArea` (`/* */` strip) — declared inert at their mechanisms, kept as
+   insurance, guarding nothing today.
+6. `publishedArea.test.mjs` and `workbook.test.mjs` went red once under heavy
+   concurrent `cargo` load and passed on retry; three sequential re-runs of each
+   were green here. Attributed to contention, **not isolated** — if they red again
+   on a quiet machine that attribution is wrong.
+
+---
+
+# A: E5 — the seat count in the column beside the area
+
+## The fourth publisher, closed
+
+`Zone::capacity()` divided the RAW shape area by an m²-per-seat rate. Two
+surfaces billed the result beside an `area_m2` that came from `area_basis`.
+
+Measured on the battery population **before** the change — 1 205 states / 28 480
+zone-evaluations: **2 449 diverging (8.60%)**, attributed **clip 86 · de-overlap
+1 898 · cap 639**. Takeoff Σ pax diverged on **835** states, the Zones tab on
+**819** (1 739 rows). Worst zone `seed 25 from F5` 423 "battery overlap",
+**369 vs 153**; worst state **729 vs 362**. Never negative: the basis is ≤ the
+shape at every stage, so the raw form only ever OVER-bills.
+
+Live on the UNEDITED fixtures, on the same zone the area divergence was found on:
+
+```
+F1 unedited · zone 244 "Open Workspace (2)"  →  8.0 m²   and   5 pax
+```
+
+Five workstations at 6 m² each, on a row that says the room has eight.
+
+The area is now an ARGUMENT: `Zone::capacity_on(area_m2)`, and both writers pass
+the basis value they bill. What survives is `pub(crate) seat_estimate_for_ordering`
+— the `rawShapeAreaForOrderingOnly` mechanism, in Rust.
+
+## The brief's diagnosis held; its remedy shape did not
+
+> **CORRECTED IN ITS REMEDY, not overturned.** The brief said *"the same defect
+> class as the 4.4× sheet-vs-workbook divergence, one column over."* True of the
+> CAUSE. **Not** true that the two surfaces should agree: the takeoff keeps
+> `headcount` and `capacity` in separate columns, the panel folds furniture into
+> one, and they diverge on **8 551 rows** of the battery **by design**
+> (`takeoff 0 vs panel 92` on a Core zone full of desks). A cross-surface identity
+> was the obvious conjunct **and would have been a defect** — it would have
+> destroyed a distinction the workbook deliberately makes. Each surface keeps its
+> semantics and reads the basis.
+
+`layout::generate`'s fill budget and `layout::score::density_of` ORDER and RANK;
+left alone, as `takeoff.ts:140` required one round earlier. S9 prices the other
+choice: perturbing `capacity_on` reds `golden_generate_output_is_frozen`. The
+golden did not move.
+
+## M26 — GUARD, and the anchor it refused
+
+`M26.capacity.is_the_seat_count_the_billed_area_supports`, **22 494 evaluations**,
+both published surfaces. Watched failing first at `83c8e39`: **8 376 violations**,
+naming `F1 unedited … zone 244 at 8.000 m² and 5 pax, but 8.000 m² at 6 m²/seat is
+1 pax`. GUARD by R16's separator — RED at HEAD, and the mechanism breaks two ways
+independently (S1 takeoff arm, S2 panel arm). R2: re-derived from
+`zone::m2_per_seat`, the rate SPEC; it never calls `capacity_on`.
+
+Graded on the panel ONLY on its area-rule arm, and **the restriction is measured,
+not assumed**: the same bound over the FURNISHED arm reds **81 times on the FIXED
+tree** — F5 zone 41 "Focus Room 1", a real 2-seat table in 7.5 m² against a
+9 m²/seat rate. **The rate is a planning rule, not a packing limit**, and a
+conjunct that reds on real furniture asserts otherwise.
+
+**REFUSED IN THE ROUND IT WAS WRITTEN:** a plate-anchored quarter-disc bound on the
+seat count — M25's instrument one column over. Built and measured (322 evaluations,
+**RED 63 takeoff + 115 panel at HEAD, 0 after**) and dropped anyway: on the
+area-rule arm it is implied by M25 ∧ M26, and its only NEW coverage is the furnished
+arm, which is those 81 false reds. **A guard by derivation whose only new coverage
+is wrong.** Same disposition as the box bound one round earlier — the fourth
+conjunct deleted or refused in the round it was written.
+
+## The sabotage round — 15 cases, 12 RED, 2 NULL, 1 defective
+
+**S4 is the finding of this entire phase.** M26's assertion disabled and the defect
+at full strength:
+
+- **202 of 202 Rust tests green** — every one of the 36 checks, M25's plate anchor,
+  M21/M22's area anchors, the wasm-surface census, the crate scan, the golden.
+- Wasm rebuilt from the defective core (**byte-different** from the fixed build, so
+  the sabotage provably reached the artifact): **0 of 42 JS test files red** —
+  including `publishedArea.test.mjs`'s 1 158 checks, which is areas-only by its own
+  declared scope, and `core/mutatorGuards.test.mjs`, which explicitly sums
+  `zone_stats().capacity` before and after an off-plate zone **and stays green
+  because it compares two readings of one wrong definition.**
+
+**Two instruments cover this defect and both were written in this round.** Everything
+that existed before it — four censuses, 36 conjuncts, 1 158 cross-surface checks —
+saw nothing.
+
+**S8 states M26's blind spot rather than hiding it.** The rate table is read by the
+producer AND by the gate, so moving `m2_per_seat` moves both together and M26 stays
+green. `capacity_rules` now pins all eight rates by value; that is what reds.
+
+**S7 is inert by measurement, not by argument:** the arm census over the population
+is `furnished 10 648 · spanning 0 · area-rule 17 832`. The spanning conjunct cannot
+fire because the spanning arm never does. Kept for soundness, declared inert.
+
+**S6 was a sabotage that could not sabotage — the FOURTH sighting.** Dropping the
+`Chair` filter only REDUCES the gate's coverage, so on an already-green tree it can
+never red; its GREEN was indistinguishable from an inert guard. Re-run against the
+defective tree (S6b) it loses **4 226 of 8 376 reds**. **The direction of a sabotage
+is part of the sabotage** — and the only reason this surfaced is that the direction
+was questioned before the null was believed.
+
+## The register retired its own exemption, both arms unprompted
+
+On the fix, before anyone edited the register, BOTH ratchet arms fired: a STALE
+`zone.rs::capacity` entry and an UNREGISTERED `seat_estimate_for_ordering`.
+`EXPECTED_OPEN` **1 → 0**; census **60 → 59** checks. S12/S13/S14 each red.
+
+**Carried:** a census keyed on area ARITHMETIC cannot see a new publisher calling
+`seat_estimate_for_ordering`. The name and `pub(crate)` are the guard there, not the
+census — stated so the next round does not assume otherwise.
+
+**R11: all six predictions declared before running and hit exactly** — Rust
+201 → 202 by name, battery 51/51, board 36 CHECKS · 4 GUARDS → **36 · 5**, census
+60 → 59, golden unmoved, both ratchet arms firing.
+
+**Board: Rust 202 · battery 51/51 `--full` · 36 CHECKS · 5 GUARDS.**
+
+---
+
+# A: BELIEF FOUR — **NOT BELIEVED**, on both axes independently. Fifth consecutive, fifth correct.
+
+Two adversaries, disjoint axes, neither told the other's findings. Both returned
+NOT BELIEVED with sufficient grounds. Baselines re-measured by each, not
+inherited: Rust **202/0**, `VERIFY OK — 51/51`, board `36 CHECKS (371 326) ·
+5 GUARDS (138 121)`.
+
+## AXIS ONE — the sweep of published quantities
+
+Population derived mechanically, not from the brief: the 21 wasm readers expanded
+into their serialized fields, plus every numeric expression in `web/src` reaching
+a rendered string, a workbook cell or a PDF op. **≈130 published numbers → 32
+quantity classes.** Six second owners survived; two are material.
+
+### F1 — the plate polygon has two owners, and the scorer holds the retired one
+
+`Document::plate_polygon`'s own doc comment (`document.rs:261`): *"**This used to
+be 'the largest closed loop', and that was a defect.** … A 930 m² floor reported
+1 m², the panel divided by it, and space efficiency read 1159%."* Selection was
+replaced by anchor-containment. **`layout/score.rs:16`, `:194` and `layout.rs:201`
+still call `geometry::trace_floor_polygon` — largest-wins — verbatim.**
+
+```
+battery: scorer floor != floor_area on 545 of 1200 states (45.42%)
+F3 UNEDITED   floor_area 1594.94 m²   scorer floor 1.20 m²
+              density_score 0.000/100   (canonical basis: 68.757/100)
+              unassigned_penalty 969.2178
+```
+
+`unassigned_penalty`'s own doc comment says *"~1.8 points … deliberately NOT
+enough to reorder candidates."* Measured **969.2178** — 538× its stated magnitude
+on a 0..100 scale, clamping every candidate `total` to 0 and blinding
+`autoGenerate`'s seed search.
+
+> **RETRACTED WITHIN THE REPORT THAT MADE IT.** The adversary's first draft read
+> "confined to `plate_state: unresolved`" — true of all 545 battery states. A
+> second probe with a **disjoint neighbouring loop** (an adjacent tenancy or
+> atrium void in an imported DWG) puts it on a **traced** document: canonical
+> 300.00 m², scorer 2000.00 m², `density_score 0.000/100`, **no `plate_state`
+> warning and no `metrics_error`.** `LayoutScore` and `density_score()` have no
+> "we don't know" channel — `PlateResolution` exists because *"'we don't know' is
+> a value"*, and it never reached them.
+
+**The registered exemption is a scoped truth without its scope.** `lib.rs:1613`
+exempts `score.rs` because *"Not a published area and never billed … a relative
+penalty compared only against itself."* True of the **area**; false of the
+**number derived from it** — `unassigned_penalty` is a serialized `LayoutScore`
+field and `total` is an absolute 0..100 printed to a user and handed to an LLM
+(`ai/evaluator.ts:124`, `ai/engine.ts:159`).
+
+**F1b:** `density_of` counts all `category=="Desk"`; `workstation_count` counts
+non-reference desks inside a Workspace zone. F5 unedited: **92 vs 91.**
+
+### F2 — the Statistics panel is a second cost engine
+
+`cost.rs:158` bills `doc.floor_area()`; `stats.ts:345` bills `nia`. Both carry a
+*"keep the two in lockstep"* note and `stats.ts` asserts *"Σ = cost.rs
+BASE_SHELL"*.
+
+```
+headline − panel  =  (GEA − NIA) × 14 000     EXACT TO THE RUPEE, all 25 states
+F3 unedited   headline ₹2,72,25,965   panel ₹1,74,93,892   −35.75%
+all five UNEDITED fixtures diverge (−1.36% … −35.75%)
+```
+
+The Statistics panel and the Compare view show different ₹ for one document; the
+delivered PDF prints the other one.
+
+### F3 / F5 — the rate table and the partition predicate
+
+`MeetingRoom` **48.00×** (₹1,20,000 panel vs ₹2,500 Rust — a live catalog entry
+absent from the Rust pod branch); `Counter` **0.13×**. `coreParity` registers only
+`ENCLOSURE_PREMIUM`.
+
+`w.generated` as the interior-partition test is recorded in `takeoff.ts:9-14` as a
+**deleted defect** — *"disagreed with the core on every imported DWG (there, EVERY
+wall is `!generated`) … deleted rather than left to drift."* It survives in
+`cost.rs:161` and `stats.ts:330`. On a traced document built through the public
+API (the DWG import path, where `add_wall` always writes `generated: false`):
+47.00 m of core-classified Drywall, **₹0 of partition in the headline cost**,
+against ₹2,16,200 + 1,645 kgCO₂e in the workbook.
+
+### F4 / F6 / F7 — real owners, small or non-numeric magnitude
+
+`SF_PER_M2 = 10.7639` against the core's ruled `SQF_PER_M2 = 10.764` (~9.3e-6 —
+negligible, and the ruling only half-applied) · **ceiling height prints 2.75 m on
+the finish schedule and RCP and 2.60 m on the sections, in one delivered pack** ·
+`MIN_CORRIDOR = 1.5` printed as an NBC 2016 code verdict with no core owner.
+
+### S-A1 is the louder null: right, wrong, and differently-wrong all pass
+
+| sabotage | verified to bite | result |
+|---|---|---|
+| `stats.ts FLOOR` ×10 | panel **+494.79%** vs headline | **50/51 green** |
+| scorer plate → smallest face | F2/F5 `density_score` **100 → 0**; wasm byte-different | **Rust 202 passed** |
+| scorer plate → **`doc.plate_polygon()`, i.e. THE FIX** | — | **Rust 202 passed** |
+
+Nothing moves whether the scorer reads the right plate, the wrong plate, or a
+third wrong plate. **Fifth sighting of a guard never attached.**
+
+### The mechanism, named
+
+The brief predicted a third *quantity*. The sweep found something better: the
+pattern is **"a fix that closed one owner was applied at ONE CALL SITE."** Area
+unified in `mod basis`, `cost.rs:185` kept its own. Capacity unified in
+`capacity_on`, `seat_estimate_for_ordering` kept two callers. The plate unified in
+`plate_polygon`, `score.rs`/`layout.rs` kept largest-wins. `w.generated` deleted
+from `takeoff.ts` by name, kept in `cost.rs` and `stats.ts`. **Four sightings, one
+mechanism** — and it is `.claude/rules/gate-independence.md`'s own *"a known
+hazard patched at one call site"*, which that file already lists and which was
+still not swept for.
+
+**The tell is textual and cheap: a doc comment explaining why an old rule was
+wrong is evidence the old rule is live somewhere else. Grep retraction prose, not
+symbols.**
+
+## AXIS TWO — the apparatus itself
+
+### SAB-A — the board is a divergence detector, not a correctness one
+
+One line at the end of `effective_zone_areas`, the shared source of every
+published m²:
+
+```rust
+for a in &mut areas { *a *= 0.95; }
+```
+
+Provably bit (`CAPPED-BASIS STATES 201 → 90`). Result:
+
+> **`CONJUNCT BOARD — 36 CHECKS (371326 evaluations) · 5 GUARDS (138121
+> evaluations)` — BYTE-IDENTICAL to baseline. Zero conjunct violations.**
+
+The seven reds are all hand-written value pins **outside** the board — and one of
+those failed on its **own non-vacuity assertion**, not on the defect. M25's note
+already states the principle (*"two readers of one basis are each other's ground
+truth for DIVERGENCE and for nothing else"*) and the round applied it to one
+stage. It is true of the whole board: **371,326 check evaluations, and the class
+they cannot see is "the basis is wrong."**
+
+### The partition is wrong for eleven conjuncts — the board's own headline
+
+**No tautology exists on this board**; every conjunct probed reds under some
+construction break. The defect is the CHECK/GUARD split. By source, subject and
+ground truth are the same expression for **M11, M13, M14, M18, M19, M20, M22,
+S06, S07, S08, S10** (+ M08, M15 borderline).
+
+The largest is **S08**: `length_m: w.length()` is `Point::dist` is
+`((dx).powi(2)+(dy).powi(2)).sqrt()`, and S08's "re-derived" want is that
+expression retyped. **162,627 evaluations — 43.8% of the board's entire advertised
+check total — is a value compared with itself.**
+
+Honestly graded the board reads **≈ 25 CHECKS · 16 GUARDS**, which is exactly its
+own floor (`assert!(checks.len() >= 25)`).
+
+**The sixth deleted-or-refused conjunct is M13**, same shape as T1 and S01:
+`owner = net_internal_area(doc, raw_zone_areas_unscaled(doc).0)` against
+`area_basis(doc).nia`, which IS that call — `raw_zone_areas_unscaled` **is**
+`effective_zone_areas` (`lib.rs:431-433`). Its note claims a falsification the
+comment fifteen lines above attributes to M15.
+
+`SURFACE_EXEMPTIONS` exempts `zones` for **precisely this reason**, stated
+correctly. The reasoning was applied to one surface and to none of the eight
+conjuncts sharing the shape.
+
+### Three claims the apparatus makes about itself that are FALSE
+
+1. **A phantom guarantor.** `metrics_tests.rs:1423` cites
+   `the_battery_reaches_every_guarded_surface`. **No such test exists.** The
+   ledger repeats it harder — *"the census asserts the guarded arm is reached 1205
+   times"* — and nothing asserts 1205. The real floor is `> 0`, twice over. The
+   property is guarded; the named guarantor is fictional. `ladder-check` family,
+   one layer down. **RETRACTED BY NAME — the claim was mine, carried from E2's
+   report into this ledger unverified.**
+2. **"The same function call, not a second list."** `wasm_editor_mutators()` has
+   **exactly one caller — the census itself.** Neither named mutator test calls
+   it; both parse the whole of `lib.rs`, a different population from the wasm
+   block. They coincide today (34 = 34, set difference empty both ways) and
+   **nothing asserts it** — presence-matching two artifact-derived lists, written
+   into the docstring of the function built to avoid it. Also
+   `every_f64_mutator…` reaches **16 of 34**; the other 18 are graded only by
+   "does the body open with `self.touch();`".
+3. **The crate scan's exemption derivation parses COMMENTS.** `lib.rs:1636-1649`
+   scans raw source; `strip_line_comments` runs later at `:1665`. A byte-faithful
+   replica derives `test_only = ['<name>.rs', 'metrics_tests.rs', 'tests.rs']` —
+   `<name>.rs` coming from the scan's **own comment** at `lib.rs:1634`. A comment
+   reading `#[cfg(test)] mod cost;` anywhere in the crate silently exempts
+   `cost.rs` from the entire scan. **That is exemption-widening — the one route
+   the scan's doc comment says it exists to close.** (End-to-end exploit not run;
+   replica + source ordering only.)
+
+### Five undeclared inert transforms, calibrated against three that do red
+
+`isRustTestContext`'s `base === 'metrics_tests.rs'` (removed → PASS with a
+**byte-identical scope line**; fully subsumed) · the `.d.ts` filter (267 → 269
+files, PASS) · `'web/src/wasm'` in `JS_SKIP` (267 → 268, PASS) ·
+`publishedArea`'s `://`-sparing (1158/1158, **against a comment claiming it
+load-bearing**) · its `wasm` dir skip (1160/1160). Calibrators that DO red:
+`base === 'tests.rs'` (1 failing), both `_tests.rs` arms (2), the line-comment
+strip (3). `JS_SKIP`'s comment is stale in both directions — **8 of its 10 entries
+are inert on this tree.**
+
+Residue: `let mut used = [false; 3]` against `REGISTERED: [_; 2]`, left by the
+`cost.rs` deletion at integration. A fourth entry panics with an
+index-out-of-bounds — **red by crash, naming no cause**, the exact failure
+`areaCensus`'s T17 fix was written to end.
+
+### The flaky attribution was WRONG, and the mechanism is worse than a flake
+
+> **RETRACTED BY NAME.** The previous entry recorded *"attributed to contention,
+> not isolated."* Contention is **not** the mechanism: **0 red in 36 runs** (3
+> sequential of each under a live `cargo test`, plus 20 in parallel).
+
+The real mechanism, reproduced: a **concurrent rewrite of
+`web/src/wasm/ds_core_bg.wasm`** — exactly what `make wasm` does during a heavy
+cargo load — gives a torn read. **4 red of 12 runs:**
+
+```
+CompileError: WebAssembly.instantiate(): section (code 10, "Code") extends past
+end of the module (length 476861, remaining bytes 451396)
+```
+
+**The reds are the visible half.** Neither gate asserts WHICH build it loaded, so
+a rebuild completing between two reads yields a valid-but-different wasm and a
+**green** run against bytes that are not the build under test. That is
+`CLAUDE.md`'s *"evidence must prove it came from the build it claims"* on the wasm
+path, with no `verify-preflight` equivalent.
+
+### Verified GREEN, and worth stating
+
+Board arithmetic **exact** — the 41 printed rows hand-sum to 371 326 and 138 121
+to the digit. `VERIFY_SELFTEST` → `VERIFY FAIL — 1 of 52`, skipped step named.
+`GATE_SELFTEST` → `GSELF FAIL` / `0/1 passing`; the worktree pre-flight guard also
+fired unprompted and refused to grade a foreign tree. `reconcile OK — 24 gates,
+all invoked`. **All five `SURFACE_EXEMPTIONS` verified true AND necessary against
+source; all six `ORDERING_ONLY` entries live and honest** (weakest disclosed in
+its own `why`: `roomRenders`' `minAreaM2` threshold reads the RAW shape to choose
+a 4K render subject — 35.0 raw vs 8.0 billed on F1 zone 244).
+
+**A NULL worth recording.** 9 of 42 JS test files `process.exit(0)` on a missing
+subject — `publishedArea` (1 158 checks) among them, eight lines under a header
+reading *"A missing input is a FAILURE, never a skip"*. Measured with the wasm
+moved aside: the board still reds (`VERIFY FAIL — 5 of 51`) because four siblings
+have no skip. **Latent, not live** — eight steps' coverage rests on four unrelated
+ones never acquiring a skip of their own.
+
+**One conjunct with no non-vacuity floor: S09**, `6025 = 1205 × 5` exactly — all
+five non-Core wall types on every state, including types with no walls, comparing
+0 to 0. Weak floors elsewhere: `checks >= 25` vs 36, `exports >= 50` vs 55,
+`production_lines > 5000` vs 7 213 measured (31% slack).
+
+## Instrument note — the disk is a budget
+
+Both rounds ended at **zero free bytes**; one lost a measured run (E6's S-A2 JS
+half, **not claimed** anywhere) and one lost a whole probe set (E7's SAB-C, so
+M11/M13/M20/S07 are argued from source and not watched red). The standing note
+said *"seven parallel builds exhausted the disk"*; measured now, **five sequential
+ones do, and three did.** Isolated `CARGO_TARGET_DIR` per worktree is mandatory
+(the stale-binary hazard) and each costs ~250–500 MB. **Budget the disk, not just
+the parallelism**; `cargo clean -p ds-core` between, and remove worktrees on
+completion. Recovered here: 143 MiB → 4.2 GiB by removing ten spent worktrees.
+
+---
+
+# A: HANDOFF
+
+## Floor — believed only up to this adversary pair
+
+Branch `qbiq-parity-endgame`, head `24f66ea`, tree clean, integration worktree
+`/private/tmp/endgame-int` (sole owner of the branch). **Rust 202 · battery 51/51
+`--full` · board prints 36 CHECKS · 5 GUARDS and honestly reads ≈ 25 · 16.**
+
+`main` and the branch diverge by 10 commits; `main` is at `956125e`.
+The shared checkout `/Users/udsy/PycharmProjects/DSource-Editor` is **detached at
+`49502e5` with 38 dirty files belonging to a parallel session** — do not clean it;
+its tracked work is also at `refs/heads/rescue/parallel-session`.
+
+## Standing red, by design
+
+`composition.mjs --gate` — 10 violations across 5 fixtures (desk runs 7–8 vs the
+reference's 5; conf/100 2.17–3.26 vs 8.60). `reconcile.mjs` runs it and asserts it
+still fails. **Note:** 5 of those 10 rest on the rhythm contract already proven a
+parity artefact — the contract must be in metres, not rows (P2/W1).
+
+## Next work, in order — P1 STAYS BLOCKED
+
+1. **F1, the plate** — highest severity. Route `layout/score.rs:16,194` and
+   `layout.rs:201` to `doc.plate_polygon()`; give `LayoutScore`/`density_score()`
+   the "we don't know" channel `PlateResolution` already models; correct the
+   `lib.rs:1613` exemption text. **Expect the golden to move** — declare it
+   programme-changed per R11 before re-capturing, never relax it. Guard must red
+   in all three directions (S-A1 is the falsification).
+2. **F2/F3/F5, the second cost engine** — `stats.ts` bills NIA where `cost.rs`
+   bills GEA; two furniture rate tables; `w.generated` as the partition predicate
+   in two files after being deleted by name in a third. One owner, cross-surface
+   gate, both populations.
+3. **The CHECK/GUARD re-partition** — re-grade the eleven, dispose M13, and make
+   the board print what it actually grades. A board overstating coverage is the
+   `ladder-check` defect at scale.
+4. **The three false self-claims** — delete the phantom test citation, make the
+   mutator census actually call `wasm_editor_mutators()` (or assert the two
+   populations equal), and strip comments BEFORE deriving test-only modules.
+5. **The wasm-build-identity hazard** — gates must assert which build they loaded.
+6. **The sweep, generalised** — grep retraction prose (`used to be`, `was a
+   defect`, `deleted rather than`, `must not`, `would clobber`) and check each
+   named-wrong rule is dead everywhere, not at one call site. Four sightings say
+   this is the mission's dominant defect class.
+7. Then belief FIVE. Only then P1.
+
+## Carried open (unchanged)
+
+Nothing re-derives areas from delivered PDF bytes · `circulation_ratio` > 1 by
+1.010254 · unregistered rate mirrors `BASE_SHELL`/`PARTITION_*`/`DOOR`/furniture ·
+five declared-inert transforms · `zone_stats_published()` has zero production
+callers (areas byte-identical, no number moves) · two rounding rules for one
+published m² · S09's vacuous fraction unmeasured · 9 of 42 JS tests skip on a
+missing subject (latent).
+
+---
+
+# A: F1 — THE PLATE HAD TWO OWNERS. IT HAS ONE.
+
+Belief four's highest-severity finding, fixed, guarded, and falsified in three
+directions. Baseline re-measured here, not inherited: **Rust 202/0**,
+`VERIFY OK — 51/51 --full`, board `36 CHECKS (371 326) · 5 GUARDS (138 121)`.
+After: **Rust 203/0**, `VERIFY OK — 51/51 --full`, board **36 CHECKS (371 326) ·
+8 GUARDS (141 736)**. The CHECK count is unchanged and that is deliberate — see
+the grading note below.
+
+## Step A: the brief reproduced, to the digit
+
+Re-measured before anything was changed, because a number that cannot be
+reproduced is not evidence.
+
+```
+scorer floor != canonical floor_area on 545 of 1200 states (45.42%)
+   [traced 0 · open 0 · unresolved 545]
+F3 UNEDITED   floor_area 1594.94   scorer floor 1.20   plate_state unresolved
+              metrics_error None
+              density_score 0.000/100   (canonical basis 68.757/100)
+              unassigned_penalty 969.2178   total 0.0000
+DISJOINT LOOP canonical 300.00 m²   scorer 2000.00 m²   plate_state TRACED
+              metrics_error None   density_score 0.000/100
+```
+
+Every figure in the brief held. The disjoint-loop case — the retraction the
+adversary made inside its own report — is now the named test
+`a_disjoint_neighbouring_loop_is_not_this_plans_floor`: an adjacent tenancy in a
+DWG import, two closed faces, **nothing broken anywhere**, and the scorer
+divides by the neighbour's building. It is the reason F3's repro was not enough
+on its own: F3 at least reports `"unresolved"`, and this reports nothing at all.
+
+## What was done
+
+`layout/score.rs:16`, `:194` and `layout.rs:201` now call `doc.plate_polygon()`.
+**`geometry::trace_floor_polygon` is DELETED** — after the routing its only
+callers were five test sites, and a retired rule that keeps a name is a rule
+anyone can reach for. That is the whole mechanism belief four named: *a fix that
+closed one owner was applied at ONE CALL SITE*. Deleting the name makes "the
+plate has one owner" a compiler question instead of a comment. `wall_segments`
+went with it, dead in release once nothing outside tests traced its own plate.
+
+`layout.rs:201` turned out to be **byte-identical by construction** — zones and
+components are cleared just above it, so `plan_anchors()` is empty, `0 >= 0.9 x 0`
+holds, and the largest face is accepted, which is what largest-wins returned. It
+was routed anyway. Under `keep_confirmed` the confirmed furniture IS an anchor
+set and the routing is a real correction there.
+
+## The "we don't know" channel, in the convention that already existed
+
+`LayoutScore` gains `plate_state: &'static str` — the same three tags, from the
+same owner (`PlateResolution::tag`), that `Metrics::plate_state` carries — and
+`floor_area_m2`, the floor every plate-derived term divided by, published so the
+two readers of the plate can be held to each other at all. `Editor::density_score`
+returns `Option<f64>`, absent across the wasm boundary exactly when the plate is
+`Unresolved`: `Metrics::metrics_error`'s convention, not a second one. `Open`
+still returns a number, because `PlateResolution`'s own doc comment calls the
+bounding box "a reasonable stand-in" there; `Unresolved` is the state that means
+the walls close and no face holds this plan. `ai/engine.ts` no longer warns on a
+number it does not have, and `ai/evaluator.ts` tells the model when the scores
+it is judging rest on a fallback.
+
+## The exemption did not become true. It went.
+
+`lib.rs`'s registered exemption for `score.rs`'s `z.area_on(plate_poly)` is
+**deleted**, by the same route the `cost.rs` entry beside it went: the site now
+reads `crate::area_basis`, so it stopped matching and the stale-exemption ratchet
+failed. Its stated ground — *"not a published area and never billed … compared
+only against itself"* — was a scoped truth without its scope: true of the area,
+false of `unassigned_penalty`, a serialized field, and of `total`, an absolute
+0..100 in the candidate gallery and in an LLM prompt. Its second clause, *"sharing
+the cap-scaled basis would make a candidate's score depend on whether its zones
+happened to overlap,"* was measured and is **backwards** — see below.
+
+`Metrics::unassigned_area`'s doc comment claimed to be *"the term the layout score
+penalises"* and `unassigned_pct`'s claimed *"the layout score read it."* **Both
+were false**; the scorer summed its own. One owner now, `crate::unassigned_area`,
+and the sentences are true. The residue `let mut used = [false; 3]` against a
+2-entry table — belief four's "red by crash, naming no cause" — is now
+`[false; REGISTERED.len()]`.
+
+## The gate was written first, and it named more than the brief
+
+S17 and S19 were written against the property and watched failing on the unfixed
+tree: **S17 546 of 1 205 · S19 354 of 1 205.** After the plate fix S17 went to
+zero and **S19 did not**: 11 states still outside the term's declared `[0, 10]`,
+worst `seed 62 from F2` at **15.2783 points on a correctly-traced 930.06 m²
+plate**. A second owner, one layer down — the numerator was an un-de-overlapped
+per-zone sum billing a hand-drawn overlapping zone's floor twice. Not in the
+brief; found because the gate was written before the fix rather than after it.
+Fixed by geometry and not by a clamp: the basis is capped, so the share is a
+share.
+
+**The exemption's own reasoning was the thing measured wrong.** Not sharing the
+basis is what made the score depend on overlap. Sharing makes it depend on
+overlap not at all for every generated candidate (the zones tile, `k == 1`,
+byte-identical — the golden proves it) and bounds it at 10 for a hand-edited one.
+
+## Golden: declared unmoved BEFORE re-capture, and unmoved
+
+Declared in advance with its reasoning and its falsifiable part: all ten cases
+unchanged, because `plan_anchors()` is empty at the generation call site and
+because on all three golden plates the plan lies inside the envelope, which is
+also the largest face, so the 0.9 containment test returns it. **Verified: ten of
+ten byte-identical, digest unchanged.** Nothing was re-captured and nothing was
+relaxed. The one thing that would have falsified the declaration — a generated
+anchor more than 10% outside the envelope centreline on `real_plate`/`l_room` —
+did not occur.
+
+## Three directions, and the null is the headline
+
+| sabotage | S17 | S19 | S18 | verdict |
+|---|---|---|---|---|
+| scorer plate → **canonical** (the fix) | 0 | 0 | 0 | **GREEN 203/203** |
+| scorer plate → **largest-wins** (defect restored) | **546** | **356** | — | RED |
+| scorer plate → **smallest face** | **922** | **637** | — | RED |
+
+S-A1's null is CLOSED. And it was **re-run rather than cited**: with the three
+new assertions disabled and largest-wins live, **202 of 203 pass**, and the only
+red is the named disjoint-loop test added in this same round. Thirty-six checks,
+371 326 evaluations, the golden, four censuses and the crate scan still cannot
+see it. The board was not made blind by these conjuncts' absence — it *was*
+blind, and this is the measurement of it.
+
+## The full sabotage round, nulls included
+
+| # | sabotage | bit? | result |
+|---|---|---|---|
+| D | restore the raw per-zone numerator | yes | **S19 red 11** + the crate scan reds `no_unregistered_production_site_reads_the_raw_per_zone_areas` — two independent instruments |
+| E | delete `Unresolved => None` in `density_score` | yes | **S18 red 546** — exactly the unresolved-state count, so the arm is reached on every one |
+| F | pin `LayoutScore::plate_state` to `"traced"` | yes | **S18 red 703** — every state whose plate is not traced |
+| G | S17 tolerance 1e-6 → **1e12**, defect live | yes | **S17 silenced 546 → 0**, S19 still 356. The tolerance is load-bearing |
+| H | `MAX_WASTE_DEBIT` 10 → **1e9**, defect live | yes | **S19 silenced 356 → 0**, S17 still 546. The threshold is load-bearing |
+| I | `floor_area_m2` fed from `doc.floor_area()` instead of the scorer's divisor, defect live | yes | **S17 silenced 546 → 0**, S19 still 356 |
+| J | all three assertions disabled, defect live | yes | **202/203** — see above |
+
+**Case I is the one worth keeping.** It is this file's own canonical failure
+rehearsed on a new surface: had the published field been wired to ground truth
+rather than to the scorer's actual divisor, S17 would have read 546 → 0 with the
+defect at full strength and reported GREEN. Every sabotage in this table is
+paired with a control showing the *other* conjunct still firing, so no null in it
+is the "sabotage that could not sabotage" — the direction was checked before the
+result was believed.
+
+## Grading: three GUARDs, no new CHECKs, and that is the honest answer
+
+All three are **GUARD**. Once two readers are unified onto one owner, every
+agreement between them is a construction, and re-deriving `doc.floor_area()` in
+the gate is the producer's expression retyped. R16's separator says GUARD; belief
+four found eleven conjuncts mis-graded CHECK for exactly this shape, and this
+round declines to add a twelfth. What separates them from algebra is that all
+three were **RED AT HEAD** — 546, 546, 354 — which is M21's and M26's standing,
+and each carries a construction proof that was run, not argued.
+
+The honest reading of the board is therefore still **≈ 25 CHECKS · 19 GUARDS**;
+the eleven mis-graded conjuncts are untouched **by this change** and remain
+HANDOFF item 3.
+
+## Retracted by name
+
+- **"Confined to `plate_state: unresolved`"** — retracted by its own author inside
+  belief four; confirmed retracted here by measurement, and the traced case is
+  now a named test. All 545 battery divergences are unresolved; the population,
+  not the defect, is what was confined.
+- **`Metrics::unassigned_area`: "the term the layout score penalises"** and
+  **`unassigned_pct`: "the layout score read it"** — both false when written,
+  both true now.
+- **The `score.rs` exemption: "not a published area and never billed … compared
+  only against itself"** — false of the derived number; deleted.
+- **The exemption's "sharing the cap-scaled basis would make a candidate's score
+  depend on whether its zones happened to overlap"** — measured backwards.
+- **`unassigned_penalty`: "~1.8 points … deliberately NOT enough to reorder"** —
+  it reached 969.2178 and, after the plate fix, 15.2783. The sizing is now
+  enforced by S19 rather than asserted by a comment.
+
+## Predicted before running, verified after (R11)
+
+| | predicted | actual |
+|---|---|---|
+| Rust, by name | 202 → 203 (one new test, no removals) | **203; diff is one line, an addition** |
+| battery | 51/51 `--full` | **51/51** |
+| board | 36 CHECKS · 5 → 8 GUARDS | **36 CHECKS (371 326) · 8 GUARDS (141 736)** |
+| golden | unmoved, ten of ten | **unmoved** |
+| exemption ratchets | both fire | **both fired** — the Rust stale-exemption ratchet and `areaCensus`'s STALE REGISTER ENTRY, neither prompted |
+
+## Carried open, from this round
+
+- **The attribution is one-sided in the same way G11's is.** `floor_area_m2` is
+  published and graded; `unassigned_penalty`'s NUMERATOR is graded only through
+  the `[0, 10]` bound, so a numerator wrong by less than a full plate is invisible.
+- **`CirculationScore::floor_area` is a third reader of the floor** and nothing
+  compares it to `Metrics::floor_area`. It is cell-counted rather than traced, so
+  the comparison needs a tolerance argument before it is written — but it is the
+  same shape, unswept.
+- The five-conjunct list above is graded on `Program::default()` only; a program
+  whose `w_*` weights zero out a plate-derived term would hide a plate defect in
+  `total`, and nothing varies the program in this battery.
+
+---
+
+# A: INTEGRATION — F1 landed, and it found a second owner under the first
+
+**R11, declared then verified:** Rust 202 → **203** by name (one addition, zero
+removals) · battery **51/51 `--full`** · board 36 CHECKS · 5 GUARDS → **36 CHECKS
+(371 326) · 8 GUARDS (141 736)** · **golden UNMOVED**, ten of ten, digest
+unchanged, declared before re-capture and nothing re-captured. Cherry-pick clean.
+
+`trace_floor_polygon` had **zero production callers** after routing and was
+**deleted**, taking `wall_segments` with it (dead in release). `layout.rs:201` is
+byte-identical by construction — zones cleared above ⇒ empty anchors ⇒ largest
+face accepted — which is why the golden did not move; under `keep_confirmed` it is
+a real correction.
+
+The scorer now says which floor it used: `LayoutScore` carries `plate_state` and
+`floor_area_m2`, and `density_score()` returns `Option<f64>`, `None` exactly on
+`Unresolved` — `metrics_error`'s stated convention, not a second one. `Open` still
+returns a number, per `PlateResolution`'s own "reasonable stand-in".
+
+## Two findings the brief did not name
+
+**S19 stayed RED after the plate was fixed** — 11 states, worst **15.2783 points
+on a correctly-traced 930.06 m² plate**. A *second* wasted-floor owner hiding
+under the first: an un-de-overlapped numerator. Routed to `crate::unassigned_area`
+over the shared basis, bounded by the cap rather than a clamp. **The fix for the
+named defect is what made the unnamed one visible** — which is the argument for
+guarding at the property rather than at the reported symptom.
+
+**The exemption's second clause was backwards.** It read *"sharing the basis would
+make a candidate's score depend on overlap."* Measured: **not** sharing is what
+did. Deleted rather than reworded. Two `lib.rs` doc comments claiming the layout
+score already read `unassigned_area` were **false and are now true** — retraction
+by making the claim correct, not by softening it.
+
+Three new conjuncts, **all graded GUARD** and all **RED AT HEAD** (546 / 546 /
+354). Once the readers are unified, re-deriving `doc.floor_area()` is the
+producer's expression retyped — so GUARD is the honest grade and belief four's
+eleven mis-grades did not gain a twelfth. Falsification in all three directions,
+as S-A1 demanded:
+
+| scorer reads | S17 | S19 |
+|---|---|---|
+| canonical (the fix) | 0 | 0 → **GREEN 203/203** |
+| largest-wins (defect restored) | **546** | **356** |
+| smallest face | **922** | **637** |
+
+Nulls reported and each paired with a control proving the other conjunct still
+fires: tolerance `1e12` and debit `1e9` are both load-bearing; feeding
+`floor_area_m2` from ground truth collapses S17 546 → 0 **while the defect is
+live** (the vacuity case, proven not to apply); all three disabled with the defect
+restored leaves **202 of 203 passing**, the single red being this round's own test.
+
+## Open, carried
+
+`CirculationScore::floor_area` is a **third, ungraded reader** of the floor · S19
+bounds the numerator only at full-plate scale · the battery grades
+`Program::default()` only, so zeroed `w_*` weights could hide a plate defect in
+`total`.
+
+---
+
+# A: HANDOFF — REVISION 2 (supersedes the handoff above)
+
+**Floor:** branch `qbiq-parity-endgame`, head **`d0b0260`**, tree clean,
+integration worktree `/private/tmp/endgame-int` (sole owner of the branch).
+**Rust 203 · battery 51/51 `--full` · board prints 36 CHECKS · 8 GUARDS and
+honestly reads ≈ 25 · 19** (belief four's eleven mis-grades are still mis-graded;
+this round's three are graded correctly).
+
+`main` is at `956125e`, 12 commits behind. `/Users/udsy/PycharmProjects/DSource-Editor`
+is detached at `49502e5` with a parallel session's uncommitted work — **do not
+clean it**; its tracked state is also at `refs/heads/rescue/parallel-session`.
+
+**Disk is a first-class constraint.** Three rounds ended at or near zero bytes and
+two lost measured results. Isolated `CARGO_TARGET_DIR` per worktree is mandatory
+(stale-binary hazard) and costs 250–500 MB each. Remove worktrees on completion;
+`cargo clean -p ds-core` between sabotages. Currently **~4 GiB free**.
+
+## Next work, in order — P1 STAYS BLOCKED
+
+1. **F2/F3/F5 — the second cost engine.** `stats.ts:345` bills NIA where
+   `cost.rs:158` bills GEA (headline − panel = (GEA − NIA) × 14 000, exact to the
+   rupee on all 25 states, −35.75% on F3 unedited). Two furniture rate tables
+   (`MeetingRoom` 48.00×, `Counter` 0.13×). `w.generated` as the partition
+   predicate in `cost.rs:161` and `stats.ts:330` after being deleted **by name**
+   in `takeoff.ts` — an imported DWG bills **₹0 of partition** in its headline.
+2. **The CHECK/GUARD re-partition.** Re-grade the eleven (M11, M13, M14, M18, M19,
+   M20, M22, S06, S07, S08, S10), dispose M13, and make the board print what it
+   grades. S08 alone is 43.8% of the advertised check total.
+3. **The three false self-claims.** Delete the phantom
+   `the_battery_reaches_every_guarded_surface` citation; make the mutator census
+   actually call `wasm_editor_mutators()` (or assert the two populations equal);
+   strip comments **before** deriving test-only modules, so a comment cannot widen
+   an exemption.
+4. **Wasm build identity.** Gates must assert which build they loaded — a
+   concurrent `make wasm` gives a torn read (4 red of 12) and, worse, a silent
+   green against bytes that are not the build under test.
+5. **The generalised sweep — the mission's dominant defect class.** Grep retraction
+   prose (`used to be`, `was a defect`, `deleted rather than`, `would clobber`,
+   `must not fire`) and check each named-wrong rule is dead **everywhere**, not at
+   one call site. **Five sightings now** — `mod basis`/`cost.rs`,
+   `capacity_on`/`seat_estimate`, `plate_polygon`/`score.rs`,
+   `w.generated`/`takeoff.ts`, and F1's own S19 second owner found only by fixing
+   the first.
+6. Then belief FIVE. Only then P1.
+
+---
+
+# ══════════ LINE B — the post-fork tail ══════════
+
+**1 101 lines · 1 commit · `6e49ba3` (14:44), 2026-08-07 · tagged `B:` · 2 authored
+retractions.** Present on `integration` throughout; unmoved and unaltered by this
+interleave, only tagged. **Its internal order is the order B wrote it in the file —
+there are no intermediate commits to bisect and no entry timestamps**, which is why
+no global A/B interleave is claimed. Line B's board at close: **Rust 200 · battery
+52/52 · sheet board 8/8**. Its belief attempts four and five are scoped to
+`6e49ba3`.
+
+---
+
+
+---
+
+# B: R17/R18 — ONE QUANTITY, TWO LANGUAGES: the census with an instrument that can see
 
 **Baseline confirmed before anything moved:** Rust **196**, battery **49/49**
 (`--full`). The defect is live on that board, with no sabotage and no edit.
@@ -3820,7 +5238,7 @@ worth knowing about.
 
 ---
 
-# R12 AMENDED — the drawing-set round: attribution before expectation
+# B: R12 AMENDED — the drawing-set round: attribution before expectation
 
 ## STEP 1 — all 19 base failures attributed, none by guess
 
@@ -4058,7 +5476,7 @@ this tree; it does not cover belief attempt four, which was not run.
 
 ---
 
-# R19 — the fold sweep, and two classifications I got wrong the same way twice
+# B: R19 — the fold sweep, and two classifications I got wrong the same way twice
 
 ## R19 recorded
 
@@ -4183,7 +5601,7 @@ copy is yours to dispose of.
 
 ---
 
-# BELIEF ATTEMPT FOUR — **NOT BELIEVED.** Seventh consecutive, and the first one I did not write.
+# B: BELIEF ATTEMPT FOUR — **NOT BELIEVED.** Seventh consecutive, and the first one I did not write.
 
 **R19 in force: the verdict came from an agent that did not build the board.**
 It ran ~2 400 s, 135 tool calls, delegated further, and returned survivors from
@@ -4319,7 +5737,7 @@ impossible for me to grade myself.**
 
 ---
 
-# R20 / R21 — the value round: guarding is not migrating
+# B: R20 / R21 — the value round: guarding is not migrating
 
 ## R20 recorded — READ THE VALUE, NOT THE FORM
 
@@ -4436,7 +5854,7 @@ predict it.
 
 ---
 
-# BELIEF ATTEMPT FIVE — **NOT BELIEVED.** Eighth consecutive. Coverage reported in full (R21).
+# B: BELIEF ATTEMPT FIVE — **NOT BELIEVED.** Eighth consecutive. Coverage reported in full (R21).
 
 The adversary re-measured every board at HEAD and found all of them genuinely
 green — `cargo test 200`, `verify-all 51/51`, **sheet board 8/8 (the known-open
@@ -4567,7 +5985,7 @@ a mitigation that I have measured and reported as a mitigation.**
 
 ---
 
-# R22 — THE MACRO ROUND: the authored-domain class, CLOSED
+# B: R22 — THE MACRO ROUND: the authored-domain class, CLOSED
 
 > **SUPERSEDES BY NAME (R9):** the previous entry's *"AND THE CLASS IS STILL
 > OPEN … three copies reduced to one, with two signposts and a reachable assert,
@@ -4669,7 +6087,35 @@ The authored-domain class is closed. Nothing else in this brief is.
 
 ---
 
-# R24 — THE INTEGRATION ROUND, STEP 0: the measurement inverted the plan
+# ══════════ THE INTEGRATION SESSION ══════════
+
+**243 lines · `session-integration` (tagged `I:`) and `session-c` (tagged `C:`, by
+its own author).**
+
+> **R24 and Step 0 were written TWICE, independently, and both accounts are kept.**
+> The two headings below are not a duplication to be cleaned up — they are two
+> sessions that promoted the same rule and verified Line A's board separately,
+> without coordinating. `session-integration` wrote
+> `R24 — THE INTEGRATION ROUND, STEP 0`; `session-c` wrote
+> `C: R24 — the rule fired against the round convened to fix it` and
+> `C: Step 0 — Line A's claim is licensed by measurement`. **They agree on the
+> measurement** — `51/51` green, sheet board `5/6`, `SG5 FAIL (29 checks, 27
+> failing)` — **and on the conclusion**, that the plan inverts and B is the base.
+> `session-c` adds three corrections to the premises and one disagreement of record
+> (**21** drawing-set failures measured against the brief's 19).
+>
+> Reconciled as **one rule with two provenances**, not as one account with a
+> deletion: R24 is a single rule (§1 of the reconciliation), independently reached
+> — which is replication 2.7, and the third instance of the phenomenon this
+> interleave exists to preserve. Deleting either heading would destroy the evidence
+> that it happened twice.
+
+---
+
+
+---
+
+# I: R24 — THE INTEGRATION ROUND, STEP 0: the measurement inverted the plan
 
 ## R24 recorded — one writer per branch; concurrent lines declare themselves
 
@@ -4909,3 +6355,338 @@ inherited from the merge base and common to both lines; only **21 are
 line-authored**. The union tops out near 106. **Sweep base-first:** the inherited
 85 predate the fork and neither line ever swept them, while the 21 were written by
 sessions that had the class in mind.
+
+---
+
+# THE MERGE RECONCILIATION — what the two tails say about each other
+
+Written by the interleave, after all three tails above. It cites them and adds no
+measurement of its own except where a source file is quoted, in which case the file
+and the ref are named. **The brief that commissioned this interleave was treated as
+a hypothesis, and three of its factual premises did not survive contact with the
+refs — those are recorded in §6 rather than quietly worked around.**
+
+## 1. The rule mapping table — one collision, resolved by identity
+
+A rule's identity is its **content**, not its number. The shared base `49502e5`
+defines **R1–R16**. Post-fork promotions, reconciled:
+
+| number | Line A promoted | Line B promoted | semantics | disposition |
+|---|---|---|---|---|
+| **R17** | *"the census of a QUANTITY, and the fourth publisher nobody named"* — **a census of a symbol cannot see a recompute** | *"the census, and what an instrument that can see finds"* — **a census of a QUANTITY is not a census of a SYMBOL** | **IDENTICAL** | **COLLISION → MERGE under R17.** Both lines promoted the same rule, independently, and gave it the same number. Nothing renumbered; both accounts kept, above. |
+| R18 | — (see note) | the conjuncts are a list now | B only | **R18 stands** |
+| R19 | — | the fold sweep; *the producer never certifies its own work* | B only | **R19 stands** |
+| R20 | — | READ THE VALUE, NOT THE FORM | B only | **R20 stands** |
+| R21 | — | EVERY RUN REPORTS ITS COVERAGE, INCLUDING SKIPS | B only | **R21 stands** |
+| R22 | — | the macro round; the authored-domain class | B only | **R22 stands** |
+| R23 | — | **named as forward work, NOT promoted** (*"pins become manifests"*) | reserved | **unpromoted — the number is free and reserved for that content** |
+| R24 | — | — | promoted **twice**, by `session-integration` and by `session-c` | **one rule, two provenances** — see §2.7 |
+
+**Exactly one number collision exists in the merged ledger: R17. It resolves by
+identity, not by renumbering** — the two statements are the same rule in different
+words, which is the strongest possible resolution and is itself a finding (§2.6).
+**No number in this ledger now carries two different rules.** That was the failure
+mode to catch, and it is absent.
+
+> **Note on R18, which is a near-collision worth naming.** Line A did B's R18 work
+> — *"R14/R15/R16 — the conjuncts become a list"*, shipping
+> `every_conjunct_is_declared_graded_and_reached` — but filed it under R16 and
+> **promoted no number for it**. B did the same work as
+> `the_basis_conjuncts_are_enumerated` and promoted **R18**. So the *rule* is B's
+> alone by promotion, while the *property* was reached by both lines. This is the
+> content-not-number principle cutting the other way: had A promoted a number, it
+> would have been a second collision. It also bears directly on the test collapse —
+> those two test names are one property, and A's name claims a third term
+> (*reached*) that B's does not.
+
+## 2. Independently earned twice — the replication register
+
+Replication across two lines that did not know of each other is the strongest
+evidence this mission produced, and burying it would lose it. **The register below
+separates what was genuinely found twice from what both lines merely inherited from
+the shared base** — a distinction the commissioning brief did not make, and got
+wrong in both of the cases it named (§6).
+
+**Verified line-authored: absent from `49502e5`, present in both tails.**
+
+| # | finding | Line A | Line B |
+|---|---|---|---|
+| **2.1** | **`Zone::capacity()` publishes a seat count off the RAW shape**, beside an `area_m2` that comes from the basis. **Both lines state it was in no brief.** A: *"the fourth publisher, which no brief named."* B: *"The finding beyond the brief."* Both reproduce it on unedited F1 zone 244 — 8.0 m², 5 pax, five 6 m² workstations in eight square metres. | `zone.rs:274`; fixed as `capacity_on(area_m2)`, guarded by M26 (22 494 evaluations) | `capacity()`; fixed as `capacity_from_area(area)`; *"No test moved. 196 green before and after"* |
+| **2.2** | **Three TypeScript recompute publishers** — `three/Scene3D.tsx` (inlined shoelace + rect/ring), `paint.ts` Poly, `paint.ts` Rect. None appears as an area owner anywhere in the base. | found by `areaCensus.test.mjs`, watched RED first: *"FAIL (60 checks, 2 failing)"* naming `paint.ts::drawZones` and `Scene3D.tsx::card` | found by `area-census.mjs`: *"grep zoneArea reported seven owners; the same tree, ten"* |
+| **2.3** | **`export/services.ts` `Room.area` is DEAD, not a publisher.** The base named `services.ts:139` as one of four owners. **Both lines independently falsified that and deleted the field.** | *"RETRACTED BY NAME. … written and never read … Three of four named consumers were real"* | *"**dead** — written twice, read nowhere. Deleted."* |
+| **2.4** | **T2 (`traced && nia > gea`) is a GUARD, not a tautology.** The base classified it TAUTOLOGY from unsatisfiability evidence. **Both lines overturned it, by the same separator — break the mechanism.** | *"**GUARD — the brief is OVERTURNED here** … drop `net_internal_area`'s Traced clamp → RED"* | *"**RETRACTED BY NAME** … unsatisfiability is what a Guard and a Tautology have in common"* |
+| **2.5** | **T1 (`efficiency_pct > 100`) must go.** Both deleted it; **for different stated reasons, and each built a different replacement** — which is a live merge hazard, §5.2. | DELETED: *"removing the clamp ALONE left it green; two independent breakages are needed"* → replaced by **M08** | DELETED: TAUTOLOGY confirmed by algebra after R14 → replaced by **`eff-one-basis`** |
+| **2.6** | **R17 itself.** Both lines promoted the same rule under the same number, in different words, having never read each other. §1. | *"A census of a symbol cannot see a recompute"* | *"A census of a QUANTITY is not a census of a SYMBOL"* |
+| **2.7** | **R24 and the Step 0 verification of Line A.** Both `session-integration` and `session-c` promoted R24 and both verified Line A's board directly rather than inheriting its claim. Both reached the same measurement — **`51/51` green, sheet board `5/6`, `SG5 FAIL (29 checks, 27 failing)`** — and the same conclusion, **the plan inverts, B is base**. Two accounts, kept whole, tagged `I:` and `C:`. | `I:` entry above | `C:` entry above |
+| **2.8** | **Both lines' area fixes moved the same two drawing-set digests** (`seeded sheet 3`, `seeded sheet 11`) — *"Same defect, same two sheets, one line saw it"*. Recorded by `session-integration` above; noted here because it is the same replication phenomenon and belongs in one register. | A's fix moved them, and **nothing told A** — in A's tree that fixture is in no board's population | B re-recorded them with per-digest attribution, because B had the fixture **on a board** |
+
+**Eight independent replications.** In every one of 2.1–2.6 the two lines reached
+the same verdict from different instruments in different languages, which is the
+condition `gate-independence.md` calls positive evidence from an independent path.
+2.8 is the sharpest of them, because it is a **controlled** replication nobody
+designed: one line had the fixture on a board and saw the movement, the other did
+not and did not — the difference is the board, not the defect.
+
+## 3. `paint.ts` — the finding, and why it is not the finding the brief described
+
+The brief commissioning this interleave asked for this to be recorded prominently as
+*"A's allowlist said the epsilon was **never printed**; B found it published as
+`stat?.area ?? Math.abs(a2)/2`. Each line held half the truth about one file."*
+
+**That premise is falsified. Neither line held half; both lines found the whole
+thing, independently** — it is replication 2.2, not a split. Verified against
+`premerge-line-a:web/src/util/areaCensus.test.mjs`, whose own register comment names
+**both** branches as published fallbacks:
+
+```
+//   * `editor/paint.ts` Poly branch — `stat?.area ?? Math.abs(a2) / 2`.
+//   * `editor/paint.ts` Rect branch — `stat?.area ?? s.w * s.h`, a fallback
+//     introduced as a degeneracy test and then spent as a published m².
+```
+
+**But there IS a real finding in that file, one layer down, and it is live in the
+merged tree.** The two branches are not interchangeable, and the comment attaches
+the degeneracy-test provenance to the wrong one. Settled from the bytes —
+`49502e5:web/src/editor/paint.ts`, the pre-fix source both lines read:
+
+| branch | the fallback | the guard on the next line |
+|---|---|---|
+| **Poly, `:573`** | `const area = stat?.area ?? Math.abs(a2) / 2` | `if (area < 6 \|\| Math.abs(a2) < 1e-6) continue` — **the shoelace `a2` serves the epsilon AND the published area** |
+| **Rect, `:653`** | `const area = stat?.area ?? s.w * s.h` | `if (area < 6 \|\| h < 18) continue` — **no epsilon anywhere** |
+
+So the degeneracy test is in the **Poly** branch, and only there.
+
+* **A's ledger is right**: *"At `:573` a single shoelace served the epsilon
+  `|a2| < 1e-6` **and** the published area; the fix splits them."*
+* **B's ledger is right, and agrees**: *"`paint.ts:570` — the tenth, and the most
+  instructive: a shoelace introduced as a **degeneracy test** and then spent as
+  `stat?.area ?? |a2|/2`."*
+* **A's register comment is wrong**, and it is the only artifact of the three that
+  is. It attaches *"introduced as a degeneracy test"* to the **Rect** branch, which
+  has no degeneracy test to introduce.
+
+**A's ledger and A's own source comment contradict each other about A's own
+finding**, and B — reading the same file from the other line — independently agrees
+with A's ledger against A's comment. The misattribution is inherited by the merged
+tree along with `areaCensus.test.mjs`. It is a comment, so it changes no behaviour;
+it is exactly the artifact class `CLAUDE.md` §3.6.3 rules on — ***a comment is a
+claim to verify, not documentation*** — and it is carried open below rather than
+fixed here, because this interleave writes no source.
+
+That is still the merge's justification in one example, just not the one that was
+predicted: **the two lines cross-checked each other's prose against each other's
+source, and the disagreement that surfaced was inside one line, not between them.**
+Neither line could have found it alone.
+
+## 4. Line A's belief verdicts are SCOPED TO LINE A'S TREE
+
+**Line A's belief round returned NOT BELIEVED against `048d99e` and nothing else.**
+Every verdict, finding and null in the entry `A: # BELIEF FOUR — NOT BELIEVED, on
+both axes independently` above — F1, F1b, F2, F3/F5, F4/F6/F7, S-A1, SAB-A, the
+eleven mis-graded conjuncts, the three false self-claims, the five undeclared inert
+transforms, the wasm-torn-read mechanism, the `≈ 25 CHECKS · 16 GUARDS` honest
+reading — was measured on **Line A's tree, at Line A's board (Rust 202, battery
+51/51, 36 CHECKS · 5 GUARDS)**. The same applies to the re-measurements in
+`A: # F1` (Rust 203, 8 GUARDS) and to both A HANDOFFs.
+
+**None of it is a claim about the merged tree**, for the reason the round itself
+kept finding: the merged tree has B's 24 gate/board files, B's `eff-one-basis`, B's
+`zone_domain!`, B's SG7 and drawing-set rows, and a different conjunct population.
+A finding can be closed by a mechanism its own line never saw — and, symmetrically,
+a *null* measured on A's board says nothing about whether B's board catches the same
+sabotage. **A null result does not port.**
+
+The same scoping applies in the other direction and is stated for symmetry: B's
+belief attempts four and five are scoped to `6e49ba3`. Neither line's verdict is
+evidence about the union, and the union has not been graded by any adversary at the
+time of this interleave.
+
+Concretely, **these A verdicts must be re-run against the merged tree before they
+are cited, not inherited**: the S-A1 null (nothing moves whether the scorer reads
+the right plate) is closed on A's tree by A's own F1 fix and its status on the union
+is unmeasured; the eleven mis-graded conjuncts are a claim about A's 41-conjunct
+board, and the merged board's population differs; the *"371 326 conjunct evaluations
+sit byte-identical under a 5% basis error"* result is A's board's blindness, and
+whether B's cross-surface machinery sees that basis error is precisely the
+first-value test the merged round still owes.
+
+## 5. Where the two tails CONTRADICT each other
+
+Two lines measuring the same thing and disagreeing is a finding, not a formatting
+problem. Four, none of which is resolved by this interleave — recorded, attributed,
+and left standing.
+
+### 5.1 The belief tally is irreconcilable as written, and both lines have a "belief four"
+
+Both tails descend from the same 3 567 lines, and they disagree by **two** about how
+many NOT BELIEVED verdicts that base contains.
+
+| | its own entry | running count it claims | count it implies at the fork |
+|---|---|---|---|
+| **A** | `BELIEF FOUR — NOT BELIEVED, on both axes independently` | *"**Fifth** consecutive, fifth correct"* | **4** |
+| **B** | `BELIEF ATTEMPT FOUR — NOT BELIEVED` | *"**Seventh** consecutive, and the first one I did not write"* | **6** |
+| **B** | `BELIEF ATTEMPT FIVE — NOT BELIEVED` | *"**Eighth** consecutive"* | — |
+
+B states its premise explicitly — *"Six consecutive NOT BELIEVED verdicts were
+produced by somebody looking for the..."* — so this is not a typo on either side but
+**two different countings of one shared history**. The base's own last word before
+the fork (*"Four consecutive rounds returned NOT BELIEVED"*, written above a further
+verdict heading) is consistent with A's 4 and not with B's 6.
+
+The merged ledger now contains **three belief events, two of them named "four",
+with running counts 5, 7 and 8**. Renumbering cannot fix this without choosing whose
+history is right. **Left as-is, flagged: the next belief round must state the
+convention it is counting under before it claims an ordinal**, and no future entry
+should cite a consecutive-count from either tail without saying which line's tally
+it is using.
+
+### 5.2 One deleted conjunct, two replacements — a shadow risk on the merge
+
+Both lines deleted T1 (2.5) and each built a different mechanism to hold the
+property it had failed to hold: **A's M08** (efficiency re-derived from the
+document) and **B's `eff-one-basis`** (efficiency re-derived from the panel's
+delivered rows and the document's `zone_type`).
+
+**Measured at `b9ec338`:** `eff-one-basis` is present
+(`crates/ds-core/src/metrics_tests.rs:334`, graded `Check`); **`M08` is absent from
+the tree.** So there is no live shadow at the time of writing — B is the base and A's
+`metrics_tests.rs` has not landed.
+
+**This is a watch item for the port in progress, not a defect yet.** If A's
+`metrics_tests.rs` arrives whole, the merged tree carries **two mechanisms for one
+deleted conjunct**, which is the merge's own characteristic hiding place — *"any
+file where both lines' mechanisms survive in parallel"*. It must be resolved the way
+this mission resolves every duplicate: **choose one mechanism, and the retired one
+loses its name.** Note they are not equivalent and the choice is not free — M08 reads
+the document, `eff-one-basis` reads the delivered rows, so M08 is the in-crate check
+and `eff-one-basis` is the cross-surface one. If both are kept, that must be a stated
+decision with each one's distinct reach recorded, not a coexistence nobody decided.
+
+### 5.3 The `paint.ts` degeneracy attribution — A's ledger against A's comment
+
+Fully worked in §3. Both ledgers agree; A's register comment disagrees with both and
+is wrong against the source bytes. **Carried open: the comment at
+`web/src/util/areaCensus.test.mjs` lines 37–39 attributes the degeneracy test to the
+Rect branch and should name the Poly branch.** No source written here.
+
+### 5.4 Nineteen drawing-set failures, or twenty-one
+
+Already recorded in `C: three corrections…` above and repeated here because it is a
+disagreement between two accounts in this file: `session-integration` reports the
+fixture red with **19** failures, `session-c` measured **21** and says so —
+*"The brief says 19; I measured 21 and will hold the merged tree to 21."* The higher
+number is the measured one and carries its enumeration
+(`dwg A.01 ×6 · A.02 ×6 · sheets 3,4,5,6,11 · seeded 3,4,6,11`). **21 is the number
+to hold the merged tree to.**
+
+## 6. Corrections to the brief that commissioned this interleave
+
+*The brief is a hypothesis* is a standing convention of this mission, and it applies
+to the brief that asked for this section. Three factual premises were checked
+against the refs and did not hold. The gap the brief was written to close is
+**real and is exactly as described** — A's 1 309-line tail and all six of its
+retractions were absent — but three of its supporting details were wrong.
+
+1. **"Zone 244 and the R14 rustc-scope diagnosis were each found twice,
+   independently, by two lines that did not know of each other."** **Both are in
+   the merge base.** Zone 244's area divergence is `49502e5:3402`
+   (*"F1 unedited · 244 "Open Workspace (2)" sheet 35.0 m² workbook 8.0 m²"*), and
+   the entire R14 rustc-scope diagnosis — `cost.rs:185` as route `Re`, the false
+   `stats.ts:271-273` mirror, `F5 Focus Room 1 8.4672 vs 7.5096`, `premium Σ 2.20%`
+   — is `49502e5:3410-3432`. Both lines **inherited** them; neither re-derived them
+   independently. What the two lines *did* find twice is the register in §2, which
+   the brief did not name and which is eight items long rather than two.
+2. **"A's allowlist said the epsilon was never printed."** No such claim exists in
+   A's ledger or in A's register; A's register names both `paint.ts` branches as
+   published fallbacks. §3.
+3. **"A reached R16 and cites R1–R16."** **A promoted R17**, and it collided with
+   B's R17. Had this gone unchecked, the merged ledger would have carried the
+   collision unrecorded — which is the exact failure mode §1 was commissioned to
+   catch.
+
+One further correction, to the brief's arithmetic rather than its facts: the
+expected floor of *"23 + 6 + 2 = 31"* retraction lines rests on a base count of 23,
+which no pattern reproduces. The **deltas** are exact (**+6** A-authored, **+2**
+B-authored) under a case-sensitive `RETRACT` count; the absolute base figure is a
+counting-convention difference, worked in §7.
+
+## 7. Losslessness — the proof, and the method
+
+**Losslessness was the one hard requirement, and it is proved mechanically rather
+than asserted.**
+
+**The sources of truth** are the refs, not any working copy:
+`git show premerge-line-a:docs/audits/LOOP-LEDGER.md` (4 876 lines),
+`git show premerge-line-b:…` (4 668), and `git show b9ec338:…` (4 911).
+
+**Method — a MULTISET comparison, not a presence match.** Presence-matching two
+lists is the failure this mission's own rules name: two lists can agree with each
+other about a missing element. So every line of every source is compared **with its
+occurrence count**: for each source ref, `sort | uniq -c` over its lines is
+differenced against `sort | uniq -c` over the merged file, and the requirement is
+that **no line's count decreases**. A line appearing three times in a source and
+twice in the merge is a loss, and a set comparison would call it clean.
+
+**The one permitted transformation, enumerated in full.** Nineteen lines — and only
+these — appear in the merged file with a line tag prefixed:
+
+* **11 Line A top-level headings** → prefixed `A: `
+* **7 Line B top-level headings** → prefixed `B: `
+* **1 `session-integration` top-level heading** → prefixed `I: `
+  (`session-c`'s were already tagged `C:` by their author and are untouched)
+
+Each retains its complete original text after the prefix. **No sub-heading, no body
+line, no table row, no number, no retraction and no measurement was altered,
+reordered within its own line's sequence, or removed anywhere in either tail.**
+
+**Result.** The multiset check passes for all three refs with exactly the nineteen
+enumerated heading lines as the only differences, and every one of those nineteen is
+accounted for by its tag. The `49502e5` base survives as a byte-identical 3 567-line
+prefix.
+
+**Retraction accounting.** Counted case-sensitively on `RETRACT`, which is the
+convention whose deltas are stable across every ref:
+
+| ref | `RETRACT` | delta vs base |
+|---|---|---|
+| base `49502e5` | 19 | — |
+| `premerge-line-a` | 25 | **+6** |
+| `premerge-line-b` | 21 | **+2** |
+| `b9ec338` (pre-interleave) | 21 | +2 — **B's two only; A's six absent** |
+| **this file, inherited content only** | **27** | **+8 — both lines' retractions, all present** |
+| **this file, total** | **32** | +5 more, all of them **quotations inside §2 and §3 above** |
+
+**19 + 6 + 2 = 27 inherited, and 27 is what the three tails contribute.** The extra
+five are this reconciliation quoting retractions it cites; they are new prose, not
+new retractions, and are broken out rather than folded in — a merged count that
+silently included the merger's own quotations would be the producer counting its own
+output.
+
+The commissioning brief predicted a floor of **31** from a base of 23. **No counting
+convention reproduces 23**, so the floor itself is unreachable as stated; but the
+**deltas it derived (+6, +2) are exactly right**, and those are the load-bearing
+part of its measurement. The same structure holds case-insensitively: `retract`-
+bearing lines run base **39** · A **+20** · B **+2** = **61 inherited**, plus 17 in
+this interleave's own new material (1 preamble · 2 banners · 14 reconciliation) =
+**78** in the file. Either convention shows the same thing: **A's six authored
+retractions were absent from `integration` and are present now, and B's two were
+never at risk.**
+
+Ten retractions — five from each pre-merge tail — were sampled verbatim and
+confirmed surviving; the sample and its before/after counts are in the interleave's
+report and every one is present above.
+
+## 8. Carried open by this interleave
+
+1. **`areaCensus.test.mjs`'s register comment misattributes the `paint.ts`
+   degeneracy test** to the Rect branch (§3, §5.3). A comment only; no behaviour.
+   **No source written here** — this interleave's surface was the ledger.
+2. **The belief tally has two incompatible countings** (§5.1). The next belief round
+   states its convention before claiming an ordinal.
+3. **M08 and `eff-one-basis` are two replacements for one deleted T1** (§5.2). Not
+   yet a shadow at `b9ec338`; becomes one if A's `metrics_tests.rs` lands whole.
+4. **Line A's belief-four verdicts are unported nulls** (§4). Re-run before citing;
+   in particular the S-A1 null and the 5%-basis-error blindness are claims about A's
+   board, and the merged board is a different population.
+5. **`21`, not `19`, is the drawing-set failure count** to hold the merged tree to
+   (§5.4).

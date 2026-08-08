@@ -27,9 +27,18 @@ reachable forever.
 
 The failure was not that two sessions worked at once — parallel lines are useful,
 and these two were complementary. The failure was that **neither knew**, so
-neither could take the other's findings, and both paid full price for the same two
-discoveries (zone 244, and R14's rustc-scope failure). Declaration is cheap;
-rediscovery is not.
+neither could take the other's findings, and both paid full price for the same
+discoveries. Declaration is cheap; rediscovery is not.
+
+> **CORRECTED by the ledger interleave (see `LOOP-LEDGER.md`, "THE MERGE
+> RECONCILIATION" §2 and §6).** The two examples this paragraph named — **zone 244**
+> and **R14's rustc-scope failure** — are the wrong ones: both are in the **merge
+> base** `49502e5` (lines 3402 and 3410-3432), so both lines *inherited* them and
+> neither rediscovered anything. The point stands and is stronger than stated: the
+> duplicated work is a register of **eight** genuinely independent replications,
+> including `Zone::capacity()`, the three TypeScript recompute publishers, the dead
+> `Room.area`, T2's re-classification, and **R17 promoted twice under one number**.
+> The register is in the ledger; do not cite this paragraph's two examples.
 
 The corollary is the part that bites: **an integration is itself work on a mission
 branch**, so it declares too. This registry was created during the integration
@@ -49,8 +58,13 @@ in real time, against the round convened to fix it.
   boundary; the seat count reading the floor its own row bills; plate-polygon
   ownership; the cross-language quantity census; the basis-clip guard.
 - **Closing state (measured, not claimed):** Rust **203** · battery **51/51 `--full`** ·
-  board printed **36 CHECKS · 8 GUARDS** · belief **NOT BELIEVED ×5** ·
+  board printed **36 CHECKS · 8 GUARDS** · belief **one round, NOT BELIEVED on both
+  axes** (Line A's own entry calls it *"BELIEF FOUR … Fifth consecutive"* — a
+  running total inherited from the base, **not five rounds run by this line**;
+  `×5` was a misreading and the merged tally is disputed — ledger §5.1) ·
   HANDOFF REVISION 2 carrying six numbered next items.
+- **Scope of its verdicts:** everything Line A returned is measured against
+  `048d99e` **only**. Its nulls do not port to the merged tree — ledger §4.
 - **Declared retroactively.** This line predates R24 and never declared at birth;
   that omission is the cause R24 was promoted from.
 
