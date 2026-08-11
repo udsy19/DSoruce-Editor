@@ -885,6 +885,19 @@ User showed Rayon drawing-set PDFs as the output bar (`docs/reference/rayon-outp
   `supabase/tests/` — **28 checks against a real Postgres**, run as the `authenticated` role with a JWT
   claim set, not read-and-agreed-with. Sabotage round: all 8 mutations go red, including losing
   `SECURITY DEFINER` (recursion) and removing the backfill (the migration itself fails).
+- [x] **Project-grant rank cap (`0008`).** `0006` closed the roster escalation on `org_members` and
+  stopped there; `project_grants` is the same shape — its rows feed `project_role_of`, the oracle that
+  decides who may write to it — and kept `0002`'s uncapped policies. Reproduced before fixing, as an org
+  admin: grant an outsider `owner` (1/owner), delete the org owner's grant (1/0), grant self `owner`
+  (1/owner). **Severity stated rather than inflated:** nothing gates on `project_role_of >= 'owner'`, and
+  org-level control is `org_role_of`-gated, so it reaches no further than the project — what is live is
+  that a project-admin could revoke someone above them and install an outsider who could revoke them in
+  turn, and that the first policy written at `>= 'owner'` would make it a full escalation. Capped both
+  INSERT and DELETE at the actor's own rank; closing only INSERT would refuse to create a superior while
+  still allowing one to be deleted, which is half a rank rule. RLS 75 -> 80. Falsified: without `0008`
+  all three exploit checks go red observing the escalation succeeding, while both positive controls
+  (legitimate delegation at or below rank, and the org owner granting `owner`) stay green.
+
 - [x] **First-run + integrity (`0003`, `0004`).** Two gaps found by probing 0002 against a real
   Postgres rather than reasoning about it. **0003** — a user created *after* the backfill had no
   organisation, so `plans.org_id`'s default resolved to NULL and their very first save was refused

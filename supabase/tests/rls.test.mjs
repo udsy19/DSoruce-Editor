@@ -71,6 +71,7 @@ step(path.join(here, '../migrations/0004_plan_project_org_integrity.sql'), '0004
 step(path.join(here, '../migrations/0005_usage_ledger.sql'), '0005_usage_ledger.sql')
 step(path.join(here, '../migrations/0006_org_member_role_cap.sql'), '0006_org_member_role_cap.sql')
 step(path.join(here, '../migrations/0007_org_keeps_an_owner.sql'), '0007_org_keeps_an_owner.sql')
+step(path.join(here, '../migrations/0008_project_grant_rank_cap.sql'), '0008_project_grant_rank_cap.sql')
 
 let out
 try {

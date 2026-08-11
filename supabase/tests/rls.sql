@@ -166,6 +166,12 @@ insert into public.plans (id, owner, org_id, project_id, name, data) values
   ('00000000-0000-0000-0000-00000000f103', '00000000-0000-0000-0000-0000000000b1',
    '00000000-0000-0000-0000-00000000bb00', '00000000-0000-0000-0000-0000000ff300', 'Rival L1', '{}');
 
+-- The org owner also holds a project grant, so 0008's checks have a row ranked
+-- ABOVE an admin to attack. Without it the revoke probe would delete nothing and
+-- pass vacuously.
+insert into public.project_grants (project_id, user_id, role) values
+  ('00000000-0000-0000-0000-0000000ff100', '00000000-0000-0000-0000-0000000000a1', 'owner');
+
 -- The client contact: no org membership at all, one project grant.
 insert into public.project_grants (project_id, user_id, role) values
   ('00000000-0000-0000-0000-0000000ff100', '00000000-0000-0000-0000-0000000000c1', 'viewer');
@@ -832,6 +838,80 @@ select pg_temp.check('an admin CAN set the budget',
   pg_temp.affect_as('00000000-0000-0000-0000-0000000000a2',
     'update public.org_budgets set monthly_cap_nanos = 2000000000
       where org_id = ''00000000-0000-0000-0000-00000000aa00''') = 1);
+
+-- ── the same rank rule, on the sibling table (0008) ──────────────────────────
+--
+-- 0006 closed the roster escalation and stopped there. `project_grants` is the
+-- same shape — its rows feed `project_role_of`, the oracle that decides who may
+-- write to it — and kept 0002's uncapped policies. Fixing one table and not its
+-- sibling is how a closed hole reopens next door.
+--
+-- Reproduced before being fixed, acting as an org ADMIN (project_role_of =
+-- 'admin'); all three succeeded on the unfixed policy:
+--   grant an outsider 'owner' -> 1/owner · delete the owner's grant -> 1/0 ·
+--   grant SELF 'owner' -> 1/owner
+--
+-- Severity, not inflated: nothing in the schema gates on `project_role_of >=
+-- 'owner'` (every consumer stops at 'designer' or 'admin'), and org-level
+-- control is `org_role_of`-gated, so this reaches no further than the project.
+-- What is live is that a project-admin could revoke someone ranked above them
+-- and install an outsider who could then revoke the admin in turn — and that the
+-- first policy written at `>= 'owner'` would turn it into a full escalation.
+--
+-- As in 0006, every probe asserts on the role ACTUALLY STORED, not on whether
+-- the statement threw: a filtered row and a hard denial are both refusals, but
+-- only the observation query can tell a refusal from a successful escalation.
+
+select pg_temp.check_probe('an admin cannot grant a project rank ABOVE its own',
+  '00000000-0000-0000-0000-0000000000a2',
+  'insert into public.project_grants (project_id, user_id, role) values
+     (''00000000-0000-0000-0000-0000000ff100'', ''00000000-0000-0000-0000-0000000000a9'', ''owner'')',
+  'select coalesce(max(role)::text, ''none'') from public.project_grants
+    where project_id = ''00000000-0000-0000-0000-0000000ff100''
+      and user_id = ''00000000-0000-0000-0000-0000000000a9''',
+  '0/none', '-1/denied');
+
+select pg_temp.check_probe('an admin cannot grant ITSELF a project rank above its own',
+  '00000000-0000-0000-0000-0000000000a2',
+  'insert into public.project_grants (project_id, user_id, role) values
+     (''00000000-0000-0000-0000-0000000ff100'', ''00000000-0000-0000-0000-0000000000a2'', ''owner'')',
+  'select coalesce(max(role)::text, ''none'') from public.project_grants
+    where project_id = ''00000000-0000-0000-0000-0000000ff100''
+      and user_id = ''00000000-0000-0000-0000-0000000000a2''',
+  '0/none', '-1/denied');
+
+-- The revoke half. Closing INSERT alone would refuse to CREATE a superior while
+-- still allowing one to be DELETED — half a rank rule, and the half that leaves
+-- the live harm standing.
+select pg_temp.check_probe('an admin cannot revoke a project grant ranked above its own',
+  '00000000-0000-0000-0000-0000000000a2',
+  'delete from public.project_grants
+    where project_id = ''00000000-0000-0000-0000-0000000ff100''
+      and user_id = ''00000000-0000-0000-0000-0000000000a1''',
+  'select count(*)::text from public.project_grants
+    where project_id = ''00000000-0000-0000-0000-0000000ff100''
+      and user_id = ''00000000-0000-0000-0000-0000000000a1''',
+  '0/1', '-1/denied');
+
+-- POSITIVE CONTROLS. A rank cap that also breaks legitimate delegation is not a
+-- fix, and each of these fails if the cap is written as a blanket denial.
+select pg_temp.check_probe('an admin CAN still grant at or below its own rank',
+  '00000000-0000-0000-0000-0000000000a2',
+  'insert into public.project_grants (project_id, user_id, role) values
+     (''00000000-0000-0000-0000-0000000ff100'', ''00000000-0000-0000-0000-0000000000a9'', ''designer'')',
+  'select role::text from public.project_grants
+    where project_id = ''00000000-0000-0000-0000-0000000ff100''
+      and user_id = ''00000000-0000-0000-0000-0000000000a9''',
+  '1/designer');
+
+select pg_temp.check_probe('the ORG OWNER can still grant owner',
+  '00000000-0000-0000-0000-0000000000a1',
+  'insert into public.project_grants (project_id, user_id, role) values
+     (''00000000-0000-0000-0000-0000000ff100'', ''00000000-0000-0000-0000-0000000000a9'', ''owner'')',
+  'select role::text from public.project_grants
+    where project_id = ''00000000-0000-0000-0000-0000000ff100''
+      and user_id = ''00000000-0000-0000-0000-0000000000a9''',
+  '1/owner');
 
 -- ── anonymous ────────────────────────────────────────────────────────────────
 
