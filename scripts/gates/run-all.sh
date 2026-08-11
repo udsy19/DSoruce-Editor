@@ -57,7 +57,7 @@ if command -v lsof >/dev/null 2>&1; then
   fi
 fi
 
-declare -a IDS=(G1 G2 G3 G4 G5 G6 G7 G8 G9 G10 G11 G12 G13)
+declare -a IDS=(G1 G2 G3 G4 G5 G6 G7 G8 G9 G10 G11 G12 G13 G14)
 declare -a CMDS=(
   "python3 $HERE/g1-sheet-structure.py"
   "python3 $HERE/g2-formula-liveness.py"
@@ -75,6 +75,13 @@ declare -a CMDS=(
   # exactly as the sheet board is. C10 is the naive-user walkthrough and reports
   # PENDING-HUMAN; it is never counted as passing by either board.
   "node $HERE/circulation/run-all.mjs --as-gate G13"
+  # G14 — the plan-quality board (PQ0-PQ2), the mission's §1.1 visual-acceptance
+  # rubric made measurable. SHIPS RED BY DESIGN, exactly as composition.mjs and
+  # cost-reconciliation.mjs do: both checks were written before any generator
+  # change and watched fail, so they are calibrated against the rubric rather
+  # than against whatever a fix happens to produce. Its redness is a generator
+  # change, not a gate fix. PQ0 re-runs the sabotage round on every execution.
+  "node $HERE/plan-quality/run-all.mjs --as-gate G14"
 )
 declare -a TITLES=(
   "Sheet structure"
@@ -95,6 +102,7 @@ declare -a TITLES=(
   # that can grade a check and then not show it is the SG5 family one level up —
   # the same reason `GSELF` exists. The array lengths are now asserted below.
   "Circulation (C1-C10)"
+  "Plan quality (PQ0-PQ2)"
 )
 if [ "${#TITLES[@]}" -ne "${#IDS[@]}" ] || [ "${#CMDS[@]}" -ne "${#IDS[@]}" ]; then
   echo "BOARD BROKEN: ${#IDS[@]} ids, ${#CMDS[@]} commands, ${#TITLES[@]} titles" >&2
