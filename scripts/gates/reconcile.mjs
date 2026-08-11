@@ -138,6 +138,7 @@ const RUNNERS = [
   'scripts/gates/run-all.sh',
   'scripts/gates/sheets/run-all.mjs',
   'scripts/gates/circulation/run-all.mjs',
+  'scripts/gates/plan-quality/run-all.mjs',
   'package.json',
   '.githooks/pre-commit',
 ].map((r) => path.join(ROOT, r))
