@@ -3935,7 +3935,23 @@ fn golden_fingerprint(doc: &Document, program: &Program) -> String {
 /// (`support_spaces = false`), and an EXPLICIT `rooms` program, over a plain
 /// rectangle, the L plate and the user's real multi-wing plate.
 ///
-/// PROVENANCE. Last re-captured for **the ONE OBSTACLE MODEL** (`FieldGrid`,
+/// PROVENANCE. Last re-captured for **the FILL STRADDLE REJECTION**
+/// (Workstream E, fix/placement-inset): the whole-plate leftover fill packed
+/// desks on the plate bbox lattice, and a slot could lie HALF ACROSS an
+/// emitted Workspace zone edge — center in, footprint out (up to 0.55 m), the
+/// user's "desks crossing the open-workspace boundary" defect. The containment
+/// gate below was written first and watched RED on exactly three cases:
+/// `default/real_plate/seed1`, `default/real_plate/seed3`,
+/// `explicit_rooms/real_plate/seed1` (3 desks each). After the rejection
+/// (`FieldGrid::build`'s `no_straddle`), **exactly those three cases moved and
+/// no other**: every component/wall/zone/desk count identical in all ten
+/// (desks stay 88 — the straddlers' budget flowed to legal slots), only
+/// `total` and the digest moved in the three, and the never-red cases —
+/// including `default/real_plate/seed2` and `no_support/real_plate/seed2` on
+/// the SAME plate — are byte-identical. A change of POSITION with no change of
+/// PROGRAMME, confined to the defect's own cases.
+///
+/// Before that, **the ONE OBSTACLE MODEL** (`FieldGrid`,
 /// `layout/packing.rs`) — ADVERSARY H1, and the blocker on the W1 facade band.
 /// **All ten cases moved, and every count is identical in all ten:**
 ///
@@ -4000,8 +4016,10 @@ fn golden_fingerprint(doc: &Document, program: &Program) -> String {
 /// the behavioural contract, NOT a hand-derived truth. Regenerating them is
 /// only legitimate when a change is *intended* to move geometry — a refactor
 /// must leave every line untouched.
-#[test]
-fn golden_generate_output_is_frozen() {
+/// The ten golden (name, document, program, seed) cases — ONE enumeration,
+/// shared by the frozen-output contract and the containment gate below, so a
+/// case added to the contract is automatically in the gate's population.
+fn golden_cases() -> Vec<(String, Document, Program, u64)> {
     let prog_no_support = Program { support_spaces: false, ..Program::default() };
     let prog_rooms = Program {
         rooms: vec![
@@ -4069,17 +4087,23 @@ fn golden_generate_output_is_frozen() {
         1,
     ));
     cases.push(("explicit_rooms/l_plate/seed3".to_string(), l_room(), prog_rooms, 3));
+    cases
+}
+
+#[test]
+fn golden_generate_output_is_frozen() {
+    let mut cases = golden_cases();
 
     const EXPECTED: [&str; 10] = [
 "default/rect20x14/seed1 = c72 w52 z11 desks21 total87876523 #1a0244c3d88eeb3c",
             "default/rect20x14/seed2 = c80 w52 z11 desks25 total89274625 #1fca633eeb04543f",
             "default/rect20x14/seed3 = c70 w52 z11 desks20 total86967629 #52556c4029d00bfc",
-            "default/real_plate/seed1 = c222 w155 z34 desks88 total90829644 #51346e5dd9e67717",
+            "default/real_plate/seed1 = c222 w155 z34 desks88 total90664458 #c9ce9194d6790c04",
             "default/real_plate/seed2 = c222 w155 z34 desks88 total90374158 #8e014e5bf944ae6a",
-            "default/real_plate/seed3 = c222 w155 z34 desks88 total90789464 #dab020c8941dea25",
+            "default/real_plate/seed3 = c222 w155 z34 desks88 total90624138 #a3891e7663e9ff63",
             "no_support/rect20x14/seed1 = c68 w22 z4 desks26 total92565832 #991c040294e31e67",
             "no_support/real_plate/seed2 = c192 w101 z38 desks88 total94498462 #aa40cc22254958f2",
-            "explicit_rooms/real_plate/seed1 = c209 w125 z26 desks88 total88552582 #2e9ede920e2f8d79",
+            "explicit_rooms/real_plate/seed1 = c209 w125 z26 desks88 total88527325 #75d3266216bb93f6",
             "explicit_rooms/l_plate/seed3 = c63 w33 z10 desks24 total87841010 #2c4c9d19abba5d0b",
     ];
     assert_eq!(cases.len(), EXPECTED.len(), "case list and expectations must line up");
@@ -4104,6 +4128,147 @@ fn golden_generate_output_is_frozen() {
         actual.iter().map(|a| format!("            \"{a}\",")).collect::<Vec<_>>().join("\n")
     );
 
+}
+
+// ---- WORKSTREAM E — placement containment gate (fix/placement-inset) -------
+
+/// Every generated Desk and Table whose CENTER lies in a room zone keeps its
+/// whole footprint inside that zone's shape, on all ten golden cases.
+///
+/// The zone is found by REPLICATING `Document::zone_index_at`'s semantics here
+/// (smallest-area containing zone; Circulation/Unassigned are ground and lose
+/// to any room) rather than by reading `zone.component_ids` — the cached
+/// assignment is producer output, and this gate re-derives its ground truth
+/// from document geometry alone (.claude/rules/gate-independence.md). The
+/// footprint is the component's w×h rect rotated about its center; its
+/// boundary is sampled at the 4 corners plus ≤0.05 m steps, each sample pulled
+/// 1e-9 m toward the center so an exactly-flush edge (the packer emits desks
+/// flush with the field rect) is inside, not flaky.
+///
+/// Scope is Desks + Tables DELIBERATELY — the populations the placement side
+/// (place.rs / packing.rs / furnish) fully controls:
+///  * Chairs are EXCLUDED: `seat_desk_chairs` tucks a task chair over its own
+///    desk edge and projects `CHAIR_PROJECT` into the aisle. Measured on the
+///    sample plate (reports/editor-completion/containment/), 12 chairs of the
+///    westmost desk column overhang their workspace zone's edge by exactly
+///    0.20 m into the adjacent drawn corridor. Whether a chair back may cross
+///    the zone line is an OPEN product ruling; a gate must not silently ratify
+///    either answer, so chairs wait for the ruling.
+///  * Doors are EXCLUDED by construction: the leaf is emitted IN the boundary
+///    wall (0.9 × 0.15 centered on the wall line), so strict room-zone
+///    containment is geometrically impossible for a correct door.
+///
+/// A population floor guards against vacuity: if a refactor stopped desks
+/// being assigned to room zones, the gate fails on the floor instead of
+/// passing over an empty set (the "check whose subject moved out from under
+/// it" family).
+///
+/// WATCHED RED FIRST, a true red: written before any fix existed, this gate
+/// failed on 9 desks across three golden real_plate cases — the whole-plate
+/// leftover fill packed on the plate-bbox lattice, so a slot could lie half
+/// across a Workspace zone edge (center in, footprint up to 0.55 m out). The
+/// fix is `FieldGrid::build`'s `no_straddle` rejection; this gate went green
+/// on it with every golden count unchanged. The sabotage round (fix reverted ·
+/// footprint rotation dropped · ground rule inverted · packer bounds
+/// loosened), run in a scratch worktree, is recorded with its nulls in
+/// `reports/editor-completion/containment/sabotage.md`.
+#[test]
+fn placed_desks_and_tables_stay_inside_their_zone_on_the_golden_cases() {
+    // zone_index_at semantics, re-derived (the real fn is private to Document
+    // and reads the cache this gate refuses to trust).
+    fn room_zone_at(doc: &Document, x: f64, y: f64) -> Option<usize> {
+        let mut chosen: Option<(usize, f64)> = None;
+        let mut found_room = false;
+        for (i, z) in doc.zones.iter().enumerate() {
+            if !z.shape.contains(x, y) {
+                continue;
+            }
+            let ground = crate::is_ground_zone(z.zone_type);
+            if ground && found_room {
+                continue;
+            }
+            let area = z.shape.area();
+            if !ground && !found_room {
+                found_room = true;
+                chosen = Some((i, area));
+            } else if chosen.is_none_or(|(_, best)| area < best) {
+                chosen = Some((i, area));
+            }
+        }
+        let (i, _) = chosen?;
+        // A center on ground belongs to no room zone (document.rs:176-190).
+        if crate::is_ground_zone(doc.zones[i].zone_type) {
+            None
+        } else {
+            Some(i)
+        }
+    }
+
+    /// Boundary samples of the rotated footprint, nudged 1e-9 toward center.
+    fn footprint_samples(c: &crate::model::Component) -> Vec<(f64, f64)> {
+        let (s, co) = c.rotation.sin_cos();
+        let corners: Vec<(f64, f64)> = [
+            (-c.w / 2.0, -c.h / 2.0),
+            (c.w / 2.0, -c.h / 2.0),
+            (c.w / 2.0, c.h / 2.0),
+            (-c.w / 2.0, c.h / 2.0),
+        ]
+        .iter()
+        .map(|(lx, ly)| (c.x + lx * co - ly * s, c.y + lx * s + ly * co))
+        .collect();
+        let mut out = Vec::new();
+        for i in 0..4 {
+            let (ax, ay) = corners[i];
+            let (bx, by) = corners[(i + 1) % 4];
+            let len = ((bx - ax).powi(2) + (by - ay).powi(2)).sqrt();
+            let n = ((len / 0.05).ceil() as usize).max(1);
+            for k in 0..n {
+                let t = k as f64 / n as f64;
+                let (px, py) = (ax + t * (bx - ax), ay + t * (by - ay));
+                // Pull toward the center so flush-on-the-line is inside.
+                let (dx, dy) = (c.x - px, c.y - py);
+                let d = (dx * dx + dy * dy).sqrt().max(1e-12);
+                out.push((px + dx / d * 1e-9, py + dy / d * 1e-9));
+            }
+        }
+        out
+    }
+
+    let mut measured = 0usize;
+    let mut failures: Vec<String> = Vec::new();
+    for (name, mut doc, program, seed) in golden_cases() {
+        generate(&mut doc, &program, seed, false);
+        for c in &doc.components {
+            if c.reference || (c.category != "Desk" && c.category != "Table") {
+                continue;
+            }
+            let Some(zi) = room_zone_at(&doc, c.x, c.y) else { continue };
+            let z = &doc.zones[zi];
+            measured += 1;
+            for (px, py) in footprint_samples(c) {
+                if !z.shape.contains(px, py) {
+                    failures.push(format!(
+                        "  {name}: {} #{} at ({:.3}, {:.3}) rot {:.3} exits zone {} \
+                         \"{}\" ({:?}) at sample ({:.4}, {:.4}) — zone shape {:?}",
+                        c.category, c.id, c.x, c.y, c.rotation, z.id, z.label, z.zone_type, px, py,
+                        z.shape
+                    ));
+                    break;
+                }
+            }
+        }
+    }
+    assert!(
+        measured >= 100,
+        "containment gate went vacuous: only {measured} Desk/Table components \
+         were assigned to room zones across the ten golden cases"
+    );
+    assert!(
+        failures.is_empty(),
+        "{} placed component(s) exit their zone polygon:\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
 }
 
     /// A room briefed for N people is furnished with a table seating exactly N.
