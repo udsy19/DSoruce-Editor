@@ -2222,6 +2222,98 @@ mod tests {
         );
     }
 
+    /// D-LADDER (Workstream D audit): **the pax ladder's area arm and a seated
+    /// room are mutually exclusive, by construction.**
+    ///
+    /// `zone_rows`' capacity ladder is `furnished > 0 → furnished; spanning →
+    /// seated; else → capacity_from_area(area)`. The pre-registered question
+    /// was whether the area rule-of-thumb can caption a zone that ALSO holds
+    /// placed desks — a tag deriving pax from area while the document seats
+    /// people at real furniture. It cannot, and this pins the two facts that
+    /// make that structural rather than coincidental:
+    ///
+    ///  1. a `Desk` seats exactly 1 REGARDLESS of size (`model::seats_for`),
+    ///     including at `set_component_size`'s 0.05 m clamp floor, so no
+    ///     resize can zero a desk's contribution to `furnished`;
+    ///  2. every ingress path resolves `seats` at creation/mutation
+    ///     (`add_component`, `set_component_size`, `set_component_category`;
+    ///     `restore` backfills via `Document::backfill_seats`) — so a
+    ///     non-reference Desk in a zone's membership forces `furnished >= 1`,
+    ///     which forces the FURNISHED arm of the ladder.
+    ///
+    /// Corollary, asserted over real rows: whenever the area arm fires
+    /// (furnished == 0 and not the spanning zone), that row's `seated` is 0 —
+    /// the tag can never print an area-derived pax over a room whose desks the
+    /// document counts. (The arm is re-derived here, M26-style, because which
+    /// arm fired is not a field on the row — asking the row would be asking
+    /// the subject.)
+    ///
+    /// A true red is structurally unavailable (the property holds by
+    /// construction), so the gate was falsified by sabotage in a disposable
+    /// worktree: making `seats_for` return 0 for a sub-1 m² Desk turns this
+    /// red at the clamp-floor assertion. Reported per gate-independence's
+    /// asymmetry rule, not papered over.
+    #[test]
+    fn pax_area_arm_never_captions_a_seated_zone() {
+        // Fact 1: size cannot zero a desk (the clamp floor is the worst case).
+        assert_eq!(crate::model::seats_for("Desk", 0.05, 0.05), 1);
+        assert_eq!(crate::model::seats_for("Desk", 3.0, 2.0), 1);
+
+        let mut ed = Editor::for_test(plate_ws_meeting_gap());
+        let ws = |ed: &Editor| {
+            ed.zone_rows_for_test(false)
+                .into_iter()
+                .find(|r| r.zone_type == ZoneType::Workspace)
+                .expect("plate has a Workspace zone")
+        };
+
+        // Empty room: the area arm fires, and it captions NOBODY.
+        let empty = ws(&ed);
+        assert_eq!(empty.seated, 0, "an area-arm row seats nobody");
+        let per = crate::zone::m2_per_seat(ZoneType::Workspace).expect("Workspace has a rate");
+        assert_eq!(
+            empty.capacity,
+            (empty.area / per).floor() as u32,
+            "an empty room's capacity is the planning estimate of ITS OWN area"
+        );
+
+        // Ingress: one desk, resized to the clamp floor, still owns the tag.
+        let id = ed.add_component("Desk".into(), 5.0, 5.0, 1.4, 0.7).expect("finite");
+        ed.set_component_size(id, 0.01, 0.01).expect("finite"); // clamps to 0.05
+        let r = ws(&ed);
+        assert_eq!(
+            (r.capacity, r.seated),
+            (1, 1),
+            "a placed desk forces the furnished arm at ANY size — never the area estimate"
+        );
+
+        // Category churn keeps `seats` resolved (the set_component_category
+        // side-effect is in lockstep with set_component_size).
+        ed.set_component_category(id, "Table".into());
+        ed.set_component_category(id, "Desk".into());
+        assert_eq!(ws(&ed).capacity, 1, "category churn cannot strand a stale seat count");
+
+        // Corollary over EVERY row: re-derive the arm; area arm ⟹ seated == 0.
+        let AreaBasis { spanning, .. } = area_basis(&ed.doc);
+        for (i, row) in ed.zone_rows_for_test(false).iter().enumerate() {
+            let furnished: u32 = ed.doc.zones[i]
+                .component_ids
+                .iter()
+                .filter_map(|&cid| ed.doc.components.iter().find(|c| c.id == cid))
+                .filter(|c| !c.reference)
+                .filter(|c| c.category != "Chair")
+                .map(|c| c.seats)
+                .sum();
+            if furnished == 0 && Some(i) != spanning {
+                assert_eq!(
+                    row.seated, 0,
+                    "zone {} takes the area arm while seating {} — the ladder's arms leaked",
+                    row.id, row.seated
+                );
+            }
+        }
+    }
+
     /// INV2 (count side): flipping a desk to `reference` decrements the count IFF
     /// it was a counted (in-Workspace, non-reference) desk; flipping an unzoned or
     /// wrong-zone or already-reference desk is a no-op. `set_component_reference`

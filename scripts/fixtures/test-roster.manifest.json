@@ -439,6 +439,20 @@
         ],
         "removed": []
       }
+    },
+    {
+      "when": "2026-08-12",
+      "why": "Workstream D (fix/pax-derivation): pax_area_arm_never_captions_a_seated_zone pins the capacity ladder's mutual exclusivity — a Desk seats 1 at any size incl. the 0.05 m clamp floor and every ingress resolves seats, so the area rule-of-thumb arm can only fire on rows whose seated is 0; true red structurally unavailable, falsified by sabotage in a disposable worktree (size-dependent desk seats -> red at the clamp-floor assertion)",
+      "js": {
+        "added": [],
+        "removed": []
+      },
+      "rust": {
+        "added": [
+          "tests::pax_area_arm_never_captions_a_seated_zone"
+        ],
+        "removed": []
+      }
     }
   ],
   "js": {
@@ -688,6 +702,7 @@
     "tests::no_zone_mutator_can_write_a_document_that_cannot_reopen": "initial pin — the F1 roster, established from a green tree at 56af276",
     "tests::old_document_blob_without_reference_deserializes_and_counts": "initial pin — the F1 roster, established from a green tree at 56af276",
     "tests::only_desks_count_as_workstations": "initial pin — the F1 roster, established from a green tree at 56af276",
+    "tests::pax_area_arm_never_captions_a_seated_zone": "Workstream D (fix/pax-derivation): pax_area_arm_never_captions_a_seated_zone pins the capacity ladder's mutual exclusivity — a Desk seats 1 at any size incl. the 0.05 m clamp floor and every ingress resolves seats, so the area rule-of-thumb arm can only fire on rows whose seated is 0; true red structurally unavailable, falsified by sabotage in a disposable worktree (size-dependent desk seats -> red at the clamp-floor assertion)",
     "tests::revision_advances_on_mutation_and_holds_still_on_reads": "initial pin — the F1 roster, established from a green tree at 56af276",
     "tests::the_non_finite_guard_does_not_refuse_ordinary_edits": "initial pin — the F1 roster, established from a green tree at 56af276",
     "tests::workstations_exclude_reference_and_drive_area_per_ws": "initial pin — the F1 roster, established from a green tree at 56af276",
