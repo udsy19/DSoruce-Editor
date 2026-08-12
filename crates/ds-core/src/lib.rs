@@ -371,8 +371,27 @@ mod basis {
             if doc.zones[i].zone_type != ZoneType::Workspace || Some(i) == spanning {
                 continue;
             }
-            let ZoneShape::Rect { x, y, w, h } = doc.zones[i].shape else { continue };
-            let (rx0, ry0, rx1, ry1) = (x - w / 2.0, y - h / 2.0, x + w / 2.0, y + h / 2.0);
+            // **Rect OR Poly** — a Workspace field that has been conformed to the
+            // plate is a polygon, and skipping it silently restored the very
+            // double-count this block exists to remove (caught by
+            // `statsPanel.test.mjs` F4 the moment conform-on-edit made these
+            // polygons common: Σ 941.6 m² over a 930.1 m² floor).
+            //
+            // Subtracting over zone i's BBOX is exact for a conformed polygon,
+            // not an approximation. `poly_i = plate ∩ rect_i`, so
+            // `bbox(poly_i) ⊆ rect_i`, and any point of `bbox_i` outside `poly_i`
+            // is therefore outside the PLATE. Every `j` is plate-clipped by
+            // `zone_overlap_rect_on_plate`, so it contributes nothing there:
+            // `area(j ∩ bbox_i) = area(j ∩ poly_i)`.
+            //
+            // `RectRing` stays excluded: its bbox is the OUTER rect, so a zone
+            // inside the ring's hole would be subtracted from area it never
+            // covered. Rings are Circulation, not Workspace, so this costs
+            // nothing today — but it would be wrong, and wrong quietly.
+            let (rx0, ry0, rx1, ry1) = match doc.zones[i].shape {
+                ZoneShape::Rect { .. } | ZoneShape::Poly { .. } => doc.zones[i].shape.bbox(),
+                ZoneShape::RectRing { .. } => continue,
+            };
             let mut sub = 0.0;
             for j in 0..doc.zones.len() {
                 if j == i || doc.zones[j].zone_type == ZoneType::Workspace {

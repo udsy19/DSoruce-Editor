@@ -601,13 +601,104 @@ impl Document {
         Ok(())
     }
 
+    /// Conform an edit's target rect to the floor plate — the SAME rule the
+    /// generator applies (`layout/conform.rs:345`), so a room the user moves and
+    /// a room the generator placed obey one definition of "inside the building".
+    ///
+    /// Before this existed, `resize_zone` stored whatever rect the drag produced.
+    /// A conforming `Poly` room — one whose edge follows a diagonal or stepped
+    /// wall — was therefore **silently replaced by its bounding box** on the first
+    /// drag, gaining floor that is outside the building and losing the geometry
+    /// the generator computed. `zone.rs` claimed edits "reject `Poly`"; cut and
+    /// merge do, resize did not.
+    ///
+    /// **Why re-deriving from a rect is stable, not erosive.** A conformed shape
+    /// is `S = plate ∩ R`. Since `S ⊆ bbox(S) ⊆ R`, clipping again gives
+    /// `plate ∩ bbox(S) ⊆ plate ∩ R = S`, and `S ⊆ plate ∩ bbox(S)` because `S`
+    /// is inside both. So `plate ∩ bbox(S) = S` **exactly** — dragging a room
+    /// away and back cannot nibble it down, and a no-op drag is a no-op.
+    ///
+    /// Returns `Rect` unchanged when the plate does not cut it: an unclipped room
+    /// stays the cheap, exactly-representable shape the user drew, so this does
+    /// not turn every rectangle in the document into a 4-point polygon.
+    /// `was_on_plate` is whether the zone's CURRENT shape touches the plate, and
+    /// it is what makes an empty clip interpretable. See the body.
+    fn conform_to_plate(
+        &self,
+        shape: ZoneShape,
+        was_on_plate: bool,
+    ) -> Result<ZoneShape, ZoneError> {
+        let ZoneShape::Rect { x, y, w, h } = shape else {
+            // Already a polygon (or a ring): the caller owns that geometry and it
+            // is not a drag target. Pass it through untouched.
+            return Ok(shape);
+        };
+        // `plate_polygon` is `Traced` only — `Open` and `Unresolved` both give
+        // `None` — so this is the existing owner of "do we actually know where
+        // the floor is", not a second opinion. No plate, no conforming.
+        let Some(plate) = self.plate_polygon() else {
+            return Ok(shape);
+        };
+        let (x0, y0, x1, y1) = (x - w / 2.0, y - h / 2.0, x + w / 2.0, y + h / 2.0);
+        let clipped = crate::geometry::clip_rect_to_polygon(&plate, x0, y0, x1, y1);
+        if clipped.len() < 3 {
+            // The target has no floor under it. TWO very different situations
+            // produce that, and conflating them broke a real document:
+            //
+            // 1. The user dragged a room out of the building. Refuse it.
+            // 2. **The plate is not this room's floor.** `plate_resolution`
+            //    identifies the plate as the face containing the PLAN — so on a
+            //    document with an open envelope and one stray closed loop, and
+            //    before enough plan exists to disqualify it, the "plate" can be a
+            //    1.2 m² scratch box forty metres away
+            //    (`a_seven_anchor_plan_cannot_certify_a_scratch_box_as_the_floor`).
+            //    Refusing there would make every room on an imperfectly-closed
+            //    import unplaceable — and imperfectly-closed is the normal state
+            //    of an imported DWG.
+            //
+            // Telling them apart without circularity: ask whether the zone was on
+            // the plate BEFORE this edit. If it was, the plate is demonstrably the
+            // floor this room lives on and leaving it is a real error. If it was
+            // never on it, this plate has nothing to say about this room, and the
+            // conservative act is to leave the user's rect alone.
+            return if was_on_plate { Err(ZoneError::OutOfBounds) } else { Ok(shape) };
+        }
+        // Did the plate actually cut it? Compare areas rather than point counts:
+        // a rect clipped by a collinear plate edge can come back as 4 points that
+        // are the same rectangle.
+        let rect_area = w * h;
+        let clip_area = crate::geometry::polygon_area(&clipped);
+        if (rect_area - clip_area).abs() <= 1e-6 * rect_area.max(1.0) {
+            return Ok(shape);
+        }
+        Ok(ZoneShape::Poly { pts: clipped.into_iter().map(|p| [p.x, p.y]).collect() })
+    }
+
     /// Resize/move a zone's shape. Rejected (`OutOfBounds`) if the new shape's
-    /// bbox exceeds the wall bbox, or (`NonFinite`) if any coordinate is NaN/±∞.
+    /// bbox exceeds the wall bbox or falls entirely off the floor plate, or
+    /// (`NonFinite`) if any coordinate is NaN/±∞.
+    ///
+    /// A `Rect` target is **conformed to the plate** first — see
+    /// [`Document::conform_to_plate`] — so an edit can neither flatten a
+    /// boundary-following room into a box nor push floor outside the building.
     /// Overlap with sibling zones is allowed (transient during interactive drags).
     pub fn resize_zone(&mut self, id: u32, shape: ZoneShape) -> Result<(), ZoneError> {
         let i = self.zone_index(id).ok_or(ZoneError::NotFound)?;
         self.zone_shape_admissible(&shape)?;
-        self.zones[i].shape = shape;
+        // Measured BEFORE the edit lands: does this room currently stand on the
+        // plate? Distinguishes "dragged out of the building" from "this plate is
+        // not this room's floor" — see `conform_to_plate`.
+        //
+        // A PREDICATE, deliberately, not an area. `area_on` would answer this too,
+        // but a magnitude has exactly one owner (`mod basis`) and recomputing one
+        // here is the cross-language defect `area-census` exists to catch — it
+        // caught this line. Overlap is a question about shapes, so it is asked
+        // with the clipper and answered yes/no.
+        let was_on_plate = self.plate_polygon().is_some_and(|p| {
+            let (bx0, by0, bx1, by1) = self.zones[i].shape.bbox();
+            crate::geometry::clip_rect_to_polygon(&p, bx0, by0, bx1, by1).len() >= 3
+        });
+        self.zones[i].shape = self.conform_to_plate(shape, was_on_plate)?;
         self.reassign_components();
         Ok(())
     }
@@ -626,6 +717,15 @@ impl Document {
         label: String,
     ) -> Result<u32, ZoneError> {
         self.zone_shape_admissible(&shape)?;
+        // Same conforming rule as `resize_zone`: a room drawn over an irregular
+        // wall follows it from the moment it is created, rather than becoming a
+        // box the next pass has to reconcile.
+        //
+        // `was_on_plate: false` — a zone being created has no previous position,
+        // so there is no evidence this plate is its floor. A creation is never
+        // refused on plate grounds; it is conformed when the plate cuts it and
+        // left alone when the plate has nothing to say.
+        let shape = self.conform_to_plate(shape, false)?;
         let id = self.alloc_id();
         self.zones.push(Zone {
             id,
@@ -704,6 +804,120 @@ mod tests {
             seats: 0, // test fixture: seat count is irrelevant to what these assert
             decision: DecisionState::Open,
         }
+    }
+
+    /// An L-shaped floor plate: a 20×20 square with the top-right 10×10 quadrant
+    /// removed. This is the shape a real import produces — the notch is where
+    /// `conform.rs` earns its keep, and where a rectangle lies about the floor.
+    ///
+    /// ```text
+    ///   (0,20) ┌──────────┐ (10,20)
+    ///          │          │
+    ///          │      (10,10)──────┐ (20,10)
+    ///          │                   │
+    ///   (0,0)  └───────────────────┘ (20,0)
+    /// ```
+    fn l_plate(doc: &mut Document) {
+        let pts = [
+            (0.0, 0.0),
+            (20.0, 0.0),
+            (20.0, 10.0),
+            (10.0, 10.0),
+            (10.0, 20.0),
+            (0.0, 20.0),
+        ];
+        for (i, w) in pts.iter().enumerate() {
+            let n = pts[(i + 1) % pts.len()];
+            doc.walls.push(wall(100 + i as u32, w.0, w.1, n.0, n.1));
+        }
+    }
+
+    /// **A room must not gain floor that is outside the building when dragged.**
+    ///
+    /// Written before the fix and watched fail: a room resized over the L's notch
+    /// stored the raw drag rect, so 25 m² of the missing quadrant became billable
+    /// room. `generate` never had this bug — it clips to the plate
+    /// (`layout/conform.rs:345`) — which is the point: **the generator and the
+    /// editor disagreed about what "inside" means**, and only one of them was
+    /// consulted when the user dragged something.
+    #[test]
+    fn resizing_a_room_over_the_notch_conforms_to_the_plate_instead_of_boxing_it() {
+        let mut doc = Document::new();
+        doc.next_id = 10;
+        l_plate(&mut doc);
+        doc.zones.push(rect_zone(1, ZoneType::Meeting, 5.0, 5.0, 6.0, 6.0));
+
+        // Drag it up-right so its top-right corner reaches into the cut quadrant:
+        // rect 5..15 × 5..15, of which the 10..15 × 10..15 corner is NOT floor.
+        doc.resize_zone(1, ZoneShape::Rect { x: 10.0, y: 10.0, w: 10.0, h: 10.0 })
+            .expect("a room overlapping real floor is a legal edit");
+
+        let shape = &doc.zones[0].shape;
+        assert!(
+            matches!(shape, ZoneShape::Poly { .. }),
+            "the plate cuts this rect, so the room must conform to it — got {shape:?}",
+        );
+        // 10×10 rect minus the 5×5 quadrant the building does not have.
+        let area = doc.zones[0].area();
+        assert!(
+            (area - 75.0).abs() < 1e-6,
+            "room must bill only real floor: expected 75 m² (100 − 25 outside), got {area:.3} m²",
+        );
+    }
+
+    /// The stability property the conforming rule rests on: `plate ∩ bbox(S) = S`
+    /// for any `S` that is itself `plate ∩ rect`. Without it, every drag would
+    /// nibble a conformed room down and a no-op drag would not be a no-op.
+    #[test]
+    fn re_deriving_a_conformed_room_from_its_own_bbox_is_idempotent() {
+        let mut doc = Document::new();
+        doc.next_id = 10;
+        l_plate(&mut doc);
+        doc.zones.push(rect_zone(1, ZoneType::Meeting, 10.0, 10.0, 10.0, 10.0));
+        doc.resize_zone(1, ZoneShape::Rect { x: 10.0, y: 10.0, w: 10.0, h: 10.0 }).unwrap();
+        let first = doc.zones[0].shape.clone();
+        let area_first = doc.zones[0].area();
+
+        // Re-apply the drag the UI would send next: the shape's own bbox.
+        for _ in 0..5 {
+            let (bx0, by0, bx1, by1) = doc.zones[0].shape.bbox();
+            doc.resize_zone(
+                1,
+                ZoneShape::Rect {
+                    x: (bx0 + bx1) / 2.0,
+                    y: (by0 + by1) / 2.0,
+                    w: bx1 - bx0,
+                    h: by1 - by0,
+                },
+            )
+            .unwrap();
+        }
+        assert!(
+            (doc.zones[0].area() - area_first).abs() < 1e-9,
+            "five no-op drags eroded the room: {area_first:.6} m² → {:.6} m². \
+             First shape {first:?}, now {:?}",
+            doc.zones[0].area(),
+            doc.zones[0].shape,
+        );
+    }
+
+    /// A room dragged completely off the floor plate is refused, not stored with
+    /// no floor under it.
+    #[test]
+    fn dragging_a_room_entirely_off_the_plate_is_refused() {
+        let mut doc = Document::new();
+        doc.next_id = 10;
+        l_plate(&mut doc);
+        doc.zones.push(rect_zone(1, ZoneType::Meeting, 5.0, 5.0, 4.0, 4.0));
+        // Inside the wall BBOX (0..20 × 0..20) but inside the notch, which is
+        // not floor — exactly the case a bbox-only guard waves through.
+        let r = doc.resize_zone(1, ZoneShape::Rect { x: 15.0, y: 15.0, w: 4.0, h: 4.0 });
+        assert_eq!(
+            r,
+            Err(ZoneError::OutOfBounds),
+            "the notch is inside the wall bbox but is not floor; got {:?}",
+            doc.zones[0].shape,
+        );
     }
 
     #[test]

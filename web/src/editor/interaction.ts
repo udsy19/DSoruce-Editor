@@ -298,10 +298,34 @@ export class RoomInteraction {
     }
     return null
   }
+  /**
+   * The rect a drag manipulates: a zone's axis-aligned bounds, center-origin.
+   *
+   * **The rect is the handle; the polygon is the result.** A boundary-conforming
+   * room has no rectangle of its own, but it still has a bbox, and the core
+   * re-derives the polygon by clipping whatever rect we send back to the floor
+   * plate (`Document::conform_to_plate`). That round trip is exactly idempotent
+   * — `plate ∩ bbox(S) = S` for any `S` the plate produced — so handing the core
+   * a bbox never erodes the room, and a no-op drag is a no-op.
+   *
+   * Before this, every resize path early-returned on a non-`Rect` shape, so the
+   * rooms that had been fitted to the building were the only ones the user could
+   * not adjust.
+   */
+  private dragRect(z: DocZone): { x: number; y: number; w: number; h: number } {
+    const bb = this.zoneWorldBBox(z)
+    return {
+      x: (bb.minX + bb.maxX) / 2,
+      y: (bb.minY + bb.maxY) / 2,
+      w: bb.maxX - bb.minX,
+      h: bb.maxY - bb.minY,
+    }
+  }
+
   /** Index of the selected room's resize handle under screen point s, or null. */
   handleAt(s: Pt): number | null {
     const z = this.selectedZone()
-    if (!z || z.shape.kind !== 'Rect') return null
+    if (!z) return null
     const pts = handlePoints(this.screenBox(z))
     for (let i = 0; i < pts.length; i++) {
       if (Math.abs(pts[i].x - s.x) <= HANDLE_HIT_PX && Math.abs(pts[i].y - s.y) <= HANDLE_HIT_PX) return i
@@ -403,8 +427,12 @@ export class RoomInteraction {
 
   beginResize(handle: number, zoneId: number) {
     const z = this.zoneById(zoneId)
-    if (!z || z.shape.kind !== 'Rect') return
-    const s = z.shape
+    if (!z) return
+    // Conforming rooms resize by their bbox — see `dragRect`. A zero-extent
+    // shape would make every `frac` below NaN, so it is refused here rather
+    // than allowed to poison the drag.
+    const s = this.dragRect(z)
+    if (!(s.w > 1e-9) || !(s.h > 1e-9)) return
     const frac = (v: number, o: number, size: number) => (v - o) / size
     const comps = this.host
       .getState()
@@ -493,7 +521,7 @@ export class RoomInteraction {
   updateHoverCursor(s: Pt) {
     let cur = ''
     const z = this.selectedZone()
-    if (z && z.shape.kind === 'Rect') {
+    if (z) {
       const hi = this.handleAt(s)
       if (hi != null) cur = HANDLE_CURSOR[hi]
       else if (inScreenBox(this.screenBox(z), s)) cur = 'move'
