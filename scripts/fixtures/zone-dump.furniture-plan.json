@@ -1,0 +1,1593 @@
+{
+  "provenance": {
+    "source": "live editor, real sample DWG via wizard (Property -> Space -> Program -> Generate -> Open in editor)",
+    "plate": "samples/furniture-plan.dwg (2.6 MB)",
+    "port": 5199,
+    "preflight": "passed: serves dragRect in src/editor/interaction.ts",
+    "areas": "Editor.zone_stats_published() — core-owned; web recomputes no magnitude",
+    "candidate": "A"
+  },
+  "totals": {
+    "zones": 53,
+    "shapeKinds": {
+      "Rect": 41,
+      "Poly": 12
+    },
+    "walls": 186,
+    "components": 268,
+    "sum_zone_area_m2": 906.33
+  },
+  "byType": {
+    "Workspace": {
+      "count": 6,
+      "area": 458.55,
+      "poly": 0
+    },
+    "Circulation": {
+      "count": 26,
+      "area": 298.09,
+      "poly": 10
+    },
+    "Core": {
+      "count": 3,
+      "area": 52.51,
+      "poly": 0
+    },
+    "Meeting": {
+      "count": 1,
+      "area": 26.55,
+      "poly": 0
+    },
+    "ClosedOffice": {
+      "count": 13,
+      "area": 47.63,
+      "poly": 1
+    },
+    "Amenity": {
+      "count": 4,
+      "area": 23.02,
+      "poly": 1
+    }
+  },
+  "zones": [
+    {
+      "id": 680,
+      "label": "Open Workspace (1)",
+      "zone_type": "Workspace",
+      "shape": "Rect",
+      "area_m2": 433.63999999999993,
+      "capacity": 101,
+      "seated": 101,
+      "pct_of_nia": 47.84565498596985,
+      "components": 202,
+      "group": null,
+      "origin": "Drawn",
+      "rect": {
+        "x": 19,
+        "y": 19.75,
+        "w": 14.8,
+        "h": 29.3
+      }
+    },
+    {
+      "id": 833,
+      "label": "Circulation",
+      "zone_type": "Circulation",
+      "shape": "Poly",
+      "area_m2": 80.43071927222277,
+      "capacity": 0,
+      "seated": 0,
+      "pct_of_nia": 8.874320737413909,
+      "components": 0,
+      "group": null,
+      "origin": "Residual",
+      "vertices": 41,
+      "bbox": {
+        "minX": 5.991,
+        "minY": 1.02,
+        "maxX": 38.75,
+        "maxY": 17
+      },
+      "pts": [
+        [
+          21.27,
+          1.136
+        ],
+        [
+          26,
+          2
+        ],
+        [
+          26.25,
+          2.5
+        ],
+        [
+          27.5,
+          2.5
+        ],
+        [
+          27.75,
+          3
+        ],
+        [
+          31.025,
+          3.614
+        ],
+        [
+          31.923,
+          3.865
+        ],
+        [
+          33.077,
+          4.635
+        ],
+        [
+          34.5,
+          4.75
+        ],
+        [
+          34.75,
+          5.5
+        ],
+        [
+          37,
+          6
+        ],
+        [
+          37.25,
+          6.75
+        ],
+        [
+          38.5,
+          6.75
+        ],
+        [
+          38.75,
+          17
+        ],
+        [
+          36.75,
+          17
+        ],
+        [
+          36.75,
+          11.25
+        ],
+        [
+          37.75,
+          11.25
+        ],
+        [
+          37.75,
+          7.75
+        ],
+        [
+          27.75,
+          7.75
+        ],
+        [
+          27.75,
+          6.75
+        ],
+        [
+          27.25,
+          6.75
+        ],
+        [
+          27.25,
+          4.25
+        ],
+        [
+          20.75,
+          4.25
+        ],
+        [
+          20.75,
+          3.75
+        ],
+        [
+          19.75,
+          3.75
+        ],
+        [
+          19.75,
+          1.75
+        ],
+        [
+          14.75,
+          1.75
+        ],
+        [
+          14.75,
+          3.75
+        ],
+        [
+          14.25,
+          3.75
+        ],
+        [
+          14.25,
+          1.5
+        ],
+        [
+          11.5,
+          1.5
+        ],
+        [
+          11.5,
+          3.75
+        ],
+        [
+          10.75,
+          3.75
+        ],
+        [
+          10.75,
+          1.75
+        ],
+        [
+          8.75,
+          1.75
+        ],
+        [
+          8.75,
+          3.75
+        ],
+        [
+          7.75,
+          3.75
+        ],
+        [
+          7.75,
+          4.25
+        ],
+        [
+          7.5,
+          4.25
+        ],
+        [
+          7.483,
+          1.02
+        ],
+        [
+          5.991,
+          1.13
+        ]
+      ]
+    },
+    {
+      "id": 825,
+      "label": "Core 1",
+      "zone_type": "Core",
+      "shape": "Rect",
+      "area_m2": 40.69304705520085,
+      "capacity": 0,
+      "seated": 0,
+      "pct_of_nia": 4.489865994214041,
+      "components": 0,
+      "group": null,
+      "origin": "Drawn",
+      "rect": {
+        "x": 22.51,
+        "y": 38.151,
+        "w": 7.02,
+        "h": 5.802
+      }
+    },
+    {
+      "id": 527,
+      "label": "Boardroom",
+      "zone_type": "Meeting",
+      "shape": "Rect",
+      "area_m2": 26.550000000000068,
+      "capacity": 12,
+      "seated": 0,
+      "pct_of_nia": 2.9293933674880153,
+      "components": 14,
+      "group": null,
+      "origin": "Drawn",
+      "rect": {
+        "x": 34.45,
+        "y": 13.95,
+        "w": 4.5,
+        "h": 5.9
+      }
+    },
+    {
+      "id": 839,
+      "label": "Unassigned",
+      "zone_type": "Circulation",
+      "shape": "Poly",
+      "area_m2": 18.355323708751744,
+      "capacity": 0,
+      "seated": 0,
+      "pct_of_nia": 2.0252340312810824,
+      "components": 0,
+      "group": null,
+      "origin": "Residual",
+      "vertices": 14,
+      "bbox": {
+        "minX": 1.25,
+        "minY": 35.75,
+        "maxX": 15.75,
+        "maxY": 43.122
+      },
+      "pts": [
+        [
+          1.3,
+          42.85
+        ],
+        [
+          2,
+          42.5
+        ],
+        [
+          2,
+          38
+        ],
+        [
+          3,
+          38
+        ],
+        [
+          3.25,
+          42.75
+        ],
+        [
+          10.75,
+          42.75
+        ],
+        [
+          10.75,
+          35.75
+        ],
+        [
+          11.75,
+          35.75
+        ],
+        [
+          11.75,
+          42.5
+        ],
+        [
+          15.75,
+          42.5
+        ],
+        [
+          15.749,
+          42.989
+        ],
+        [
+          14.239,
+          43.121
+        ],
+        [
+          6.747,
+          43.122
+        ],
+        [
+          1.25,
+          43.005
+        ]
+      ]
+    },
+    {
+      "id": 664,
+      "label": "Corridor",
+      "zone_type": "Circulation",
+      "shape": "Rect",
+      "area_m2": 18.300000000000068,
+      "capacity": 0,
+      "seated": 0,
+      "pct_of_nia": 2.0191298917149054,
+      "components": 0,
+      "group": null,
+      "origin": "Drawn",
+      "rect": {
+        "x": 11.3,
+        "y": 19.75,
+        "w": 0.6,
+        "h": 30.5
+      }
+    },
+    {
+      "id": 665,
+      "label": "Corridor",
+      "zone_type": "Circulation",
+      "shape": "Rect",
+      "area_m2": 18.299999999999955,
+      "capacity": 0,
+      "seated": 0,
+      "pct_of_nia": 2.019129891714893,
+      "components": 0,
+      "group": null,
+      "origin": "Drawn",
+      "rect": {
+        "x": 26.7,
+        "y": 19.75,
+        "w": 0.6,
+        "h": 30.5
+      }
+    },
+    {
+      "id": 518,
+      "label": "Cabin",
+      "zone_type": "ClosedOffice",
+      "shape": "Rect",
+      "area_m2": 18,
+      "capacity": 2,
+      "seated": 0,
+      "pct_of_nia": 1.9860294016867848,
+      "components": 3,
+      "group": null,
+      "origin": "Drawn",
+      "rect": {
+        "x": 29.85,
+        "y": 13,
+        "w": 4.5,
+        "h": 4
+      }
+    },
+    {
+      "id": 668,
+      "label": "Corridor",
+      "zone_type": "Circulation",
+      "shape": "Rect",
+      "area_m2": 15,
+      "capacity": 0,
+      "seated": 0,
+      "pct_of_nia": 1.6550245014056542,
+      "components": 0,
+      "group": null,
+      "origin": "Drawn",
+      "rect": {
+        "x": 32.6,
+        "y": 10.25,
+        "w": 10,
+        "h": 1.5
+      }
+    },
+    {
+      "id": 835,
+      "label": "Unassigned",
+      "zone_type": "Circulation",
+      "shape": "Poly",
+      "area_m2": 13.556915926748058,
+      "capacity": 0,
+      "seated": 0,
+      "pct_of_nia": 1.4958018681509717,
+      "components": 0,
+      "group": null,
+      "origin": "Residual",
+      "vertices": 12,
+      "bbox": {
+        "minX": 1,
+        "minY": 5.25,
+        "maxX": 4.5,
+        "maxY": 16.5
+      },
+      "pts": [
+        [
+          1,
+          5.25
+        ],
+        [
+          1.75,
+          5.25
+        ],
+        [
+          1.75,
+          8.75
+        ],
+        [
+          3,
+          8.75
+        ],
+        [
+          3,
+          9.75
+        ],
+        [
+          4.5,
+          9.75
+        ],
+        [
+          4.499,
+          10.292
+        ],
+        [
+          3.25,
+          10.25
+        ],
+        [
+          3,
+          16.5
+        ],
+        [
+          2,
+          16.5
+        ],
+        [
+          2,
+          10.5
+        ],
+        [
+          1,
+          10.25
+        ]
+      ]
+    },
+    {
+      "id": 673,
+      "label": "Corridor",
+      "zone_type": "Circulation",
+      "shape": "Rect",
+      "area_m2": 12.75000000000001,
+      "capacity": 0,
+      "seated": 0,
+      "pct_of_nia": 1.406770826194807,
+      "components": 0,
+      "group": null,
+      "origin": "Drawn",
+      "rect": {
+        "x": 6.15,
+        "y": 7.75,
+        "w": 8.5,
+        "h": 1.5
+      }
+    },
+    {
+      "id": 556,
+      "label": "Reception",
+      "zone_type": "Amenity",
+      "shape": "Rect",
+      "area_m2": 12.160000000000082,
+      "capacity": 4,
+      "seated": 0,
+      "pct_of_nia": 1.3416731958061927,
+      "components": 3,
+      "group": null,
+      "origin": "Drawn",
+      "rect": {
+        "x": 13.8,
+        "y": 40.8,
+        "w": 3.8,
+        "h": 3.2
+      }
+    },
+    {
+      "id": 840,
+      "label": "Unassigned",
+      "zone_type": "Circulation",
+      "shape": "Poly",
+      "area_m2": 11.7826741541557,
+      "capacity": 0,
+      "seated": 0,
+      "pct_of_nia": 1.3000409611471218,
+      "components": 0,
+      "group": null,
+      "origin": "Residual",
+      "vertices": 10,
+      "bbox": {
+        "minX": 15.75,
+        "minY": 35.75,
+        "maxX": 24.035,
+        "maxY": 42.815
+      },
+      "pts": [
+        [
+          15.75,
+          39.25
+        ],
+        [
+          17.75,
+          39.25
+        ],
+        [
+          17.75,
+          35.75
+        ],
+        [
+          18.75,
+          35.75
+        ],
+        [
+          18.75,
+          41.25
+        ],
+        [
+          24.035,
+          41.394
+        ],
+        [
+          18.972,
+          42.634
+        ],
+        [
+          17.756,
+          42.815
+        ],
+        [
+          17.75,
+          39.75
+        ],
+        [
+          15.75,
+          39.75
+        ]
+      ]
+    },
+    {
+      "id": 838,
+      "label": "Unassigned",
+      "zone_type": "Circulation",
+      "shape": "Poly",
+      "area_m2": 11.538555992141482,
+      "capacity": 0,
+      "seated": 0,
+      "pct_of_nia": 1.2731061918556785,
+      "components": 0,
+      "group": null,
+      "origin": "Residual",
+      "vertices": 6,
+      "bbox": {
+        "minX": 26.25,
+        "minY": 35.25,
+        "maxX": 30.75,
+        "maxY": 40.846
+      },
+      "pts": [
+        [
+          26.25,
+          35.25
+        ],
+        [
+          27.25,
+          35.25
+        ],
+        [
+          27.25,
+          38.25
+        ],
+        [
+          30.5,
+          38.5
+        ],
+        [
+          30.75,
+          39.75
+        ],
+        [
+          26.274,
+          40.846
+        ]
+      ]
+    },
+    {
+      "id": 834,
+      "label": "Unassigned",
+      "zone_type": "Circulation",
+      "shape": "Poly",
+      "area_m2": 10.83023533424284,
+      "capacity": 0,
+      "seated": 0,
+      "pct_of_nia": 1.1949536556107436,
+      "components": 0,
+      "group": null,
+      "origin": "Residual",
+      "vertices": 4,
+      "bbox": {
+        "minX": 1,
+        "minY": 1.222,
+        "maxX": 4.75,
+        "maxY": 4.25
+      },
+      "pts": [
+        [
+          1,
+          1.5
+        ],
+        [
+          4.748,
+          1.222
+        ],
+        [
+          4.75,
+          4.25
+        ],
+        [
+          1,
+          4.25
+        ]
+      ]
+    },
+    {
+      "id": 666,
+      "label": "Corridor",
+      "zone_type": "Circulation",
+      "shape": "Rect",
+      "area_m2": 9.599999999999994,
+      "capacity": 0,
+      "seated": 0,
+      "pct_of_nia": 1.0592156808996178,
+      "components": 0,
+      "group": null,
+      "origin": "Drawn",
+      "rect": {
+        "x": 19,
+        "y": 4.8,
+        "w": 16,
+        "h": 0.6
+      }
+    },
+    {
+      "id": 667,
+      "label": "Corridor",
+      "zone_type": "Circulation",
+      "shape": "Rect",
+      "area_m2": 9.599999999999909,
+      "capacity": 0,
+      "seated": 0,
+      "pct_of_nia": 1.0592156808996085,
+      "components": 0,
+      "group": null,
+      "origin": "Drawn",
+      "rect": {
+        "x": 19,
+        "y": 34.7,
+        "w": 16,
+        "h": 0.6
+      }
+    },
+    {
+      "id": 670,
+      "label": "Corridor",
+      "zone_type": "Circulation",
+      "shape": "Rect",
+      "area_m2": 8.550000000000011,
+      "capacity": 0,
+      "seated": 0,
+      "pct_of_nia": 0.9433639658012241,
+      "components": 1,
+      "group": null,
+      "origin": "Drawn",
+      "rect": {
+        "x": 14.75,
+        "y": 38.45,
+        "w": 5.7,
+        "h": 1.5
+      }
+    },
+    {
+      "id": 794,
+      "label": "Circulation",
+      "zone_type": "Circulation",
+      "shape": "Poly",
+      "area_m2": 7.5,
+      "capacity": 0,
+      "seated": 0,
+      "pct_of_nia": 0.8275122507028271,
+      "components": 0,
+      "group": null,
+      "origin": "Residual",
+      "vertices": 6,
+      "bbox": {
+        "minX": 27.875,
+        "minY": 15.125,
+        "maxX": 31.875,
+        "maxY": 18.875
+      },
+      "pts": [
+        [
+          27.875,
+          18.875
+        ],
+        [
+          27.875,
+          15.125
+        ],
+        [
+          31.875,
+          15.125
+        ],
+        [
+          31.875,
+          17
+        ],
+        [
+          27.875,
+          17
+        ],
+        [
+          27.875,
+          18.875
+        ]
+      ]
+    },
+    {
+      "id": 837,
+      "label": "Unassigned",
+      "zone_type": "Circulation",
+      "shape": "Poly",
+      "area_m2": 7.4375,
+      "capacity": 0,
+      "seated": 0,
+      "pct_of_nia": 0.8206163152803034,
+      "components": 0,
+      "group": null,
+      "origin": "Residual",
+      "vertices": 4,
+      "bbox": {
+        "minX": 27.75,
+        "minY": 15.25,
+        "maxX": 32,
+        "maxY": 17
+      },
+      "pts": [
+        [
+          27.75,
+          15.25
+        ],
+        [
+          32,
+          15.25
+        ],
+        [
+          32,
+          17
+        ],
+        [
+          27.75,
+          17
+        ]
+      ]
+    },
+    {
+      "id": 796,
+      "label": "Unassigned",
+      "zone_type": "Circulation",
+      "shape": "Poly",
+      "area_m2": 7.191988031914889,
+      "capacity": 0,
+      "seated": 0,
+      "pct_of_nia": 0.793527760442358,
+      "components": 0,
+      "group": null,
+      "origin": "Residual",
+      "vertices": 8,
+      "bbox": {
+        "minX": 9,
+        "minY": 35.875,
+        "maxX": 11.625,
+        "maxY": 43.226
+      },
+      "pts": [
+        [
+          11.625,
+          35.875
+        ],
+        [
+          11.625,
+          43.226
+        ],
+        [
+          9,
+          43.17
+        ],
+        [
+          9,
+          42.75
+        ],
+        [
+          10.15,
+          42.75
+        ],
+        [
+          10.75,
+          42.75
+        ],
+        [
+          10.75,
+          42.15
+        ],
+        [
+          10.75,
+          35.875
+        ]
+      ]
+    },
+    {
+      "id": 764,
+      "label": "Open Workspace (3)",
+      "zone_type": "Workspace",
+      "shape": "Rect",
+      "area_m2": 6.554999999999836,
+      "capacity": 1,
+      "seated": 1,
+      "pct_of_nia": 0.7232457071142528,
+      "components": 1,
+      "group": null,
+      "origin": "Drawn",
+      "rect": {
+        "x": 14.75,
+        "y": 36.65,
+        "w": 5.7,
+        "h": 2.1
+      }
+    },
+    {
+      "id": 826,
+      "label": "Core 2",
+      "zone_type": "Core",
+      "shape": "Rect",
+      "area_m2": 6.1875,
+      "capacity": 0,
+      "seated": 0,
+      "pct_of_nia": 0.6826976068298323,
+      "components": 0,
+      "group": null,
+      "origin": "Drawn",
+      "rect": {
+        "x": 6.125,
+        "y": 2.875,
+        "w": 2.25,
+        "h": 2.75
+      }
+    },
+    {
+      "id": 669,
+      "label": "Corridor",
+      "zone_type": "Circulation",
+      "shape": "Rect",
+      "area_m2": 6,
+      "capacity": 0,
+      "seated": 0,
+      "pct_of_nia": 0.6620098005622617,
+      "components": 0,
+      "group": null,
+      "origin": "Drawn",
+      "rect": {
+        "x": 27.3,
+        "y": 12,
+        "w": 0.6,
+        "h": 10
+      }
+    },
+    {
+      "id": 677,
+      "label": "Corridor",
+      "zone_type": "Circulation",
+      "shape": "Rect",
+      "area_m2": 5.999999999999993,
+      "capacity": 0,
+      "seated": 0,
+      "pct_of_nia": 0.6620098005622609,
+      "components": 0,
+      "group": null,
+      "origin": "Drawn",
+      "rect": {
+        "x": 6,
+        "y": 4.8,
+        "w": 10,
+        "h": 0.6
+      }
+    },
+    {
+      "id": 827,
+      "label": "Core 3",
+      "zone_type": "Core",
+      "shape": "Rect",
+      "area_m2": 5.625,
+      "capacity": 0,
+      "seated": 0,
+      "pct_of_nia": 0.6206341880271203,
+      "components": 0,
+      "group": null,
+      "origin": "Drawn",
+      "rect": {
+        "x": 12.875,
+        "y": 3,
+        "w": 2.25,
+        "h": 2.5
+      }
+    },
+    {
+      "id": 766,
+      "label": "Open Workspace (4)",
+      "zone_type": "Workspace",
+      "shape": "Rect",
+      "area_m2": 5.324999999999996,
+      "capacity": 0,
+      "seated": 0,
+      "pct_of_nia": 0.5875336979990068,
+      "components": 0,
+      "group": null,
+      "origin": "Drawn",
+      "rect": {
+        "x": 6.15,
+        "y": 6.05,
+        "w": 8.5,
+        "h": 1.9
+      }
+    },
+    {
+      "id": 547,
+      "label": "Focus Room 1",
+      "zone_type": "ClosedOffice",
+      "shape": "Poly",
+      "area_m2": 5.231739130434789,
+      "capacity": 2,
+      "seated": 0,
+      "pct_of_nia": 0.5772437630554859,
+      "components": 3,
+      "group": null,
+      "origin": "Drawn",
+      "vertices": 4,
+      "bbox": {
+        "minX": 15.8,
+        "minY": 40,
+        "maxX": 17.6,
+        "maxY": 42.985
+      },
+      "pts": [
+        [
+          15.8,
+          40
+        ],
+        [
+          17.6,
+          40
+        ],
+        [
+          17.6,
+          42.828
+        ],
+        [
+          15.8,
+          42.985
+        ]
+      ]
+    },
+    {
+      "id": 836,
+      "label": "Unassigned",
+      "zone_type": "Circulation",
+      "shape": "Poly",
+      "area_m2": 5.148099334073251,
+      "capacity": 0,
+      "seated": 0,
+      "pct_of_nia": 0.5680153689040908,
+      "components": 0,
+      "group": null,
+      "origin": "Residual",
+      "vertices": 9,
+      "bbox": {
+        "minX": 6.746,
+        "minY": 8.75,
+        "maxX": 11,
+        "maxY": 34.25
+      },
+      "pts": [
+        [
+          6.75,
+          8.75
+        ],
+        [
+          7.25,
+          8.75
+        ],
+        [
+          7.25,
+          10
+        ],
+        [
+          10.25,
+          10
+        ],
+        [
+          10.242,
+          10.483
+        ],
+        [
+          11,
+          10.25
+        ],
+        [
+          10.75,
+          34.25
+        ],
+        [
+          10.75,
+          10.5
+        ],
+        [
+          6.746,
+          10.367
+        ]
+      ]
+    },
+    {
+      "id": 767,
+      "label": "Open Workspace (5)",
+      "zone_type": "Workspace",
+      "shape": "Rect",
+      "area_m2": 5.079999999999998,
+      "capacity": 0,
+      "seated": 0,
+      "pct_of_nia": 0.5605016311427147,
+      "components": 0,
+      "group": null,
+      "origin": "Drawn",
+      "rect": {
+        "x": 17.25,
+        "y": 2.9,
+        "w": 4.7,
+        "h": 2
+      }
+    },
+    {
+      "id": 763,
+      "label": "Open Workspace (2)",
+      "zone_type": "Workspace",
+      "shape": "Rect",
+      "area_m2": 4.560000000000116,
+      "capacity": 0,
+      "seated": 0,
+      "pct_of_nia": 0.5031274484273316,
+      "components": 0,
+      "group": null,
+      "origin": "Drawn",
+      "rect": {
+        "x": 32.6,
+        "y": 8.7,
+        "w": 10,
+        "h": 1.6
+      }
+    },
+    {
+      "id": 672,
+      "label": "Corridor",
+      "zone_type": "Circulation",
+      "shape": "Rect",
+      "area_m2": 4.5,
+      "capacity": 0,
+      "seated": 0,
+      "pct_of_nia": 0.4965073504216962,
+      "components": 0,
+      "group": null,
+      "origin": "Drawn",
+      "rect": {
+        "x": 14.75,
+        "y": 35.3,
+        "w": 7.5,
+        "h": 0.6
+      }
+    },
+    {
+      "id": 574,
+      "label": "Focus Room 2",
+      "zone_type": "ClosedOffice",
+      "shape": "Rect",
+      "area_m2": 4.320000000000003,
+      "capacity": 2,
+      "seated": 0,
+      "pct_of_nia": 0.47664705640482874,
+      "components": 3,
+      "group": null,
+      "origin": "Drawn",
+      "rect": {
+        "x": 3.1,
+        "y": 6,
+        "w": 2.4,
+        "h": 1.8
+      }
+    },
+    {
+      "id": 592,
+      "label": "Focus Room 4",
+      "zone_type": "ClosedOffice",
+      "shape": "Rect",
+      "area_m2": 4.32,
+      "capacity": 2,
+      "seated": 0,
+      "pct_of_nia": 0.4766470564048284,
+      "components": 3,
+      "group": null,
+      "origin": "Drawn",
+      "rect": {
+        "x": 16.1,
+        "y": 2.8,
+        "w": 2.4,
+        "h": 1.8
+      }
+    },
+    {
+      "id": 583,
+      "label": "Focus Room 3",
+      "zone_type": "ClosedOffice",
+      "shape": "Rect",
+      "area_m2": 4.319999999999993,
+      "capacity": 2,
+      "seated": 0,
+      "pct_of_nia": 0.47664705640482763,
+      "components": 3,
+      "group": null,
+      "origin": "Drawn",
+      "rect": {
+        "x": 8.5,
+        "y": 6,
+        "w": 2.4,
+        "h": 1.8
+      }
+    },
+    {
+      "id": 565,
+      "label": "Storage",
+      "zone_type": "Amenity",
+      "shape": "Rect",
+      "area_m2": 4.200000000000003,
+      "capacity": 1,
+      "seated": 0,
+      "pct_of_nia": 0.4634068603935834,
+      "components": 1,
+      "group": null,
+      "origin": "Drawn",
+      "rect": {
+        "x": 8.9,
+        "y": 9.2,
+        "w": 3,
+        "h": 1.4
+      }
+    },
+    {
+      "id": 678,
+      "label": "Corridor",
+      "zone_type": "Circulation",
+      "shape": "Rect",
+      "area_m2": 3.9000000000000057,
+      "capacity": 0,
+      "seated": 0,
+      "pct_of_nia": 0.4303063703654707,
+      "components": 0,
+      "group": null,
+      "origin": "Drawn",
+      "rect": {
+        "x": 17.25,
+        "y": 4.2,
+        "w": 6.5,
+        "h": 0.6
+      }
+    },
+    {
+      "id": 566,
+      "label": "Print Point 1",
+      "zone_type": "Amenity",
+      "shape": "Poly",
+      "area_m2": 3.6566666666666627,
+      "capacity": 0,
+      "seated": 0,
+      "pct_of_nia": 0.40345819512044456,
+      "components": 1,
+      "group": null,
+      "origin": "Drawn",
+      "vertices": 6,
+      "bbox": {
+        "minX": 4.6,
+        "minY": 8.5,
+        "maxX": 6.6,
+        "maxY": 11.9
+      },
+      "pts": [
+        [
+          6.6,
+          8.5
+        ],
+        [
+          6.6,
+          11.9
+        ],
+        [
+          6.6,
+          11.9
+        ],
+        [
+          6.6,
+          10.362
+        ],
+        [
+          4.6,
+          10.295
+        ],
+        [
+          4.6,
+          8.5
+        ]
+      ]
+    },
+    {
+      "id": 768,
+      "label": "Open Workspace (6)",
+      "zone_type": "Workspace",
+      "shape": "Rect",
+      "area_m2": 3.3999999999999986,
+      "capacity": 1,
+      "seated": 1,
+      "pct_of_nia": 0.3751388869852814,
+      "components": 2,
+      "group": null,
+      "origin": "Drawn",
+      "rect": {
+        "x": 9.75,
+        "y": 2.9,
+        "w": 1.7,
+        "h": 2
+      }
+    },
+    {
+      "id": 676,
+      "label": "Corridor",
+      "zone_type": "Circulation",
+      "shape": "Rect",
+      "area_m2": 3.3000000000000114,
+      "capacity": 0,
+      "seated": 0,
+      "pct_of_nia": 0.36410539030924516,
+      "components": 0,
+      "group": null,
+      "origin": "Drawn",
+      "rect": {
+        "x": 10.7,
+        "y": 7.25,
+        "w": 0.6,
+        "h": 5.5
+      }
+    },
+    {
+      "id": 654,
+      "label": "Print Point 2",
+      "zone_type": "Amenity",
+      "shape": "Rect",
+      "area_m2": 3.000000000000057,
+      "capacity": 0,
+      "seated": 0,
+      "pct_of_nia": 0.33100490028113705,
+      "components": 1,
+      "group": null,
+      "origin": "Drawn",
+      "rect": {
+        "x": 12.9,
+        "y": 36.35,
+        "w": 2,
+        "h": 1.5
+      }
+    },
+    {
+      "id": 671,
+      "label": "Aisle",
+      "zone_type": "Circulation",
+      "shape": "Rect",
+      "area_m2": 2.415000000000134,
+      "capacity": 0,
+      "seated": 0,
+      "pct_of_nia": 0.2664589447263251,
+      "components": 0,
+      "group": null,
+      "origin": "Drawn",
+      "rect": {
+        "x": 14.75,
+        "y": 36.65,
+        "w": 1.15,
+        "h": 2.1
+      }
+    },
+    {
+      "id": 675,
+      "label": "Aisle",
+      "zone_type": "Circulation",
+      "shape": "Rect",
+      "area_m2": 2.1850000000000023,
+      "capacity": 0,
+      "seated": 0,
+      "pct_of_nia": 0.24108190237142388,
+      "components": 0,
+      "group": null,
+      "origin": "Drawn",
+      "rect": {
+        "x": 6.15,
+        "y": 6.05,
+        "w": 1.15,
+        "h": 1.9
+      }
+    },
+    {
+      "id": 679,
+      "label": "Corridor",
+      "zone_type": "Circulation",
+      "shape": "Rect",
+      "area_m2": 2.1000000000000014,
+      "capacity": 0,
+      "seated": 0,
+      "pct_of_nia": 0.2317034301967917,
+      "components": 0,
+      "group": null,
+      "origin": "Drawn",
+      "rect": {
+        "x": 9.75,
+        "y": 4.2,
+        "w": 3.5,
+        "h": 0.6
+      }
+    },
+    {
+      "id": 674,
+      "label": "Entry",
+      "zone_type": "Circulation",
+      "shape": "Rect",
+      "area_m2": 1.7950285153083385,
+      "capacity": 0,
+      "seated": 0,
+      "pct_of_nia": 0.1980544115704743,
+      "components": 0,
+      "group": null,
+      "origin": "Drawn",
+      "rect": {
+        "x": 3.85,
+        "y": 9.098,
+        "w": 1.5,
+        "h": 1.197
+      }
+    },
+    {
+      "id": 625,
+      "label": "Phone Booth 5",
+      "zone_type": "ClosedOffice",
+      "shape": "Rect",
+      "area_m2": 1.4300000000000352,
+      "capacity": 0,
+      "seated": 0,
+      "pct_of_nia": 0.15777900246734292,
+      "components": 3,
+      "group": null,
+      "origin": "Drawn",
+      "rect": {
+        "x": 31.75,
+        "y": 8.55,
+        "w": 1.1,
+        "h": 1.3
+      }
+    },
+    {
+      "id": 652,
+      "label": "Phone Booth 8",
+      "zone_type": "ClosedOffice",
+      "shape": "Rect",
+      "area_m2": 1.4300000000000068,
+      "capacity": 0,
+      "seated": 0,
+      "pct_of_nia": 0.15777900246733978,
+      "components": 2,
+      "group": null,
+      "origin": "Drawn",
+      "rect": {
+        "x": 35.35,
+        "y": 8.55,
+        "w": 1.1,
+        "h": 1.3
+      }
+    },
+    {
+      "id": 662,
+      "label": "Phone Booth 1",
+      "zone_type": "ClosedOffice",
+      "shape": "Rect",
+      "area_m2": 1.4300000000000068,
+      "capacity": 0,
+      "seated": 0,
+      "pct_of_nia": 0.15777900246733978,
+      "components": 2,
+      "group": null,
+      "origin": "Drawn",
+      "rect": {
+        "x": 36.55,
+        "y": 8.55,
+        "w": 1.1,
+        "h": 1.3
+      }
+    },
+    {
+      "id": 601,
+      "label": "Phone Booth 2",
+      "zone_type": "ClosedOffice",
+      "shape": "Rect",
+      "area_m2": 1.4299999999999784,
+      "capacity": 0,
+      "seated": 0,
+      "pct_of_nia": 0.15777900246733664,
+      "components": 2,
+      "group": null,
+      "origin": "Drawn",
+      "rect": {
+        "x": 28.15,
+        "y": 8.55,
+        "w": 1.1,
+        "h": 1.3
+      }
+    },
+    {
+      "id": 609,
+      "label": "Phone Booth 3",
+      "zone_type": "ClosedOffice",
+      "shape": "Rect",
+      "area_m2": 1.4299999999999784,
+      "capacity": 0,
+      "seated": 0,
+      "pct_of_nia": 0.15777900246733664,
+      "components": 2,
+      "group": null,
+      "origin": "Drawn",
+      "rect": {
+        "x": 29.35,
+        "y": 8.55,
+        "w": 1.1,
+        "h": 1.3
+      }
+    },
+    {
+      "id": 617,
+      "label": "Phone Booth 4",
+      "zone_type": "ClosedOffice",
+      "shape": "Rect",
+      "area_m2": 1.4299999999999784,
+      "capacity": 0,
+      "seated": 0,
+      "pct_of_nia": 0.15777900246733664,
+      "components": 2,
+      "group": null,
+      "origin": "Drawn",
+      "rect": {
+        "x": 30.55,
+        "y": 8.55,
+        "w": 1.1,
+        "h": 1.3
+      }
+    },
+    {
+      "id": 634,
+      "label": "Phone Booth 6",
+      "zone_type": "ClosedOffice",
+      "shape": "Rect",
+      "area_m2": 1.4299999999999784,
+      "capacity": 0,
+      "seated": 0,
+      "pct_of_nia": 0.15777900246733664,
+      "components": 3,
+      "group": null,
+      "origin": "Drawn",
+      "rect": {
+        "x": 32.95,
+        "y": 8.55,
+        "w": 1.1,
+        "h": 1.3
+      }
+    },
+    {
+      "id": 643,
+      "label": "Phone Booth 7",
+      "zone_type": "ClosedOffice",
+      "shape": "Rect",
+      "area_m2": 1.42999999999995,
+      "capacity": 0,
+      "seated": 0,
+      "pct_of_nia": 0.1577790024673335,
+      "components": 3,
+      "group": null,
+      "origin": "Drawn",
+      "rect": {
+        "x": 34.15,
+        "y": 8.55,
+        "w": 1.1,
+        "h": 1.3
+      }
+    }
+  ]
+}
