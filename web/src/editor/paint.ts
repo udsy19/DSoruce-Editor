@@ -890,6 +890,9 @@ export function drawZoneTags(
     placed.push({ x: ax, y: ay, w: chosen.w, h: chosen.h })
 
     // Pill ONLY when hot. At rest the label is text on the drawing.
+    // Fill and hairline share the PLACED anchor: the fill used to be issued at
+    // (t.cx, t.cy) while the hairline and the text sat at (ax, ay), so a label
+    // the placement ladder had moved off-centre rendered beside its own pill.
     if (isHot || policy.pillAtRest) {
       const pillH = chosen.h + 3
       ctx.save()
@@ -897,7 +900,7 @@ export function drawZoneTags(
       ctx.shadowBlur = 6
       ctx.shadowOffsetY = 1
       ctx.fillStyle = C.pillFill
-      roundRect(ctx, t.cx - chosen.w / 2 - 4, t.cy - pillH / 2, chosen.w + 8, pillH, pillH / 2)
+      roundRect(ctx, ax - chosen.w / 2 - 4, ay - pillH / 2, chosen.w + 8, pillH, pillH / 2)
       ctx.fill()
       ctx.restore()
       ctx.strokeStyle = hexToRgba(t.color, 0.28)
@@ -906,32 +909,47 @@ export function drawZoneTags(
       ctx.stroke()
     }
 
-    // HALO. Only where it earns its place: a pill already supplies a ground, and
-    // paper is meant to be quiet. Text laid straight over desk linework is not
-    // quiet, it is illegible — so the knockout goes on when the label is sitting
-    // on something and stays off when it is on clear floor.
+    // KNOCKOUT GROUND. Only where it earns its place: a pill already supplies a
+    // ground, and paper is meant to be quiet. Text laid straight over desk
+    // linework is not quiet, it is illegible — so the knockout goes on when the
+    // label is sitting on something and stays off when it is on clear floor.
+    //
+    // The knockout is a CONTINUOUS capsule, not a stroke of the glyph outlines.
+    // A stroked glyph run grounds only the glyphs: a space carries no ink, so
+    // the ` · ` in the metrics line left an uncovered channel where desk
+    // linework read through as a phantom second separator — the committed
+    // before-evidence at reports/editor-completion/before/label-garble-crop.png
+    // ("434 m²··101 pax"), and the garbled "second string" of the original
+    // report was the same show-through along the inter-line band. Property
+    // (gated by labelRender.test.mjs): every line's full measured extent,
+    // spaces included, sits on ground before its text is filled.
     const halo =
       !isHot &&
       !policy.pillAtRest &&
       obstacles.some((o) =>
         overlaps({ x: ax, y: ay, w: chosen!.w, h: chosen!.h }, o),
       )
-    const stroked = (text: string, x: number, y: number, font: string, fill: string) => {
+    if (halo) {
+      const pad = CHROME.labelHalo
+      ctx.fillStyle = C.pillFill
+      roundRect(
+        ctx,
+        ax - chosen.w / 2 - pad,
+        ay - chosen.h / 2 - pad,
+        chosen.w + pad * 2,
+        chosen.h + pad * 2,
+        7,
+      )
+      ctx.fill()
+    }
+    const draw = (text: string, x: number, y: number, font: string, fill: string) => {
       ctx.font = font
-      if (halo) {
-        ctx.save()
-        ctx.lineWidth = CHROME.labelHalo
-        ctx.lineJoin = 'round'
-        ctx.strokeStyle = C.pillFill
-        ctx.strokeText(text, x, y)
-        ctx.restore()
-      }
       ctx.fillStyle = fill
       ctx.fillText(text, x, y)
     }
 
-    stroked(chosen.name, ax, chosen.metrics ? ay - 6 : ay, NAME_FONT(chosen.px), t.color)
-    if (chosen.metrics) stroked(chosen.metrics, ax, ay + 7.5, MET_FONT, C.labelSub)
+    draw(chosen.name, ax, chosen.metrics ? ay - 6 : ay, NAME_FONT(chosen.px), t.color)
+    if (chosen.metrics) draw(chosen.metrics, ax, ay + 7.5, MET_FONT, C.labelSub)
   }
 }
 
