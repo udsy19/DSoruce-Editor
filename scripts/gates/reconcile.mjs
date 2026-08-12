@@ -309,6 +309,10 @@ const NOT_A_GRADER = {
   'scripts/one-action.e2e.mjs': 'PRODUCER — drives the app\'s one export control to write out/; it is what G10 grades.',
   'scripts/capture-fixtures.mjs': 'HAND TOOL — re-records capture fixtures. Running it on a board would overwrite the expectations the board grades against.',
   'scripts/capture-plate-fixture.mjs': 'HAND TOOL — same, for the plate fixture.',
+  'scripts/containment-dump.e2e.mjs':
+    'PRODUCER — drives the wizard headless (candidate A on the sample plate) to WRITE the document dump reports/editor-completion/containment/ that the containment report reads. Its exits refuse a bad artifact.',
+  'scripts/containment-report.mjs':
+    'HAND TOOL — Workstream E diagnostic: computes the per-component containment report from a captured dump path (an argument no board can supply). The standing containment assertion belongs in the Rust suite on the golden (program, seed) cases, not here.',
   'scripts/pixdiff.py': 'HAND TOOL — takes two image paths and prints their difference. No arguments a board could supply; the same shape as bench/assert-build.mjs.',
   'web/src/import/sampleDrawing.mjs': 'FIXTURE BUILDER — constructs the sample drawing other tests import. It asserts its own output is well-formed; it grades nothing.',
 }
