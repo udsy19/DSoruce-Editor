@@ -425,6 +425,20 @@
         ],
         "removed": []
       }
+    },
+    {
+      "when": "2026-08-12",
+      "why": "Workstream D (fix/pax-derivation): component_mutators_keep_pax_membership_fresh pins that every component mutator changing existence or center rebuckets zone membership through zone_index_at, so the canvas tag's pax (seated / the furnished capacity arm) can never assert a desk the document's geometry no longer contains; watched RED before the rebucket_component fix (seated 0 vs 1 after add_component)",
+      "js": {
+        "added": [],
+        "removed": []
+      },
+      "rust": {
+        "added": [
+          "tests::component_mutators_keep_pax_membership_fresh"
+        ],
+        "removed": []
+      }
     }
   ],
   "js": {
@@ -660,6 +674,7 @@
     "quantity::tests::wall_heights_and_areas_are_derived_not_typed": "initial pin — the F1 roster, established from a green tree at 56af276",
     "quantity::tests::wall_lengths_match_hand_computed_within_1cm": "initial pin — the F1 roster, established from a green tree at 56af276",
     "tests::both_zone_writers_refuse_an_off_plate_shape": "initial pin — the F1 roster, established from a green tree at 56af276",
+    "tests::component_mutators_keep_pax_membership_fresh": "Workstream D (fix/pax-derivation): component_mutators_keep_pax_membership_fresh pins that every component mutator changing existence or center rebuckets zone membership through zone_index_at, so the canvas tag's pax (seated / the furnished capacity arm) can never assert a desk the document's geometry no longer contains; watched RED before the rebucket_component fix (seated 0 vs 1 after add_component)",
     "tests::efficiency_usable_excludes_only_circulation_and_core": "initial pin — the F1 roster, established from a green tree at 56af276",
     "tests::every_f64_mutator_is_guarded_against_non_finite_input": "initial pin — the F1 roster, established from a green tree at 56af276",
     "tests::every_mutator_bumps_the_revision": "initial pin — the F1 roster, established from a green tree at 56af276",

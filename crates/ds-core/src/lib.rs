@@ -857,6 +857,9 @@ impl Editor {
             decision: DecisionState::Open,
         });
         self.doc.selection = Some(id);
+        // Membership follows existence: the room the desk landed in counts it
+        // from this call on, not from the next zone edit (see `rebucket_component`).
+        self.doc.rebucket_component(id);
         Ok(id)
     }
 
@@ -953,6 +956,8 @@ impl Editor {
                 c.x += dx;
                 c.y += dy;
             }
+            // Membership follows the center (see `rebucket_component`).
+            self.doc.rebucket_component(id);
         }
         Ok(())
     }
@@ -961,6 +966,8 @@ impl Editor {
         self.touch();
         if let Some(id) = self.doc.selection.take() {
             self.doc.components.retain(|c| c.id != id);
+            // Membership follows existence (see `rebucket_component`).
+            self.doc.rebucket_component(id);
         }
     }
 
@@ -972,6 +979,8 @@ impl Editor {
         if let Some(c) = self.doc.component_mut(id) {
             c.x = x;
             c.y = y;
+            // Membership follows the center (see `rebucket_component`).
+            self.doc.rebucket_component(id);
         }
         Ok(())
     }
@@ -1046,6 +1055,8 @@ impl Editor {
     pub fn delete_component(&mut self, id: u32) {
         self.touch();
         self.doc.components.retain(|c| c.id != id);
+        // Membership follows existence (see `rebucket_component`).
+        self.doc.rebucket_component(id);
         if self.doc.selection == Some(id) {
             self.doc.selection = None;
         }
@@ -2099,6 +2110,115 @@ mod tests {
         assert!(
             !doc.zones.iter().any(|z| z.component_ids.contains(&unzoned)),
             "an unzoned desk is in no component_ids → counted nowhere"
+        );
+    }
+
+    /// D-FRESH (Workstream D gate, watched RED 2026-08-12 before the fix):
+    /// **every component mutator that changes existence or center keeps the pax
+    /// membership fresh.**
+    ///
+    /// `Zone::component_ids` is DERIVED state — "the components whose center the
+    /// zone contains" (`reassign_components`'s own definition) — and every pax
+    /// figure reads it as ground truth: `zone_stats().seated`, the furnished arm
+    /// of `capacity` (the canvas tag's "N pax"), `metrics().workstations`, QTO
+    /// room attribution (`qto.rs`), and `delete_zone`'s furniture sweep. Zone
+    /// mutators all rebuild it; the five component mutators (`add_component`,
+    /// `move_component`, `move_selected`, `delete_component`, `delete_selected`)
+    /// did not — so a desk hand-added into a room was invisible to the room's
+    /// tag until an unrelated zone edit, a desk dragged OUT kept being counted
+    /// where it no longer was, and `delete_zone` would delete furniture the user
+    /// had already dragged elsewhere. The tag asserting what the document's
+    /// geometry doesn't contain is exactly the silent-disagreement window
+    /// Workstream D pre-registered.
+    ///
+    /// RED transcript (pre-fix): `seated == 0` right after `add_component` into
+    /// the room ("a desk added inside a room is seated there immediately"), and
+    /// the Workspace row still `seated == 1` after `move_component` took the
+    /// desk to the Meeting room.
+    #[test]
+    fn component_mutators_keep_pax_membership_fresh() {
+        let mut ed = Editor::for_test(plate_ws_meeting_gap());
+        let row = |ed: &Editor, t: ZoneType| {
+            ed.zone_rows_for_test(false)
+                .into_iter()
+                .find(|r| r.zone_type == t)
+                .expect("plate has this zone")
+        };
+
+        // Hand-add a desk inside the Workspace half (palette / paste /
+        // duplicate-room path — all route through `add_component`).
+        let id = ed.add_component("Desk".into(), 5.0, 5.0, 1.4, 0.7).expect("finite");
+        assert_eq!(
+            row(&ed, ZoneType::Workspace).seated,
+            1,
+            "a desk added inside a room is seated there immediately"
+        );
+        assert_eq!(
+            row(&ed, ZoneType::Workspace).capacity,
+            1,
+            "…and the tag's capacity takes the furnished arm, not the area estimate"
+        );
+
+        // Drag it into the Meeting room (inspector X/Y + AI move path).
+        ed.move_component(id, 13.0, 5.0).expect("finite");
+        assert_eq!(
+            row(&ed, ZoneType::Workspace).seated,
+            0,
+            "a desk dragged out stops being counted where it no longer is"
+        );
+        assert_eq!(
+            row(&ed, ZoneType::Meeting).seated,
+            1,
+            "…and starts being counted where it now is"
+        );
+
+        // The selection-based move (canvas drag / arrow keys).
+        ed.select_at(13.0, 5.0).expect("finite");
+        ed.move_selected(-8.0, 0.0).expect("finite"); // back to (5, 5)
+        assert_eq!(
+            row(&ed, ZoneType::Workspace).seated,
+            1,
+            "move_selected re-buckets exactly like move_component"
+        );
+
+        // A desk added in the unzoned strip (x∈[16,20]) joins NO membership.
+        let outside = ed.add_component("Desk".into(), 18.0, 5.0, 1.4, 0.7).expect("finite");
+        assert!(
+            !ed.doc.zones.iter().any(|z| z.component_ids.contains(&outside)),
+            "a desk added outside every zone is counted nowhere"
+        );
+
+        // Independence check (gate-independence): the incremental bookkeeping
+        // must agree with a full rebuild — re-derive ground truth by running
+        // `reassign_components` on a CLONE and comparing memberships as sets.
+        let mut rebuilt = ed.doc.clone();
+        rebuilt.reassign_components();
+        let sets = |d: &Document| -> Vec<Vec<u32>> {
+            d.zones
+                .iter()
+                .map(|z| {
+                    let mut v = z.component_ids.clone();
+                    v.sort_unstable();
+                    v
+                })
+                .collect()
+        };
+        assert_eq!(
+            sets(&ed.doc),
+            sets(&rebuilt),
+            "incremental rebucketing and a full reassign must agree zone-by-zone"
+        );
+
+        // Deletion strips the id from every membership (both delete paths).
+        ed.delete_component(outside);
+        ed.select_at(5.0, 5.0).expect("finite");
+        ed.delete_selected();
+        assert_eq!(row(&ed, ZoneType::Workspace).seated, 0, "deleted desks seat nobody");
+        assert!(
+            !ed.doc.zones.iter().any(|z| {
+                z.component_ids.contains(&id) || z.component_ids.contains(&outside)
+            }),
+            "no membership retains a deleted component's id"
         );
     }
 
