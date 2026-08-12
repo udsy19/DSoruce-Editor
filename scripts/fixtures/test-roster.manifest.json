@@ -409,6 +409,22 @@
         ],
         "removed": []
       }
+    },
+    {
+      "when": "2026-08-11",
+      "why": "conform-on-edit: a room resized over an irregular plate boundary must follow the wall (Poly), never silently become its bounding box; re-deriving a conformed room from its own bbox is idempotent so drags cannot erode it; and a room dragged clear of the plate it stood on is refused rather than billed floor that is not in the building",
+      "js": {
+        "added": [],
+        "removed": []
+      },
+      "rust": {
+        "added": [
+          "document::tests::dragging_a_room_entirely_off_the_plate_is_refused",
+          "document::tests::re_deriving_a_conformed_room_from_its_own_bbox_is_idempotent",
+          "document::tests::resizing_a_room_over_the_notch_conforms_to_the_plate_instead_of_boxing_it"
+        ],
+        "removed": []
+      }
     }
   ],
   "js": {
@@ -477,6 +493,7 @@
     "document::tests::anchors_round_trip_through_snapshot": "initial pin — the F1 roster, established from a green tree at 56af276",
     "document::tests::cad_json_round_trips_through_snapshot": "initial pin — the F1 roster, established from a green tree at 56af276",
     "document::tests::delete_zone_removes_room_and_its_furniture": "initial pin — the F1 roster, established from a green tree at 56af276",
+    "document::tests::dragging_a_room_entirely_off_the_plate_is_refused": "conform-on-edit: a room resized over an irregular plate boundary must follow the wall (Poly), never silently become its bounding box; re-deriving a conformed room from its own bbox is idempotent so drags cannot erode it; and a room dragged clear of the plate it stood on is refused rather than billed floor that is not in the building",
     "document::tests::entries_round_trip_through_snapshot": "initial pin — the F1 roster, established from a green tree at 56af276",
     "document::tests::keepouts_round_trip_through_snapshot": "initial pin — the F1 roster, established from a green tree at 56af276",
     "document::tests::merge_adjacent_rects_into_one_with_larger_type": "initial pin — the F1 roster, established from a green tree at 56af276",
@@ -486,7 +503,9 @@
     "document::tests::old_snapshot_without_keepouts_restores_to_empty": "initial pin — the F1 roster, established from a green tree at 56af276",
     "document::tests::plate_points_is_four_corners_for_rect_room": "initial pin — the F1 roster, established from a green tree at 56af276",
     "document::tests::plate_points_is_none_for_open_walls": "initial pin — the F1 roster, established from a green tree at 56af276",
+    "document::tests::re_deriving_a_conformed_room_from_its_own_bbox_is_idempotent": "conform-on-edit: a room resized over an irregular plate boundary must follow the wall (Poly), never silently become its bounding box; re-deriving a conformed room from its own bbox is idempotent so drags cannot erode it; and a room dragged clear of the plate it stood on is refused rather than billed floor that is not in the building",
     "document::tests::rename_zone_updates_label": "initial pin — the F1 roster, established from a green tree at 56af276",
+    "document::tests::resizing_a_room_over_the_notch_conforms_to_the_plate_instead_of_boxing_it": "conform-on-edit: a room resized over an irregular plate boundary must follow the wall (Poly), never silently become its bounding box; re-deriving a conformed room from its own bbox is idempotent so drags cannot erode it; and a room dragged clear of the plate it stood on is refused rather than billed floor that is not in the building",
     "document::tests::snapshot_round_trip_is_identity_including_next_id": "initial pin — the F1 roster, established from a green tree at 56af276",
     "document::tests::split_outside_zone_is_invalid_cut": "initial pin — the F1 roster, established from a green tree at 56af276",
     "document::tests::split_partitions_components_by_center": "initial pin — the F1 roster, established from a green tree at 56af276",

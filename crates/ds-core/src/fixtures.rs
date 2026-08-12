@@ -68,6 +68,34 @@ pub(crate) fn fixture_program() -> Program {
     }
 }
 
+/// Set a zone's shape **without** the conform-to-plate clipping `resize_zone`
+/// applies, reproducing a document written before that clipping existed.
+///
+/// Not a back door around a guard — a way to build the one population the guard
+/// cannot produce. Conform-on-edit means no live edit can leave a zone
+/// overhanging the floor plate, so the fixtures that used `resize_zone` to grow
+/// a room past the wall stopped producing overhang, and
+/// `M25.basis.bills_no_floor_outside_the_plate` — which grades `area_basis`'s
+/// clipping and is graded ONLY where the geometry certifies a cut — fell to zero
+/// evaluations. A declared statement graded zero times is an absent check.
+///
+/// The population is still real: every `.dsource` saved before conform-on-edit
+/// restores with its overhanging boxes intact, and `restore` does not conform.
+/// So the fixture plants the state the way the real source produces it.
+///
+/// Mirrors `resize_zone`'s bookkeeping (`reassign_components`) so the only
+/// difference between the two paths is the clipping.
+fn set_zone_shape_unconformed(
+    doc: &mut Document,
+    id: u32,
+    shape: ZoneShape,
+) -> Option<()> {
+    let i = doc.zones.iter().position(|z| z.id == id)?;
+    doc.zones[i].shape = shape;
+    doc.reassign_components();
+    Some(())
+}
+
 /// Push a closed loop of USER walls (`generated: false`) through `corners`.
 fn push_loop(doc: &mut Document, corners: &[Point], thickness: f64) {
     for i in 0..corners.len() {
@@ -192,7 +220,16 @@ pub(crate) fn build(name: &str) -> Option<Document> {
                     })
                 })?;
             let (id, x, y, w, h) = target;
-            doc.resize_zone(id, ZoneShape::Rect { x, y, w: w + 1.5, h: h + 1.5 }).ok()?;
+            // PLANTED DIRECTLY, not through `resize_zone`, and the distinction is
+            // the point: since conform-on-edit, a live resize clips a room to the
+            // floor plate, so a user can no longer produce a zone that overhangs
+            // it. A **restored `.dsource` written before that fix** still can, and
+            // that population is what `area_basis`'s clipping — and the
+            // `M25.basis.bills_no_floor_outside_the_plate` conjunct that guards it
+            // — exist to handle. Routing this through the guarded mutator would
+            // conform the overhang away and silently retire a live check.
+            // Fixtures simulate documents, not user sessions.
+            set_zone_shape_unconformed(&mut doc, id, ZoneShape::Rect { x, y, w: w + 1.5, h: h + 1.5 })?;
             doc.set_zone_type(id, ZoneType::Circulation).ok()?;
             Some(doc)
         }
@@ -231,9 +268,16 @@ pub(crate) fn build(name: &str) -> Option<Document> {
                 })
                 .collect();
 
-            // 4/5: grow one zone, shrink another
+            // 4/5: grow one zone, shrink another. The GROW is planted directly —
+            // see the note on the same idiom above: it must be free to overhang
+            // the plate the way a pre-conform saved plan does, which a live
+            // `resize_zone` would now (correctly) clip away.
             if let Some(&(id, _, x, y, w, h)) = rects.first() {
-                let _ = doc.resize_zone(id, ZoneShape::Rect { x, y, w: w * 1.4, h: h * 1.4 });
+                let _ = set_zone_shape_unconformed(
+                    &mut doc,
+                    id,
+                    ZoneShape::Rect { x, y, w: w * 1.4, h: h * 1.4 },
+                );
             }
             if let Some(&(id, _, x, y, w, h)) = rects.get(1) {
                 let _ = doc.resize_zone(id, ZoneShape::Rect { x, y, w: w * 0.5, h: h * 0.5 });
