@@ -162,7 +162,33 @@ try {
   })
   log(`plateLog rows written by this run: ${plateLogRows}`)
 
+  // On-screen confirmation at the SAME region as the before-image
+  // (reports/editor-completion/before/desks-topleft-crop.png): the workspace
+  // zone's top-left corner. Document-derived framing — zone 680's bbox comes
+  // from the dump just taken, not from a hand-picked pixel location.
   fs.mkdirSync(OUT_DIR, { recursive: true })
+  const ws = dump.zones.find((z) => z.label === 'Open Workspace (1)')
+  if (ws && ws.shape.kind === 'Rect') {
+    const corner = { x: ws.shape.x - ws.shape.w / 2, y: ws.shape.y + ws.shape.h / 2 }
+    await page.evaluate(({ x, y }) => {
+      const ec = window.__ec
+      const canvas = document.querySelector('canvas')
+      const r = canvas.getBoundingClientRect()
+      ec.scale = 46
+      ec.offset.x = r.width / 2 - x * 46
+      ec.offset.y = r.height / 2 - y * 46
+      ec.render()
+    }, corner)
+    await page.waitForTimeout(300)
+    await page.screenshot({
+      path: path.join(OUT_DIR, 'after.desks-topleft.png'),
+      clip: { x: 200, y: 100, width: 1200, height: 800 },
+    })
+    log('screenshot: after.desks-topleft.png (workspace top-left corner)')
+  } else {
+    log('WARNING: Open Workspace (1) not found as Rect — no screenshot taken')
+  }
+
   const outPath = path.join(OUT_DIR, 'state.candidateA.json')
   fs.writeFileSync(
     outPath,

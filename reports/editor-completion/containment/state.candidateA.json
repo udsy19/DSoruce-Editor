@@ -1,6 +1,6 @@
 {
  "provenance": {
-  "capturedAt": "2026-08-12T19:54:00.185Z",
+  "capturedAt": "2026-08-12T20:40:28.457Z",
   "port": 5305,
   "servedTokenCheck": "dragRect in src/editor/interaction.ts",
   "path": "wizard → samples/furniture-plan.dwg → boundary → Program defaults → Generate → candidate A → Open in editor",
