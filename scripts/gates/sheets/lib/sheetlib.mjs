@@ -767,6 +767,65 @@ export function glazedRuns(state) {
 // Geometry helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * world (m) → sheet pt, re-derived from CORE STATE and the template.
+ *
+ * `renderPrintCanvas` (web/src/export/printPlan.ts) fits `stateBbox` — every wall
+ * endpoint and every rotated component corner — into a wPx×hPx canvas with a
+ * 48 px pad, and `worldMapper` (sheetSet.ts) places that canvas in the plate.
+ * Reproduced here from the document and the template constants, so a gate
+ * never asks the renderer where anything went. Shared by SG2 (tag attribution)
+ * and SG8 (string-ink crossing); ONE projection, so two gates cannot disagree
+ * about where a wall landed.
+ *
+ * Returns `{ map, ptPerM }`: `map(x, y)` is world metres → top-down sheet pt;
+ * `ptPerM` is the uniform world-to-pt scale (canvas `k` px/m × pt-per-px), the
+ * factor a wall's metre thickness crosses into points with.
+ */
+export function planProjection(state, plate, RES) {
+  let minX = Infinity
+  let minY = Infinity
+  let maxX = -Infinity
+  let maxY = -Infinity
+  const pt = (x, y) => {
+    if (x < minX) minX = x
+    if (y < minY) minY = y
+    if (x > maxX) maxX = x
+    if (y > maxY) maxY = y
+  }
+  for (const w of state.walls) {
+    pt(w.a.x, w.a.y)
+    pt(w.b.x, w.b.y)
+  }
+  for (const c of state.components) {
+    const cos = Math.cos(c.rotation)
+    const sin = Math.sin(c.rotation)
+    for (const [lx, ly] of [
+      [-c.w / 2, -c.h / 2],
+      [c.w / 2, -c.h / 2],
+      [c.w / 2, c.h / 2],
+      [-c.w / 2, c.h / 2],
+    ]) {
+      pt(c.x + lx * cos - ly * sin, c.y + lx * sin + ly * cos)
+    }
+  }
+  if (minX === Infinity) throw new GateError('core state has no walls and no components — nothing to project')
+  const wPx = Math.round(plate.w * RES)
+  const hPx = Math.round(plate.h * RES)
+  const pad = 48
+  const spanX = Math.max(maxX - minX, 0.001)
+  const spanY = Math.max(maxY - minY, 0.001)
+  const k = Math.min((wPx - pad * 2) / spanX, (hPx - pad * 2) / spanY)
+  const ox = (wPx - spanX * k) / 2 - minX * k
+  const oy = (hPx - spanY * k) / 2 - minY * k
+  const sx = plate.w / wPx
+  const sy = plate.h / hPx
+  return {
+    map: (x, y) => ({ x: plate.x + (x * k + ox) * sx, y: plate.y + (y * k + oy) * sy }),
+    ptPerM: k * sx,
+  }
+}
+
 export const rectsOverlap = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y
 export const wordRect = (wd) => ({ x: wd.x0, y: wd.y0, w: wd.x1 - wd.x0, h: wd.y1 - wd.y0 })
 
