@@ -115,6 +115,9 @@ export function paintPlan(
      *  Absent → per-wall boxes, which is the look this replaced. */
     outlines?: WallOutline[] | null
     selection?: number | null
+    /** Visible canvas extent (CSS px) — lets tag placement prefer on-screen
+     *  anchors. Omit in headless full-plan renders. */
+    viewport?: { w: number; h: number }
   },
 ): ZoneTag[] {
   const highlight = opts.highlight ?? new Set<number>()
@@ -132,7 +135,7 @@ export function paintPlan(
     const p = v.toScreen(c.x, c.y)
     return { x: p.x, y: p.y, w: Math.abs(c.w * v.scale), h: Math.abs(c.h * v.scale) }
   })
-  drawZoneTags(v, tags, highlight, obstacles)
+  drawZoneTags(v, tags, highlight, obstacles, opts.viewport)
   return tags
 }
 
@@ -779,11 +782,21 @@ function poleOfInaccessibility(
  * 3. PROFILE POLICY. `paper` names only service rooms, abbreviated, and lets
  *    the legend identify everything else — which is what the reference does.
  */
+/** Corner radius of the continuous knockout ground under a resting label —
+ *  soft enough not to read as a pill, present so the capsule has no hard
+ *  corners over linework. (Also the browser-verification provenance token
+ *  for the fix/label-render change; see scripts/verify-preflight.sh.) */
+const LABEL_GROUND_RADIUS = 7
+
 export function drawZoneTags(
   v: PaintView,
   tags: ZoneTag[],
   highlight?: Set<number>,
   obstacles: Array<{ x: number; y: number; w: number; h: number }> = [],
+  /** Visible canvas extent in CSS px. When given, placement prefers anchors the
+   *  user can actually see (see the viewport term in `place`). Headless
+   *  harnesses that render the whole plan at once simply omit it. */
+  viewport?: { w: number; h: number },
 ) {
   const ctx = v.ctx
   const style = planStyle(v.presentation ? 'paper' : 'editor')
@@ -837,8 +850,23 @@ export function drawZoneTags(
         if (o.y + o.h / 2 < t.by || o.y - o.h / 2 > t.by + t.bh) continue
         if (overlaps(box, o)) hit++
       }
-      // Clear of furniture first; among equally clear spots, nearest the centre.
-      return hit * 10000 + Math.hypot(x - t.cx, y - t.cy)
+      // VIEWPORT term, above everything: an anchor the user cannot see is worth
+      // less than any visible one. Placement used to score GLOBAL clearance
+      // over the whole zone, so zooming into one end of a long room put its
+      // only label off-screen (measured at 35 px/m: label at y=862 in an 818 px
+      // viewport — the Phase 0 "renders at 12 px/m but not 35" observation).
+      // Visibility outranks the furniture term because the knockout ground
+      // makes a covered label legible; a clear label nobody can see is not.
+      // If NO candidate is visible (zone off-screen, or the visible sliver is
+      // too small to host the label), every candidate carries the same penalty
+      // and placement degrades to exactly the old behaviour — never a cull.
+      const off =
+        viewport &&
+        !(x - w / 2 >= 0 && x + w / 2 <= viewport.w && y - h / 2 >= 0 && y + h / 2 <= viewport.h)
+          ? 1
+          : 0
+      // Clear of furniture next; among equally clear spots, nearest the centre.
+      return off * 1e8 + hit * 10000 + Math.hypot(x - t.cx, y - t.cy)
     }
     let best: { x: number; y: number; s: number } | null = null
     const N = 9
@@ -938,7 +966,7 @@ export function drawZoneTags(
         ay - chosen.h / 2 - pad,
         chosen.w + pad * 2,
         chosen.h + pad * 2,
-        7,
+        LABEL_GROUND_RADIUS,
       )
       ctx.fill()
     }

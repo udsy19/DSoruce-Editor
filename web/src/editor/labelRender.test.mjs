@@ -232,4 +232,42 @@ ok(opsBare.filter((o) => o.op === 'fillText').length === 2, 'bare case: both lin
 ok(!opsBare.some((o) => o.op === 'strokeText'), 'bare case: no halo stroke on clear floor')
 ok(!opsBare.some((o) => o.op === 'fillRect' || o.op === 'fillPath'), 'bare case: no ground slab on clear floor')
 
+// ---------------------------------------------------------------------------
+// P3 — viewport-aware anchoring (the Phase 0 "no label at 35 px/m" defect).
+// The label was drawn but anchored by GLOBAL clearance over the whole zone, so
+// zooming into one end of a long room put its only label off-screen (measured:
+// at 35 px/m over zone 680's north end the label drew at y=862 in an 818 px
+// viewport). Property: when any part of the zone can host the label on-screen,
+// the label is placed on-screen; when none can, it still draws (no cull).
+// ---------------------------------------------------------------------------
+const tallTag = {
+  id: 900, name: LABEL.toUpperCase(), metrics: EXPECT_METRICS,
+  cx: 190, cy: 450, bx: 0, by: 0, bw: 380, bh: 900, namePx: 10, color: '#334',
+}
+function drawTall(viewport) {
+  const { ops, ctx } = recorder()
+  M.drawZoneTags(view(ctx), [{ ...tallTag }], undefined, [], viewport)
+  return ops.filter((o) => o.op === 'fillText')
+}
+
+// Zone extends far below a short viewport; the zone centre (the pre-fix anchor)
+// is off-screen, but plenty of on-screen zone can host the label.
+const vp = { w: 400, h: 300 }
+const inVp = drawTall(vp)
+ok(inVp.length === 2, `viewport case: both lines drawn (got ${inVp.length})`)
+for (const ft of inVp) {
+  ok(ft.x >= 0 && ft.x <= vp.w && ft.y >= 0 && ft.y <= vp.h,
+    `VIEWPORT ANCHOR: line ${JSON.stringify(ft.text)} drawn at (${ft.x.toFixed(0)},${ft.y.toFixed(0)}) ` +
+    `must be inside the ${vp.w}x${vp.h} viewport when on-screen zone can host it`)
+}
+
+// Viewport too short to host the label at all: fall back to the old behaviour
+// (drawn off-screen), never culled.
+const tiny = drawTall({ w: 400, h: 8 })
+ok(tiny.length === 2, 'unhostable viewport: label still drawn (fallback, no cull)')
+
+// No viewport supplied (headless harnesses): behaviour unchanged, label drawn.
+const noVp = drawTall(undefined)
+ok(noVp.length === 2, 'no viewport: label drawn as before')
+
 console.log(`labelRender: OK (${checks} checks)`)
