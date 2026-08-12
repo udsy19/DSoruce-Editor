@@ -129,3 +129,60 @@ fixes the picture — and (b) the true-Unassigned pockets are thin wall-hugging 
 inscribed widths 0.6-3.0 m) whose deliberately subtle marks (hatch Δ16/255, 0.45-alpha dashed
 hairline) read as wall shadow at overview zoom. No `paint.ts` edit; the contested-file protocol
 was not invoked.
+
+## ADDENDUM (still before implementation): the bound re-registers from 2.4 m to 3.0 m
+
+**Trigger — the pre-commitment above fired.** Before writing any classifier code, the existing
+anti-overreach guard `network_connected_wide_pocket_stays_circulation` was read: it asserts a
+UNIFORM 2.5 m × 24 m connected strip is Circulation. 2.5 m sits 0.1 m — less than one grid
+cell — above the registered 2.4 m bound. Per the pre-commitment ("margins inside one grid cell
+⇒ reported finding + re-registration, never a nudged constant"), this is that report.
+
+**Resolution.** The factor stays 2; the anchored width changes from `MIN_CIRC_CLEAR_M` (1.2 m,
+the minimum a path needs) to **`SPINE_W` (1.5 m, `layout/regions.rs`: the primary corridor this
+generator actually draws, anchored to NBC 2016's 1.5 m corridor minimum — the governing code of
+the product's target market).** The property reads: *a pocket stops being a path where it could
+host two primary spines side by side*:
+
+```
+MAX_CORRIDOR_WIDTH = 2 × SPINE_W = 3.0 m
+```
+
+The measurement runs at a FIXED 0.15 m cell (CirculationConfig's nominal resolution) rather
+than at `grid.cell`, so a large plate whose circulation grid gets coarsened by `max_cells` is
+still judged with the same ruler — the tracing-resolution hazard the RDP note in
+gate-independence.md documents, avoided by construction.
+
+**Why this is not fitting the threshold to the population.** Both candidate bounds (2.4, 3.0)
+produce IDENTICAL verdicts on every registered shape: 833 flips, 794 stays, all sixteen drawn
+corridors stay, the eight stay. The only verdicts the anchor choice moves are (a) the 2.5 m
+uniform-strip fixture — which its own committed test demands stay Circulation, and which this
+choice keeps with a 0.5 m (3+ cell) margin instead of overturning a standing guard to protect a
+number — and (b) real_plate zone 311 (below), which flips under EITHER bound. The alternative
+resolutions considered and rejected: keeping 2.4 and re-registering the strip test (overturns a
+committed guard to fit the fix — the exact move gate-independence.md forbids); a document-
+relative bound 2 × (widest drawn corridor) (same verdicts on every population measured, but
+makes the ruler depend on what a user happens to draw, and a hand-drawn plaza typed Circulation
+would silently relax the classifier).
+
+### End-to-end measurements at classifier resolution (0.15 m), taken before implementation
+
+| population | zone | area m² | max width m | today | predicted under the conjunct |
+|---|---|---|---|---|---|
+| F1 (fixture plate, seed 3) | 282 | 44.32 | **4.50** | Circulation | **Unassigned** (the 833 analogue) |
+| real_plate seeds 1-3 | 311 | 63.49 | **3.25** | Circulation | **Unassigned** (margin 0.25 = 1.7 cells) |
+| real_plate seeds 1-3 | 307 | ~155 | 3.02-3.60 | Unassigned | Unassigned (unchanged) |
+| F1 | 281, 283 | 110.2, 6.1 | 3.60, 2.10 | Unassigned | Unassigned (unchanged) |
+| synthetic strip (existing test) | — | 60 | 2.50 | Circulation | Circulation (kept, margin 0.50) |
+| browser dump 833 | — | 80.43 | 4.50 | Circulation | **Unassigned** |
+| browser dump 794 | — | 7.50 | 1.90 | Circulation | Circulation (margin 1.10) |
+
+Zone 311's desired verdict was never registered anywhere; it flips under both candidate bounds,
+and the flip is REPORTED here as a predicted behaviour change, not discovered after the fact.
+`golden_generate_output_is_frozen` is accordingly predicted to move on the real_plate cases
+(and any golden case carrying a ≥3 m residual clearing); the re-capture will show type/label
+flips with every component/wall/zone count identical.
+
+Predicted post-fix honest-surface totals for the browser plate are UNCHANGED from the main
+registration: raw Circulation 17 zones / 131.80 m², raw Unassigned 9 zones / 166.27 m² — the
+bound choice does not move any browser-plate verdict.
