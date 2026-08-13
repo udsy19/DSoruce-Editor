@@ -425,6 +425,77 @@
         ],
         "removed": []
       }
+    },
+    {
+      "when": "2026-08-12",
+      "why": "Workstream A (fix/wing-classifier): the residual-classifier gates land with the bounded-local-width conjunct. gate_a2_bounded_width_on_captured_shapes pins the discriminant's registered verdicts on the committed three-surface dump's polygons (833 rejected, 794 + sixteen drawn corridors kept, L-corridor mask control); gate_a2_no_room_scale_clearing_is_typed_circulation pins the end-to-end property over rect/real_plate/F1 generates (red pre-fix on F1 zone 282 and real_plate zone 311); gate_a1_residual_type_expresses_classifier_verdict pins that residual facets express the classifier's verdict, labels derive from types, and the sweep is idempotent on fresh generates. All three watched red-or-vacuity-checked before the fix per reports/editor-completion/A-preregistration.md.",
+      "js": {
+        "added": [],
+        "removed": []
+      },
+      "rust": {
+        "added": [
+          "layout::tests::gate_a1_residual_type_expresses_classifier_verdict",
+          "layout::tests::gate_a2_bounded_width_on_captured_shapes",
+          "layout::tests::gate_a2_no_room_scale_clearing_is_typed_circulation"
+        ],
+        "removed": []
+      }
+    },
+    {
+      "when": "2026-08-12",
+      "why": "Workstream E adds layout::tests::placed_desks_and_tables_stay_inside_their_zone_on_the_golden_cases — the placement containment gate, watched red on the unfixed fill (9 desks exiting Open Workspace on 3 golden real_plate cases) and green on the no_straddle rejection. 209 -> 210.",
+      "js": {
+        "added": [],
+        "removed": []
+      },
+      "rust": {
+        "added": [
+          "layout::tests::placed_desks_and_tables_stay_inside_their_zone_on_the_golden_cases"
+        ],
+        "removed": []
+      }
+    },
+    {
+      "when": "2026-08-12",
+      "why": "Workstream D (fix/pax-derivation): component_mutators_keep_pax_membership_fresh pins that every component mutator changing existence or center rebuckets zone membership through zone_index_at, so the canvas tag's pax (seated / the furnished capacity arm) can never assert a desk the document's geometry no longer contains; watched RED before the rebucket_component fix (seated 0 vs 1 after add_component)",
+      "js": {
+        "added": [],
+        "removed": []
+      },
+      "rust": {
+        "added": [
+          "tests::component_mutators_keep_pax_membership_fresh"
+        ],
+        "removed": []
+      }
+    },
+    {
+      "when": "2026-08-12",
+      "why": "Workstream D (fix/pax-derivation): pax_area_arm_never_captions_a_seated_zone pins the capacity ladder's mutual exclusivity — a Desk seats 1 at any size incl. the 0.05 m clamp floor and every ingress resolves seats, so the area rule-of-thumb arm can only fire on rows whose seated is 0; true red structurally unavailable, falsified by sabotage in a disposable worktree (size-dependent desk seats -> red at the clamp-floor assertion)",
+      "js": {
+        "added": [],
+        "removed": []
+      },
+      "rust": {
+        "added": [
+          "tests::pax_area_arm_never_captions_a_seated_zone"
+        ],
+        "removed": []      }
+    },
+    {
+      "when": "2026-08-12",
+      "why": "zone-label composition (exactly one separator, lines drawn verbatim) + continuous knockout ground under each label line's full extent incl. spaces, hot-pill anchored at placed position, bare-floor control — the '434 m²··101 pax' show-through defect",
+      "js": {
+        "added": [
+          "web/src/editor/labelRender.test.mjs"
+        ],
+        "removed": []
+      },
+      "rust": {
+        "added": [],
+        "removed": []
+      }
     }
   ],
   "js": {
@@ -435,6 +506,7 @@
     "web/src/core/mutatorGuards.test.mjs": "initial pin — the F1 roster, established from a green tree at 56af276",
     "web/src/coreParity.test.mjs": "initial pin — the F1 roster, established from a green tree at 56af276",
     "web/src/editor/fillRenders.test.mjs": "initial pin — the F1 roster, established from a green tree at 56af276",
+    "web/src/editor/labelRender.test.mjs": "zone-label composition (exactly one separator, lines drawn verbatim) + continuous knockout ground under each label line's full extent incl. spaces, hot-pill anchored at placed position, bare-floor control — the '434 m²··101 pax' show-through defect",
     "web/src/editor/referenceMetrics.test.mjs": "initial pin — the F1 roster, established from a green tree at 56af276",
     "web/src/editor/stateCache.test.mjs": "initial pin — the F1 roster, established from a green tree at 56af276",
     "web/src/editor/strategy.test.mjs": "initial pin — the F1 roster, established from a green tree at 56af276",
@@ -554,6 +626,9 @@
     "layout::tests::explicit_rooms_replace_derived_program_and_honor_counts": "initial pin — the F1 roster, established from a green tree at 56af276",
     "layout::tests::fixture_circulation_holds_above_55": "initial pin — the F1 roster, established from a green tree at 56af276",
     "layout::tests::focus_rooms_hug_the_facade_nearer_than_meetings": "initial pin — the F1 roster, established from a green tree at 56af276",
+    "layout::tests::gate_a1_residual_type_expresses_classifier_verdict": "Workstream A (fix/wing-classifier): the residual-classifier gates land with the bounded-local-width conjunct. gate_a2_bounded_width_on_captured_shapes pins the discriminant's registered verdicts on the committed three-surface dump's polygons (833 rejected, 794 + sixteen drawn corridors kept, L-corridor mask control); gate_a2_no_room_scale_clearing_is_typed_circulation pins the end-to-end property over rect/real_plate/F1 generates (red pre-fix on F1 zone 282 and real_plate zone 311); gate_a1_residual_type_expresses_classifier_verdict pins that residual facets express the classifier's verdict, labels derive from types, and the sweep is idempotent on fresh generates. All three watched red-or-vacuity-checked before the fix per reports/editor-completion/A-preregistration.md.",
+    "layout::tests::gate_a2_bounded_width_on_captured_shapes": "Workstream A (fix/wing-classifier): the residual-classifier gates land with the bounded-local-width conjunct. gate_a2_bounded_width_on_captured_shapes pins the discriminant's registered verdicts on the committed three-surface dump's polygons (833 rejected, 794 + sixteen drawn corridors kept, L-corridor mask control); gate_a2_no_room_scale_clearing_is_typed_circulation pins the end-to-end property over rect/real_plate/F1 generates (red pre-fix on F1 zone 282 and real_plate zone 311); gate_a1_residual_type_expresses_classifier_verdict pins that residual facets express the classifier's verdict, labels derive from types, and the sweep is idempotent on fresh generates. All three watched red-or-vacuity-checked before the fix per reports/editor-completion/A-preregistration.md.",
+    "layout::tests::gate_a2_no_room_scale_clearing_is_typed_circulation": "Workstream A (fix/wing-classifier): the residual-classifier gates land with the bounded-local-width conjunct. gate_a2_bounded_width_on_captured_shapes pins the discriminant's registered verdicts on the committed three-surface dump's polygons (833 rejected, 794 + sixteen drawn corridors kept, L-corridor mask control); gate_a2_no_room_scale_clearing_is_typed_circulation pins the end-to-end property over rect/real_plate/F1 generates (red pre-fix on F1 zone 282 and real_plate zone 311); gate_a1_residual_type_expresses_classifier_verdict pins that residual facets express the classifier's verdict, labels derive from types, and the sweep is idempotent on fresh generates. All three watched red-or-vacuity-checked before the fix per reports/editor-completion/A-preregistration.md.",
     "layout::tests::generate_clears_previous_components": "initial pin — the F1 roster, established from a green tree at 56af276",
     "layout::tests::generate_is_deterministic_for_same_seed": "initial pin — the F1 roster, established from a green tree at 56af276",
     "layout::tests::generated_rooms_are_enclosed_with_glass_front_and_door": "initial pin — the F1 roster, established from a green tree at 56af276",
@@ -580,6 +655,7 @@
     "layout::tests::open_walls_fall_back_to_bbox_behavior": "initial pin — the F1 roster, established from a green tree at 56af276",
     "layout::tests::oriented_fill_insights_are_correct_nia_le_gea_and_pax_is_seated": "initial pin — the F1 roster, established from a green tree at 56af276",
     "layout::tests::partition_conforms_rooms_and_stays_disjoint_on_tilted_plates": "initial pin — the F1 roster, established from a green tree at 56af276",
+    "layout::tests::placed_desks_and_tables_stay_inside_their_zone_on_the_golden_cases": "Workstream E adds layout::tests::placed_desks_and_tables_stay_inside_their_zone_on_the_golden_cases — the placement containment gate, watched red on the unfixed fill (9 desks exiting Open Workspace on 3 golden real_plate cases) and green on the no_straddle rejection. 209 -> 210.",
     "layout::tests::places_multiple_meeting_rooms_when_they_fit": "initial pin — the F1 roster, established from a green tree at 56af276",
     "layout::tests::places_requested_when_room_is_large_enough": "initial pin — the F1 roster, established from a green tree at 56af276",
     "layout::tests::portrait_wing_pairs_desks_across_the_spine": "initial pin — the F1 roster, established from a green tree at 56af276",
@@ -660,6 +736,7 @@
     "quantity::tests::wall_heights_and_areas_are_derived_not_typed": "initial pin — the F1 roster, established from a green tree at 56af276",
     "quantity::tests::wall_lengths_match_hand_computed_within_1cm": "initial pin — the F1 roster, established from a green tree at 56af276",
     "tests::both_zone_writers_refuse_an_off_plate_shape": "initial pin — the F1 roster, established from a green tree at 56af276",
+    "tests::component_mutators_keep_pax_membership_fresh": "Workstream D (fix/pax-derivation): component_mutators_keep_pax_membership_fresh pins that every component mutator changing existence or center rebuckets zone membership through zone_index_at, so the canvas tag's pax (seated / the furnished capacity arm) can never assert a desk the document's geometry no longer contains; watched RED before the rebucket_component fix (seated 0 vs 1 after add_component)",
     "tests::efficiency_usable_excludes_only_circulation_and_core": "initial pin — the F1 roster, established from a green tree at 56af276",
     "tests::every_f64_mutator_is_guarded_against_non_finite_input": "initial pin — the F1 roster, established from a green tree at 56af276",
     "tests::every_mutator_bumps_the_revision": "initial pin — the F1 roster, established from a green tree at 56af276",
@@ -673,6 +750,7 @@
     "tests::no_zone_mutator_can_write_a_document_that_cannot_reopen": "initial pin — the F1 roster, established from a green tree at 56af276",
     "tests::old_document_blob_without_reference_deserializes_and_counts": "initial pin — the F1 roster, established from a green tree at 56af276",
     "tests::only_desks_count_as_workstations": "initial pin — the F1 roster, established from a green tree at 56af276",
+    "tests::pax_area_arm_never_captions_a_seated_zone": "Workstream D (fix/pax-derivation): pax_area_arm_never_captions_a_seated_zone pins the capacity ladder's mutual exclusivity — a Desk seats 1 at any size incl. the 0.05 m clamp floor and every ingress resolves seats, so the area rule-of-thumb arm can only fire on rows whose seated is 0; true red structurally unavailable, falsified by sabotage in a disposable worktree (size-dependent desk seats -> red at the clamp-floor assertion)",
     "tests::revision_advances_on_mutation_and_holds_still_on_reads": "initial pin — the F1 roster, established from a green tree at 56af276",
     "tests::the_non_finite_guard_does_not_refuse_ordinary_edits": "initial pin — the F1 roster, established from a green tree at 56af276",
     "tests::workstations_exclude_reference_and_drive_area_per_ws": "initial pin — the F1 roster, established from a green tree at 56af276",

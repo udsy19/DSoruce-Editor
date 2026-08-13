@@ -224,6 +224,34 @@ impl Document {
         }
     }
 
+    /// Rebucket ONE component after its center moved, or it was created or
+    /// deleted: strip `cid` from every zone's membership, then (if the component
+    /// still exists) insert it into the zone containing its center.
+    ///
+    /// The per-component form of `reassign_components` — a deliberate second
+    /// entry point, not a second definition: ownership is decided by the same
+    /// `zone_index_at`, so the two cannot disagree (the freshness gate
+    /// cross-checks them against each other on a clone). It exists because the
+    /// component mutators run per pointer-move during a drag, where a full
+    /// all-components rebuild is avoidable O(components × zones) work.
+    ///
+    /// Before the component mutators called this, `component_ids` went stale on
+    /// every hand edit: a desk added into a room was invisible to the room's
+    /// "N pax" tag until an unrelated zone edit rebuilt membership, a desk
+    /// dragged out kept being counted where it no longer was, and `delete_zone`
+    /// deleted furniture the user had already dragged elsewhere. See the
+    /// `component_mutators_keep_pax_membership_fresh` gate (watched red).
+    pub fn rebucket_component(&mut self, cid: u32) {
+        for z in &mut self.zones {
+            z.component_ids.retain(|&c| c != cid);
+        }
+        if let Some(c) = self.components.iter().find(|c| c.id == cid) {
+            if let Some(i) = self.zone_index_at(c.x, c.y) {
+                self.zones[i].component_ids.push(cid);
+            }
+        }
+    }
+
     /// The most-specific zone id containing world point `(x, y)`, or `None`.
     /// Mirrors `reassign_components`' preference (non-`Circulation` rect over the
     /// `Circulation` ring). Powers click-to-select a room on the canvas.

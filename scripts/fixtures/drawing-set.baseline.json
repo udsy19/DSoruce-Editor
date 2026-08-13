@@ -35,35 +35,35 @@
           "line": 21,
           "rect": 7,
           "image": 2,
-          "md5": "b84d540543ed52f94e3b9da3f7147b1b",
-          "why": "R17 area fix: A.01's room label prints the CORE basis, not the raw shape extent. One text op: 668.5 m2 -> 550.6 m2 for Open Workspace. Nothing else on this sheet moved."
+          "md5": "c00d702ab8a0998aed97abd6c049e34b",
+          "why": "D-P fix (workstream B): the plan sheet's annotation occupancy is now seeded with the base raster's ink before any label is placed (sheetSet.ts seedBaseInk/seedOutsideMargin; SG8 87->0 across the 12 plan sheets, D-Q total 37->26). THIS sheet: op counts IDENTICAL (74 T / 21 L / 7 R); op-level dump-diff shows exactly one label pair moved — FOCUS ROOM 1 + its 4.3 m² translated 44 pt left (T 734.4->690.4 / 755.0->711.0) off a seeded existing-wall band. Nothing else on the sheet moved."
         },
         {
           "sheet": 4,
-          "text": 281,
-          "line": 909,
+          "text": 278,
+          "line": 897,
           "rect": 81,
           "image": 2,
-          "md5": "1e3cfdce0e3ed1f91e4682a73c4782cc",
-          "why": "Landed work between 46908c6 (last re-record) and 49502e5, attributed by op-level dump-diff: seeded A.02 label/dimension placement (189 rows moved, identical op counts, overall dim 38.20 m -> 17.50 m); seeded A.04 services clustering (floor boxes 4 -> 10, TOTAL 176 -> 182); dwg A.01/A.02/A.03/A.04/A.09 all trace to the document gaining one 0.98 m2 desk-footprint Workspace zone, Open Workspace (12), plus a zone-id shift 216/217/220 -> 222/223/225. No missing ink; every drift traces to a landed fix."
+          "md5": "7215f367a6b9c522039f0b0817f90e86",
+          "why": "D-P fix (workstream B): the plan sheet's annotation occupancy is now seeded with the base raster's ink before any label is placed (sheetSet.ts seedBaseInk/seedOutsideMargin; SG8 87->0 across the 12 plan sheets, D-Q total 37->26). THIS sheet: text 281->278 and line 909->897 — the three missing T ops are three '3.00 m' room-dim strings roomDims' PRE-EXISTING declutter guard now suppresses because their label boxes land on seeded wall bands (each dim carries its 4 tick/extension L ops: -12); every other delta is label/dim displacement plus leaders. SG8 seeded/A02 4->0. Leader set re-pinned: +CABIN 2, CABIN 3, FOCUS ROOM 1, PANTRY, WELLNESS ROOM; -MEETING ROOM 1/2/4 (drawing-set.manifest.json, same commit)."
         },
         {
           "sheet": 5,
           "text": 101,
-          "line": 1096,
+          "line": 1105,
           "rect": 468,
           "image": 2,
-          "md5": "5e59b6e62ed54f01c38d0af7b864b6ea",
-          "why": "Unmoved since 46908c6, the commit that last recorded this baseline. Verified: at base HEAD 49502e5 this sheet's digest still matched the recorded md5, so nothing in the 73 intervening commits touched it."
+          "md5": "5d3843874e10ffe0e0e1f08c61e8331d",
+          "why": "D-P fix (workstream B): the plan sheet's annotation occupancy is now seeded with the base raster's ink before any label is placed (sheetSet.ts seedBaseInk/seedOutsideMargin; SG8 87->0 across the 12 plan sheets, D-Q total 37->26). THIS sheet: content-level dump-diff EMPTY (no string appeared or vanished, 101 T unchanged); line 1096->1105, +9 leader L ops for labels the seeded wall ink displaced. SG8 seeded/A03 4->0 (FOCUS ROOM 1/2, PHONE BOOTH 3, WELLNESS ROOM were the wall hits)."
         },
         {
           "sheet": 6,
           "text": 62,
-          "line": 1894,
+          "line": 1902,
           "rect": 234,
           "image": 2,
-          "md5": "9c7860d3f4bf3d9358f9fe2ce80c78e8",
-          "why": "Landed work between 46908c6 (last re-record) and 49502e5, attributed by op-level dump-diff: seeded A.02 label/dimension placement (189 rows moved, identical op counts, overall dim 38.20 m -> 17.50 m); seeded A.04 services clustering (floor boxes 4 -> 10, TOTAL 176 -> 182); dwg A.01/A.02/A.03/A.04/A.09 all trace to the document gaining one 0.98 m2 desk-footprint Workspace zone, Open Workspace (12), plus a zone-id shift 216/217/220 -> 222/223/225. No missing ink; every drift traces to a landed fix."
+          "md5": "4ac75bfb2827746194ffd73ebadde0bb",
+          "why": "D-P fix (workstream B): the plan sheet's annotation occupancy is now seeded with the base raster's ink before any label is placed (sheetSet.ts seedBaseInk/seedOutsideMargin; SG8 87->0 across the 12 plan sheets, D-Q total 37->26). THIS sheet: content-level dump-diff EMPTY; line 1894->1902, +8 leader L ops. SG8 seeded/A04 6->0 (incl. the IT / SERVER, STORAGE and WELLNESS ROOM swing-arc hits)."
         },
         {
           "sheet": 7,
@@ -143,39 +143,39 @@
         },
         {
           "sheet": 3,
-          "text": 86,
-          "line": 32,
+          "text": 70,
+          "line": 35,
           "rect": 7,
           "image": 2,
-          "md5": "873caf1883c03ecdee546d77c9789975",
-          "why": "Landed work between 46908c6 (last re-record) and 49502e5, attributed by op-level dump-diff: seeded A.02 label/dimension placement (189 rows moved, identical op counts, overall dim 38.20 m -> 17.50 m); seeded A.04 services clustering (floor boxes 4 -> 10, TOTAL 176 -> 182); dwg A.01/A.02/A.03/A.04/A.09 all trace to the document gaining one 0.98 m2 desk-footprint Workspace zone, Open Workspace (12), plus a zone-id shift 216/217/220 -> 222/223/225. No missing ink; every drift traces to a landed fix."
+          "md5": "d850ca0b7c19b054c8a0e0d5c6b53a62",
+          "why": "E no_straddle: A.01 Demolition Plan drops the 8 pocket rooms' name + 1.0 m2 area labels and their leaders (-16 text, -6 line); nothing else moved (base==A dumps byte-identical)."
         },
         {
           "sheet": 4,
-          "text": 296,
-          "line": 812,
+          "text": 278,
+          "line": 794,
           "rect": 84,
           "image": 2,
-          "md5": "d30b30cdbfba801f753af7d9f3c9ffd0",
-          "why": "Landed work between 46908c6 (last re-record) and 49502e5, attributed by op-level dump-diff: seeded A.02 label/dimension placement (189 rows moved, identical op counts, overall dim 38.20 m -> 17.50 m); seeded A.04 services clustering (floor boxes 4 -> 10, TOTAL 176 -> 182); dwg A.01/A.02/A.03/A.04/A.09 all trace to the document gaining one 0.98 m2 desk-footprint Workspace zone, Open Workspace (12), plus a zone-id shift 216/217/220 -> 222/223/225. No missing ink; every drift traces to a landed fix."
+          "md5": "c5f062bc49d5d54a21c7914c17002c7b",
+          "why": "E no_straddle: A.02 Construction & Furnishing Plan drops 8 pocket-room labels + 9 area lines and re-tags/repositions wall+window tags (W3...) after the wrapper partitions vanished and 127 components moved."
         },
         {
           "sheet": 5,
-          "text": 112,
-          "line": 2040,
-          "rect": 808,
+          "text": 104,
+          "line": 1857,
+          "rect": 752,
           "image": 2,
-          "md5": "271f07ca4fc67a440196591076e5e726",
-          "why": "Merge 0218e26 (main -> integration) brought web/src/import/dxf.ts block-name classification. Attributed by file-revert: reverting dxf.ts ALONE restores 3a6b7fe3 byte-for-byte; reverting the wasm, plate.ts and testfit.ts each leave 271f07ca. It reclassifies 14 blocks door -> casework, every one a cupboard whose NAME contains \"Door\" (CW Cupbd - 80h x 24d - 1 Door - 4 shelves; CW Cupbd Ohead - 1 Door) — the old matcher read the leaf count as an architectural door. One spurious entry at (17.80, 42.03) therefore disappears (2 -> 1), and the only zone that changes is the ground residual Unassigned (id 308): two vertices x=19 -> x=18.75, bbox IDENTICAL, area 89.63 -> 88.30 m2. Programmed area is unchanged at 836.6096 m2 and no program room moves. Only the RCP moves because services.ts rooms() centres the ceiling field on zoneCenter (centroid) and sizes it from zoneBBox, and unlike the print path it does NOT fold ground zones out; the centroid shift of (-0.2565, +0.0876) m at the sheet scale of 13.41 pt/m predicts dy = +1.175 pt and the observed shift is +1.17/+1.18. 146 rows in 5 contiguous runs, all pure translation, op counts identical (112 text / 2040 line / 808 rect / 2 image), no ink lost, 23 of 24 dumped sheets byte-identical, 328 of 329 checks already green. Improvement, re-recorded."
+          "md5": "f9d7afbac022dd7315fe9db3d2aa92c9",
+          "why": "E no_straddle: A.03 Reflected Ceiling Plan re-lays fixtures over the moved desks and drops the 8 pocket-room labels (-8 text, -189 line, -56 rect: luminaire/diffuser grid follows the furniture)."
         },
         {
           "sheet": 6,
-          "text": 68,
-          "line": 2389,
-          "rect": 267,
+          "text": 60,
+          "line": 2396,
+          "rect": 259,
           "image": 2,
-          "md5": "6433cc3add56a3ac2216995d15470dea",
-          "why": "Landed work between 46908c6 (last re-record) and 49502e5, attributed by op-level dump-diff: seeded A.02 label/dimension placement (189 rows moved, identical op counts, overall dim 38.20 m -> 17.50 m); seeded A.04 services clustering (floor boxes 4 -> 10, TOTAL 176 -> 182); dwg A.01/A.02/A.03/A.04/A.09 all trace to the document gaining one 0.98 m2 desk-footprint Workspace zone, Open Workspace (12), plus a zone-id shift 216/217/220 -> 222/223/225. No missing ink; every drift traces to a landed fix."
+          "md5": "bf0106f84a9ab7eb825efb8bea4bceec",
+          "why": "E no_straddle: A.04 Power & Data Plan drops the 8 pocket-room labels and re-routes outlets/circuits to the moved desks (-8 text, -5 line, -8 rect)."
         },
         {
           "sheet": 7,
@@ -215,12 +215,12 @@
         },
         {
           "sheet": 11,
-          "text": 312,
-          "line": 46,
-          "rect": 21,
+          "text": 240,
+          "line": 38,
+          "rect": 17,
           "image": 1,
-          "md5": "0411c94ab3d8a767d994a8409c9704ff",
-          "why": "Landed work between 46908c6 (last re-record) and 49502e5, attributed by op-level dump-diff: seeded A.02 label/dimension placement (189 rows moved, identical op counts, overall dim 38.20 m -> 17.50 m); seeded A.04 services clustering (floor boxes 4 -> 10, TOTAL 176 -> 182); dwg A.01/A.02/A.03/A.04/A.09 all trace to the document gaining one 0.98 m2 desk-footprint Workspace zone, Open Workspace (12), plus a zone-id shift 216/217/220 -> 222/223/225. No missing ink; every drift traces to a landed fix."
+          "md5": "488ba55d317a4d042e75ef5bb85c4164",
+          "why": "E no_straddle: A.09 Room Finish Schedule loses the 8 'Open Workspace (5)'..'(12)' rows (ids 258-265) — micro-rooms of 1.0 m2 that were one straddling fill desk each; the schedule now bills 20 real rooms."
         },
         {
           "sheet": 12,

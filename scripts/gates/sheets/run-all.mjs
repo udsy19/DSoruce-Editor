@@ -37,6 +37,12 @@ const GATES = [
   // 550.570 — on THIS board, twelve green gates, for as long as the board has
   // existed. A surface no instrument reads is where a wrong number lives.
   ['SG7', 'Area identity (sheet == core)', 'sg7-area-identity.mjs'],
+  // SG8 is D-P's frozen instrument (reports/sheets-defects-2.md §1) as a
+  // standing gate: no room-name/area/dimension string may cross the base
+  // raster's wall or door-swing ink. Reconstructed and validated against the
+  // corpus commit (exactly 107 at f95c9b0) before the fix it gates landed —
+  // reports/editor-completion/B-preregistration.md.
+  ['SG8', 'String-ink crossing (D-P)', 'sg8-string-ink-crossing.mjs'],
   // NOT an SG gate — the sheet-content digest fixture, which lives in scripts/
   // and grades the same delivered PDFs. It gets a ROW because it had none: the
   // only thing that ran it was SG5, which reads its scoreboard line, so its

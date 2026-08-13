@@ -24,7 +24,7 @@
 //  2.5  ATTRIBUTION.  Every plan tag either touches a wall (its glyph is within
 //       its own radius of a wall segment) or is joined to one by a leader
 //       stroke read out of the delivered PDF's content stream.  Wall geometry
-//       comes from CORE STATE, re-projected here (`planMap`) rather than taken
+//       comes from CORE STATE, re-projected here (`planProjection`) rather than taken
 //       from the renderer; the projection is validated first — every wall must
 //       land inside the plate.
 //
@@ -65,6 +65,7 @@ import {
   readPng,
   coreState,
   pageLines,
+  planProjection,
   runGate,
   GateError,
 } from './lib/sheetlib.mjs'
@@ -72,56 +73,6 @@ import { findTags, TAG_SIZE_PT } from './lib/tags.mjs'
 
 /** A.02 is the only sheet that carries opening tags (`constructionSheet`). */
 const TAGGED_SHEET = { file: 'A02', page: 4 }
-
-/**
- * world (m) → sheet pt, re-derived from CORE STATE and the template.
- *
- * `renderPrintCanvas` (web/src/export/printPlan.ts) fits `stateBbox` — every wall
- * endpoint and every rotated component corner — into a wPx×hPx canvas with a
- * 48 px pad, and `worldMapper` (sheetSet.ts) places that canvas in the plate.
- * Reproduced here from the document and the template constants, so the gate
- * never asks the renderer where anything went.
- */
-function planMap(state, plate, RES) {
-  let minX = Infinity
-  let minY = Infinity
-  let maxX = -Infinity
-  let maxY = -Infinity
-  const pt = (x, y) => {
-    if (x < minX) minX = x
-    if (y < minY) minY = y
-    if (x > maxX) maxX = x
-    if (y > maxY) maxY = y
-  }
-  for (const w of state.walls) {
-    pt(w.a.x, w.a.y)
-    pt(w.b.x, w.b.y)
-  }
-  for (const c of state.components) {
-    const cos = Math.cos(c.rotation)
-    const sin = Math.sin(c.rotation)
-    for (const [lx, ly] of [
-      [-c.w / 2, -c.h / 2],
-      [c.w / 2, -c.h / 2],
-      [c.w / 2, c.h / 2],
-      [-c.w / 2, c.h / 2],
-    ]) {
-      pt(c.x + lx * cos - ly * sin, c.y + lx * sin + ly * cos)
-    }
-  }
-  if (minX === Infinity) throw new GateError('core state has no walls and no components — nothing to project')
-  const wPx = Math.round(plate.w * RES)
-  const hPx = Math.round(plate.h * RES)
-  const pad = 48
-  const spanX = Math.max(maxX - minX, 0.001)
-  const spanY = Math.max(maxY - minY, 0.001)
-  const k = Math.min((wPx - pad * 2) / spanX, (hPx - pad * 2) / spanY)
-  const ox = (wPx - spanX * k) / 2 - minX * k
-  const oy = (hPx - spanY * k) / 2 - minY * k
-  const sx = plate.w / wPx
-  const sy = plate.h / hPx
-  return (x, y) => ({ x: plate.x + (x * k + ox) * sx, y: plate.y + (y * k + oy) * sy })
-}
 
 function distToSegment(px, py, x1, y1, x2, y2) {
   const dx = x2 - x1
@@ -222,7 +173,7 @@ async function main() {
       )
 
       // --- 2.5 attribution ---------------------------------------------------
-      const map = planMap(state, plate, g.spec.RES)
+      const { map } = planProjection(state, plate, g.spec.RES)
       const walls = state.walls.map((w) => {
         const a = map(w.a.x, w.a.y)
         const b = map(w.b.x, w.b.y)

@@ -115,6 +115,18 @@ impl FieldGrid {
         lat: Lattice,
         clear: f64,
         cluster_cols: u32,
+        // Zone rects a candidate may not STRADDLE (partly inside, partly
+        // outside). The whole-plate fill passes the emitted Workspace zones —
+        // its field is the plate bbox, so a lattice slot can lie half across a
+        // region zone's edge, which is the user's "desk crossing the zone
+        // boundary" defect (Workstream E; 3 desks × 3 golden real_plate cases,
+        // up to 0.55 m outside). Fully inside (owned by that zone) and fully
+        // outside (tiled by the fill afterwards) both stay legal — this also
+        // makes the fill's center-containment tile test EXACT, because with
+        // straddlers rejected center-in implies fully-in. The per-region and
+        // top-up passes pass `&[]`: their field rect IS the zone rect, so a
+        // straddler is already a bounds rejection there.
+        no_straddle: &[geometry::Rect],
     ) -> FieldGrid {
         let f = plan.field;
         let column_major = plan.portrait;
@@ -259,6 +271,22 @@ impl FieldGrid {
                     g.rejects.obstacles += 1;
                     continue;
                 }
+                if no_straddle.iter().any(|r| {
+                    // Interpenetration beyond fp noise…
+                    let overlaps = fx - hw < r.x1 - 1e-6
+                        && fx + hw > r.x0 + 1e-6
+                        && fy - hh < r.y1 - 1e-6
+                        && fy + hh > r.y0 + 1e-6;
+                    // …without full containment (flush-on-the-edge counts as in).
+                    let inside = fx - hw >= r.x0 - 1e-9
+                        && fx + hw <= r.x1 + 1e-9
+                        && fy - hh >= r.y0 - 1e-9
+                        && fy + hh <= r.y1 + 1e-9;
+                    overlaps && !inside
+                }) {
+                    g.rejects.straddle += 1;
+                    continue;
+                }
                 line.push(i);
             }
             g.free.push(line);
@@ -382,7 +410,10 @@ pub(crate) fn field_free_slots(
     clear: f64,
     cluster_cols: u32,
 ) -> u32 {
-    FieldGrid::build(program, plan, plate, iwalls, obstacles, lat, clear, cluster_cols).capacity()
+    // `&[]`: allocation measures REGION fields, whose rect is the zone rect —
+    // a would-be straddler is already a bounds rejection there.
+    FieldGrid::build(program, plan, plate, iwalls, obstacles, lat, clear, cluster_cols, &[])
+        .capacity()
 }
 
 pub(crate) fn pack_desks(
@@ -399,6 +430,9 @@ pub(crate) fn pack_desks(
     lat: Lattice,
     clear: f64,
     choices: SeedChoices,
+    // Zone rects a slot may not straddle — see `FieldGrid::build`. `&[]` on
+    // every pass except the whole-plate fill.
+    no_straddle: &[geometry::Rect],
     // Why slots were turned down, and the grid actually walked. `None` on the
     // passes whose rejections are not diagnostic (the top-up re-walks ground the
     // primary pass already covered, so its rejections are mostly "occupied").
@@ -442,6 +476,7 @@ pub(crate) fn pack_desks(
         // is a subset of `grid.free`. There is no second enumeration to drift.
         let grid = FieldGrid::build(
             program, plan, plate, iwalls, &obstacles[..], lat, clear, choices.cluster_cols,
+            no_straddle,
         );
         if let Some(d) = diag.as_deref_mut() {
             d.grid_outer = grid.outer_n;

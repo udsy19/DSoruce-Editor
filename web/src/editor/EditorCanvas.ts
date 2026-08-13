@@ -1585,7 +1585,7 @@ export class EditorCanvas {
       drawGrid(this.host, w, h)
     }
     this.updatePlate(st.walls)
-    if (st.zones?.length) this.updateZoneStats(st.zones)
+    if (st.zones?.length) this.updateZoneStats()
 
     // Resolve the dynamic-input candidate once per frame (wall preview + chips +
     // widget all read it) so OSNAP/getState isn't recomputed three times.
@@ -1605,6 +1605,7 @@ export class EditorCanvas {
       exteriorIds: this.exteriorIds,
       outlines: this.wallOutlines,
       selection: st.selection ?? null,
+      viewport: { w, h },
     })
     void tags
     if (this.tool === 'wall' && this.wallStart) {
@@ -1646,10 +1647,10 @@ export class EditorCanvas {
   }
 
   /** Zone tints + the room tags they yield. Refreshes the core-truth zone stats
-   *  first (cached on a zone fingerprint) so the tags carry plate-clipped area. */
+   *  first (cached on the document revision) so the tags carry plate-clipped area. */
   private paintZones(zones?: DocZone[]): ZoneTag[] {
     if (!zones || zones.length === 0) return []
-    this.updateZoneStats(zones)
+    this.updateZoneStats()
     // Same set `drawZoneTags` uses to promote a label to a pill. Passed here too
     // so a SELECTED ground zone keeps its tag: ground carries no name at rest,
     // but you must be able to name the corridor you are editing.
@@ -1700,25 +1701,32 @@ export class EditorCanvas {
     }
   }
 
-  /** Per-zone Rust-truth stats (plate-clipped area, capacity), cached on a
-   *  zone fingerprint — `zone_stats()` re-clips + serializes on every call. */
+  /** Per-zone Rust-truth stats (plate-clipped area, capacity/seated), cached —
+   *  `zone_stats()` re-clips + serializes on every call, so the render loop
+   *  must not pay that per frame.
+   *
+   *  Keyed on the document REVISION + the `Editor` instance — the same
+   *  contract `getState()` documents: `revision()` is bumped by every mutator
+   *  and by nothing else, and `clearAll` swaps in a fresh `Editor` whose
+   *  revision restarts at 0. The previous key hashed only zone GEOMETRY
+   *  (count + shape coords), so a component edit — a desk dragged into a
+   *  room, a table resized so it seats more — changed no key bit and the room
+   *  tag kept drawing the stale capacity/seated row until some zone happened
+   *  to be reshaped: the renderer-side half of the pax-freshness defect.
+   *  (`tests::component_mutators_keep_pax_membership_fresh` guards the core
+   *  half; this key closes the cache half — watched red live on 5304: core
+   *  row 102 after add_component, cached row still 101 after render().)
+   *  `plateKey` stays in the key because plate pushes re-clip areas without
+   *  necessarily being the latest mutation. */
   private zoneStats = new Map<number, ZoneStat>()
   private zoneStatsKey = ''
+  private zoneStatsEd: Editor | null = null
 
-  private updateZoneStats(zones: DocZone[]) {
-    let sum = 0
-    for (const z of zones) {
-      const s = z.shape
-      if (s.kind === 'Poly') {
-        sum += z.id * 3
-        for (const [px, py] of s.pts) sum += px * 13 + py * 31
-      } else {
-        sum += z.id * 3 + s.x + s.y * 7 + s.w * 13 + s.h * 31
-      }
-    }
-    const key = `${zones.length}:${sum.toFixed(4)}:${this.plateKey}`
-    if (key === this.zoneStatsKey) return
+  private updateZoneStats() {
+    const key = `${String(this.ed.revision())}:${this.plateKey}`
+    if (key === this.zoneStatsKey && this.zoneStatsEd === this.ed) return
     this.zoneStatsKey = key
+    this.zoneStatsEd = this.ed
     this.zoneStats = new Map(this.getZoneStats().map((s) => [s.id, s]))
   }
 }
