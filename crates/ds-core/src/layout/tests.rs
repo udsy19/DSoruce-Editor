@@ -3936,7 +3936,12 @@ fn golden_fingerprint(doc: &Document, program: &Program) -> String {
 /// rectangle, the L plate and the user's real multi-wing plate.
 ///
 /// PROVENANCE. Last re-captured ONCE on the editor-completion MERGE of
-/// Workstreams A and E — the merged tree carries BOTH mechanisms below, so
+/// Workstreams A and E. On the merged tree, relative to A's single-fix capture,
+/// EXACTLY E's three straddle-red cases moved (`default/real_plate/seed1`,
+/// `default/real_plate/seed3`, `explicit_rooms/real_plate/seed1`) and no other;
+/// every component/wall/zone/desk count identical in all ten; only `total` and
+/// the digest moved — the two mechanisms compose with no interference.
+/// Merge context: the merged tree carries BOTH mechanisms below — the merged tree carries BOTH mechanisms below, so
 /// neither branch's expectation strings were taken verbatim (each was
 /// captured without the other's fix). Both single-fix provenance paragraphs
 /// are preserved:
@@ -4118,12 +4123,12 @@ fn golden_generate_output_is_frozen() {
 "default/rect20x14/seed1 = c72 w52 z11 desks21 total87876523 #1a0244c3d88eeb3c",
             "default/rect20x14/seed2 = c80 w52 z11 desks25 total89274625 #1fca633eeb04543f",
             "default/rect20x14/seed3 = c70 w52 z11 desks20 total86967629 #52556c4029d00bfc",
-            "default/real_plate/seed1 = c222 w155 z34 desks88 total90076139 #5cee5090a13e86dc",
+            "default/real_plate/seed1 = c222 w155 z34 desks88 total89910954 #4acc63b55bccf543",
             "default/real_plate/seed2 = c222 w155 z34 desks88 total89620654 #5b0bf78347437043",
-            "default/real_plate/seed3 = c222 w155 z34 desks88 total90035959 #0a617d116683318a",
+            "default/real_plate/seed3 = c222 w155 z34 desks88 total89870633 #a01beecb9f1a851c",
             "no_support/rect20x14/seed1 = c68 w22 z4 desks26 total92565832 #991c040294e31e67",
             "no_support/real_plate/seed2 = c192 w101 z38 desks88 total93369582 #249089d09f47c486",
-            "explicit_rooms/real_plate/seed1 = c209 w125 z26 desks88 total87799077 #01bdbe1ee311bdd6",
+            "explicit_rooms/real_plate/seed1 = c209 w125 z26 desks88 total87773821 #ac7987ede6d87c36",
             "explicit_rooms/l_plate/seed3 = c63 w33 z10 desks24 total87841010 #2c4c9d19abba5d0b",
     ];
     assert_eq!(cases.len(), EXPECTED.len(), "case list and expectations must line up");
