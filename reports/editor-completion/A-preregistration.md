@@ -186,3 +186,45 @@ flips with every component/wall/zone count identical.
 Predicted post-fix honest-surface totals for the browser plate are UNCHANGED from the main
 registration: raw Circulation 17 zones / 131.80 m², raw Unassigned 9 zones / 166.27 m² — the
 bound choice does not move any browser-plate verdict.
+
+## OUTCOMES (recorded after the fix; every prediction above was committed first)
+
+| prediction | outcome |
+|---|---|
+| 833 not path-shaped; reclassifies Unassigned | CONFIRMED — gate red then green; post-fix dump: doc/raw `Unassigned · Unassigned` |
+| 794 stays Circulation | CONFIRMED (dump + gate) |
+| drawn corridors 664-679 all pass bounded width | CONFIRMED (gate, 16/16) |
+| the eight stay Unassigned | CONFIRMED (dump byte-identical on their rows) |
+| raw Circulation 17 zones / 131.80 m² | CONFIRMED — `zone-dump.three-surface.postfix.json`: 17 / 131.80 (14.5 % NIA) |
+| raw Unassigned 9 zones / 166.27 m² | CONFIRMED — 9 / 166.27 |
+| published surface unchanged (fold) | CONFIRMED — 298.07 m² before and after |
+| goldens move on real_plate only, counts identical | CONFIRMED — 5 cases, only total+digest moved |
+| F1 282 / real 311 flip | CONFIRMED (e2e gate red → green) |
+
+**Phase 0 window, restated honestly:** the registered "132-180 m² on the folded surface" was a
+window on a constant (the fold makes published circulation invariant). On the honest surface the
+result is **131.80 m² raw circulation (14.5 % NIA)** — the window's own lower edge, which its
+derivation described as exactly the "ribbon flips, corridor-shaped residual stays" case.
+
+**Sabotage round (disposable worktree, gates targeted, tree restored and re-verified 7/7):**
+S1 bounded-width conjunct disabled → both A2 gates red. S2 footprint mask dropped → captured-
+shapes gate red (the L-corridor control — added because without it this sabotage left the suite
+green). S3 a second stamp site after the sweep → A1 red (+ e2e). S4 RDP disabled →
+`compactness_measures_shape_not_tracing_resolution` red — first attempt reported 0 red because
+the sabotage patch broke compilation and the harness read that as "no failures"; the instrument
+was fixed and the re-run is the quoted result. S5 compactness conjunct disabled → captured-
+shapes gate red (the 2.5 m-square control, added for the same reason as S2's).
+
+**Browser verification (port 5301; served wasm md5-identical to the post-fix build; in-page
+provenance assert 833=Unassigned ∧ 794=Circulation before any pixel was read):**
+`after/after-plate.png`, `after/after-west.png`, `after/after-833-zoom.png`. The wing now
+carries the Unassigned dashed outline + hatch; toggling 833's cached type on the fixed build
+changes 6,400 px — the ink the reclassification adds. The marks are the editor style's
+deliberately subtle Δ16/255 hatch + 0.45-alpha dashed hairline: clearly legible at working zoom
+(the 40 px/m crop), a whisper at 12-18 px/m overview, which is the registered progressive-
+disclosure design of `UNASSIGNED_HATCH`, not a rendering defect.
+
+**INTEGRATION NOTE (golden reconciliation):** Workstream E's branch also re-captured
+`golden_generate_output_is_frozen` (packing no_straddle, three real_plate cases). Merging either
+branch's expected strings verbatim will break the other. At integration: merge code from both,
+run the golden test, and re-capture ONCE on the merged tree, citing both provenance paragraphs.
