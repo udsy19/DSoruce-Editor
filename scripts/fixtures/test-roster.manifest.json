@@ -481,6 +481,19 @@
         "added": [
           "tests::pax_area_arm_never_captions_a_seated_zone"
         ],
+        "removed": []      }
+    },
+    {
+      "when": "2026-08-12",
+      "why": "zone-label composition (exactly one separator, lines drawn verbatim) + continuous knockout ground under each label line's full extent incl. spaces, hot-pill anchored at placed position, bare-floor control — the '434 m²··101 pax' show-through defect",
+      "js": {
+        "added": [
+          "web/src/editor/labelRender.test.mjs"
+        ],
+        "removed": []
+      },
+      "rust": {
+        "added": [],
         "removed": []
       }
     }
@@ -493,6 +506,7 @@
     "web/src/core/mutatorGuards.test.mjs": "initial pin — the F1 roster, established from a green tree at 56af276",
     "web/src/coreParity.test.mjs": "initial pin — the F1 roster, established from a green tree at 56af276",
     "web/src/editor/fillRenders.test.mjs": "initial pin — the F1 roster, established from a green tree at 56af276",
+    "web/src/editor/labelRender.test.mjs": "zone-label composition (exactly one separator, lines drawn verbatim) + continuous knockout ground under each label line's full extent incl. spaces, hot-pill anchored at placed position, bare-floor control — the '434 m²··101 pax' show-through defect",
     "web/src/editor/referenceMetrics.test.mjs": "initial pin — the F1 roster, established from a green tree at 56af276",
     "web/src/editor/stateCache.test.mjs": "initial pin — the F1 roster, established from a green tree at 56af276",
     "web/src/editor/strategy.test.mjs": "initial pin — the F1 roster, established from a green tree at 56af276",

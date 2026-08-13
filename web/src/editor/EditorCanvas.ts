@@ -1605,6 +1605,7 @@ export class EditorCanvas {
       exteriorIds: this.exteriorIds,
       outlines: this.wallOutlines,
       selection: st.selection ?? null,
+      viewport: { w, h },
     })
     void tags
     if (this.tool === 'wall' && this.wallStart) {
