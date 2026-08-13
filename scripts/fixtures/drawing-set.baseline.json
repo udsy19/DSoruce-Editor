@@ -36,7 +36,7 @@
           "rect": 7,
           "image": 2,
           "md5": "c00d702ab8a0998aed97abd6c049e34b",
-          "why": "D-P fix (workstream B): plan-sheet annotation occupancy now seeded with the base raster's ink (walls hard, demolition hatch soft, door swings, outside-margin soft strips) + wide-displacement rung + lexicographic last rung; every A.01-A.04 label layout legitimately moved, all 24 sheets×packs re-inspected, SG8 0/12 sheets crossing (was 87), SG3 315 green"
+          "why": "D-P fix (workstream B): the plan sheet's annotation occupancy is now seeded with the base raster's ink before any label is placed (sheetSet.ts seedBaseInk/seedOutsideMargin; SG8 87->0 across the 12 plan sheets, D-Q total 37->26). THIS sheet: op counts IDENTICAL (74 T / 21 L / 7 R); op-level dump-diff shows exactly one label pair moved — FOCUS ROOM 1 + its 4.3 m² translated 44 pt left (T 734.4->690.4 / 755.0->711.0) off a seeded existing-wall band. Nothing else on the sheet moved."
         },
         {
           "sheet": 4,
@@ -45,7 +45,7 @@
           "rect": 81,
           "image": 2,
           "md5": "7215f367a6b9c522039f0b0817f90e86",
-          "why": "D-P fix (workstream B): plan-sheet annotation occupancy now seeded with the base raster's ink (walls hard, demolition hatch soft, door swings, outside-margin soft strips) + wide-displacement rung + lexicographic last rung; every A.01-A.04 label layout legitimately moved, all 24 sheets×packs re-inspected, SG8 0/12 sheets crossing (was 87), SG3 315 green"
+          "why": "D-P fix (workstream B): the plan sheet's annotation occupancy is now seeded with the base raster's ink before any label is placed (sheetSet.ts seedBaseInk/seedOutsideMargin; SG8 87->0 across the 12 plan sheets, D-Q total 37->26). THIS sheet: text 281->278 and line 909->897 — the three missing T ops are three '3.00 m' room-dim strings roomDims' PRE-EXISTING declutter guard now suppresses because their label boxes land on seeded wall bands (each dim carries its 4 tick/extension L ops: -12); every other delta is label/dim displacement plus leaders. SG8 seeded/A02 4->0. Leader set re-pinned: +CABIN 2, CABIN 3, FOCUS ROOM 1, PANTRY, WELLNESS ROOM; -MEETING ROOM 1/2/4 (drawing-set.manifest.json, same commit)."
         },
         {
           "sheet": 5,
@@ -54,7 +54,7 @@
           "rect": 468,
           "image": 2,
           "md5": "5d3843874e10ffe0e0e1f08c61e8331d",
-          "why": "D-P fix (workstream B): plan-sheet annotation occupancy now seeded with the base raster's ink (walls hard, demolition hatch soft, door swings, outside-margin soft strips) + wide-displacement rung + lexicographic last rung; every A.01-A.04 label layout legitimately moved, all 24 sheets×packs re-inspected, SG8 0/12 sheets crossing (was 87), SG3 315 green"
+          "why": "D-P fix (workstream B): the plan sheet's annotation occupancy is now seeded with the base raster's ink before any label is placed (sheetSet.ts seedBaseInk/seedOutsideMargin; SG8 87->0 across the 12 plan sheets, D-Q total 37->26). THIS sheet: content-level dump-diff EMPTY (no string appeared or vanished, 101 T unchanged); line 1096->1105, +9 leader L ops for labels the seeded wall ink displaced. SG8 seeded/A03 4->0 (FOCUS ROOM 1/2, PHONE BOOTH 3, WELLNESS ROOM were the wall hits)."
         },
         {
           "sheet": 6,
@@ -63,7 +63,7 @@
           "rect": 234,
           "image": 2,
           "md5": "4ac75bfb2827746194ffd73ebadde0bb",
-          "why": "D-P fix (workstream B): plan-sheet annotation occupancy now seeded with the base raster's ink (walls hard, demolition hatch soft, door swings, outside-margin soft strips) + wide-displacement rung + lexicographic last rung; every A.01-A.04 label layout legitimately moved, all 24 sheets×packs re-inspected, SG8 0/12 sheets crossing (was 87), SG3 315 green"
+          "why": "D-P fix (workstream B): the plan sheet's annotation occupancy is now seeded with the base raster's ink before any label is placed (sheetSet.ts seedBaseInk/seedOutsideMargin; SG8 87->0 across the 12 plan sheets, D-Q total 37->26). THIS sheet: content-level dump-diff EMPTY; line 1894->1902, +8 leader L ops. SG8 seeded/A04 6->0 (incl. the IT / SERVER, STORAGE and WELLNESS ROOM swing-arc hits)."
         },
         {
           "sheet": 7,
@@ -148,7 +148,7 @@
           "rect": 7,
           "image": 2,
           "md5": "2111f8035bfb0ab4a9bb428477bef821",
-          "why": "D-P fix (workstream B): plan-sheet annotation occupancy now seeded with the base raster's ink (walls hard, demolition hatch soft, door swings, outside-margin soft strips) + wide-displacement rung + lexicographic last rung; every A.01-A.04 label layout legitimately moved, all 24 sheets×packs re-inspected, SG8 0/12 sheets crossing (was 87), SG3 315 green"
+          "why": "D-P fix (workstream B): the plan sheet's annotation occupancy is now seeded with the base raster's ink before any label is placed (sheetSet.ts seedBaseInk/seedOutsideMargin; SG8 87->0 across the 12 plan sheets, D-Q total 37->26). THIS sheet: text/rect unchanged (86 T / 7 R), line 32->41 — leaders re-routed and added for the re-pinned dwg/A.01 leader set (11 new, 3 retired). SG8 dwg/A01 8->0 (PHONE BOOTH 1/3, PRINT POINT 1, OPEN WORKSPACE (3)/(4)/(12) and two areas came off the walls). D-Q on THIS sheet 2->3: OPEN WORKSPACE (4) + its 6.6 m² took the left-margin soft strip with a leader (pre-fix it printed 100% inside a wall) while OPEN WORKSPACE (10) + 6.8 m² moved back inside — D-Q total across packs still fell 37->26 and D-Q remains an open defect owned elsewhere."
         },
         {
           "sheet": 4,
@@ -157,7 +157,7 @@
           "rect": 84,
           "image": 2,
           "md5": "dbbb6c7a2c62ba94a5ce26828781e314",
-          "why": "D-P fix (workstream B): plan-sheet annotation occupancy now seeded with the base raster's ink (walls hard, demolition hatch soft, door swings, outside-margin soft strips) + wide-displacement rung + lexicographic last rung; every A.01-A.04 label layout legitimately moved, all 24 sheets×packs re-inspected, SG8 0/12 sheets crossing (was 87), SG3 315 green"
+          "why": "D-P fix (workstream B): the plan sheet's annotation occupancy is now seeded with the base raster's ink before any label is placed (sheetSet.ts seedBaseInk/seedOutsideMargin; SG8 87->0 across the 12 plan sheets, D-Q total 37->26). THIS sheet: text 296->294 — two '3.00 m' room-dim strings suppressed by the same pre-existing roomDims declutter guard reading the seeded occupancy (one of them the frozen corpus exhibit '3.00 m'@(272,130), 100% inside a wall); line 812->803. SG8 dwg/A02 20->0. Leader set re-pinned: +CABIN 1, CORE 3, OPEN WORKSPACE (7); -CORE 2, OPEN WORKSPACE (3)/(6)."
         },
         {
           "sheet": 5,
@@ -166,7 +166,7 @@
           "rect": 808,
           "image": 2,
           "md5": "175d5460ebd90d16f27dbf396b35ef20",
-          "why": "D-P fix (workstream B): plan-sheet annotation occupancy now seeded with the base raster's ink (walls hard, demolition hatch soft, door swings, outside-margin soft strips) + wide-displacement rung + lexicographic last rung; every A.01-A.04 label layout legitimately moved, all 24 sheets×packs re-inspected, SG8 0/12 sheets crossing (was 87), SG3 315 green"
+          "why": "D-P fix (workstream B): the plan sheet's annotation occupancy is now seeded with the base raster's ink before any label is placed (sheetSet.ts seedBaseInk/seedOutsideMargin; SG8 87->0 across the 12 plan sheets, D-Q total 37->26). THIS sheet: line 2040->2046; three room labels re-fit by servicesSheets' PRE-EXISTING roomLabelForms ladder because seeding shrank their clear pockets — PRINT POINT 1 7.5->5.25 pt, PRINT POINT 2 and MEETING ROOM 2 7.5->6.38 pt (flagged to the product owner); every other string identical in content. SG8 dwg/A03 11->0."
         },
         {
           "sheet": 6,
@@ -175,7 +175,7 @@
           "rect": 267,
           "image": 2,
           "md5": "8a90e5cf5ee55041981ceea98677ac00",
-          "why": "D-P fix (workstream B): plan-sheet annotation occupancy now seeded with the base raster's ink (walls hard, demolition hatch soft, door swings, outside-margin soft strips) + wide-displacement rung + lexicographic last rung; every A.01-A.04 label layout legitimately moved, all 24 sheets×packs re-inspected, SG8 0/12 sheets crossing (was 87), SG3 315 green"
+          "why": "D-P fix (workstream B): the plan sheet's annotation occupancy is now seeded with the base raster's ink before any label is placed (sheetSet.ts seedBaseInk/seedOutsideMargin; SG8 87->0 across the 12 plan sheets, D-Q total 37->26). THIS sheet: line 2389->2401 (+12 leader L ops); the same three-label roomLabelForms re-fit as sheet 5 (shared layout, furniture layer added). SG8 dwg/A04 12->0."
         },
         {
           "sheet": 7,
