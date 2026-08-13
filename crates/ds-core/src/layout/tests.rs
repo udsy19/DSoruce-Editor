@@ -5459,6 +5459,32 @@ fn gate_a2_bounded_width_on_captured_shapes() {
         "a constant-width L-corridor is not path-shaped — the discriminant rejects the \
          defining corridor shape"
     );
+
+    // THE COMPACTNESS-CONJUNCT CONTROL. The pre-existing compact guard
+    // (`square_pocket_is_unassigned_on_shape_alone`, 4.9 m square) is now
+    // rejected by BOTH conjuncts — its width exceeds the bound — so deleting
+    // the compactness term would leave that guard green and the conjunct
+    // unguarded (the exact 'part whose removal changes nothing' failure).
+    // A 2.5 m square sits UNDER the width bound: only compactness rejects it.
+    // A square is the maximally non-path shape at its scale — by construction,
+    // not by calibration.
+    let small_square: Vec<Point> = vec![
+        Point::new(0.0, 0.0),
+        Point::new(2.5, 0.0),
+        Point::new(2.5, 2.5),
+        Point::new(0.0, 2.5),
+    ];
+    let wsq = conform::max_inscribed_width(&small_square);
+    assert!(
+        wsq <= bound,
+        "fixture regression: the 2.5 m square measures {wsq:.2} m — it must pass the width \
+         bound so that only COMPACTNESS can reject it"
+    );
+    assert!(
+        !conform::path_shaped(&small_square),
+        "a 2.5 m square clearing is path-shaped — the compactness conjunct is not doing \
+         its job (was it removed?)"
+    );
 }
 
 /// GATE A2, end-to-end half — over the REAL generate populations: no residual
