@@ -44,6 +44,8 @@ import {
   paintPlanInk,
   placeNear,
   planInk,
+  seedBaseInk,
+  seedOutsideMargin,
   tryPlaceNear,
   zoneBoxOnSheet,
   type Leader,
@@ -559,6 +561,15 @@ function rcpSheet(state: DocState, no: string, opts: ServicesSheetsOpts): Servic
     // symbols, then type. See `circuitTags` / `drawRoomLabels`.
     const plate = { x: b.planX, y: b.planY, w: b.planW, h: b.planH }
     const occ: OccBox[] = []
+    // D-P: the muted base draws both wall classes (layer set above; no
+    // furniture, so no swings) — seed that ink as hard occupancy so no room
+    // name or circuit tag is placed across it.
+    seedBaseInk(occ, state, map, k * (b.planW / wPx), {
+      existingWalls: true,
+      generatedWalls: true,
+      doorSwings: false,
+    })
+    seedOutsideMargin(occ, state, map, plate)
     const ink = planInk()
 
     const layout = ceilingLayout(state)
@@ -644,6 +655,14 @@ function powerSheet(state: DocState, no: string, opts: ServicesSheetsOpts): Serv
     // Same contract as the RCP: one occupancy, then knockouts, symbols, type.
     const plate = { x: b.planX, y: b.planY, w: b.planW, h: b.planH }
     const occ: OccBox[] = []
+    // D-P: this base draws both wall classes AND furniture (so door swings ink
+    // too — layer set above); seed all of it as hard occupancy.
+    seedBaseInk(occ, state, map, k * (b.planW / wPx), {
+      existingWalls: true,
+      generatedWalls: true,
+      doorSwings: true,
+    })
+    seedOutsideMargin(occ, state, map, plate)
     const ink = planInk()
 
     const layout = powerLayout(state)

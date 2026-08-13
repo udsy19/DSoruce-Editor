@@ -584,6 +584,34 @@ function extendedCandidates(w: number, h: number): [number, number][] {
 }
 
 /**
+ * The THIRD candidate tier: a full ±3-column × ±6-row lattice, nearest first,
+ * minus the two tiers above. It exists for one measured shape of plate — the
+ * dwg A.02 corner where eight ~90 pt label blocks are anchored 9 pt apart, so
+ * the eight interleaved 33-candidate stacks exhaust each other — and it is
+ * reached only by callers that PRESERVE the name while they search: the room
+ * ladder's wide-displacement rung (a displaced label is leader-backed, so
+ * distance stays attributable; a wrapped or abbreviated one is no longer one
+ * recoverable glyph run — the D3 ordering, displacement before damage) and the
+ * always-yields last rung ({@link settleLabel}). Ordered by squared distance
+ * with a fixed tie-break, so layouts stay deterministic.
+ */
+function wideCandidates(w: number, h: number): [number, number][] {
+  const dv = h + 3
+  const dh = w * 0.55 + 6
+  const seen = new Set([...placeCandidates(w, h), ...extendedCandidates(w, h)].map(([x, y]) => `${x},${y}`))
+  const grid: [number, number][] = []
+  for (let i = -3; i <= 3; i++) {
+    for (let j = -6; j <= 6; j++) {
+      const c: [number, number] = [i * dh, j * dv]
+      if (seen.has(`${c[0]},${c[1]}`)) continue
+      grid.push(c)
+    }
+  }
+  grid.sort((a, b) => a[0] * a[0] + a[1] * a[1] - (b[0] * b[0] + b[1] * b[1]) || a[1] - b[1] || a[0] - b[0])
+  return grid
+}
+
+/**
  * A **strictly** clear centre for a `w×h` label near (cx,cy) — or `null` when
  * every candidate either collides or leaves `bounds`. Same candidate stack (then
  * the wider rings above), same `occ` bookkeeping as {@link placeNear}; the only
@@ -620,9 +648,13 @@ export function tryPlaceNear(
    * label, and `labelLeader` still ties it to the room it names.
    */
   allowSoft = false,
+  /** Also walk {@link wideCandidates} after the two shared tiers. Opt-in, for
+   *  the room ladder's wide-displacement rung only — see the tier's contract. */
+  wide = false,
 ): { x: number; y: number } | null {
   const blocks = (b: OccBox) => (allowSoft ? (b.weight ?? 1) >= 1 : true)
-  for (const [ox, oy] of [...placeCandidates(w, h), ...extendedCandidates(w, h)]) {
+  const cands = [...placeCandidates(w, h), ...extendedCandidates(w, h), ...(wide ? wideCandidates(w, h) : [])]
+  for (const [ox, oy] of cands) {
     const box: OccBox = { x: cx + ox - w / 2, y: cy + oy - h / 2, w, h }
     if (!boxInside(box, bounds)) continue
     if (!occ.some((b) => blocks(b) && boxesOverlap(box, b))) {
@@ -818,6 +850,273 @@ export function zoneBoxOnSheet(
   }
 }
 
+// ---------------------------------------------------------------------------
+// Base-raster ink as occupancy (defect D-P)
+// ---------------------------------------------------------------------------
+
+/** Pad (pt) around seeded base-raster ink: half the two-face wall stroke plus
+ *  an antialias allowance, so a box placed merely ABUTTING the seeded band is
+ *  still strictly clear of the drawn line-work. */
+const INK_SEED_PAD = 1
+
+/** Longest run (pt) one seeded wall box may cover. Occupancy is axis-aligned
+ *  boxes; a diagonal wall's single bbox would block a corridor of floor it
+ *  never inks (the dwg shell is diagonal), so the band is chopped into short
+ *  pieces that hug the segment. For axis-aligned walls the chop is exact. */
+const INK_SEED_STEP = 8
+
+/** Which classes of base-raster ink a plan sheet draws — mirrors the sheet's
+ *  own `renderPrintCanvas` layer set, which is what makes seeding layer-true:
+ *  a sheet must not step aside for ink it does not print. */
+export interface BaseInkLayers {
+  existingWalls: boolean
+  generatedWalls: boolean
+  /** Door swings ink only where the furniture layer draws (`drawSymbol`). */
+  doorSwings: boolean
+}
+
+/**
+ * Seed a plan sheet's annotation occupancy with the BASE RASTER'S INK — walls
+ * at their drawn thickness and door-swing envelopes — exactly as
+ * `planGraphic.ts` seeds the workbook plan's occupancy with furniture (E7's
+ * landing fix). The drawing set never received that fix, and its plan sheets
+ * printed 107 room-name/area/dimension strings straight across wall poché and
+ * swing arcs (defect D-P, reports/SHEETS-FINAL.md §7): every placer consulted
+ * an occupancy that started EMPTY, so `tryPlaceNear` reported "clear" for a
+ * spot on a wall.
+ *
+ * The boxes are HARD occupancy (default weight 1): the strict and soft label
+ * rungs both refuse them, and `placeNear`'s weighted fallback prefers a desk
+ * (FURNITURE_WEIGHT) to a wall by 50:1, so even a label with nowhere clear
+ * lands on furniture before it lands on line-work. Walls are chopped along
+ * their run (INK_SEED_STEP) so only the band itself is reserved; a door's
+ * swing is reserved as its quarter-circle envelope (leaf + arc bbox,
+ * mirror-aware) — a label inside a door clearance is bad drafting even before
+ * it crosses the arc.
+ *
+ * `demolished` covers A.01's red cross-hatch: those segments are not in
+ * `state.walls` (they are the imported originals the fit removed) but they ARE
+ * ink on the demolition sheet.
+ *
+ * Returns the boxes it pushed, so a caller can EXEMPT a family from them: the
+ * opening tags live ON their openings by design (SG2 2.5 asserts exactly that
+ * attribution), so the construction sheet strips the seeded boxes back out of
+ * the occupancy it hands the tag pass.
+ */
+/**
+ * Soft occupancy over the plate margin OUTSIDE the building's wall bbox — the
+ * 48 px fit pad `renderPrintCanvas` leaves around the plan.
+ *
+ * WHY, and why soft. Seeding the walls (above) gives a displaced label a new
+ * cheapest escape: the empty margin beyond the shell, which no occupancy has
+ * ever described. Measured on the first seeded render, the outside-footprint
+ * string count (defect D-Q — NOT fixed here, a different workstream owns it)
+ * rose from 37 to 77: the D-P fix was feeding the D-Q defect. These four
+ * strips make the margin cost exactly what a desk costs (FURNITURE_WEIGHT):
+ * the strict rung refuses it while any clear in-building spot remains, the
+ * soft rung and the weighted fallback may still take it — so a label that
+ * genuinely has nowhere inside still lands outside with its leader, and D-Q
+ * remains an open, reachable defect rather than being silently fixed or
+ * silently worsened by this one.
+ *
+ * The bbox is the WALL bbox (the same footprint D-Q is measured against);
+ * on an irregular shell the bbox under-covers the diagonal corners, which is
+ * consistent with the measurement's own footprint definition.
+ *
+ * Returns the strips so A.02 can exempt its opening tags (a shell opening's
+ * tag box legitimately overlaps the margin).
+ */
+export function seedOutsideMargin(
+  occ: OccBox[],
+  state: DocState,
+  map: (x: number, y: number) => { x: number; y: number },
+  plate: OccBox,
+): OccBox[] {
+  let minX = Infinity
+  let minY = Infinity
+  let maxX = -Infinity
+  let maxY = -Infinity
+  for (const w of state.walls) {
+    for (const p of [w.a, w.b]) {
+      minX = Math.min(minX, p.x)
+      minY = Math.min(minY, p.y)
+      maxX = Math.max(maxX, p.x)
+      maxY = Math.max(maxY, p.y)
+    }
+  }
+  if (minX === Infinity) return []
+  const a = map(minX, minY)
+  const b = map(maxX, maxY)
+  const fp = {
+    x: Math.min(a.x, b.x),
+    y: Math.min(a.y, b.y),
+    w: Math.abs(b.x - a.x),
+    h: Math.abs(b.y - a.y),
+  }
+  const seeded: OccBox[] = []
+  const strip = (x: number, y: number, w: number, h: number) => {
+    if (w <= 0 || h <= 0) return
+    const box: OccBox = { x, y, w, h, weight: FURNITURE_WEIGHT }
+    seeded.push(box)
+    occ.push(box)
+  }
+  strip(plate.x, plate.y, plate.w, fp.y - plate.y) // above the building
+  strip(plate.x, fp.y + fp.h, plate.w, plate.y + plate.h - (fp.y + fp.h)) // below
+  strip(plate.x, fp.y, fp.x - plate.x, fp.h) // left of it
+  strip(fp.x + fp.w, fp.y, plate.x + plate.w - (fp.x + fp.w), fp.h) // right
+  return seeded
+}
+
+export function seedBaseInk(
+  occ: OccBox[],
+  state: DocState,
+  map: (x: number, y: number) => { x: number; y: number },
+  ptPerM: number,
+  layers: BaseInkLayers,
+  demolished?: WallSeg[],
+): OccBox[] {
+  const seeded: OccBox[] = []
+  const push = (box: OccBox) => {
+    seeded.push(box)
+    occ.push(box)
+  }
+  const band = (a: { x: number; y: number }, b: { x: number; y: number }, halfT: number, weight?: number) => {
+    const len = Math.hypot(b.x - a.x, b.y - a.y)
+    const pieces = Math.max(1, Math.ceil(len / INK_SEED_STEP))
+    const r = halfT + INK_SEED_PAD
+    for (let i = 0; i < pieces; i++) {
+      const p = { x: a.x + ((b.x - a.x) * i) / pieces, y: a.y + ((b.y - a.y) * i) / pieces }
+      const q = { x: a.x + ((b.x - a.x) * (i + 1)) / pieces, y: a.y + ((b.y - a.y) * (i + 1)) / pieces }
+      push({
+        x: Math.min(p.x, q.x) - r,
+        y: Math.min(p.y, q.y) - r,
+        w: Math.abs(q.x - p.x) + 2 * r,
+        h: Math.abs(q.y - p.y) + 2 * r,
+        ...(weight !== undefined ? { weight } : {}),
+      })
+    }
+  }
+  for (const w of state.walls) {
+    if (w.generated === true ? !layers.generatedWalls : !layers.existingWalls) continue
+    band(map(w.a.x, w.a.y), map(w.b.x, w.b.y), ((w.thickness > 0 ? w.thickness : 0.1) * ptPerM) / 2)
+  }
+  // Demolition hatch is SOFT: a light red lattice, not opaque poché — a name
+  // across it still reads, exactly the furniture tier. On the dwg pack the
+  // hatch blankets the interior; making it hard left several full-size names
+  // NO legal spot, and the ladder shrank one below the size the drawing-set
+  // fixture (rightly) pins for room labels. Walls stay hard: they are the ink
+  // D-P counts and the ink a name cannot cross legibly.
+  for (const d of demolished ?? []) {
+    band(map(d.ax, d.ay), map(d.bx, d.by), ((d.thickness > 0 ? d.thickness : 0.1) * ptPerM) / 2, FURNITURE_WEIGHT)
+  }
+  if (layers.doorSwings) {
+    for (const c of state.components) {
+      if (c.category !== 'Door') continue
+      // The swing's local envelope (symbols.ts `door()`): jambs span x ±w/2,
+      // slab y ±h/2, leaf + quarter arc reach y = −w (flipped when mirrored,
+      // matching `drawSymbol`'s scale(1,−1)).
+      const yLo = c.mirror ? -c.h / 2 : -c.w
+      const yHi = c.mirror ? c.w : c.h / 2
+      const cos = Math.cos(c.rotation)
+      const sin = Math.sin(c.rotation)
+      let minX = Infinity
+      let minY = Infinity
+      let maxX = -Infinity
+      let maxY = -Infinity
+      for (const [lx, ly] of [
+        [-c.w / 2, yLo],
+        [c.w / 2, yLo],
+        [c.w / 2, yHi],
+        [-c.w / 2, yHi],
+      ]) {
+        const p = map(c.x + lx * cos - ly * sin, c.y + lx * sin + ly * cos)
+        minX = Math.min(minX, p.x)
+        minY = Math.min(minY, p.y)
+        maxX = Math.max(maxX, p.x)
+        maxY = Math.max(maxY, p.y)
+      }
+      push({
+        x: minX - INK_SEED_PAD,
+        y: minY - INK_SEED_PAD,
+        w: maxX - minX + 2 * INK_SEED_PAD,
+        h: maxY - minY + 2 * INK_SEED_PAD,
+      })
+    }
+  }
+  return seeded
+}
+
+/**
+ * The drawing set's OWN last rung: the least-damaging centre for a label that
+ * has no clear spot anywhere (every strict and soft candidate of every form
+ * collided). `placeNear` cannot express this choice: its single weighted-area
+ * cost prices a 2 pt wall sliver below everything else, so on the first seeded
+ * render it parked an area string across a wall band — the exact defect being
+ * fixed (the one D-P survivor), and widening its rings just moved the crossing
+ * to a different wall. What a cornered label owes the reader is an ORDER, not
+ * a scalar (`OccBox.weight`'s own doctrine, taken one step further):
+ *
+ *   1. another label's box    — NEVER if avoidable: type-on-type is
+ *                               unrecoverable (SG3);
+ *   2. base-raster ink        — next: type on a wall or swing is the drafting
+ *                               defect SG8 gates (D-P);
+ *   3. soft boxes             — last: furniture and the outside margin,
+ *                               untidy but readable.
+ *
+ * So candidates (the shared stack + the strict placer's wider rings — this
+ * rung is always leader-backed, so distance stays attributable) are compared
+ * lexicographically on (label-overlap, ink-overlap, soft-overlap). Ties keep
+ * candidate order; deterministic. Local to the drawing set on purpose: the
+ * plan graphic shares `placeNear` and its layout is gated byte-for-byte (G4).
+ */
+function settleLabel(
+  occ: OccBox[],
+  ink: ReadonlySet<OccBox>,
+  cx: number,
+  cy: number,
+  w: number,
+  h: number,
+  bounds: OccBox | null | undefined,
+): { x: number; y: number } {
+  const cands: [number, number][] = [
+    ...placeCandidates(w, h),
+    ...extendedCandidates(w, h),
+    ...wideCandidates(w, h),
+  ]
+  let best: [number, number] | null = null
+  let bestKey: [number, number, number] | null = null
+  for (const [ox, oy] of cands) {
+    const box: OccBox = { x: cx + ox - w / 2, y: cy + oy - h / 2, w, h }
+    if (!boxInside(box, bounds)) continue
+    let onLabel = 0
+    let onInk = 0
+    let onSoft = 0
+    for (const b of occ) {
+      const ow = Math.min(box.x + box.w, b.x + b.w) - Math.max(box.x, b.x)
+      const oh = Math.min(box.y + box.h, b.y + b.h) - Math.max(box.y, b.y)
+      if (ow <= 0 || oh <= 0) continue
+      const a = ow * oh
+      if ((b.weight ?? 1) < 1) onSoft += a
+      else if (ink.has(b)) onInk += a
+      else onLabel += a
+    }
+    const key: [number, number, number] = [onLabel, onInk, onSoft]
+    if (
+      !bestKey ||
+      key[0] < bestKey[0] ||
+      (key[0] === bestKey[0] && (key[1] < bestKey[1] || (key[1] === bestKey[1] && key[2] < bestKey[2])))
+    ) {
+      bestKey = key
+      best = [ox, oy]
+    }
+  }
+  // No candidate fits the region at all (it never happens on an A3 plate):
+  // fall through to the shared always-yields placer, which clamps.
+  if (!best) return placeNear(occ, cx, cy, w, h, bounds)
+  occ.push({ x: cx + best[0] - w / 2, y: cy + best[1] - h / 2, w, h })
+  return { x: cx + best[0], y: cy + best[1] }
+}
+
 /** Draw a room label + area at each non-circulation zone center, de-collided —
  *  with a leader back to the room whenever de-collision pushed the label off it
  *  (see `labelLeader`). The leader is drawn first, so the label always reads on
@@ -841,6 +1140,11 @@ export function roomLabels(
   bounds: OccBox | null | undefined,
   ink: InkSink,
   zoneAreas: ZoneAreas,
+  /** The seeded base-raster boxes inside `occ` (see {@link seedBaseInk}) —
+   *  what the last rung must rank BELOW another label but ABOVE soft boxes
+   *  ({@link settleLabel}). Optional: a caller with no seeded ink (none left in
+   *  the tree, but the signature predates the seeding) gets the old rung. */
+  baseInk?: ReadonlySet<OccBox>,
 ): void {
   // ONE naming rule for the whole deliverable: the plan, the services sheets,
   // the finish schedule and the QTO workbook all print what `roomDisplayNames`
@@ -884,20 +1188,33 @@ export function roomLabels(
     // names — COLLAB, STORAGE, PRINT POINT 1, CABIN 3 — off their full form and
     // onto an abbreviation, drawn 0x. A name over a desk can be read; a name
     // that was never written cannot.
-    const place = (f: (typeof forms)[number], soft: boolean) => {
+    //
+    // Rungs 2b/2c (wide displacement, full name) sit between 2 and 3 for the
+    // same reason 2 sits above 3: seeding the base raster's ink (D-P) made the
+    // near stacks genuinely exhaustible — on dwg A.02 "PRINT POINT 2" fell
+    // through to the WRAP form, which takes the room's name off the page as a
+    // single glyph run (SG3 rendered-0×, the D3 family). A displaced full name
+    // carries a leader; a wrapped one is damaged. Displacement before damage.
+    const place = (f: (typeof forms)[number], soft: boolean, wideSweep = false) => {
       const b = { w: Math.max(f.width, areaW) + 4, h: 26 + (f.lines.length - 1) * 11 }
-      const at = tryPlaceNear(occ, pt.x, pt.y + 4, b.w, b.h, bounds, soft)
+      const at = tryPlaceNear(occ, pt.x, pt.y + 4, b.w, b.h, bounds, soft, wideSweep)
       if (at) {
         form = f
         box = b
       }
       return at
     }
-    pos = place(forms[0], false) ?? place(forms[0], true)
+    pos =
+      place(forms[0], false) ??
+      place(forms[0], true) ??
+      place(forms[0], false, true) ??
+      place(forms[0], true, true)
     for (let i = 1; i < forms.length && !pos; i++) pos = place(forms[i], false)
     if (!pos) {
       box = { w: Math.max(form.width, areaW) + 4, h: 26 + (form.lines.length - 1) * 11 }
-      pos = placeNear(occ, pt.x, pt.y + 4, box.w, box.h, bounds)
+      pos = baseInk
+        ? settleLabel(occ, baseInk, pt.x, pt.y + 4, box.w, box.h, bounds)
+        : placeNear(occ, pt.x, pt.y + 4, box.w, box.h, bounds)
     }
     const lead = labelLeader(pt.x, pt.y + 4, pos, box.w, box.h, zoneBoxOnSheet(z.shape, map))
     if (lead) p.line(lead.x1, lead.y1, lead.x2, lead.y2, { gray: 0.5, width: 0.4 })
@@ -941,8 +1258,19 @@ function demolitionSheet(state: DocState, opts: DrawingSetOpts, no: string): Pag
   const map = worldMapper(b, wPx, hPx, k, ox, oy)
 
   p.text(MARGIN + 6, 42, 15, 'DEMOLITION PLAN', { bold: true, gray: 0.1 })
-  // A.01 carries no knockout mask of any kind, so its names paint in place.
-  roomLabels(p, state, map, [], plateBox(b), paintNow, opts.zoneAreas)
+  // A.01 carries no knockout mask of any kind, so its names paint in place —
+  // but its occupancy is NOT empty: the sheet's own ink (retained existing
+  // walls + the red demolition cross-hatch; no furniture, no new partitions —
+  // the layer set above) is seeded first, so a room name steps aside for the
+  // shell instead of printing across it (D-P).
+  const occ01: OccBox[] = []
+  const ink01 = new Set(seedBaseInk(occ01, state, map, k * (b.planW / wPx), {
+    existingWalls: true,
+    generatedWalls: false,
+    doorSwings: false,
+  }, demolished))
+  seedOutsideMargin(occ01, state, map, plateBox(b))
+  roomLabels(p, state, map, occ01, plateBox(b), paintNow, opts.zoneAreas, ink01)
   if (demolished.length === 0) {
     p.text(b.planX + 12, b.planY + b.planH - 14, 9, 'NO DEMOLITION (NEW BUILD)', { gray: 0.4, bold: true })
   }
@@ -1115,15 +1443,34 @@ function constructionSheet(state: DocState, opts: DrawingSetOpts, no: string): C
     if (c.category === 'Door') continue
     occ.push({ ...componentBox(c, map, k), weight: FURNITURE_WEIGHT })
   }
+  // D-P, the other half of the same asymmetry: the base raster's WALLS and
+  // DOOR SWINGS join the occupancy too, as hard boxes, so no annotation
+  // string is placed across the line-work it cannot erase (this sheet draws
+  // both wall classes and furniture — the layer set above).
+  const baseInk = seedBaseInk(occ, state, map, k * (b.planW / wPx), {
+    existingWalls: true,
+    generatedWalls: true,
+    doorSwings: true,
+  })
   const plate = plateBox(b)
+  baseInk.push(...seedOutsideMargin(occ, state, map, plate))
+  // ONE identity set for the seeded boxes, shared by the label rung (rank ink
+  // below labels — settleLabel) and the tag pass (exempt ink entirely).
+  const inkBoxes = new Set(baseInk)
   const inkPasses = planInk()
   const ink: InkSink = (d) => inkPasses.type.push(d)
 
   dimStrings(p, state, map, ink, occ)
   roomDims(p, state, map, occ, ink)
-  roomLabels(p, state, map, occ, plate, ink, opts.zoneAreas)
+  roomLabels(p, state, map, occ, plate, ink, opts.zoneAreas, inkBoxes)
 
   const openings = openingSchedule(state)
+  // An opening tag lives ON its opening — a wall — by design (SG2 2.5 asserts
+  // exactly that attribution), so the seeded base ink is not an obstacle for
+  // THIS family: strip it back out, keeping every annotation reservation the
+  // passes above made. Tags are the last family placed, so nothing after this
+  // reads the un-stripped list.
+  const occTags = occ.filter((bx) => !inkBoxes.has(bx))
   for (const o of openings) {
     const pt = map(o.x, o.y)
     // STRICT FIRST. An opening tag is plan content, so it is confined to the
@@ -1134,17 +1481,17 @@ function constructionSheet(state: DocState, opts: DrawingSetOpts, no: string): C
     // Displacing a tag over furniture with a leader back to the opening is
     // correct drafting; a tag over a room name is not.
     const pos =
-      tryPlaceNear(occ, pt.x, pt.y, PLAN_TAG_BOX, PLAN_TAG_BOX, plate) ??
+      tryPlaceNear(occTags, pt.x, pt.y, PLAN_TAG_BOX, PLAN_TAG_BOX, plate) ??
       // Still nothing: ask again for the knockout's TRUE extent, with no slack.
       // A second, tighter lattice (the candidate steps are derived from the box)
       // is a real second chance, and a tag that merely touches its neighbour
       // still erases nothing.
-      tryPlaceNear(occ, pt.x, pt.y, PLAN_TAG_MASK, PLAN_TAG_MASK, plate) ??
+      tryPlaceNear(occTags, pt.x, pt.y, PLAN_TAG_MASK, PLAN_TAG_MASK, plate) ??
       // Nowhere clear within reach: take the least-overlapping in-plate spot
       // rather than dropping the tag. Nothing is erased even here (the mask is
       // painted before every glyph on this sheet), and the leader keeps it
       // attributable.
-      placeNear(occ, pt.x, pt.y, PLAN_TAG_BOX, PLAN_TAG_BOX, plate)
+      placeNear(occTags, pt.x, pt.y, PLAN_TAG_BOX, PLAN_TAG_BOX, plate)
     if (Math.hypot(pos.x - pt.x, pos.y - pt.y) > 14) {
       p.line(pt.x, pt.y, pos.x, pos.y, { gray: 0.5, width: 0.4 })
     }

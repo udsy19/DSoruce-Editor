@@ -319,6 +319,26 @@ async function main() {
           ? (state.components ?? []).filter((k) => k.category === 'Door').map((k) => doorSwing(k, map))
           : []
 
+        // PROJECTION SANITY (SG2 2.5's check, per sheet): a broken projection
+        // would land every wall away from every string and this gate would go
+        // green VACUOUSLY — the "check whose subject moved out from under it"
+        // failure. Every mapped wall must lie inside the plate.
+        {
+          const all = state.walls.map((w) => [map(w.a.x, w.a.y), map(w.b.x, w.b.y)])
+          const out = all.filter(
+            ([a, b]) =>
+              Math.min(a.x, b.x) < g.plate.pt.x - 0.5 ||
+              Math.max(a.x, b.x) > g.plate.pt.x + g.plate.pt.w + 0.5 ||
+              Math.min(a.y, b.y) < g.plate.pt.y - 0.5 ||
+              Math.max(a.y, b.y) > g.plate.pt.y + g.plate.pt.h + 0.5,
+          )
+          if (out.length > 0) {
+            throw new GateError(
+              `${pack}/${sheet.file}: ${out.length} of ${all.length} core-state walls project outside the plate — ` +
+                "the gate's map is wrong, and every count below it would be measuring nothing",
+            )
+          }
+        }
         const bases = roomBaseNames(state)
         const strings = chainStrings(pageWords(pack, sheet.page))
         const candidates = strings.filter((s) => isCandidate(s.text, bases))
