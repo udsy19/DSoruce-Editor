@@ -957,6 +957,162 @@ pub(crate) fn compactness(pts: &[Point], eps: f64) -> f64 {
     4.0 * std::f64::consts::PI * area / (per * per)
 }
 
+/// Widest clear spot a corridor-shaped pocket may contain: **two primary
+/// spines side by side, `2 × SPINE_W` = 3.0 m.**
+///
+/// The bounded-local-width half of the shape test (see [`path_shaped`]): a
+/// corridor is thin EVERYWHERE — a shape you pass *along* — so a pocket whose
+/// footprint holds a clear disc wider than this is floor that *contains* a
+/// path, not floor that *is* one. Anchored to [`super::regions::SPINE_W`]
+/// (NBC 2016's 1.5 m corridor minimum, the primary corridor this generator
+/// actually draws), factor 2 being the point where the clearing could host a
+/// second full spine beside the first.
+///
+/// Registered BEFORE implementation in
+/// `reports/editor-completion/A-preregistration.md`, including the
+/// re-registration from 2 × `MIN_CIRC_CLEAR_M` (2.4 m) after the committed
+/// anti-overreach fixture (a uniform 2.5 m strip that IS circulation) was
+/// found within one grid cell of that bound. Margins on every measured
+/// population: the widest surviving corridor shape measures 2.5 m (0.5 m
+/// clear), the narrowest rejected clearing 3.25 m (0.25 m clear).
+pub(crate) fn max_corridor_width() -> f64 {
+    2.0 * super::regions::SPINE_W
+}
+
+/// Fixed cell (m) for [`max_inscribed_width`]. Deliberately NOT `grid.cell`:
+/// `CirculationConfig::max_cells` coarsens the circulation grid on large
+/// plates, and a shape verdict that moves with plate size would be the
+/// tracing-resolution failure the RDP note in
+/// `.claude/rules/gate-independence.md` records. One ruler for every plate —
+/// the config's own nominal 0.15 m resolution.
+const SHAPE_CELL: f64 = 0.15;
+
+/// Maximum inscribed disc **diameter** (m) of the polygon's own footprint —
+/// the pocket's widest clear spot, measured to the pocket's OWN boundary.
+///
+/// This is the right instrument for *shape* and the wrong one for *clearance*,
+/// and the distinction is on record ("a scalar is not geometry", instance 1):
+/// a person's clearance extends past the pocket boundary into neighbouring
+/// walkable floor, so the `wide` conjunct measures the whole walkable mask;
+/// whether the pocket ITSELF is path-shaped is a property of its footprint,
+/// so this truncates at the boundary on purpose.
+///
+/// Scanline rasterisation (the same half-open crossing rule as
+/// `classify_poly`, so a point on an edge falls the same side) + a two-pass
+/// 8-neighbour chamfer distance transform, `O(cells)` over the pocket bbox.
+pub(crate) fn max_inscribed_width(pts: &[Point]) -> f64 {
+    let cell = SHAPE_CELL;
+    let (mut minx, mut miny, mut maxx, mut maxy) =
+        (f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY);
+    for p in pts {
+        minx = minx.min(p.x);
+        miny = miny.min(p.y);
+        maxx = maxx.max(p.x);
+        maxy = maxy.max(p.y);
+    }
+    if !(maxx > minx && maxy > miny) {
+        return 0.0;
+    }
+    // One ring of outside cells on every side so the transform sees the
+    // boundary even when the polygon meets its bbox edge.
+    let cols = ((maxx - minx) / cell).ceil() as usize + 3;
+    let rows = ((maxy - miny) / cell).ceil() as usize + 3;
+    let idx = |c: usize, r: usize| r * cols + c;
+    const OUT: f64 = 0.0;
+    const IN: f64 = f64::INFINITY;
+    let mut dt = vec![OUT; cols * rows];
+    let mut xs: Vec<f64> = Vec::with_capacity(pts.len());
+    for r in 0..rows {
+        let py = miny + (r as f64 - 0.5) * cell;
+        xs.clear();
+        let mut j = pts.len() - 1;
+        for i in 0..pts.len() {
+            let (pi, pj) = (pts[i], pts[j]);
+            if (pi.y > py) != (pj.y > py) {
+                xs.push(pi.x + (py - pi.y) * (pj.x - pi.x) / (pj.y - pi.y));
+            }
+            j = i;
+        }
+        xs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        for c in 0..cols {
+            let px = minx + (c as f64 - 0.5) * cell;
+            if xs.iter().filter(|&&x| px < x).count() % 2 == 1 {
+                dt[idx(c, r)] = IN;
+            }
+        }
+    }
+    // Two-pass chamfer (1, √2): ≤ ~8% over the Euclidean distance, which the
+    // margin analysis in the pre-registration absorbs.
+    let (a, b) = (1.0f64, std::f64::consts::SQRT_2);
+    for r in 0..rows {
+        for c in 0..cols {
+            if dt[idx(c, r)] == OUT {
+                continue;
+            }
+            let mut v = dt[idx(c, r)];
+            if r > 0 {
+                v = v.min(dt[idx(c, r - 1)] + a);
+                if c > 0 {
+                    v = v.min(dt[idx(c - 1, r - 1)] + b);
+                }
+                if c + 1 < cols {
+                    v = v.min(dt[idx(c + 1, r - 1)] + b);
+                }
+            }
+            if c > 0 {
+                v = v.min(dt[idx(c - 1, r)] + a);
+            }
+            dt[idx(c, r)] = v;
+        }
+    }
+    let mut best = 0.0f64;
+    for r in (0..rows).rev() {
+        for c in (0..cols).rev() {
+            if dt[idx(c, r)] == OUT {
+                continue;
+            }
+            let mut v = dt[idx(c, r)];
+            if r + 1 < rows {
+                v = v.min(dt[idx(c, r + 1)] + a);
+                if c + 1 < cols {
+                    v = v.min(dt[idx(c + 1, r + 1)] + b);
+                }
+                if c > 0 {
+                    v = v.min(dt[idx(c - 1, r + 1)] + b);
+                }
+            }
+            if c + 1 < cols {
+                v = v.min(dt[idx(c + 1, r)] + a);
+            }
+            dt[idx(c, r)] = v;
+            if v.is_finite() && v > best {
+                best = v;
+            }
+        }
+    }
+    2.0 * best * cell
+}
+
+/// The SHAPE conjunct of the residual classifier: is this pocket's footprint a
+/// path? Two independent properties, each with one job:
+///
+///   * **elongated** — [`compactness`] on the RDP-simplified ring below the
+///     3:1-aspect threshold. Rejects compact clearings (the 3.8 × 3.1 m
+///     near-square that width + connectivity waved through).
+///   * **thin everywhere** — [`max_inscribed_width`] at most
+///     [`max_corridor_width`]. Rejects elongated shapes that swallow
+///     room-scale clearings: the recorded misfire (zone 833, an 80 m²
+///     wall-following ribbon around an empty wing, compactness 0.085) was
+///     *elongated* — low compactness is exactly what a ribbon and a corridor
+///     share — but held a 4.5 m clear pocket, which no corridor does.
+///
+/// Extracted as one predicate so the gate tests exercise the SAME decision the
+/// classifier ships, not a re-derivation.
+pub(crate) fn path_shaped(pts: &[Point]) -> bool {
+    compactness(pts, SNAP_TOL) < corridor_compactness_max()
+        && max_inscribed_width(pts) <= max_corridor_width()
+}
+
 /// Decides, for each pocket of leftover floor, whether it is **circulation** or
 /// merely **unassigned**.
 ///
@@ -1175,10 +1331,10 @@ impl WalkClassifier {
         }
         let wide_frac = wide_n as f64 / inside as f64;
         let connected = !self.has_network || reach_n > 0;
-        // THIRD CONJUNCT — shape. Measured on the RDP-simplified boundary at the
-        // same tolerance the boundary was snapped with, so a pocket is judged on
-        // its shape and not on how finely it happened to be traced.
-        let path_shaped = compactness(pts, SNAP_TOL) < corridor_compactness_max();
+        // THIRD CONJUNCT — shape ([`path_shaped`]): elongated (compactness on
+        // the RDP-simplified boundary, at the same tolerance the boundary was
+        // snapped with) AND thin everywhere (bounded local width).
+        let path_shaped = path_shaped(pts);
         if wide_frac >= CIRC_WIDE_FRACTION && connected && path_shaped {
             ZoneType::Circulation
         } else {

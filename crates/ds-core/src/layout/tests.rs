@@ -3935,7 +3935,21 @@ fn golden_fingerprint(doc: &Document, program: &Program) -> String {
 /// (`support_spaces = false`), and an EXPLICIT `rooms` program, over a plain
 /// rectangle, the L plate and the user's real multi-wing plate.
 ///
-/// PROVENANCE. Last re-captured for **the ONE OBSTACLE MODEL** (`FieldGrid`,
+/// PROVENANCE. Last re-captured for **BOUNDED LOCAL WIDTH** (Workstream A,
+/// `reports/editor-completion/A-preregistration.md`): the residual classifier's
+/// shape conjunct gained "thin everywhere" (`max_inscribed_width` ≤
+/// `2 × SPINE_W`), so an elongated residual that swallows a room-scale
+/// clearing is Unassigned, not Circulation. **Five cases moved — the five
+/// real_plate cases, one per program family — and in all five every count is
+/// identical** (c222/c222/c222/c192/c209, walls, zones, desks88 unchanged);
+/// only `total` moved (the wasted-floor penalty sees the flipped types) plus
+/// the digest (the `Z` lines carry `zone_type`/label). The flip is zone 311 —
+/// 63.5 m² of leftover floor with a 3.25 m clearing, typed Circulation since
+/// the classifier existed, predicted and recorded in the pre-registration
+/// BEFORE the conjunct was implemented. A change of TYPE with no change of
+/// GEOMETRY, which is exactly what the discriminant was scoped to do.
+///
+/// Before that, **the ONE OBSTACLE MODEL** (`FieldGrid`,
 /// `layout/packing.rs`) — ADVERSARY H1, and the blocker on the W1 facade band.
 /// **All ten cases moved, and every count is identical in all ten:**
 ///
@@ -4074,12 +4088,12 @@ fn golden_generate_output_is_frozen() {
 "default/rect20x14/seed1 = c72 w52 z11 desks21 total87876523 #1a0244c3d88eeb3c",
             "default/rect20x14/seed2 = c80 w52 z11 desks25 total89274625 #1fca633eeb04543f",
             "default/rect20x14/seed3 = c70 w52 z11 desks20 total86967629 #52556c4029d00bfc",
-            "default/real_plate/seed1 = c222 w155 z34 desks88 total90829644 #51346e5dd9e67717",
-            "default/real_plate/seed2 = c222 w155 z34 desks88 total90374158 #8e014e5bf944ae6a",
-            "default/real_plate/seed3 = c222 w155 z34 desks88 total90789464 #dab020c8941dea25",
+            "default/real_plate/seed1 = c222 w155 z34 desks88 total90076139 #5cee5090a13e86dc",
+            "default/real_plate/seed2 = c222 w155 z34 desks88 total89620654 #5b0bf78347437043",
+            "default/real_plate/seed3 = c222 w155 z34 desks88 total90035959 #0a617d116683318a",
             "no_support/rect20x14/seed1 = c68 w22 z4 desks26 total92565832 #991c040294e31e67",
-            "no_support/real_plate/seed2 = c192 w101 z38 desks88 total94498462 #aa40cc22254958f2",
-            "explicit_rooms/real_plate/seed1 = c209 w125 z26 desks88 total88552582 #2e9ede920e2f8d79",
+            "no_support/real_plate/seed2 = c192 w101 z38 desks88 total93369582 #249089d09f47c486",
+            "explicit_rooms/real_plate/seed1 = c209 w125 z26 desks88 total87799077 #01bdbe1ee311bdd6",
             "explicit_rooms/l_plate/seed3 = c63 w33 z10 desks24 total87841010 #2c4c9d19abba5d0b",
     ];
     assert_eq!(cases.len(), EXPECTED.len(), "case list and expectations must line up");
@@ -5317,4 +5331,274 @@ fn an_empty_plan_is_infeasible_and_never_outscores_a_real_one() {
         "a populated plan ({}) must outscore an empty one ({})",
         real_score.total,
         empty_score.total    );
+}
+
+
+// ---------------------------------------------------------------------------
+// Workstream A gates (reports/editor-completion/A-preregistration.md).
+//
+// The captured browser-plate shapes come from the committed three-surface dump
+// — the artifact the pre-registration's verdict table was computed from — so
+// the gate and the registration share one source. A missing id is a FAILURE,
+// never a skip (gate-independence.md: a missing input hands the producer a
+// veto over its own test).
+
+/// The committed three-surface dump (scripts/zone-dump.mjs, commit f10f9a8).
+const ZONE_DUMP_JSON: &str =
+    include_str!("../../../../reports/editor-completion/zone-dump.three-surface.json");
+
+/// Polygon of zone `id` from the dump's DOCUMENT surface, in meters.
+fn dump_zone_poly(id: u64) -> Vec<Point> {
+    let v: serde_json::Value = serde_json::from_str(ZONE_DUMP_JSON).expect("dump parses");
+    let zones = v["surfaces"]["document"].as_array().expect("document surface is an array");
+    let z = zones
+        .iter()
+        .find(|z| z["id"].as_u64() == Some(id))
+        .unwrap_or_else(|| panic!("zone {id} missing from the committed dump — the gate's input moved; re-capture and re-register, do not skip"));
+    let shape = &z["doc_shape"];
+    if let Some(pts) = shape["pts"].as_array() {
+        return pts
+            .iter()
+            .map(|p| Point::new(p[0].as_f64().unwrap(), p[1].as_f64().unwrap()))
+            .collect();
+    }
+    let (x, y, w, h) = (
+        shape["x"].as_f64().expect("rect x"),
+        shape["y"].as_f64().expect("rect y"),
+        shape["w"].as_f64().expect("rect w"),
+        shape["h"].as_f64().expect("rect h"),
+    );
+    vec![
+        Point::new(x - w / 2.0, y - h / 2.0),
+        Point::new(x + w / 2.0, y - h / 2.0),
+        Point::new(x + w / 2.0, y + h / 2.0),
+        Point::new(x - w / 2.0, y + h / 2.0),
+    ]
+}
+
+/// GATE A2, captured-shape half — the discriminant's registered verdicts, on
+/// the exact polygons the defect shipped with (pre-registration §"Predicted
+/// verdicts"). Watched RED on the unfixed classifier: zone 833's ribbon was
+/// `path_shaped` (compactness 0.085) and classified Circulation.
+#[test]
+fn gate_a2_bounded_width_on_captured_shapes() {
+    let bound = conform::max_corridor_width();
+
+    // Zone 833 — the recorded misfire. Elongated, but it swallows a 4.5 m
+    // clearing: NOT path-shaped.
+    let z833 = dump_zone_poly(833);
+    let w833 = conform::max_inscribed_width(&z833);
+    assert!(
+        w833 > bound,
+        "zone 833's widest clear spot measured {w833:.2} m — the pre-registered 4.50 m \
+         clearing has vanished; the measurement moved, not the verdict"
+    );
+    assert!(
+        !conform::path_shaped(&z833),
+        "zone 833 (80 m² wall-following ribbon, {w833:.2} m clearing) is still path-shaped — \
+         the wing reads as circulation again"
+    );
+
+    // Zone 794 — the genuinely corridor-shaped residual (1.90 m everywhere).
+    // The discriminant must NOT reject it: bounded width holds.
+    let z794 = dump_zone_poly(794);
+    let w794 = conform::max_inscribed_width(&z794);
+    assert!(
+        w794 <= bound,
+        "zone 794 (7.5 m² corridor-shaped residual, widest spot {w794:.2} m) fails bounded \
+         width — the discriminant over-reaches onto real corridor-shaped residuals"
+    );
+    assert!(
+        conform::path_shaped(&z794),
+        "zone 794 stopped being path-shaped — a genuinely corridor-shaped residual was \
+         declassified"
+    );
+
+    // Every drawn corridor on the plate: bounded width holds on all sixteen.
+    // (Drawn zones never route through the residual classifier in production;
+    // this asserts the discriminant would not reject their shapes.)
+    for id in 664..=679u64 {
+        let pts = dump_zone_poly(id);
+        let w = conform::max_inscribed_width(&pts);
+        assert!(
+            w <= bound,
+            "drawn corridor {id} measures {w:.2} m > {bound:.1} m — the bounded-width \
+             discriminant rejects a real corridor shape"
+        );
+    }
+
+    // THE ENABLING-STEP CONTROL (gate-independence.md: "the falsification round
+    // must include the enabling step"). Every shape above is rectangle-like, so
+    // none of them binds the FOOTPRINT MASK — a sabotaged measure that reads
+    // the bbox instead of the polygon returns the same widths on a rect and
+    // the round stays green while the mask is unguarded. This L-corridor is a
+    // constant-width extrusion of an L-path — a corridor BY CONSTRUCTION, the
+    // strongest anchor the calibration corollary allows — whose 12 × 12 m bbox
+    // is room-scale: only a measure that truncates at the footprint sees the
+    // 1.5 m width (widest spot ≈ 1.76 m at the elbow), so dropping the mask
+    // turns exactly this assertion red. Sabotage result recorded in the
+    // workstream report.
+    let spine = crate::layout::regions::SPINE_W;
+    let leg = 12.0;
+    let l_corridor: Vec<Point> = vec![
+        Point::new(0.0, 0.0),
+        Point::new(leg, 0.0),
+        Point::new(leg, spine),
+        Point::new(spine, spine),
+        Point::new(spine, leg),
+        Point::new(0.0, leg),
+    ];
+    let wl = conform::max_inscribed_width(&l_corridor);
+    assert!(
+        wl <= bound,
+        "a constant-{spine:.1} m L-corridor measured {wl:.2} m wide — the width measure is \
+         reading something larger than the footprint (is the polygon mask on?)"
+    );
+    assert!(
+        conform::path_shaped(&l_corridor),
+        "a constant-width L-corridor is not path-shaped — the discriminant rejects the \
+         defining corridor shape"
+    );
+}
+
+/// GATE A2, end-to-end half — over the REAL generate populations: no residual
+/// zone the classifier types `Circulation` may contain a clearing wider than
+/// two primary spines. Watched RED on the unfixed classifier: F1's zone 282
+/// (44.3 m², 4.50 m clearing) and real_plate's zone 311 (63.5 m², 3.25 m
+/// clearing) were both typed Circulation.
+#[test]
+fn gate_a2_no_room_scale_clearing_is_typed_circulation() {
+    let bound = conform::max_corridor_width();
+    let mut cases: Vec<(String, Document)> = Vec::new();
+    for seed in [1u64, 2, 3] {
+        let mut doc = room(20.0, 14.0);
+        generate(&mut doc, &Program::default(), seed, false);
+        cases.push((format!("rect/seed{seed}"), doc));
+    }
+    for seed in [1u64, 2, 3] {
+        let mut doc = real_plate_doc();
+        generate(&mut doc, &Program::default(), seed, false);
+        cases.push((format!("real/seed{seed}"), doc));
+    }
+    cases.push(("F1".into(), crate::fixtures::build("F1").expect("F1 builds")));
+
+    let mut checked = 0usize;
+    for (name, doc) in &cases {
+        for z in &doc.zones {
+            if z.origin != ZoneOrigin::Residual || z.zone_type != ZoneType::Circulation {
+                continue;
+            }
+            let pts: Vec<Point> = match &z.shape {
+                ZoneShape::Poly { pts } => pts.iter().map(|p| Point::new(p[0], p[1])).collect(),
+                ZoneShape::Rect { x, y, w, h } => vec![
+                    Point::new(x - w / 2.0, y - h / 2.0),
+                    Point::new(x + w / 2.0, y - h / 2.0),
+                    Point::new(x + w / 2.0, y + h / 2.0),
+                    Point::new(x - w / 2.0, y + h / 2.0),
+                ],
+                ZoneShape::RectRing { .. } => continue,
+            };
+            checked += 1;
+            let w = conform::max_inscribed_width(&pts);
+            assert!(
+                w <= bound,
+                "{name}: residual zone {} ({:.1} m²) is typed Circulation with a {w:.2} m \
+                 clearing (> {bound:.1} m) — a room-scale void is being billed as corridor",
+                z.id,
+                z.area()
+            );
+        }
+    }
+    // The gate must have measured SOMETHING somewhere: if no population
+    // produces residual Circulation at all, the quantifier is vacuous and this
+    // test asserts nothing — say so instead of passing silently.
+    // (Pre-fix these populations carried 4 such zones: F1's 282 + 311 × 3.)
+    println!("gate_a2_e2e: {checked} residual-Circulation zones measured");
+}
+
+/// GATE A1 — a Residual-origin zone's facets all express the classifier's
+/// verdict (scoped by the product owner; pre-registration §A1):
+///   * its type is exactly `Circulation` or `Unassigned`;
+///   * its display name derives from its type (no facet may express a decision
+///     the deciding mechanism didn't make);
+///   * on a FRESHLY GENERATED document, re-running the classifier sweep
+///     reproduces every residual's type and label byte-for-byte — so no later
+///     pass stamps a verdict of its own on top (the "second stamp site" the
+///     conflated fixture appeared to show, disproved empirically in
+///     reports/editor-completion/zone-dump.three-surface.json).
+///
+/// Keys off `Zone.origin`, never off names, so it cannot be greened by
+/// renaming. GREEN-BY-CONSTRUCTION at the document level today; proven
+/// non-vacuous by sabotage (stamping `Circulation` over residual types in a
+/// scratch worktree fires the idempotence half — recorded in the workstream
+/// report).
+#[test]
+fn gate_a1_residual_type_expresses_classifier_verdict() {
+    let mut fresh: Vec<(String, Document)> = Vec::new();
+    for seed in [1u64, 2, 3] {
+        let mut doc = real_plate_doc();
+        generate(&mut doc, &Program::default(), seed, false);
+        fresh.push((format!("real/seed{seed}"), doc));
+    }
+    fresh.push(("F1".into(), crate::fixtures::build("F1").expect("F1 builds")));
+
+    // Edited populations: the invariant on facets still holds (labels derive
+    // from types), but idempotence is NOT asserted — an edit can invalidate a
+    // stale verdict without re-running the sweep, and that staleness is
+    // conform-on-edit's contract, not this gate's.
+    let mut edited: Vec<(String, Document)> = Vec::new();
+    for id in ["F2", "F3", "F4", "F5"] {
+        edited.push((id.to_string(), crate::fixtures::build(id).expect("fixture builds")));
+    }
+
+    let mut residuals = 0usize;
+    for (name, doc) in fresh.iter().chain(edited.iter()) {
+        for z in &doc.zones {
+            if z.origin != ZoneOrigin::Residual {
+                continue;
+            }
+            residuals += 1;
+            let expected_label = match z.zone_type {
+                ZoneType::Unassigned => "Unassigned",
+                ZoneType::Circulation => "Circulation",
+                other => panic!(
+                    "{name}: residual zone {} typed {:?} — a residual's type must be the \
+                     classifier's verdict, Circulation or Unassigned",
+                    z.id, other
+                ),
+            };
+            assert_eq!(
+                z.label, expected_label,
+                "{name}: residual zone {} typed {:?} but named {:?} — a facet is expressing \
+                 a decision the classifier didn't make",
+                z.id, z.zone_type, z.label
+            );
+        }
+    }
+    assert!(
+        residuals > 0,
+        "no residual zones in any population — the gate quantified over nothing"
+    );
+
+    // Idempotence, fresh documents only.
+    for (name, doc) in &mut fresh {
+        let before: Vec<(u32, ZoneType, String)> = doc
+            .zones
+            .iter()
+            .filter(|z| z.origin == ZoneOrigin::Residual)
+            .map(|z| (z.id, z.zone_type, z.label.clone()))
+            .collect();
+        conform::classify_residual_zones(doc);
+        let after: Vec<(u32, ZoneType, String)> = doc
+            .zones
+            .iter()
+            .filter(|z| z.origin == ZoneOrigin::Residual)
+            .map(|z| (z.id, z.zone_type, z.label.clone()))
+            .collect();
+        assert_eq!(
+            before, after,
+            "{name}: re-running the classifier moved residual verdicts — something between \
+             the sweep and the document stamped its own"
+        );
+    }
 }

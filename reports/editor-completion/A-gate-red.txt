@@ -1,0 +1,6 @@
+test layout::tests::gate_a2_bounded_width_on_captured_shapes ... FAILED
+test layout::tests::gate_a2_no_room_scale_clearing_is_typed_circulation ... FAILED
+test layout::tests::gate_a1_residual_type_expresses_classifier_verdict ... ok
+thread 'layout::tests::gate_a2_bounded_width_on_captured_shapes' (124135459) panicked at crates/ds-core/src/layout/tests.rs:5382:5:
+thread 'layout::tests::gate_a2_no_room_scale_clearing_is_typed_circulation' (124135460) panicked at crates/ds-core/src/layout/tests.rs:5456:13:
+test result: FAILED. 1 passed; 2 failed; 0 ignored; 0 measured; 209 filtered out; finished in 2.68s

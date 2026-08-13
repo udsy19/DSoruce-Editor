@@ -425,6 +425,22 @@
         ],
         "removed": []
       }
+    },
+    {
+      "when": "2026-08-12",
+      "why": "Workstream A (fix/wing-classifier): the residual-classifier gates land with the bounded-local-width conjunct. gate_a2_bounded_width_on_captured_shapes pins the discriminant's registered verdicts on the committed three-surface dump's polygons (833 rejected, 794 + sixteen drawn corridors kept, L-corridor mask control); gate_a2_no_room_scale_clearing_is_typed_circulation pins the end-to-end property over rect/real_plate/F1 generates (red pre-fix on F1 zone 282 and real_plate zone 311); gate_a1_residual_type_expresses_classifier_verdict pins that residual facets express the classifier's verdict, labels derive from types, and the sweep is idempotent on fresh generates. All three watched red-or-vacuity-checked before the fix per reports/editor-completion/A-preregistration.md.",
+      "js": {
+        "added": [],
+        "removed": []
+      },
+      "rust": {
+        "added": [
+          "layout::tests::gate_a1_residual_type_expresses_classifier_verdict",
+          "layout::tests::gate_a2_bounded_width_on_captured_shapes",
+          "layout::tests::gate_a2_no_room_scale_clearing_is_typed_circulation"
+        ],
+        "removed": []
+      }
     }
   ],
   "js": {
@@ -554,6 +570,9 @@
     "layout::tests::explicit_rooms_replace_derived_program_and_honor_counts": "initial pin — the F1 roster, established from a green tree at 56af276",
     "layout::tests::fixture_circulation_holds_above_55": "initial pin — the F1 roster, established from a green tree at 56af276",
     "layout::tests::focus_rooms_hug_the_facade_nearer_than_meetings": "initial pin — the F1 roster, established from a green tree at 56af276",
+    "layout::tests::gate_a1_residual_type_expresses_classifier_verdict": "Workstream A (fix/wing-classifier): the residual-classifier gates land with the bounded-local-width conjunct. gate_a2_bounded_width_on_captured_shapes pins the discriminant's registered verdicts on the committed three-surface dump's polygons (833 rejected, 794 + sixteen drawn corridors kept, L-corridor mask control); gate_a2_no_room_scale_clearing_is_typed_circulation pins the end-to-end property over rect/real_plate/F1 generates (red pre-fix on F1 zone 282 and real_plate zone 311); gate_a1_residual_type_expresses_classifier_verdict pins that residual facets express the classifier's verdict, labels derive from types, and the sweep is idempotent on fresh generates. All three watched red-or-vacuity-checked before the fix per reports/editor-completion/A-preregistration.md.",
+    "layout::tests::gate_a2_bounded_width_on_captured_shapes": "Workstream A (fix/wing-classifier): the residual-classifier gates land with the bounded-local-width conjunct. gate_a2_bounded_width_on_captured_shapes pins the discriminant's registered verdicts on the committed three-surface dump's polygons (833 rejected, 794 + sixteen drawn corridors kept, L-corridor mask control); gate_a2_no_room_scale_clearing_is_typed_circulation pins the end-to-end property over rect/real_plate/F1 generates (red pre-fix on F1 zone 282 and real_plate zone 311); gate_a1_residual_type_expresses_classifier_verdict pins that residual facets express the classifier's verdict, labels derive from types, and the sweep is idempotent on fresh generates. All three watched red-or-vacuity-checked before the fix per reports/editor-completion/A-preregistration.md.",
+    "layout::tests::gate_a2_no_room_scale_clearing_is_typed_circulation": "Workstream A (fix/wing-classifier): the residual-classifier gates land with the bounded-local-width conjunct. gate_a2_bounded_width_on_captured_shapes pins the discriminant's registered verdicts on the committed three-surface dump's polygons (833 rejected, 794 + sixteen drawn corridors kept, L-corridor mask control); gate_a2_no_room_scale_clearing_is_typed_circulation pins the end-to-end property over rect/real_plate/F1 generates (red pre-fix on F1 zone 282 and real_plate zone 311); gate_a1_residual_type_expresses_classifier_verdict pins that residual facets express the classifier's verdict, labels derive from types, and the sweep is idempotent on fresh generates. All three watched red-or-vacuity-checked before the fix per reports/editor-completion/A-preregistration.md.",
     "layout::tests::generate_clears_previous_components": "initial pin — the F1 roster, established from a green tree at 56af276",
     "layout::tests::generate_is_deterministic_for_same_seed": "initial pin — the F1 roster, established from a green tree at 56af276",
     "layout::tests::generated_rooms_are_enclosed_with_glass_front_and_door": "initial pin — the F1 roster, established from a green tree at 56af276",
