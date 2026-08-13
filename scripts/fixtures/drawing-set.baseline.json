@@ -143,39 +143,39 @@
         },
         {
           "sheet": 3,
-          "text": 86,
-          "line": 41,
+          "text": 70,
+          "line": 35,
           "rect": 7,
           "image": 2,
-          "md5": "2111f8035bfb0ab4a9bb428477bef821",
-          "why": "D-P fix (workstream B): the plan sheet's annotation occupancy is now seeded with the base raster's ink before any label is placed (sheetSet.ts seedBaseInk/seedOutsideMargin; SG8 87->0 across the 12 plan sheets, D-Q total 37->26). THIS sheet: text/rect unchanged (86 T / 7 R), line 32->41 — leaders re-routed and added for the re-pinned dwg/A.01 leader set (11 new, 3 retired). SG8 dwg/A01 8->0 (PHONE BOOTH 1/3, PRINT POINT 1, OPEN WORKSPACE (3)/(4)/(12) and two areas came off the walls). D-Q on THIS sheet 2->3: OPEN WORKSPACE (4) + its 6.6 m² took the left-margin soft strip with a leader (pre-fix it printed 100% inside a wall) while OPEN WORKSPACE (10) + 6.8 m² moved back inside — D-Q total across packs still fell 37->26 and D-Q remains an open defect owned elsewhere."
+          "md5": "d850ca0b7c19b054c8a0e0d5c6b53a62",
+          "why": "E no_straddle: A.01 Demolition Plan drops the 8 pocket rooms' name + 1.0 m2 area labels and their leaders (-16 text, -6 line); nothing else moved (base==A dumps byte-identical)."
         },
         {
           "sheet": 4,
-          "text": 294,
-          "line": 803,
+          "text": 278,
+          "line": 794,
           "rect": 84,
           "image": 2,
-          "md5": "dbbb6c7a2c62ba94a5ce26828781e314",
-          "why": "D-P fix (workstream B): the plan sheet's annotation occupancy is now seeded with the base raster's ink before any label is placed (sheetSet.ts seedBaseInk/seedOutsideMargin; SG8 87->0 across the 12 plan sheets, D-Q total 37->26). THIS sheet: text 296->294 — two '3.00 m' room-dim strings suppressed by the same pre-existing roomDims declutter guard reading the seeded occupancy (one of them the frozen corpus exhibit '3.00 m'@(272,130), 100% inside a wall); line 812->803. SG8 dwg/A02 20->0. Leader set re-pinned: +CABIN 1, CORE 3, OPEN WORKSPACE (7); -CORE 2, OPEN WORKSPACE (3)/(6)."
+          "md5": "c5f062bc49d5d54a21c7914c17002c7b",
+          "why": "E no_straddle: A.02 Construction & Furnishing Plan drops 8 pocket-room labels + 9 area lines and re-tags/repositions wall+window tags (W3...) after the wrapper partitions vanished and 127 components moved."
         },
         {
           "sheet": 5,
-          "text": 112,
-          "line": 2046,
-          "rect": 808,
+          "text": 104,
+          "line": 1857,
+          "rect": 752,
           "image": 2,
-          "md5": "175d5460ebd90d16f27dbf396b35ef20",
-          "why": "D-P fix (workstream B): the plan sheet's annotation occupancy is now seeded with the base raster's ink before any label is placed (sheetSet.ts seedBaseInk/seedOutsideMargin; SG8 87->0 across the 12 plan sheets, D-Q total 37->26). THIS sheet: line 2040->2046; three room labels re-fit by servicesSheets' PRE-EXISTING roomLabelForms ladder because seeding shrank their clear pockets — PRINT POINT 1 7.5->5.25 pt, PRINT POINT 2 and MEETING ROOM 2 7.5->6.38 pt (flagged to the product owner); every other string identical in content. SG8 dwg/A03 11->0."
+          "md5": "f9d7afbac022dd7315fe9db3d2aa92c9",
+          "why": "E no_straddle: A.03 Reflected Ceiling Plan re-lays fixtures over the moved desks and drops the 8 pocket-room labels (-8 text, -189 line, -56 rect: luminaire/diffuser grid follows the furniture)."
         },
         {
           "sheet": 6,
-          "text": 68,
-          "line": 2401,
-          "rect": 267,
+          "text": 60,
+          "line": 2396,
+          "rect": 259,
           "image": 2,
-          "md5": "8a90e5cf5ee55041981ceea98677ac00",
-          "why": "D-P fix (workstream B): the plan sheet's annotation occupancy is now seeded with the base raster's ink before any label is placed (sheetSet.ts seedBaseInk/seedOutsideMargin; SG8 87->0 across the 12 plan sheets, D-Q total 37->26). THIS sheet: line 2389->2401 (+12 leader L ops); the same three-label roomLabelForms re-fit as sheet 5 (shared layout, furniture layer added). SG8 dwg/A04 12->0."
+          "md5": "bf0106f84a9ab7eb825efb8bea4bceec",
+          "why": "E no_straddle: A.04 Power & Data Plan drops the 8 pocket-room labels and re-routes outlets/circuits to the moved desks (-8 text, -5 line, -8 rect)."
         },
         {
           "sheet": 7,
@@ -215,12 +215,12 @@
         },
         {
           "sheet": 11,
-          "text": 312,
-          "line": 46,
-          "rect": 21,
+          "text": 240,
+          "line": 38,
+          "rect": 17,
           "image": 1,
-          "md5": "0411c94ab3d8a767d994a8409c9704ff",
-          "why": "Landed work between 46908c6 (last re-record) and 49502e5, attributed by op-level dump-diff: seeded A.02 label/dimension placement (189 rows moved, identical op counts, overall dim 38.20 m -> 17.50 m); seeded A.04 services clustering (floor boxes 4 -> 10, TOTAL 176 -> 182); dwg A.01/A.02/A.03/A.04/A.09 all trace to the document gaining one 0.98 m2 desk-footprint Workspace zone, Open Workspace (12), plus a zone-id shift 216/217/220 -> 222/223/225. No missing ink; every drift traces to a landed fix."
+          "md5": "488ba55d317a4d042e75ef5bb85c4164",
+          "why": "E no_straddle: A.09 Room Finish Schedule loses the 8 'Open Workspace (5)'..'(12)' rows (ids 258-265) — micro-rooms of 1.0 m2 that were one straddling fill desk each; the schedule now bills 20 real rooms."
         },
         {
           "sheet": 12,
