@@ -575,7 +575,7 @@ pub fn generate(
                 d_alloc[i] == 0 && rooms_in_region.get(i).copied().unwrap_or(0) > 0;
             let got = pack_desks(
                 doc, program, plan, d_alloc[i], region_no, /*emit_zones=*/ true,
-                plate.as_deref(), &iwalls, &mut obstacles, lat, clear, choices,
+                plate.as_deref(), &iwalls, &mut obstacles, lat, clear, choices, &[],
                 Some(&mut diag.region_desks[i]),
             );
             diag.region_desks[i].placed = got;
@@ -594,7 +594,7 @@ pub fn generate(
                 let region_no = if single_region { None } else { Some((i + 1) as u32) };
                 let got = pack_desks(
                     doc, program, plan, shortfall, region_no, /*emit_zones=*/ false,
-                    plate.as_deref(), &iwalls, &mut obstacles, lat, clear, choices,
+                    plate.as_deref(), &iwalls, &mut obstacles, lat, clear, choices, &[],
                     None,
                 );
                 diag.region_desks[i].topped_up += got;
@@ -672,9 +672,30 @@ pub fn generate(
                     .unwrap_or(0);
                 let mut fp = plans[dom].clone();
                 fp.field = geometry::Rect { x0: min_x, y0: min_y, x1: max_x, y1: max_y };
+                // The emitted Workspace zone rects: a fill slot may sit fully
+                // inside one (that zone owns it) or fully outside (it gets its
+                // own tile below) but never HALF ACROSS an edge — the "desk
+                // crossing the open-workspace boundary" defect (Workstream E:
+                // watched red on the golden real_plate cases, 3 desks up to
+                // 0.55 m outside, before this list existed).
+                let ws_edges: Vec<geometry::Rect> = doc
+                    .zones
+                    .iter()
+                    .filter(|z| z.zone_type == ZoneType::Workspace)
+                    .filter_map(|z| match z.shape {
+                        ZoneShape::Rect { x, y, w, h } => Some(geometry::Rect {
+                            x0: x - w / 2.0,
+                            y0: y - h / 2.0,
+                            x1: x + w / 2.0,
+                            y1: y + h / 2.0,
+                        }),
+                        _ => None,
+                    })
+                    .collect();
                 pack_desks(
                     doc, program, &fp, budget, None, /*emit_zones=*/ false,
                     plate.as_deref(), &iwalls, &mut obstacles, lat, clear, choices,
+                    &ws_edges,
                     None,
                 );
                 diag.fill_placed = (doc.components.len() - before) as u32;

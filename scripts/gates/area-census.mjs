@@ -222,6 +222,24 @@ const REGISTER = [
 
   // ---- TypeScript: web/ owns no area. It receives `ZoneAreas`. ------------
   {
+    key: 'scripts/containment-report.mjs::<top-level>',
+    kind: 'ordering',
+    count: 1,
+    why: "The `function shapeArea` declaration line itself (the detector attributes a declaration to the enclosing scope). Same site as ::shapeArea below.",
+  },
+  {
+    key: 'scripts/containment-report.mjs::shapeArea',
+    kind: 'ordering',
+    count: 4,
+    why: "Workstream E's containment instrument. Feeds ONLY zoneIndexAt's smallest-area tie-break (the zone_index_at replica); no magnitude is published — the report's quantity is a signed DISTANCE.",
+  },
+  {
+    key: 'scripts/containment-report.mjs::zoneIndexAt',
+    kind: 'ordering',
+    count: 1,
+    why: 'Replicates Document::zone_index_at for the containment report: smallest containing zone wins, ground loses to rooms. The area never leaves the comparison, and the assignment is cross-checked against zone.component_ids.',
+  },
+  {
     key: 'web/src/util/zoneGeom.ts::shapeExtent',
     kind: 'ordering',
     count: 4,

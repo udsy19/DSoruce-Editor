@@ -1,0 +1,5269 @@
+{
+ "provenance": {
+  "capturedAt": "2026-08-12T20:40:28.457Z",
+  "port": 5305,
+  "servedTokenCheck": "dragRect in src/editor/interaction.ts",
+  "path": "wizard → samples/furniture-plan.dwg → boundary → Program defaults → Generate → candidate A → Open in editor",
+  "boundaryConfirmed": true,
+  "programSummary": "PROGRAM SUMMARY 50 enclosed rooms 84 desks 121 room seats 555 of 930 m² used · 5,972 of 10,011 sf Offices, meetings and desks are placed by the generator; circulation is added around them, so occupied area stays well below usable.",
+  "candidateACard": "A A · Open 87/100 Maximises open workstations — minimal enclosed rooms, densest seat count. Most seats Best density Net area 906 m² Seats 115 Open space 103 Off",
+  "plateLogRows": 0
+ },
+ "totals": {
+  "components": 268,
+  "zones": 53,
+  "walls": 186
+ },
+ "components": [
+  {
+   "id": 517,
+   "category": "Door",
+   "x": 31.450000000000006,
+   "y": 11.05,
+   "w": 0.9,
+   "h": 0.15,
+   "rotation": 3.141592653589793,
+   "mirror": false,
+   "reference": false,
+   "label": "Door 517",
+   "seats": 0,
+   "decision": "Open"
+  },
+  {
+   "id": 519,
+   "category": "Table",
+   "x": 29.85,
+   "y": 14.5,
+   "w": 1.2000000000000002,
+   "h": 0.6,
+   "rotation": -3.141592653589793,
+   "mirror": false,
+   "reference": false,
+   "label": "Table 519",
+   "seats": 2,
+   "decision": "Open"
+  },
+  {
+   "id": 520,
+   "category": "Chair",
+   "x": 29.85,
+   "y": 13.85,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 0,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 520",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 526,
+   "category": "Door",
+   "x": 36.05000000000001,
+   "y": 11.05,
+   "w": 0.9,
+   "h": 0.15,
+   "rotation": 3.141592653589793,
+   "mirror": false,
+   "reference": false,
+   "label": "Door 526",
+   "seats": 0,
+   "decision": "Open"
+  },
+  {
+   "id": 528,
+   "category": "Table",
+   "x": 34.45,
+   "y": 13.95,
+   "w": 2.4,
+   "h": 3.8,
+   "rotation": 0,
+   "mirror": false,
+   "reference": false,
+   "label": "Table 528",
+   "seats": 12,
+   "decision": "Open"
+  },
+  {
+   "id": 529,
+   "category": "Chair",
+   "x": 33.150000000000006,
+   "y": 12.45,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": -1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 529",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 530,
+   "category": "Chair",
+   "x": 35.75,
+   "y": 12.45,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 530",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 531,
+   "category": "Chair",
+   "x": 33.150000000000006,
+   "y": 13.2,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": -1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 531",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 532,
+   "category": "Chair",
+   "x": 35.75,
+   "y": 13.2,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 532",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 533,
+   "category": "Chair",
+   "x": 33.150000000000006,
+   "y": 13.95,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": -1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 533",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 534,
+   "category": "Chair",
+   "x": 35.75,
+   "y": 13.95,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 534",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 535,
+   "category": "Chair",
+   "x": 33.150000000000006,
+   "y": 14.7,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": -1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 535",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 536,
+   "category": "Chair",
+   "x": 35.75,
+   "y": 14.7,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 536",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 537,
+   "category": "Chair",
+   "x": 33.150000000000006,
+   "y": 15.45,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": -1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 537",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 538,
+   "category": "Chair",
+   "x": 35.75,
+   "y": 15.45,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 538",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 539,
+   "category": "Chair",
+   "x": 34.45,
+   "y": 11.95,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 0,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 539",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 540,
+   "category": "Chair",
+   "x": 34.45,
+   "y": 15.95,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 3.141592653589793,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 540",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 548,
+   "category": "Table",
+   "x": 16.7,
+   "y": 41.900000000000006,
+   "w": 1.2000000000000002,
+   "h": 0.6,
+   "rotation": -3.141592653589793,
+   "mirror": false,
+   "reference": false,
+   "label": "Table 548",
+   "seats": 2,
+   "decision": "Open"
+  },
+  {
+   "id": 549,
+   "category": "Chair",
+   "x": 16.7,
+   "y": 41.25,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 0,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 549",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 555,
+   "category": "Door",
+   "x": 15,
+   "y": 39.25,
+   "w": 1,
+   "h": 0.15,
+   "rotation": 3.141592653589793,
+   "mirror": false,
+   "reference": false,
+   "label": "Door 555",
+   "seats": 0,
+   "decision": "Open"
+  },
+  {
+   "id": 557,
+   "category": "Table",
+   "x": 13.8,
+   "y": 40.8,
+   "w": 1.8,
+   "h": 0.7,
+   "rotation": -3.141592653589793,
+   "mirror": false,
+   "reference": false,
+   "label": "Table 557",
+   "seats": 4,
+   "decision": "Open"
+  },
+  {
+   "id": 558,
+   "category": "Chair",
+   "x": 13.8,
+   "y": 41.55,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": -3.141592653589793,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 558",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 564,
+   "category": "Door",
+   "x": 9.75,
+   "y": 8.55,
+   "w": 0.9,
+   "h": 0.15,
+   "rotation": 3.141592653589793,
+   "mirror": false,
+   "reference": false,
+   "label": "Door 564",
+   "seats": 0,
+   "decision": "Open"
+  },
+  {
+   "id": 567,
+   "category": "Table",
+   "x": 5.6000000000000005,
+   "y": 9.2,
+   "w": 0.6000000000000001,
+   "h": 0.6000000000000001,
+   "rotation": 0,
+   "mirror": false,
+   "reference": false,
+   "label": "Table 567",
+   "seats": 0,
+   "decision": "Open"
+  },
+  {
+   "id": 573,
+   "category": "Door",
+   "x": 4.250000000000001,
+   "y": 6.25,
+   "w": 0.9,
+   "h": 0.15,
+   "rotation": -1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Door 573",
+   "seats": 0,
+   "decision": "Open"
+  },
+  {
+   "id": 575,
+   "category": "Table",
+   "x": 2.4000000000000004,
+   "y": 6,
+   "w": 1.2000000000000002,
+   "h": 0.6,
+   "rotation": -1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Table 575",
+   "seats": 2,
+   "decision": "Open"
+  },
+  {
+   "id": 576,
+   "category": "Chair",
+   "x": 3.0500000000000003,
+   "y": 6,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 576",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 582,
+   "category": "Door",
+   "x": 7.35,
+   "y": 6.25,
+   "w": 0.9,
+   "h": 0.15,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Door 582",
+   "seats": 0,
+   "decision": "Open"
+  },
+  {
+   "id": 584,
+   "category": "Table",
+   "x": 9.2,
+   "y": 6,
+   "w": 1.2000000000000002,
+   "h": 0.6,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Table 584",
+   "seats": 2,
+   "decision": "Open"
+  },
+  {
+   "id": 585,
+   "category": "Chair",
+   "x": 8.55,
+   "y": 6,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 585",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 591,
+   "category": "Door",
+   "x": 14.950000000000005,
+   "y": 3.0500000000000007,
+   "w": 0.9,
+   "h": 0.15,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Door 591",
+   "seats": 0,
+   "decision": "Open"
+  },
+  {
+   "id": 593,
+   "category": "Table",
+   "x": 16.8,
+   "y": 2.8000000000000003,
+   "w": 1.2000000000000002,
+   "h": 0.6,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Table 593",
+   "seats": 2,
+   "decision": "Open"
+  },
+  {
+   "id": 594,
+   "category": "Chair",
+   "x": 16.150000000000002,
+   "y": 2.8000000000000003,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 594",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 600,
+   "category": "Door",
+   "x": 28.65,
+   "y": 8.6,
+   "w": 0.8,
+   "h": 0.15,
+   "rotation": -1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Door 600",
+   "seats": 0,
+   "decision": "Open"
+  },
+  {
+   "id": 602,
+   "category": "Chair",
+   "x": 28.25,
+   "y": 8.55,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 602",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 608,
+   "category": "Door",
+   "x": 29.85,
+   "y": 8.6,
+   "w": 0.8,
+   "h": 0.15,
+   "rotation": -1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Door 608",
+   "seats": 0,
+   "decision": "Open"
+  },
+  {
+   "id": 610,
+   "category": "Chair",
+   "x": 29.450000000000003,
+   "y": 8.55,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 610",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 616,
+   "category": "Door",
+   "x": 31.05,
+   "y": 8.6,
+   "w": 0.8,
+   "h": 0.15,
+   "rotation": -1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Door 616",
+   "seats": 0,
+   "decision": "Open"
+  },
+  {
+   "id": 618,
+   "category": "Chair",
+   "x": 30.65,
+   "y": 8.55,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 618",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 624,
+   "category": "Door",
+   "x": 31.75,
+   "y": 9.15,
+   "w": 0.8,
+   "h": 0.15,
+   "rotation": 0,
+   "mirror": false,
+   "reference": false,
+   "label": "Door 624",
+   "seats": 0,
+   "decision": "Open"
+  },
+  {
+   "id": 626,
+   "category": "Table",
+   "x": 31.75,
+   "y": 8.200000000000001,
+   "w": 0.6,
+   "h": 0.3,
+   "rotation": 0,
+   "mirror": false,
+   "reference": false,
+   "label": "Table 626",
+   "seats": 0,
+   "decision": "Open"
+  },
+  {
+   "id": 627,
+   "category": "Chair",
+   "x": 31.75,
+   "y": 8.75,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 3.141592653589793,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 627",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 633,
+   "category": "Door",
+   "x": 32.95,
+   "y": 9.15,
+   "w": 0.8,
+   "h": 0.15,
+   "rotation": 0,
+   "mirror": false,
+   "reference": false,
+   "label": "Door 633",
+   "seats": 0,
+   "decision": "Open"
+  },
+  {
+   "id": 635,
+   "category": "Table",
+   "x": 32.95,
+   "y": 8.200000000000001,
+   "w": 0.6,
+   "h": 0.3,
+   "rotation": 0,
+   "mirror": false,
+   "reference": false,
+   "label": "Table 635",
+   "seats": 0,
+   "decision": "Open"
+  },
+  {
+   "id": 636,
+   "category": "Chair",
+   "x": 32.95,
+   "y": 8.75,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 3.141592653589793,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 636",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 642,
+   "category": "Door",
+   "x": 34.15,
+   "y": 9.15,
+   "w": 0.8,
+   "h": 0.15,
+   "rotation": 0,
+   "mirror": false,
+   "reference": false,
+   "label": "Door 642",
+   "seats": 0,
+   "decision": "Open"
+  },
+  {
+   "id": 644,
+   "category": "Table",
+   "x": 34.15,
+   "y": 8.200000000000001,
+   "w": 0.6,
+   "h": 0.3,
+   "rotation": 0,
+   "mirror": false,
+   "reference": false,
+   "label": "Table 644",
+   "seats": 0,
+   "decision": "Open"
+  },
+  {
+   "id": 645,
+   "category": "Chair",
+   "x": 34.15,
+   "y": 8.75,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 3.141592653589793,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 645",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 651,
+   "category": "Door",
+   "x": 34.85,
+   "y": 8.6,
+   "w": 0.8,
+   "h": 0.15,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Door 651",
+   "seats": 0,
+   "decision": "Open"
+  },
+  {
+   "id": 653,
+   "category": "Chair",
+   "x": 35.25,
+   "y": 8.55,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 653",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 655,
+   "category": "Table",
+   "x": 12.9,
+   "y": 36.35,
+   "w": 0.6000000000000001,
+   "h": 0.6000000000000001,
+   "rotation": 0,
+   "mirror": false,
+   "reference": false,
+   "label": "Table 655",
+   "seats": 0,
+   "decision": "Open"
+  },
+  {
+   "id": 661,
+   "category": "Door",
+   "x": 36.05,
+   "y": 8.6,
+   "w": 0.8,
+   "h": 0.15,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Door 661",
+   "seats": 0,
+   "decision": "Open"
+  },
+  {
+   "id": 663,
+   "category": "Chair",
+   "x": 36.45,
+   "y": 8.55,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 663",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 681,
+   "category": "Desk",
+   "x": 12.1,
+   "y": 7.1000000000000005,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 681",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 682,
+   "category": "Desk",
+   "x": 12.1,
+   "y": 9.4,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 682",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 683,
+   "category": "Desk",
+   "x": 12.1,
+   "y": 11.7,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 683",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 684,
+   "category": "Desk",
+   "x": 12.1,
+   "y": 14.9,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 684",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 685,
+   "category": "Desk",
+   "x": 12.1,
+   "y": 17.2,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 685",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 686,
+   "category": "Desk",
+   "x": 12.1,
+   "y": 19.5,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 686",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 687,
+   "category": "Desk",
+   "x": 12.1,
+   "y": 21.8,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 687",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 688,
+   "category": "Desk",
+   "x": 12.1,
+   "y": 24.1,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 688",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 689,
+   "category": "Desk",
+   "x": 12.1,
+   "y": 26.4,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 689",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 690,
+   "category": "Desk",
+   "x": 12.1,
+   "y": 28.700000000000003,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 690",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 691,
+   "category": "Desk",
+   "x": 12.1,
+   "y": 31,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 691",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 692,
+   "category": "Desk",
+   "x": 12.1,
+   "y": 33.300000000000004,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 692",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 693,
+   "category": "Desk",
+   "x": 12.8,
+   "y": 7.1000000000000005,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 693",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 694,
+   "category": "Desk",
+   "x": 12.8,
+   "y": 9.4,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 694",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 695,
+   "category": "Desk",
+   "x": 12.8,
+   "y": 11.7,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 695",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 696,
+   "category": "Desk",
+   "x": 12.8,
+   "y": 14.9,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 696",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 697,
+   "category": "Desk",
+   "x": 12.8,
+   "y": 17.2,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 697",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 698,
+   "category": "Desk",
+   "x": 12.8,
+   "y": 19.5,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 698",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 699,
+   "category": "Desk",
+   "x": 12.8,
+   "y": 21.8,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 699",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 700,
+   "category": "Desk",
+   "x": 12.8,
+   "y": 24.1,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 700",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 701,
+   "category": "Desk",
+   "x": 12.8,
+   "y": 26.4,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 701",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 702,
+   "category": "Desk",
+   "x": 12.8,
+   "y": 28.700000000000003,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 702",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 703,
+   "category": "Desk",
+   "x": 12.8,
+   "y": 31,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 703",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 704,
+   "category": "Desk",
+   "x": 12.8,
+   "y": 33.300000000000004,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 704",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 705,
+   "category": "Desk",
+   "x": 16.7,
+   "y": 7.1000000000000005,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 705",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 706,
+   "category": "Desk",
+   "x": 16.7,
+   "y": 9.4,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 706",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 707,
+   "category": "Desk",
+   "x": 16.7,
+   "y": 11.7,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 707",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 708,
+   "category": "Desk",
+   "x": 16.7,
+   "y": 14.9,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 708",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 709,
+   "category": "Desk",
+   "x": 16.7,
+   "y": 17.2,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 709",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 710,
+   "category": "Desk",
+   "x": 16.7,
+   "y": 19.5,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 710",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 711,
+   "category": "Desk",
+   "x": 16.7,
+   "y": 21.8,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 711",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 712,
+   "category": "Desk",
+   "x": 16.7,
+   "y": 24.1,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 712",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 713,
+   "category": "Desk",
+   "x": 16.7,
+   "y": 26.4,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 713",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 714,
+   "category": "Desk",
+   "x": 16.7,
+   "y": 28.700000000000003,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 714",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 715,
+   "category": "Desk",
+   "x": 16.7,
+   "y": 31,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 715",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 716,
+   "category": "Desk",
+   "x": 16.7,
+   "y": 33.300000000000004,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 716",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 717,
+   "category": "Desk",
+   "x": 17.400000000000002,
+   "y": 7.1000000000000005,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 717",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 718,
+   "category": "Desk",
+   "x": 17.400000000000002,
+   "y": 9.4,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 718",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 719,
+   "category": "Desk",
+   "x": 17.400000000000002,
+   "y": 11.7,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 719",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 720,
+   "category": "Desk",
+   "x": 17.400000000000002,
+   "y": 14.9,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 720",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 721,
+   "category": "Desk",
+   "x": 17.400000000000002,
+   "y": 17.2,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 721",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 722,
+   "category": "Desk",
+   "x": 17.400000000000002,
+   "y": 19.5,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 722",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 723,
+   "category": "Desk",
+   "x": 17.400000000000002,
+   "y": 21.8,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 723",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 724,
+   "category": "Desk",
+   "x": 17.400000000000002,
+   "y": 24.1,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 724",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 725,
+   "category": "Desk",
+   "x": 17.400000000000002,
+   "y": 26.4,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 725",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 726,
+   "category": "Desk",
+   "x": 17.400000000000002,
+   "y": 28.700000000000003,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 726",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 727,
+   "category": "Desk",
+   "x": 17.400000000000002,
+   "y": 31,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 727",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 728,
+   "category": "Desk",
+   "x": 17.400000000000002,
+   "y": 33.300000000000004,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 728",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 729,
+   "category": "Desk",
+   "x": 21.3,
+   "y": 7.1000000000000005,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 729",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 730,
+   "category": "Desk",
+   "x": 21.3,
+   "y": 9.4,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 730",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 731,
+   "category": "Desk",
+   "x": 21.3,
+   "y": 11.7,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 731",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 732,
+   "category": "Desk",
+   "x": 21.3,
+   "y": 14.9,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 732",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 733,
+   "category": "Desk",
+   "x": 21.3,
+   "y": 17.2,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 733",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 734,
+   "category": "Desk",
+   "x": 21.3,
+   "y": 19.5,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 734",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 735,
+   "category": "Desk",
+   "x": 21.3,
+   "y": 21.8,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 735",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 736,
+   "category": "Desk",
+   "x": 21.3,
+   "y": 24.1,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 736",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 737,
+   "category": "Desk",
+   "x": 21.3,
+   "y": 26.4,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 737",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 738,
+   "category": "Desk",
+   "x": 21.3,
+   "y": 28.700000000000003,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 738",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 739,
+   "category": "Desk",
+   "x": 21.3,
+   "y": 31,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 739",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 740,
+   "category": "Desk",
+   "x": 21.3,
+   "y": 33.300000000000004,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 740",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 741,
+   "category": "Desk",
+   "x": 22,
+   "y": 7.1000000000000005,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 741",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 742,
+   "category": "Desk",
+   "x": 22,
+   "y": 9.4,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 742",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 743,
+   "category": "Desk",
+   "x": 22,
+   "y": 11.7,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 743",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 744,
+   "category": "Desk",
+   "x": 22,
+   "y": 14.9,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 744",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 745,
+   "category": "Desk",
+   "x": 22,
+   "y": 17.2,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 745",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 746,
+   "category": "Desk",
+   "x": 22,
+   "y": 19.5,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 746",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 747,
+   "category": "Desk",
+   "x": 22,
+   "y": 21.8,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 747",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 748,
+   "category": "Desk",
+   "x": 22,
+   "y": 24.1,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 748",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 749,
+   "category": "Desk",
+   "x": 22,
+   "y": 26.4,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 749",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 750,
+   "category": "Desk",
+   "x": 22,
+   "y": 28.700000000000003,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 750",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 751,
+   "category": "Desk",
+   "x": 22,
+   "y": 31,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 751",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 752,
+   "category": "Desk",
+   "x": 22,
+   "y": 33.300000000000004,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 752",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 753,
+   "category": "Desk",
+   "x": 25.9,
+   "y": 7.1000000000000005,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 753",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 754,
+   "category": "Desk",
+   "x": 25.9,
+   "y": 9.4,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 754",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 755,
+   "category": "Desk",
+   "x": 25.9,
+   "y": 11.7,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 755",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 756,
+   "category": "Desk",
+   "x": 25.9,
+   "y": 14.9,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 756",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 757,
+   "category": "Desk",
+   "x": 25.9,
+   "y": 17.2,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 757",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 758,
+   "category": "Desk",
+   "x": 25.9,
+   "y": 19.5,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 758",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 759,
+   "category": "Desk",
+   "x": 25.9,
+   "y": 21.8,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 759",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 760,
+   "category": "Desk",
+   "x": 25.9,
+   "y": 24.1,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 760",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 761,
+   "category": "Desk",
+   "x": 25.9,
+   "y": 26.4,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 761",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 762,
+   "category": "Desk",
+   "x": 25.9,
+   "y": 28.700000000000003,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 1.5707963267948966,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 762",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 765,
+   "category": "Desk",
+   "x": 16.650000000000002,
+   "y": 37.35,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 0,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 765",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 769,
+   "category": "Desk",
+   "x": 9.75,
+   "y": 2.25,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 0,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 769",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 770,
+   "category": "Desk",
+   "x": 14.7,
+   "y": 7.1000000000000005,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 770",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 771,
+   "category": "Desk",
+   "x": 14.7,
+   "y": 10.3,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 771",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 772,
+   "category": "Desk",
+   "x": 14.7,
+   "y": 12.6,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 772",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 773,
+   "category": "Desk",
+   "x": 14.7,
+   "y": 14.9,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 773",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 774,
+   "category": "Desk",
+   "x": 14.7,
+   "y": 17.2,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 774",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 775,
+   "category": "Desk",
+   "x": 14.7,
+   "y": 19.5,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 775",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 776,
+   "category": "Desk",
+   "x": 14.7,
+   "y": 21.8,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 776",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 777,
+   "category": "Desk",
+   "x": 14.7,
+   "y": 24.1,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 777",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 778,
+   "category": "Desk",
+   "x": 14.7,
+   "y": 26.4,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 778",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 779,
+   "category": "Desk",
+   "x": 14.7,
+   "y": 28.700000000000003,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 779",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 780,
+   "category": "Desk",
+   "x": 14.7,
+   "y": 31,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 780",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 781,
+   "category": "Desk",
+   "x": 19.3,
+   "y": 7.1000000000000005,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 781",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 782,
+   "category": "Desk",
+   "x": 19.3,
+   "y": 10.3,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 782",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 783,
+   "category": "Desk",
+   "x": 19.3,
+   "y": 12.6,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 783",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 784,
+   "category": "Desk",
+   "x": 19.3,
+   "y": 14.9,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 784",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 785,
+   "category": "Desk",
+   "x": 19.3,
+   "y": 17.2,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 785",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 786,
+   "category": "Desk",
+   "x": 19.3,
+   "y": 19.5,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 786",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 787,
+   "category": "Desk",
+   "x": 19.3,
+   "y": 21.8,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 787",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 788,
+   "category": "Desk",
+   "x": 19.3,
+   "y": 24.1,
+   "w": 1.4,
+   "h": 0.7000000000000001,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Desk 788",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 832,
+   "category": "Door",
+   "x": 17,
+   "y": 39.99999999999999,
+   "w": 0.9,
+   "h": 0.15,
+   "rotation": 3.141592653589793,
+   "mirror": false,
+   "reference": false,
+   "label": "Door 832",
+   "seats": 0,
+   "decision": "Open"
+  },
+  {
+   "id": 841,
+   "category": "Chair",
+   "x": 11.65,
+   "y": 7.1000000000000005,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 841",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 842,
+   "category": "Chair",
+   "x": 11.65,
+   "y": 9.4,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 842",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 843,
+   "category": "Chair",
+   "x": 11.65,
+   "y": 11.7,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 843",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 844,
+   "category": "Chair",
+   "x": 11.65,
+   "y": 14.9,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 844",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 845,
+   "category": "Chair",
+   "x": 11.65,
+   "y": 17.2,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 845",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 846,
+   "category": "Chair",
+   "x": 11.65,
+   "y": 19.5,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 846",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 847,
+   "category": "Chair",
+   "x": 11.65,
+   "y": 21.8,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 847",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 848,
+   "category": "Chair",
+   "x": 11.65,
+   "y": 24.1,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 848",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 849,
+   "category": "Chair",
+   "x": 11.65,
+   "y": 26.4,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 849",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 850,
+   "category": "Chair",
+   "x": 11.65,
+   "y": 28.700000000000003,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 850",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 851,
+   "category": "Chair",
+   "x": 11.65,
+   "y": 31,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 851",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 852,
+   "category": "Chair",
+   "x": 11.65,
+   "y": 33.300000000000004,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 852",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 853,
+   "category": "Chair",
+   "x": 13.25,
+   "y": 7.1000000000000005,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 7.853981633974483,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 853",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 854,
+   "category": "Chair",
+   "x": 13.25,
+   "y": 9.4,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 7.853981633974483,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 854",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 855,
+   "category": "Chair",
+   "x": 13.25,
+   "y": 11.7,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 7.853981633974483,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 855",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 856,
+   "category": "Chair",
+   "x": 13.25,
+   "y": 14.9,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 7.853981633974483,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 856",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 857,
+   "category": "Chair",
+   "x": 13.25,
+   "y": 17.2,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 7.853981633974483,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 857",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 858,
+   "category": "Chair",
+   "x": 13.25,
+   "y": 19.5,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 7.853981633974483,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 858",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 859,
+   "category": "Chair",
+   "x": 13.25,
+   "y": 21.8,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 7.853981633974483,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 859",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 860,
+   "category": "Chair",
+   "x": 13.25,
+   "y": 24.1,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 7.853981633974483,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 860",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 861,
+   "category": "Chair",
+   "x": 13.25,
+   "y": 26.4,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 7.853981633974483,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 861",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 862,
+   "category": "Chair",
+   "x": 13.25,
+   "y": 28.700000000000003,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 7.853981633974483,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 862",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 863,
+   "category": "Chair",
+   "x": 13.25,
+   "y": 31,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 7.853981633974483,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 863",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 864,
+   "category": "Chair",
+   "x": 13.25,
+   "y": 33.300000000000004,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 7.853981633974483,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 864",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 865,
+   "category": "Chair",
+   "x": 16.25,
+   "y": 7.1000000000000005,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 865",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 866,
+   "category": "Chair",
+   "x": 16.25,
+   "y": 9.4,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 866",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 867,
+   "category": "Chair",
+   "x": 16.25,
+   "y": 11.7,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 867",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 868,
+   "category": "Chair",
+   "x": 16.25,
+   "y": 14.9,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 868",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 869,
+   "category": "Chair",
+   "x": 16.25,
+   "y": 17.2,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 869",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 870,
+   "category": "Chair",
+   "x": 16.25,
+   "y": 19.5,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 870",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 871,
+   "category": "Chair",
+   "x": 16.25,
+   "y": 21.8,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 871",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 872,
+   "category": "Chair",
+   "x": 16.25,
+   "y": 24.1,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 872",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 873,
+   "category": "Chair",
+   "x": 16.25,
+   "y": 26.4,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 873",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 874,
+   "category": "Chair",
+   "x": 16.25,
+   "y": 28.700000000000003,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 874",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 875,
+   "category": "Chair",
+   "x": 16.25,
+   "y": 31,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 875",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 876,
+   "category": "Chair",
+   "x": 16.25,
+   "y": 33.300000000000004,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 876",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 877,
+   "category": "Chair",
+   "x": 17.85,
+   "y": 7.1000000000000005,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 7.853981633974483,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 877",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 878,
+   "category": "Chair",
+   "x": 17.85,
+   "y": 9.4,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 7.853981633974483,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 878",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 879,
+   "category": "Chair",
+   "x": 17.85,
+   "y": 11.7,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 7.853981633974483,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 879",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 880,
+   "category": "Chair",
+   "x": 17.85,
+   "y": 14.9,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 7.853981633974483,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 880",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 881,
+   "category": "Chair",
+   "x": 17.85,
+   "y": 17.2,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 7.853981633974483,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 881",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 882,
+   "category": "Chair",
+   "x": 17.85,
+   "y": 19.5,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 7.853981633974483,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 882",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 883,
+   "category": "Chair",
+   "x": 17.85,
+   "y": 21.8,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 7.853981633974483,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 883",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 884,
+   "category": "Chair",
+   "x": 17.85,
+   "y": 24.1,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 7.853981633974483,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 884",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 885,
+   "category": "Chair",
+   "x": 17.85,
+   "y": 26.4,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 7.853981633974483,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 885",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 886,
+   "category": "Chair",
+   "x": 17.85,
+   "y": 28.700000000000003,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 7.853981633974483,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 886",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 887,
+   "category": "Chair",
+   "x": 17.85,
+   "y": 31,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 7.853981633974483,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 887",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 888,
+   "category": "Chair",
+   "x": 17.85,
+   "y": 33.300000000000004,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 7.853981633974483,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 888",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 889,
+   "category": "Chair",
+   "x": 20.85,
+   "y": 7.1000000000000005,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 889",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 890,
+   "category": "Chair",
+   "x": 20.85,
+   "y": 9.4,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 890",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 891,
+   "category": "Chair",
+   "x": 20.85,
+   "y": 11.7,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 891",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 892,
+   "category": "Chair",
+   "x": 20.85,
+   "y": 14.9,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 892",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 893,
+   "category": "Chair",
+   "x": 20.85,
+   "y": 17.2,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 893",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 894,
+   "category": "Chair",
+   "x": 20.85,
+   "y": 19.5,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 894",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 895,
+   "category": "Chair",
+   "x": 20.85,
+   "y": 21.8,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 895",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 896,
+   "category": "Chair",
+   "x": 20.85,
+   "y": 24.1,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 896",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 897,
+   "category": "Chair",
+   "x": 20.85,
+   "y": 26.4,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 897",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 898,
+   "category": "Chair",
+   "x": 20.85,
+   "y": 28.700000000000003,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 898",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 899,
+   "category": "Chair",
+   "x": 20.85,
+   "y": 31,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 899",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 900,
+   "category": "Chair",
+   "x": 20.85,
+   "y": 33.300000000000004,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 900",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 901,
+   "category": "Chair",
+   "x": 22.450000000000003,
+   "y": 7.1000000000000005,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 7.853981633974483,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 901",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 902,
+   "category": "Chair",
+   "x": 22.450000000000003,
+   "y": 9.4,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 7.853981633974483,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 902",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 903,
+   "category": "Chair",
+   "x": 22.450000000000003,
+   "y": 11.7,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 7.853981633974483,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 903",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 904,
+   "category": "Chair",
+   "x": 22.450000000000003,
+   "y": 14.9,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 7.853981633974483,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 904",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 905,
+   "category": "Chair",
+   "x": 22.450000000000003,
+   "y": 17.2,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 7.853981633974483,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 905",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 906,
+   "category": "Chair",
+   "x": 22.450000000000003,
+   "y": 19.5,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 7.853981633974483,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 906",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 907,
+   "category": "Chair",
+   "x": 22.450000000000003,
+   "y": 21.8,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 7.853981633974483,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 907",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 908,
+   "category": "Chair",
+   "x": 22.450000000000003,
+   "y": 24.1,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 7.853981633974483,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 908",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 909,
+   "category": "Chair",
+   "x": 22.450000000000003,
+   "y": 26.4,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 7.853981633974483,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 909",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 910,
+   "category": "Chair",
+   "x": 22.450000000000003,
+   "y": 28.700000000000003,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 7.853981633974483,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 910",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 911,
+   "category": "Chair",
+   "x": 22.450000000000003,
+   "y": 31,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 7.853981633974483,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 911",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 912,
+   "category": "Chair",
+   "x": 22.450000000000003,
+   "y": 33.300000000000004,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 7.853981633974483,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 912",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 913,
+   "category": "Chair",
+   "x": 25.450000000000003,
+   "y": 7.1000000000000005,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 913",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 914,
+   "category": "Chair",
+   "x": 25.450000000000003,
+   "y": 9.4,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 914",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 915,
+   "category": "Chair",
+   "x": 25.450000000000003,
+   "y": 11.7,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 915",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 916,
+   "category": "Chair",
+   "x": 25.450000000000003,
+   "y": 14.9,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 916",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 917,
+   "category": "Chair",
+   "x": 25.450000000000003,
+   "y": 17.2,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 917",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 918,
+   "category": "Chair",
+   "x": 25.450000000000003,
+   "y": 19.5,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 918",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 919,
+   "category": "Chair",
+   "x": 25.450000000000003,
+   "y": 21.8,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 919",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 920,
+   "category": "Chair",
+   "x": 25.450000000000003,
+   "y": 24.1,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 920",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 921,
+   "category": "Chair",
+   "x": 25.450000000000003,
+   "y": 26.4,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 921",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 922,
+   "category": "Chair",
+   "x": 25.450000000000003,
+   "y": 28.700000000000003,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 4.71238898038469,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 922",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 923,
+   "category": "Chair",
+   "x": 16.650000000000002,
+   "y": 37.8,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 3.141592653589793,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 923",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 924,
+   "category": "Chair",
+   "x": 9.75,
+   "y": 2.7,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 3.141592653589793,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 924",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 925,
+   "category": "Chair",
+   "x": 15.15,
+   "y": 7.1000000000000005,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 7.853981633974483,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 925",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 926,
+   "category": "Chair",
+   "x": 15.15,
+   "y": 10.3,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 7.853981633974483,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 926",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 927,
+   "category": "Chair",
+   "x": 15.15,
+   "y": 12.6,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 7.853981633974483,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 927",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 928,
+   "category": "Chair",
+   "x": 15.15,
+   "y": 14.9,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 7.853981633974483,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 928",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 929,
+   "category": "Chair",
+   "x": 15.15,
+   "y": 17.2,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 7.853981633974483,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 929",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 930,
+   "category": "Chair",
+   "x": 15.15,
+   "y": 19.5,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 7.853981633974483,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 930",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 931,
+   "category": "Chair",
+   "x": 15.15,
+   "y": 21.8,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 7.853981633974483,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 931",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 932,
+   "category": "Chair",
+   "x": 15.15,
+   "y": 24.1,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 7.853981633974483,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 932",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 933,
+   "category": "Chair",
+   "x": 15.15,
+   "y": 26.4,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 7.853981633974483,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 933",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 934,
+   "category": "Chair",
+   "x": 15.15,
+   "y": 28.700000000000003,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 7.853981633974483,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 934",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 935,
+   "category": "Chair",
+   "x": 15.15,
+   "y": 31,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 7.853981633974483,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 935",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 936,
+   "category": "Chair",
+   "x": 19.75,
+   "y": 7.1000000000000005,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 7.853981633974483,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 936",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 937,
+   "category": "Chair",
+   "x": 19.75,
+   "y": 10.3,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 7.853981633974483,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 937",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 938,
+   "category": "Chair",
+   "x": 19.75,
+   "y": 12.6,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 7.853981633974483,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 938",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 939,
+   "category": "Chair",
+   "x": 19.75,
+   "y": 14.9,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 7.853981633974483,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 939",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 940,
+   "category": "Chair",
+   "x": 19.75,
+   "y": 17.2,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 7.853981633974483,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 940",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 941,
+   "category": "Chair",
+   "x": 19.75,
+   "y": 19.5,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 7.853981633974483,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 941",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 942,
+   "category": "Chair",
+   "x": 19.75,
+   "y": 21.8,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 7.853981633974483,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 942",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 943,
+   "category": "Chair",
+   "x": 19.75,
+   "y": 24.1,
+   "w": 0.5,
+   "h": 0.5,
+   "rotation": 7.853981633974483,
+   "mirror": false,
+   "reference": false,
+   "label": "Chair 943",
+   "seats": 1,
+   "decision": "Open"
+  },
+  {
+   "id": 975,
+   "category": "Window",
+   "x": 8.933941791976167,
+   "y": 43.17423171471819,
+   "w": 1.4661263037480694,
+   "h": 0.04090617110182393,
+   "rotation": 3.141592653589793,
+   "mirror": false,
+   "reference": true,
+   "label": "Window 975",
+   "seats": 0,
+   "decision": "Open"
+  },
+  {
+   "id": 976,
+   "category": "Window",
+   "x": 7.442700888847639,
+   "y": 43.17289959575828,
+   "w": 1.4661416350154468,
+   "h": 0.043524512023623174,
+   "rotation": 3.141592653589793,
+   "mirror": false,
+   "reference": true,
+   "label": "Window 976",
+   "seats": 0,
+   "decision": "Open"
+  },
+  {
+   "id": 977,
+   "category": "Window",
+   "x": 5.951883051546929,
+   "y": 43.137355514829096,
+   "w": 1.465922563616232,
+   "h": 0.07713512580403403,
+   "rotation": 3.141592653589793,
+   "mirror": false,
+   "reference": true,
+   "label": "Window 977",
+   "seats": 0,
+   "decision": "Open"
+  },
+  {
+   "id": 978,
+   "category": "Window",
+   "x": 8.93461509348208,
+   "y": 43.17423938622801,
+   "w": 1.4673159946692067,
+   "h": 0.1425003981785267,
+   "rotation": 3.141592653589793,
+   "mirror": false,
+   "reference": true,
+   "label": "Window 978",
+   "seats": 0,
+   "decision": "Open"
+  },
+  {
+   "id": 979,
+   "category": "Window",
+   "x": 7.441972435388607,
+   "y": 43.17297936540331,
+   "w": 1.4673962535880491,
+   "h": 0.14525824711608948,
+   "rotation": 3.141592653589793,
+   "mirror": false,
+   "reference": true,
+   "label": "Window 979",
+   "seats": 0,
+   "decision": "Open"
+  },
+  {
+   "id": 980,
+   "category": "Window",
+   "x": 5.951154997291496,
+   "y": 43.1374519743556,
+   "w": 1.4695075978013392,
+   "h": 0.17881322061748506,
+   "rotation": 3.141592653589793,
+   "mirror": false,
+   "reference": true,
+   "label": "Window 980",
+   "seats": 0,
+   "decision": "Open"
+  },
+  {
+   "id": 981,
+   "category": "Window",
+   "x": 18.918973912972888,
+   "y": 0.9502542786221966,
+   "w": 0.1269999999999527,
+   "h": 0.025400000000217915,
+   "rotation": 3.141592653589793,
+   "mirror": false,
+   "reference": true,
+   "label": "Window 981",
+   "seats": 0,
+   "decision": "Open"
+  },
+  {
+   "id": 982,
+   "category": "Window",
+   "x": 18.9314847686976,
+   "y": 0.9397379656516024,
+   "w": 0.04685858173866109,
+   "h": 0.1294759313029772,
+   "rotation": 3.141592653589793,
+   "mirror": false,
+   "reference": true,
+   "label": "Window 982",
+   "seats": 0,
+   "decision": "Open"
+  }
+ ],
+ "zones": [
+  {
+   "id": 518,
+   "zone_type": "ClosedOffice",
+   "shape": {
+    "kind": "Rect",
+    "x": 29.85,
+    "y": 13,
+    "w": 4.5,
+    "h": 4
+   },
+   "label": "Cabin",
+   "component_ids": [
+    517,
+    519,
+    520
+   ],
+   "origin": "Drawn"
+  },
+  {
+   "id": 527,
+   "zone_type": "Meeting",
+   "shape": {
+    "kind": "Rect",
+    "x": 34.45,
+    "y": 13.95,
+    "w": 4.5,
+    "h": 5.9
+   },
+   "label": "Boardroom",
+   "component_ids": [
+    526,
+    528,
+    529,
+    530,
+    531,
+    532,
+    533,
+    534,
+    535,
+    536,
+    537,
+    538,
+    539,
+    540
+   ],
+   "origin": "Drawn"
+  },
+  {
+   "id": 547,
+   "zone_type": "ClosedOffice",
+   "shape": {
+    "kind": "Poly",
+    "pts": [
+     [
+      15.8,
+      39.99999999999999
+     ],
+     [
+      17.599999999999998,
+      39.99999999999999
+     ],
+     [
+      17.599999999999998,
+      42.82826086956522
+     ],
+     [
+      15.8,
+      42.98478260869565
+     ]
+    ]
+   },
+   "label": "Focus Room 1",
+   "component_ids": [
+    548,
+    549,
+    832
+   ],
+   "origin": "Drawn"
+  },
+  {
+   "id": 556,
+   "zone_type": "Amenity",
+   "shape": {
+    "kind": "Rect",
+    "x": 13.8,
+    "y": 40.8,
+    "w": 3.8,
+    "h": 3.2
+   },
+   "label": "Reception",
+   "component_ids": [
+    555,
+    557,
+    558
+   ],
+   "origin": "Drawn"
+  },
+  {
+   "id": 565,
+   "zone_type": "Amenity",
+   "shape": {
+    "kind": "Rect",
+    "x": 8.9,
+    "y": 9.2,
+    "w": 3,
+    "h": 1.4
+   },
+   "label": "Storage",
+   "component_ids": [
+    564
+   ],
+   "origin": "Drawn"
+  },
+  {
+   "id": 566,
+   "zone_type": "Amenity",
+   "shape": {
+    "kind": "Poly",
+    "pts": [
+     [
+      6.6000000000000005,
+      8.5
+     ],
+     [
+      6.6000000000000005,
+      11.9
+     ],
+     [
+      6.6000000000000005,
+      11.9
+     ],
+     [
+      6.6000000000000005,
+      10.361666666666666
+     ],
+     [
+      4.6000000000000005,
+      10.295
+     ],
+     [
+      4.6000000000000005,
+      8.5
+     ]
+    ]
+   },
+   "label": "Print Point 1",
+   "component_ids": [
+    567
+   ],
+   "origin": "Drawn"
+  },
+  {
+   "id": 574,
+   "zone_type": "ClosedOffice",
+   "shape": {
+    "kind": "Rect",
+    "x": 3.1,
+    "y": 6,
+    "w": 2.4000000000000004,
+    "h": 1.8
+   },
+   "label": "Focus Room 2",
+   "component_ids": [
+    573,
+    575,
+    576
+   ],
+   "origin": "Drawn"
+  },
+  {
+   "id": 583,
+   "zone_type": "ClosedOffice",
+   "shape": {
+    "kind": "Rect",
+    "x": 8.5,
+    "y": 6,
+    "w": 2.4000000000000004,
+    "h": 1.8
+   },
+   "label": "Focus Room 3",
+   "component_ids": [
+    582,
+    584,
+    585
+   ],
+   "origin": "Drawn"
+  },
+  {
+   "id": 592,
+   "zone_type": "ClosedOffice",
+   "shape": {
+    "kind": "Rect",
+    "x": 16.1,
+    "y": 2.8000000000000003,
+    "w": 2.4000000000000004,
+    "h": 1.8
+   },
+   "label": "Focus Room 4",
+   "component_ids": [
+    591,
+    593,
+    594
+   ],
+   "origin": "Drawn"
+  },
+  {
+   "id": 601,
+   "zone_type": "ClosedOffice",
+   "shape": {
+    "kind": "Rect",
+    "x": 28.15,
+    "y": 8.55,
+    "w": 1.1,
+    "h": 1.3
+   },
+   "label": "Phone Booth 2",
+   "component_ids": [
+    600,
+    602
+   ],
+   "origin": "Drawn"
+  },
+  {
+   "id": 609,
+   "zone_type": "ClosedOffice",
+   "shape": {
+    "kind": "Rect",
+    "x": 29.35,
+    "y": 8.55,
+    "w": 1.1,
+    "h": 1.3
+   },
+   "label": "Phone Booth 3",
+   "component_ids": [
+    608,
+    610
+   ],
+   "origin": "Drawn"
+  },
+  {
+   "id": 617,
+   "zone_type": "ClosedOffice",
+   "shape": {
+    "kind": "Rect",
+    "x": 30.55,
+    "y": 8.55,
+    "w": 1.1,
+    "h": 1.3
+   },
+   "label": "Phone Booth 4",
+   "component_ids": [
+    616,
+    618
+   ],
+   "origin": "Drawn"
+  },
+  {
+   "id": 625,
+   "zone_type": "ClosedOffice",
+   "shape": {
+    "kind": "Rect",
+    "x": 31.75,
+    "y": 8.55,
+    "w": 1.1,
+    "h": 1.3
+   },
+   "label": "Phone Booth 5",
+   "component_ids": [
+    624,
+    626,
+    627
+   ],
+   "origin": "Drawn"
+  },
+  {
+   "id": 634,
+   "zone_type": "ClosedOffice",
+   "shape": {
+    "kind": "Rect",
+    "x": 32.95,
+    "y": 8.55,
+    "w": 1.1,
+    "h": 1.3
+   },
+   "label": "Phone Booth 6",
+   "component_ids": [
+    633,
+    635,
+    636
+   ],
+   "origin": "Drawn"
+  },
+  {
+   "id": 643,
+   "zone_type": "ClosedOffice",
+   "shape": {
+    "kind": "Rect",
+    "x": 34.15,
+    "y": 8.55,
+    "w": 1.1,
+    "h": 1.3
+   },
+   "label": "Phone Booth 7",
+   "component_ids": [
+    642,
+    644,
+    645
+   ],
+   "origin": "Drawn"
+  },
+  {
+   "id": 652,
+   "zone_type": "ClosedOffice",
+   "shape": {
+    "kind": "Rect",
+    "x": 35.35,
+    "y": 8.55,
+    "w": 1.1,
+    "h": 1.3
+   },
+   "label": "Phone Booth 8",
+   "component_ids": [
+    651,
+    653
+   ],
+   "origin": "Drawn"
+  },
+  {
+   "id": 654,
+   "zone_type": "Amenity",
+   "shape": {
+    "kind": "Rect",
+    "x": 12.9,
+    "y": 36.35,
+    "w": 2,
+    "h": 1.5
+   },
+   "label": "Print Point 2",
+   "component_ids": [
+    655
+   ],
+   "origin": "Drawn"
+  },
+  {
+   "id": 662,
+   "zone_type": "ClosedOffice",
+   "shape": {
+    "kind": "Rect",
+    "x": 36.55,
+    "y": 8.55,
+    "w": 1.1,
+    "h": 1.3
+   },
+   "label": "Phone Booth 1",
+   "component_ids": [
+    661,
+    663
+   ],
+   "origin": "Drawn"
+  },
+  {
+   "id": 664,
+   "zone_type": "Circulation",
+   "shape": {
+    "kind": "Rect",
+    "x": 11.3,
+    "y": 19.75,
+    "w": 0.5999999999999996,
+    "h": 30.5
+   },
+   "label": "Corridor",
+   "component_ids": [],
+   "origin": "Drawn"
+  },
+  {
+   "id": 665,
+   "zone_type": "Circulation",
+   "shape": {
+    "kind": "Rect",
+    "x": 26.7,
+    "y": 19.75,
+    "w": 0.6000000000000014,
+    "h": 30.5
+   },
+   "label": "Corridor",
+   "component_ids": [],
+   "origin": "Drawn"
+  },
+  {
+   "id": 666,
+   "zone_type": "Circulation",
+   "shape": {
+    "kind": "Rect",
+    "x": 19,
+    "y": 4.8,
+    "w": 16,
+    "h": 0.5999999999999996
+   },
+   "label": "Corridor",
+   "component_ids": [],
+   "origin": "Drawn"
+  },
+  {
+   "id": 667,
+   "zone_type": "Circulation",
+   "shape": {
+    "kind": "Rect",
+    "x": 19,
+    "y": 34.7,
+    "w": 16,
+    "h": 0.6000000000000014
+   },
+   "label": "Corridor",
+   "component_ids": [],
+   "origin": "Drawn"
+  },
+  {
+   "id": 668,
+   "zone_type": "Circulation",
+   "shape": {
+    "kind": "Rect",
+    "x": 32.6,
+    "y": 10.25,
+    "w": 10,
+    "h": 1.5
+   },
+   "label": "Corridor",
+   "component_ids": [],
+   "origin": "Drawn"
+  },
+  {
+   "id": 669,
+   "zone_type": "Circulation",
+   "shape": {
+    "kind": "Rect",
+    "x": 27.3,
+    "y": 12,
+    "w": 0.6000000000000014,
+    "h": 10
+   },
+   "label": "Corridor",
+   "component_ids": [],
+   "origin": "Drawn"
+  },
+  {
+   "id": 670,
+   "zone_type": "Circulation",
+   "shape": {
+    "kind": "Rect",
+    "x": 14.75,
+    "y": 38.45,
+    "w": 5.700000000000001,
+    "h": 1.5
+   },
+   "label": "Corridor",
+   "component_ids": [
+    923
+   ],
+   "origin": "Drawn"
+  },
+  {
+   "id": 671,
+   "zone_type": "Circulation",
+   "shape": {
+    "kind": "Rect",
+    "x": 14.75,
+    "y": 36.650000000000006,
+    "w": 1.1499999999999986,
+    "h": 2.1000000000000014
+   },
+   "label": "Aisle",
+   "component_ids": [],
+   "origin": "Drawn"
+  },
+  {
+   "id": 672,
+   "zone_type": "Circulation",
+   "shape": {
+    "kind": "Rect",
+    "x": 14.75,
+    "y": 35.3,
+    "w": 7.5,
+    "h": 0.6000000000000014
+   },
+   "label": "Corridor",
+   "component_ids": [],
+   "origin": "Drawn"
+  },
+  {
+   "id": 673,
+   "zone_type": "Circulation",
+   "shape": {
+    "kind": "Rect",
+    "x": 6.15,
+    "y": 7.75,
+    "w": 8.5,
+    "h": 1.5
+   },
+   "label": "Corridor",
+   "component_ids": [],
+   "origin": "Drawn"
+  },
+  {
+   "id": 674,
+   "zone_type": "Circulation",
+   "shape": {
+    "kind": "Rect",
+    "x": 3.85,
+    "y": 9.09834283843611,
+    "w": 1.4999999999999996,
+    "h": 1.1966856768722192
+   },
+   "label": "Entry",
+   "component_ids": [],
+   "origin": "Drawn"
+  },
+  {
+   "id": 675,
+   "zone_type": "Circulation",
+   "shape": {
+    "kind": "Rect",
+    "x": 6.15,
+    "y": 6.05,
+    "w": 1.1500000000000004,
+    "h": 1.9000000000000004
+   },
+   "label": "Aisle",
+   "component_ids": [],
+   "origin": "Drawn"
+  },
+  {
+   "id": 676,
+   "zone_type": "Circulation",
+   "shape": {
+    "kind": "Rect",
+    "x": 10.7,
+    "y": 7.25,
+    "w": 0.5999999999999996,
+    "h": 5.5
+   },
+   "label": "Corridor",
+   "component_ids": [],
+   "origin": "Drawn"
+  },
+  {
+   "id": 677,
+   "zone_type": "Circulation",
+   "shape": {
+    "kind": "Rect",
+    "x": 6,
+    "y": 4.8,
+    "w": 10,
+    "h": 0.5999999999999996
+   },
+   "label": "Corridor",
+   "component_ids": [],
+   "origin": "Drawn"
+  },
+  {
+   "id": 678,
+   "zone_type": "Circulation",
+   "shape": {
+    "kind": "Rect",
+    "x": 17.25,
+    "y": 4.2,
+    "w": 6.5,
+    "h": 0.6000000000000001
+   },
+   "label": "Corridor",
+   "component_ids": [],
+   "origin": "Drawn"
+  },
+  {
+   "id": 679,
+   "zone_type": "Circulation",
+   "shape": {
+    "kind": "Rect",
+    "x": 9.75,
+    "y": 4.2,
+    "w": 3.5,
+    "h": 0.6000000000000001
+   },
+   "label": "Corridor",
+   "component_ids": [],
+   "origin": "Drawn"
+  },
+  {
+   "id": 680,
+   "zone_type": "Workspace",
+   "shape": {
+    "kind": "Rect",
+    "x": 19,
+    "y": 19.75,
+    "w": 14.8,
+    "h": 29.299999999999997
+   },
+   "label": "Open Workspace (1)",
+   "component_ids": [
+    681,
+    682,
+    683,
+    684,
+    685,
+    686,
+    687,
+    688,
+    689,
+    690,
+    691,
+    692,
+    693,
+    694,
+    695,
+    696,
+    697,
+    698,
+    699,
+    700,
+    701,
+    702,
+    703,
+    704,
+    705,
+    706,
+    707,
+    708,
+    709,
+    710,
+    711,
+    712,
+    713,
+    714,
+    715,
+    716,
+    717,
+    718,
+    719,
+    720,
+    721,
+    722,
+    723,
+    724,
+    725,
+    726,
+    727,
+    728,
+    729,
+    730,
+    731,
+    732,
+    733,
+    734,
+    735,
+    736,
+    737,
+    738,
+    739,
+    740,
+    741,
+    742,
+    743,
+    744,
+    745,
+    746,
+    747,
+    748,
+    749,
+    750,
+    751,
+    752,
+    753,
+    754,
+    755,
+    756,
+    757,
+    758,
+    759,
+    760,
+    761,
+    762,
+    770,
+    771,
+    772,
+    773,
+    774,
+    775,
+    776,
+    777,
+    778,
+    779,
+    780,
+    781,
+    782,
+    783,
+    784,
+    785,
+    786,
+    787,
+    788,
+    841,
+    842,
+    843,
+    844,
+    845,
+    846,
+    847,
+    848,
+    849,
+    850,
+    851,
+    852,
+    853,
+    854,
+    855,
+    856,
+    857,
+    858,
+    859,
+    860,
+    861,
+    862,
+    863,
+    864,
+    865,
+    866,
+    867,
+    868,
+    869,
+    870,
+    871,
+    872,
+    873,
+    874,
+    875,
+    876,
+    877,
+    878,
+    879,
+    880,
+    881,
+    882,
+    883,
+    884,
+    885,
+    886,
+    887,
+    888,
+    889,
+    890,
+    891,
+    892,
+    893,
+    894,
+    895,
+    896,
+    897,
+    898,
+    899,
+    900,
+    901,
+    902,
+    903,
+    904,
+    905,
+    906,
+    907,
+    908,
+    909,
+    910,
+    911,
+    912,
+    913,
+    914,
+    915,
+    916,
+    917,
+    918,
+    919,
+    920,
+    921,
+    922,
+    925,
+    926,
+    927,
+    928,
+    929,
+    930,
+    931,
+    932,
+    933,
+    934,
+    935,
+    936,
+    937,
+    938,
+    939,
+    940,
+    941,
+    942,
+    943
+   ],
+   "origin": "Drawn"
+  },
+  {
+   "id": 763,
+   "zone_type": "Workspace",
+   "shape": {
+    "kind": "Rect",
+    "x": 32.6,
+    "y": 8.7,
+    "w": 10,
+    "h": 1.5999999999999996
+   },
+   "label": "Open Workspace (2)",
+   "component_ids": [],
+   "origin": "Drawn"
+  },
+  {
+   "id": 764,
+   "zone_type": "Workspace",
+   "shape": {
+    "kind": "Rect",
+    "x": 14.75,
+    "y": 36.650000000000006,
+    "w": 5.700000000000001,
+    "h": 2.1000000000000014
+   },
+   "label": "Open Workspace (3)",
+   "component_ids": [
+    765
+   ],
+   "origin": "Drawn"
+  },
+  {
+   "id": 766,
+   "zone_type": "Workspace",
+   "shape": {
+    "kind": "Rect",
+    "x": 6.15,
+    "y": 6.05,
+    "w": 8.5,
+    "h": 1.9000000000000004
+   },
+   "label": "Open Workspace (4)",
+   "component_ids": [],
+   "origin": "Drawn"
+  },
+  {
+   "id": 767,
+   "zone_type": "Workspace",
+   "shape": {
+    "kind": "Rect",
+    "x": 17.25,
+    "y": 2.9,
+    "w": 4.700000000000001,
+    "h": 2
+   },
+   "label": "Open Workspace (5)",
+   "component_ids": [],
+   "origin": "Drawn"
+  },
+  {
+   "id": 768,
+   "zone_type": "Workspace",
+   "shape": {
+    "kind": "Rect",
+    "x": 9.75,
+    "y": 2.9,
+    "w": 1.6999999999999993,
+    "h": 2
+   },
+   "label": "Open Workspace (6)",
+   "component_ids": [
+    769,
+    924
+   ],
+   "origin": "Drawn"
+  },
+  {
+   "id": 794,
+   "zone_type": "Circulation",
+   "shape": {
+    "kind": "Poly",
+    "pts": [
+     [
+      27.875,
+      18.875
+     ],
+     [
+      27.875,
+      15.125
+     ],
+     [
+      31.875,
+      15.125
+     ],
+     [
+      31.875,
+      17
+     ],
+     [
+      27.875,
+      17
+     ],
+     [
+      27.875,
+      18.875
+     ]
+    ]
+   },
+   "label": "Circulation",
+   "component_ids": [],
+   "origin": "Residual"
+  },
+  {
+   "id": 796,
+   "zone_type": "Unassigned",
+   "shape": {
+    "kind": "Poly",
+    "pts": [
+     [
+      11.625,
+      35.875
+     ],
+     [
+      11.625,
+      43.22606382978723
+     ],
+     [
+      9,
+      43.17021276595744
+     ],
+     [
+      9,
+      42.75
+     ],
+     [
+      10.15,
+      42.75
+     ],
+     [
+      10.75,
+      42.75
+     ],
+     [
+      10.75,
+      42.15
+     ],
+     [
+      10.75,
+      35.875
+     ]
+    ]
+   },
+   "label": "Unassigned",
+   "component_ids": [],
+   "origin": "Residual"
+  },
+  {
+   "id": 825,
+   "zone_type": "Core",
+   "shape": {
+    "kind": "Rect",
+    "x": 22.510221116491262,
+    "y": 38.151204039635104,
+    "w": 7.020442232982532,
+    "h": 5.802408079270435
+   },
+   "label": "Core 1",
+   "component_ids": [],
+   "origin": "Drawn"
+  },
+  {
+   "id": 826,
+   "zone_type": "Core",
+   "shape": {
+    "kind": "Rect",
+    "x": 6.125,
+    "y": 2.875,
+    "w": 2.25,
+    "h": 2.75
+   },
+   "label": "Core 2",
+   "component_ids": [],
+   "origin": "Drawn"
+  },
+  {
+   "id": 827,
+   "zone_type": "Core",
+   "shape": {
+    "kind": "Rect",
+    "x": 12.875,
+    "y": 3,
+    "w": 2.25,
+    "h": 2.5
+   },
+   "label": "Core 3",
+   "component_ids": [],
+   "origin": "Drawn"
+  },
+  {
+   "id": 833,
+   "zone_type": "Circulation",
+   "shape": {
+    "kind": "Poly",
+    "pts": [
+     [
+      21.27013422818792,
+      1.1359060402684569
+     ],
+     [
+      26,
+      2
+     ],
+     [
+      26.25,
+      2.5
+     ],
+     [
+      27.5,
+      2.5
+     ],
+     [
+      27.75,
+      3
+     ],
+     [
+      31.025471698113208,
+      3.6141509433962264
+     ],
+     [
+      31.923076923076923,
+      3.865384615384615
+     ],
+     [
+      33.07692307692307,
+      4.634615384615385
+     ],
+     [
+      34.5,
+      4.75
+     ],
+     [
+      34.75,
+      5.5
+     ],
+     [
+      37,
+      6
+     ],
+     [
+      37.25,
+      6.75
+     ],
+     [
+      38.5,
+      6.75
+     ],
+     [
+      38.75,
+      17
+     ],
+     [
+      36.75,
+      17
+     ],
+     [
+      36.75,
+      11.25
+     ],
+     [
+      37.75,
+      11.25
+     ],
+     [
+      37.75,
+      7.75
+     ],
+     [
+      27.75,
+      7.75
+     ],
+     [
+      27.75,
+      6.75
+     ],
+     [
+      27.25,
+      6.75
+     ],
+     [
+      27.25,
+      4.25
+     ],
+     [
+      20.75,
+      4.25
+     ],
+     [
+      20.75,
+      3.75
+     ],
+     [
+      19.75,
+      3.75
+     ],
+     [
+      19.75,
+      1.75
+     ],
+     [
+      14.75,
+      1.75
+     ],
+     [
+      14.75,
+      3.75
+     ],
+     [
+      14.25,
+      3.75
+     ],
+     [
+      14.25,
+      1.5
+     ],
+     [
+      11.5,
+      1.5
+     ],
+     [
+      11.5,
+      3.75
+     ],
+     [
+      10.75,
+      3.75
+     ],
+     [
+      10.75,
+      1.75
+     ],
+     [
+      8.75,
+      1.75
+     ],
+     [
+      8.75,
+      3.75
+     ],
+     [
+      7.75,
+      3.75
+     ],
+     [
+      7.75,
+      4.25
+     ],
+     [
+      7.5,
+      4.25
+     ],
+     [
+      7.482946793997272,
+      1.019781718963165
+     ],
+     [
+      5.991132332878581,
+      1.130286493860846
+     ]
+    ]
+   },
+   "label": "Circulation",
+   "component_ids": [],
+   "origin": "Residual"
+  },
+  {
+   "id": 834,
+   "zone_type": "Unassigned",
+   "shape": {
+    "kind": "Poly",
+    "pts": [
+     [
+      1,
+      1.5
+     ],
+     [
+      4.747953615279672,
+      1.2223738062755798
+     ],
+     [
+      4.75,
+      4.25
+     ],
+     [
+      1,
+      4.250000000000001
+     ]
+    ]
+   },
+   "label": "Unassigned",
+   "component_ids": [],
+   "origin": "Residual"
+  },
+  {
+   "id": 835,
+   "zone_type": "Unassigned",
+   "shape": {
+    "kind": "Poly",
+    "pts": [
+     [
+      1,
+      5.25
+     ],
+     [
+      1.75,
+      5.25
+     ],
+     [
+      1.75,
+      8.75
+     ],
+     [
+      3,
+      8.75
+     ],
+     [
+      3,
+      9.75
+     ],
+     [
+      4.5,
+      9.75
+     ],
+     [
+      4.498612652608212,
+      10.291620421753608
+     ],
+     [
+      3.25,
+      10.25
+     ],
+     [
+      3,
+      16.5
+     ],
+     [
+      2,
+      16.5
+     ],
+     [
+      2,
+      10.5
+     ],
+     [
+      1,
+      10.25
+     ]
+    ]
+   },
+   "label": "Unassigned",
+   "component_ids": [],
+   "origin": "Residual"
+  },
+  {
+   "id": 836,
+   "zone_type": "Unassigned",
+   "shape": {
+    "kind": "Poly",
+    "pts": [
+     [
+      6.75,
+      8.75
+     ],
+     [
+      7.25,
+      8.75
+     ],
+     [
+      7.25,
+      10
+     ],
+     [
+      10.25,
+      10
+     ],
+     [
+      10.242230854605992,
+      10.4830743618202
+     ],
+     [
+      11,
+      10.25
+     ],
+     [
+      10.75,
+      34.25
+     ],
+     [
+      10.75,
+      10.5
+     ],
+     [
+      6.746115427302996,
+      10.3665371809101
+     ]
+    ]
+   },
+   "label": "Unassigned",
+   "component_ids": [],
+   "origin": "Residual"
+  },
+  {
+   "id": 837,
+   "zone_type": "Unassigned",
+   "shape": {
+    "kind": "Poly",
+    "pts": [
+     [
+      27.75,
+      15.25
+     ],
+     [
+      32,
+      15.25
+     ],
+     [
+      32,
+      17
+     ],
+     [
+      27.75,
+      17
+     ]
+    ]
+   },
+   "label": "Unassigned",
+   "component_ids": [],
+   "origin": "Residual"
+  },
+  {
+   "id": 838,
+   "zone_type": "Unassigned",
+   "shape": {
+    "kind": "Poly",
+    "pts": [
+     [
+      26.25,
+      35.25
+     ],
+     [
+      27.25,
+      35.25
+     ],
+     [
+      27.25,
+      38.25
+     ],
+     [
+      30.5,
+      38.5
+     ],
+     [
+      30.75,
+      39.75
+     ],
+     [
+      26.273575638506877,
+      40.84626719056975
+     ]
+    ]
+   },
+   "label": "Unassigned",
+   "component_ids": [],
+   "origin": "Residual"
+  },
+  {
+   "id": 839,
+   "zone_type": "Unassigned",
+   "shape": {
+    "kind": "Poly",
+    "pts": [
+     [
+      1.3,
+      42.85
+     ],
+     [
+      2,
+      42.5
+     ],
+     [
+      2,
+      38
+     ],
+     [
+      3,
+      38
+     ],
+     [
+      3.25,
+      42.75
+     ],
+     [
+      10.75,
+      42.75
+     ],
+     [
+      10.75,
+      35.75
+     ],
+     [
+      11.75,
+      35.75
+     ],
+     [
+      11.75,
+      42.5
+     ],
+     [
+      15.75,
+      42.5
+     ],
+     [
+      15.74906191369606,
+      42.98921200750469
+     ],
+     [
+      14.23874296435272,
+      43.120544090056285
+     ],
+     [
+      6.747398190045248,
+      43.1222850678733
+     ],
+     [
+      1.2498868778280543,
+      43.00531674208145
+     ]
+    ]
+   },
+   "label": "Unassigned",
+   "component_ids": [],
+   "origin": "Residual"
+  },
+  {
+   "id": 840,
+   "zone_type": "Unassigned",
+   "shape": {
+    "kind": "Poly",
+    "pts": [
+     [
+      15.75,
+      39.25
+     ],
+     [
+      17.75,
+      39.25
+     ],
+     [
+      17.75,
+      35.75
+     ],
+     [
+      18.75,
+      35.75
+     ],
+     [
+      18.75,
+      41.25
+     ],
+     [
+      24.035363457760315,
+      41.394400785854614
+     ],
+     [
+      18.97170923379175,
+      42.63447937131631
+     ],
+     [
+      17.75562851782364,
+      42.81472795497186
+     ],
+     [
+      17.75,
+      39.75
+     ],
+     [
+      15.75,
+      39.75
+     ]
+    ]
+   },
+   "label": "Unassigned",
+   "component_ids": [],
+   "origin": "Residual"
+  }
+ ]
+}

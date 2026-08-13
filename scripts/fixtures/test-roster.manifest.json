@@ -428,7 +428,7 @@
     },
     {
       "when": "2026-08-12",
-      "why": "Workstream A (fix/wing-classifier): the residual-classifier gates land with the bounded-local-width conjunct. gate_a2_bounded_width_on_captured_shapes pins the discriminant's registered verdicts on the committed three-surface dump's polygons (833 rejected, 794 + sixteen drawn corridors kept, L-corridor mask control); gate_a2_no_room_scale_clearing_is_typed_circulation pins the end-to-end property over rect/real_plate/F1 generates (red pre-fix on F1 zone 282 and real_plate zone 311); gate_a1_residual_type_expresses_classifier_verdict pins that residual facets express the classifier's verdict, labels derive from types, and the sweep is idempotent on fresh generates. All three watched red-or-vacuity-checked before the fix per reports/editor-completion/A-preregistration.md.",
+"why": "Workstream A (fix/wing-classifier): the residual-classifier gates land with the bounded-local-width conjunct. gate_a2_bounded_width_on_captured_shapes pins the discriminant's registered verdicts on the committed three-surface dump's polygons (833 rejected, 794 + sixteen drawn corridors kept, L-corridor mask control); gate_a2_no_room_scale_clearing_is_typed_circulation pins the end-to-end property over rect/real_plate/F1 generates (red pre-fix on F1 zone 282 and real_plate zone 311); gate_a1_residual_type_expresses_classifier_verdict pins that residual facets express the classifier's verdict, labels derive from types, and the sweep is idempotent on fresh generates. All three watched red-or-vacuity-checked before the fix per reports/editor-completion/A-preregistration.md.",
       "js": {
         "added": [],
         "removed": []
@@ -438,6 +438,20 @@
           "layout::tests::gate_a1_residual_type_expresses_classifier_verdict",
           "layout::tests::gate_a2_bounded_width_on_captured_shapes",
           "layout::tests::gate_a2_no_room_scale_clearing_is_typed_circulation"
+        ],
+        "removed": []
+      }
+    },
+    {
+      "when": "2026-08-12",
+"why": "Workstream E adds layout::tests::placed_desks_and_tables_stay_inside_their_zone_on_the_golden_cases — the placement containment gate, watched red on the unfixed fill (9 desks exiting Open Workspace on 3 golden real_plate cases) and green on the no_straddle rejection. 209 -> 210.",
+      "js": {
+        "added": [],
+        "removed": []
+      },
+      "rust": {
+        "added": [
+          "layout::tests::placed_desks_and_tables_stay_inside_their_zone_on_the_golden_cases"
         ],
         "removed": []
       }
@@ -599,6 +613,7 @@
     "layout::tests::open_walls_fall_back_to_bbox_behavior": "initial pin — the F1 roster, established from a green tree at 56af276",
     "layout::tests::oriented_fill_insights_are_correct_nia_le_gea_and_pax_is_seated": "initial pin — the F1 roster, established from a green tree at 56af276",
     "layout::tests::partition_conforms_rooms_and_stays_disjoint_on_tilted_plates": "initial pin — the F1 roster, established from a green tree at 56af276",
+    "layout::tests::placed_desks_and_tables_stay_inside_their_zone_on_the_golden_cases": "Workstream E adds layout::tests::placed_desks_and_tables_stay_inside_their_zone_on_the_golden_cases — the placement containment gate, watched red on the unfixed fill (9 desks exiting Open Workspace on 3 golden real_plate cases) and green on the no_straddle rejection. 209 -> 210.",
     "layout::tests::places_multiple_meeting_rooms_when_they_fit": "initial pin — the F1 roster, established from a green tree at 56af276",
     "layout::tests::places_requested_when_room_is_large_enough": "initial pin — the F1 roster, established from a green tree at 56af276",
     "layout::tests::portrait_wing_pairs_desks_across_the_spine": "initial pin — the F1 roster, established from a green tree at 56af276",

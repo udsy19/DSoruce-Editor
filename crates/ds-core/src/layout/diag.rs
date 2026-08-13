@@ -87,6 +87,11 @@ pub struct DeskRejects {
     pub walls: u32,
     /// Overlaps a room, keep-out, corridor strip or an existing desk.
     pub obstacles: u32,
+    /// Would straddle an emitted Workspace zone's edge — footprint partly
+    /// inside, partly outside (the whole-plate fill's "desk crossing the zone
+    /// boundary" defect, Workstream E). Only the fill pass supplies the zone
+    /// rects, so this stays 0 on the per-region passes by construction.
+    pub straddle: u32,
 }
 
 /// Everything one `generate` call decided.
