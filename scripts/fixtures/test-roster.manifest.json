@@ -428,7 +428,7 @@
     },
     {
       "when": "2026-08-12",
-"why": "Workstream A (fix/wing-classifier): the residual-classifier gates land with the bounded-local-width conjunct. gate_a2_bounded_width_on_captured_shapes pins the discriminant's registered verdicts on the committed three-surface dump's polygons (833 rejected, 794 + sixteen drawn corridors kept, L-corridor mask control); gate_a2_no_room_scale_clearing_is_typed_circulation pins the end-to-end property over rect/real_plate/F1 generates (red pre-fix on F1 zone 282 and real_plate zone 311); gate_a1_residual_type_expresses_classifier_verdict pins that residual facets express the classifier's verdict, labels derive from types, and the sweep is idempotent on fresh generates. All three watched red-or-vacuity-checked before the fix per reports/editor-completion/A-preregistration.md.",
+      "why": "Workstream A (fix/wing-classifier): the residual-classifier gates land with the bounded-local-width conjunct. gate_a2_bounded_width_on_captured_shapes pins the discriminant's registered verdicts on the committed three-surface dump's polygons (833 rejected, 794 + sixteen drawn corridors kept, L-corridor mask control); gate_a2_no_room_scale_clearing_is_typed_circulation pins the end-to-end property over rect/real_plate/F1 generates (red pre-fix on F1 zone 282 and real_plate zone 311); gate_a1_residual_type_expresses_classifier_verdict pins that residual facets express the classifier's verdict, labels derive from types, and the sweep is idempotent on fresh generates. All three watched red-or-vacuity-checked before the fix per reports/editor-completion/A-preregistration.md.",
       "js": {
         "added": [],
         "removed": []
@@ -444,7 +444,7 @@
     },
     {
       "when": "2026-08-12",
-"why": "Workstream E adds layout::tests::placed_desks_and_tables_stay_inside_their_zone_on_the_golden_cases — the placement containment gate, watched red on the unfixed fill (9 desks exiting Open Workspace on 3 golden real_plate cases) and green on the no_straddle rejection. 209 -> 210.",
+      "why": "Workstream E adds layout::tests::placed_desks_and_tables_stay_inside_their_zone_on_the_golden_cases — the placement containment gate, watched red on the unfixed fill (9 desks exiting Open Workspace on 3 golden real_plate cases) and green on the no_straddle rejection. 209 -> 210.",
       "js": {
         "added": [],
         "removed": []
@@ -452,6 +452,34 @@
       "rust": {
         "added": [
           "layout::tests::placed_desks_and_tables_stay_inside_their_zone_on_the_golden_cases"
+        ],
+        "removed": []
+      }
+    },
+    {
+      "when": "2026-08-12",
+      "why": "Workstream D (fix/pax-derivation): component_mutators_keep_pax_membership_fresh pins that every component mutator changing existence or center rebuckets zone membership through zone_index_at, so the canvas tag's pax (seated / the furnished capacity arm) can never assert a desk the document's geometry no longer contains; watched RED before the rebucket_component fix (seated 0 vs 1 after add_component)",
+      "js": {
+        "added": [],
+        "removed": []
+      },
+      "rust": {
+        "added": [
+          "tests::component_mutators_keep_pax_membership_fresh"
+        ],
+        "removed": []
+      }
+    },
+    {
+      "when": "2026-08-12",
+      "why": "Workstream D (fix/pax-derivation): pax_area_arm_never_captions_a_seated_zone pins the capacity ladder's mutual exclusivity — a Desk seats 1 at any size incl. the 0.05 m clamp floor and every ingress resolves seats, so the area rule-of-thumb arm can only fire on rows whose seated is 0; true red structurally unavailable, falsified by sabotage in a disposable worktree (size-dependent desk seats -> red at the clamp-floor assertion)",
+      "js": {
+        "added": [],
+        "removed": []
+      },
+      "rust": {
+        "added": [
+          "tests::pax_area_arm_never_captions_a_seated_zone"
         ],
         "removed": []
       }
@@ -694,6 +722,7 @@
     "quantity::tests::wall_heights_and_areas_are_derived_not_typed": "initial pin — the F1 roster, established from a green tree at 56af276",
     "quantity::tests::wall_lengths_match_hand_computed_within_1cm": "initial pin — the F1 roster, established from a green tree at 56af276",
     "tests::both_zone_writers_refuse_an_off_plate_shape": "initial pin — the F1 roster, established from a green tree at 56af276",
+    "tests::component_mutators_keep_pax_membership_fresh": "Workstream D (fix/pax-derivation): component_mutators_keep_pax_membership_fresh pins that every component mutator changing existence or center rebuckets zone membership through zone_index_at, so the canvas tag's pax (seated / the furnished capacity arm) can never assert a desk the document's geometry no longer contains; watched RED before the rebucket_component fix (seated 0 vs 1 after add_component)",
     "tests::efficiency_usable_excludes_only_circulation_and_core": "initial pin — the F1 roster, established from a green tree at 56af276",
     "tests::every_f64_mutator_is_guarded_against_non_finite_input": "initial pin — the F1 roster, established from a green tree at 56af276",
     "tests::every_mutator_bumps_the_revision": "initial pin — the F1 roster, established from a green tree at 56af276",
@@ -707,6 +736,7 @@
     "tests::no_zone_mutator_can_write_a_document_that_cannot_reopen": "initial pin — the F1 roster, established from a green tree at 56af276",
     "tests::old_document_blob_without_reference_deserializes_and_counts": "initial pin — the F1 roster, established from a green tree at 56af276",
     "tests::only_desks_count_as_workstations": "initial pin — the F1 roster, established from a green tree at 56af276",
+    "tests::pax_area_arm_never_captions_a_seated_zone": "Workstream D (fix/pax-derivation): pax_area_arm_never_captions_a_seated_zone pins the capacity ladder's mutual exclusivity — a Desk seats 1 at any size incl. the 0.05 m clamp floor and every ingress resolves seats, so the area rule-of-thumb arm can only fire on rows whose seated is 0; true red structurally unavailable, falsified by sabotage in a disposable worktree (size-dependent desk seats -> red at the clamp-floor assertion)",
     "tests::revision_advances_on_mutation_and_holds_still_on_reads": "initial pin — the F1 roster, established from a green tree at 56af276",
     "tests::the_non_finite_guard_does_not_refuse_ordinary_edits": "initial pin — the F1 roster, established from a green tree at 56af276",
     "tests::workstations_exclude_reference_and_drive_area_per_ws": "initial pin — the F1 roster, established from a green tree at 56af276",
