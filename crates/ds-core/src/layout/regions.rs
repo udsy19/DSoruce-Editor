@@ -742,8 +742,16 @@ pub(crate) fn plan_region(
     };
 
     // Seam strips: this region's drawn half of each shared corridor (the
-    // neighbour emits the other half — together exactly ONE corridor).
+    // neighbour emits the other half — together exactly ONE corridor). The
+    // HORIZONTAL strips yield their corner squares to the vertical ones: two
+    // seams of one region used to both claim the corner, a double-cover the
+    // partition-disjointness contract tolerates only while it is rare — the
+    // second-chance wings multiplied seam count and pushed the summed corner
+    // overlap past the 1% budget on the chamfer sweep. The corner floor stays
+    // covered (by exactly one strip), so no coverage hole opens.
     let mut seams = Vec::new();
+    let lx = if ins.left.seam { ins.left.inset } else { 0.0 };
+    let rx = if ins.right.seam { ins.right.inset } else { 0.0 };
     if ins.left.seam {
         seams.push(geometry::Rect { x0: outer.x0, y0: outer.y0, x1: outer.x0 + ins.left.inset, y1: outer.y1 });
     }
@@ -751,10 +759,10 @@ pub(crate) fn plan_region(
         seams.push(geometry::Rect { x0: outer.x1 - ins.right.inset, y0: outer.y0, x1: outer.x1, y1: outer.y1 });
     }
     if ins.bottom.seam {
-        seams.push(geometry::Rect { x0: outer.x0, y0: outer.y0, x1: outer.x1, y1: outer.y0 + ins.bottom.inset });
+        seams.push(geometry::Rect { x0: outer.x0 + lx, y0: outer.y0, x1: outer.x1 - rx, y1: outer.y0 + ins.bottom.inset });
     }
     if ins.top.seam {
-        seams.push(geometry::Rect { x0: outer.x0, y0: outer.y1 - ins.top.inset, x1: outer.x1, y1: outer.y1 });
+        seams.push(geometry::Rect { x0: outer.x0 + lx, y0: outer.y1 - ins.top.inset, x1: outer.x1 - rx, y1: outer.y1 });
     }
 
     RegionPlan {

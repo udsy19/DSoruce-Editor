@@ -137,6 +137,38 @@ fn subtract_rect_hole(base: geometry::Rect, hole: geometry::Rect) -> Vec<geometr
     subtract_rect(base, hole)
 }
 
+/// Merge rects that share a full edge back into single rects, to a fixpoint.
+/// The guillotine subtraction above fragments a void into slivers; emitting
+/// each as its own zone put 0.02 m² "Open Workspace" rows into the delivered
+/// room schedule. Exact — a merge changes no covered area.
+fn coalesce_rects(mut rects: Vec<geometry::Rect>) -> Vec<geometry::Rect> {
+    let eq = |a: f64, b: f64| (a - b).abs() < 1e-9;
+    loop {
+        let mut merged = false;
+        'outer: for i in 0..rects.len() {
+            for j in (i + 1)..rects.len() {
+                let (a, b) = (rects[i], rects[j]);
+                let joined = if eq(a.y0, b.y0) && eq(a.y1, b.y1) && (eq(a.x1, b.x0) || eq(b.x1, a.x0)) {
+                    Some(geometry::Rect { x0: a.x0.min(b.x0), y0: a.y0, x1: a.x1.max(b.x1), y1: a.y1 })
+                } else if eq(a.x0, b.x0) && eq(a.x1, b.x1) && (eq(a.y1, b.y0) || eq(b.y1, a.y0)) {
+                    Some(geometry::Rect { x0: a.x0, y0: a.y0.min(b.y0), x1: a.x1, y1: a.y1.max(b.y1) })
+                } else {
+                    None
+                };
+                if let Some(r) = joined {
+                    rects[i] = r;
+                    rects.swap_remove(j);
+                    merged = true;
+                    break 'outer;
+                }
+            }
+        }
+        if !merged {
+            return rects;
+        }
+    }
+}
+
 pub fn generate(
     doc: &mut Document,
     program: &Program,
@@ -680,7 +712,7 @@ pub fn generate(
     // 930.1/906 plate yardsticks are pinned). Same gate as the residual
     // machinery (the oriented path's spanning zone is its own regime).
     let mut voids: Vec<geometry::Rect> = Vec::new();
-    if !use_oriented_field {
+    if !single_region && !use_oriented_field {
         let desk_hulls: Vec<(f64, f64, f64, f64)> = doc
             .components
             .iter()
@@ -746,7 +778,8 @@ pub fn generate(
     // spanning Workspace zone covers the floor, so there is no residual ground
     // to take there.
     for job in homeless {
-        let placed = !use_oriented_field
+        let placed = !single_region
+            && !use_oriented_field
             && plate.as_deref().is_some_and(|poly| {
                 place_in_residual(
                     doc, &job, poly, &holes, &iwalls, &mut obstacles, keepout_len, frozen_len,
@@ -789,6 +822,7 @@ pub fn generate(
             }
             pieces.extend(frontier);
         }
+        let pieces = coalesce_rects(pieces);
         for p in pieces {
             if p.width() < 0.02 || p.height() < 0.02 {
                 continue; // sub-module dust
