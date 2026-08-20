@@ -3,6 +3,69 @@
 
 use super::*;
 
+/// Maximum face gap (m) between two rooms that still reads as ONE SHARED WALL:
+/// a generated partition (`PARTITION_T` 0.1) meeting a glazed front
+/// (`GLAZING_T` 0.05). Derived, not tuned — the same arithmetic the
+/// plan-quality rubric's `WALL_MAX_M` cites.
+pub(crate) const ROOM_ABUT_MAX: f64 = PARTITION_T + GLAZING_T;
+
+/// Face gap between two corner-origin rects across the axis they overlap on;
+/// `None` when they interpenetrate or are diagonal (no shared face). The
+/// 0.05 m overlap slack matches the plan-quality rubric's `faceGap`.
+fn face_gap(a: &geometry::Rect, b: &geometry::Rect) -> Option<f64> {
+    let ov_x = a.x1.min(b.x1) - a.x0.max(b.x0);
+    let ov_y = a.y1.min(b.y1) - a.y0.max(b.y0);
+    if ov_x > 0.05 && ov_y > 0.05 {
+        return None;
+    }
+    if ov_y > 0.05 {
+        return Some(a.x0.max(b.x0) - a.x1.min(b.x1));
+    }
+    if ov_x > 0.05 {
+        return Some(a.y0.max(b.y0) - a.y1.min(b.y1));
+    }
+    None
+}
+
+/// **The wall-or-passage invariant** (PQ2's property, enforced at placement):
+/// the gap between a candidate room and every room already emitted must be a
+/// shared wall (≤ [`ROOM_ABUT_MAX`]) or a walkable passage (≥ `SECONDARY_W`) —
+/// the band in between is floor that is billed, dead, and unenterable, so a
+/// candidate that would create it is not a legal slot at all.
+pub(crate) fn room_gap_legal(rooms: &[geometry::Rect], cx: f64, cy: f64, w: f64, h: f64) -> bool {
+    let cand = geometry::Rect { x0: cx - w / 2.0, y0: cy - h / 2.0, x1: cx + w / 2.0, y1: cy + h / 2.0 };
+    rooms.iter().all(|r| match face_gap(&cand, r) {
+        Some(g) => g <= ROOM_ABUT_MAX + 1e-6 || g >= SECONDARY_W - 1e-6,
+        None => true,
+    })
+}
+
+/// Corner-origin rects of every ROOM zone already in the document — the same
+/// population PQ2 grades (every zone type except Circulation / Workspace /
+/// Core; Unassigned does not exist at placement time). Open settings (collab,
+/// print) count: a dead sliver beside an open zone is as dead as one beside a
+/// wall.
+pub(crate) fn room_rects(doc: &Document) -> Vec<geometry::Rect> {
+    doc.zones
+        .iter()
+        .filter(|z| {
+            !matches!(
+                z.zone_type,
+                ZoneType::Circulation | ZoneType::Workspace | ZoneType::Core | ZoneType::Unassigned
+            )
+        })
+        .filter_map(|z| match z.shape {
+            ZoneShape::Rect { x, y, w, h } => Some(geometry::Rect {
+                x0: x - w / 2.0,
+                y0: y - h / 2.0,
+                x1: x + w / 2.0,
+                y1: y + h / 2.0,
+            }),
+            _ => None,
+        })
+        .collect()
+}
+
 /// Gap (m) between a center-based rect and a corner-based `geometry::Rect`
 /// (0 when they touch or overlap).
 pub(crate) fn rect_gap(cx: f64, cy: f64, w: f64, h: f64, r: &geometry::Rect) -> f64 {
@@ -13,8 +76,9 @@ pub(crate) fn rect_gap(cx: f64, cy: f64, w: f64, h: f64, r: &geometry::Rect) -> 
 
 /// Whether a room may stand at (cx, cy, w×h): on the plate, clear of interior
 /// walls, abutting-but-not-inside keep-outs (0.05 m), a person-clearance from
-/// frozen furniture, `ROOM_GAP` from other rooms, and never intruding on a
-/// drawn circulation rect.
+/// frozen furniture, `ROOM_GAP` from other rooms — and, against every room
+/// already emitted, at a WALL-OR-PASSAGE gap ([`room_gap_legal`]) — and never
+/// intruding on a drawn circulation rect.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn room_slot_ok(
     plate: Option<&[Point]>,
@@ -23,6 +87,7 @@ pub(crate) fn room_slot_ok(
     keepout_len: usize,
     frozen_len: usize,
     circ_rects: &[geometry::Rect],
+    rooms: &[geometry::Rect],
     clear: f64,
     cx: f64,
     cy: f64,
@@ -34,6 +99,7 @@ pub(crate) fn room_slot_ok(
         && !footprint_overlaps(&obstacles[..keepout_len], cx, cy, w, h, 0.05)
         && !footprint_overlaps(&obstacles[keepout_len..frozen_len], cx, cy, w, h, clear)
         && !footprint_overlaps(&obstacles[frozen_len..], cx, cy, w, h, ROOM_GAP - 1e-6)
+        && room_gap_legal(rooms, cx, cy, w, h)
         // A band room's glazed front sits EXACTLY on the spine edge (its door
         // opens onto it) - that shared edge must be allowed. Reject only genuine
         // interpenetration (a strict negative tolerance), not a touching front.
@@ -104,6 +170,7 @@ pub(crate) fn place_in_band(
     if depth_cap < 0.5 {
         return false;
     }
+    let rooms = room_rects(doc);
     // Clamp to the band (the old meeting clamp, floored at 70% of the ask).
     let d = snap_room_floor(job.d.min(depth_cap));
     let w = snap_room_floor(job.w.min(cursors.1 - cursors.0));
@@ -149,7 +216,7 @@ pub(crate) fn place_in_band(
         }
         let (cx, cy) = if plan.portrait { (cc, along) } else { (along, cc) };
         if room_slot_ok(
-            plate, iwalls, obstacles, keepout_len, frozen_len, circ_rects, clear, cx, cy, ww, hh,
+            plate, iwalls, obstacles, keepout_len, frozen_len, circ_rects, &rooms, clear, cx, cy, ww, hh,
         ) {
             emit_job(doc, job, cx, cy, ww, hh, side);
             obstacles.push((cx, cy, ww, hh));
@@ -186,6 +253,7 @@ pub(crate) fn place_in_pocket(
     circ_rects: &[geometry::Rect],
     clear: f64,
 ) -> bool {
+    let rooms = room_rects(doc);
     let mut best: Option<(f64, f64, f64, f64, f64)> = None; // (dist, cx, cy, w, h)
     'search: for plan in plans {
         let p = &plan.pocket;
@@ -201,10 +269,39 @@ pub(crate) fn place_in_pocket(
             let y_hi = p.y1 - hh / 2.0;
             let nx = ((x_hi - x_lo) / POCKET_STEP).floor().max(0.0) as i64;
             let ny = ((y_hi - y_lo) / POCKET_STEP).floor().max(0.0) as i64;
+            // Scan-grid candidates, PLUS flush-snap candidates: for each room
+            // already placed, positions abutting it at ROOM_GAP (shared-wall
+            // class) with edges aligned to it. Without these, the wall-or-
+            // passage invariant would push every pocket room a whole aisle
+            // away from its neighbour — legal, but wasteful; WITH them, rooms
+            // pack shoulder-to-shoulder exactly like a band.
+            let mut cands: Vec<(f64, f64)> = Vec::new();
             for iy in 0..=ny {
                 for ix in 0..=nx {
-                    let cx = snap_module(x_lo + ix as f64 * POCKET_STEP);
-                    let cy = snap_module(y_lo + iy as f64 * POCKET_STEP);
+                    cands.push((
+                        snap_module(x_lo + ix as f64 * POCKET_STEP),
+                        snap_module(y_lo + iy as f64 * POCKET_STEP),
+                    ));
+                }
+            }
+            for r in &rooms {
+                let xs = [r.x0 - ROOM_GAP - ww / 2.0, r.x1 + ROOM_GAP + ww / 2.0];
+                let ys = [r.y0 - ROOM_GAP - hh / 2.0, r.y1 + ROOM_GAP + hh / 2.0];
+                let x_aligns = [r.x0 + ww / 2.0, r.x1 - ww / 2.0, (r.x0 + r.x1) / 2.0];
+                let y_aligns = [r.y0 + hh / 2.0, r.y1 - hh / 2.0, (r.y0 + r.y1) / 2.0];
+                for &cx in &xs {
+                    for &cy in &y_aligns {
+                        cands.push((snap_module(cx), snap_module(cy)));
+                    }
+                }
+                for &cy in &ys {
+                    for &cx in &x_aligns {
+                        cands.push((snap_module(cx), snap_module(cy)));
+                    }
+                }
+            }
+            for (cx, cy) in cands {
+                {
                     if cx - ww / 2.0 < p.x0 - 1e-9
                         || cx + ww / 2.0 > p.x1 + 1e-9
                         || cy - hh / 2.0 < p.y0 - 1e-9
@@ -213,7 +310,7 @@ pub(crate) fn place_in_pocket(
                         continue;
                     }
                     if !room_slot_ok(
-                        plate, iwalls, obstacles, keepout_len, frozen_len, circ_rects, clear,
+                        plate, iwalls, obstacles, keepout_len, frozen_len, circ_rects, &rooms, clear,
                         cx, cy, ww, hh,
                     ) {
                         continue;
@@ -294,11 +391,12 @@ pub(crate) fn place_anchor(
     /// interior walls, coarse enough to stay cheap on a big plate.
     const ANCHOR_STEP: f64 = 0.3;
     let (min_x, min_y, max_x, max_y) = bbox;
+    let rooms = room_rects(doc);
     // (dist², cx, cy, ww, hh) of the feasible candidate nearest the pin so far.
     let mut best: Option<(f64, f64, f64, f64, f64)> = None;
     let consider = |cx: f64, cy: f64, ww: f64, hh: f64, best: &mut Option<(f64, f64, f64, f64, f64)>| {
         if room_slot_ok(
-            plate, iwalls, obstacles, keepout_len, frozen_len, circ_rects, clear, cx, cy, ww, hh,
+            plate, iwalls, obstacles, keepout_len, frozen_len, circ_rects, &rooms, clear, cx, cy, ww, hh,
         ) {
             let dist2 = (cx - tx).powi(2) + (cy - ty).powi(2);
             if best.is_none_or(|b| dist2 < b.0) {
