@@ -38,7 +38,23 @@ export const WALK_MIN_M = 1.1
 export const CLUSTER_MIN = 6
 export const CLUSTER_MAX = 12
 
-const rectOf = (z) => (z.shape && z.shape.kind === 'Rect' ? z.shape : null)
+/** Corner-origin rect of a zone's shape, or null.
+ *
+ *  `ZoneShape::Rect { x, y, w, h }` is CENTER-origin (zone.rs: `contains` tests
+ *  `|px − x| ≤ w/2`; every renderer draws `x − w/2`). This helper used to hand
+ *  the shape to `faceGap` verbatim, which reads `{x, y, w, h}` corner-origin —
+ *  so every zone was silently translated by (+w/2, +h/2) and a pair's measured
+ *  gap was off by (Δw/2, Δh/2). Equal-size rooms cancel, which is why the
+ *  falsification round (equal-size fixtures only) never caught it: on the
+ *  standing red this misread reported 12 gaps of which 8 were phantoms
+ *  (e.g. "0.60 m Reception|Meeting Room 1" is a true 0.10 m shared wall) while
+ *  hiding 4 real ones (e.g. Meeting Room 2|IT / Server at a true 0.80 m read
+ *  as −0.20 and skipped). Reconciled red: 8 gaps / 11.20 m².
+ */
+const rectOf = (z) =>
+  z.shape && z.shape.kind === 'Rect'
+    ? { x: z.shape.x - z.shape.w / 2, y: z.shape.y - z.shape.h / 2, w: z.shape.w, h: z.shape.h }
+    : null
 
 /** Footprint of a component as an axis-aligned rect, honouring rotation by
  *  swapping w/h on quarter turns. Coordinates only. */
