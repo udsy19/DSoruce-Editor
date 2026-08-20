@@ -40,6 +40,18 @@ pub(crate) const FIELD_REGION_FRAC: f64 = 0.6;
 /// Raster cell size (m) for plate decomposition — 0.5 m keeps the grid at a few
 /// thousand cells (trivial cost) while resolving real wing geometry.
 pub(crate) const REGION_CELL: f64 = 0.5;
+
+/// SECOND-CHANCE ("wing") decomposition floors. The primary decomposition
+/// stops at `REGION_MIN_DIM` (a desk-field wing), which on the repro plate
+/// stranded 135 m² of ROOM-SCALE pockets — 7×3, 5.5×2.5, 5×3 — with no region,
+/// no band and no pocket scan, while 38 briefed rooms dropped unplaced. A
+/// second pass over the residue claims pockets down to room scale so the
+/// existing allocate/band/pocket machinery reaches them. The dims are derived,
+/// not tuned: a support room's 3.0 m module at the placement clamp's own 70%
+/// floor is 2.1 m, backed `BAND_BACK_GAP` onto the wall → 2.0 m; the area is
+/// that clamped room (2.1 × 2.31 ≈ 4.9 m²) plus its `ROOM_GAP` margins → 6 m².
+pub(crate) const WING_MIN_DIM: f64 = 2.0;
+pub(crate) const WING_MIN_AREA: f64 = 6.0;
 /// A decomposition region must be at least this wide/tall (m) — narrower slivers
 /// can't usefully hold a corridor-inset desk row, so they're discarded.
 pub(crate) const REGION_MIN_DIM: f64 = 3.0;
@@ -126,11 +138,27 @@ pub(crate) const SEAM_MIN_OVERLAP: f64 = 1.0;
 /// `corridor/2`, the two neighbours' halves meeting as ONE shared corridor)
 /// when another region abuts it co-linearly with ≥ `SEAM_MIN_OVERLAP` overlap;
 /// otherwise it is plate boundary with the facade gap.
-pub(crate) fn region_insets(regions: &[geometry::Rect], idx: usize, corridor: f64) -> Insets {
+///
+/// A SECONDARY (second-chance wing) region keeps only `BAND_BACK_GAP` at its
+/// boundary edges: its ground is room-scale, and rooms back onto walls the way
+/// band rooms do. Desks need no inset protection here — every desk slot is
+/// independently held `FACADE_GAP` off the plate polygon by
+/// `slot_fits_plate`, so the wing inset governs ROOM reach only.
+pub(crate) fn region_insets(
+    regions: &[geometry::Rect],
+    idx: usize,
+    corridor: f64,
+    secondary: bool,
+) -> Insets {
     let r = &regions[idx];
     let seam = Edge { inset: corridor / 2.0, seam: true };
     let eps = 1e-3;
-    let mut ins = Insets::boundary();
+    let mut ins = if secondary {
+        let e = Edge { inset: BAND_BACK_GAP, seam: false };
+        Insets { left: e, right: e, top: e, bottom: e }
+    } else {
+        Insets::boundary()
+    };
     for (j, o) in regions.iter().enumerate() {
         if j == idx {
             continue;
@@ -247,19 +275,13 @@ pub(crate) fn allocate_rooms(
     // Reserve the plate's dominant wing(s) as a PURE open desk field: zero band
     // capacity, so NO support room ever bands into them and their entire
     // cross-section stays workstations (spec §1: desks are the majority use).
-    // The old shallow-band cap (`FIELD_REGION_BAND_D`, one room deep) still ran a
-    // room band the full length of the biggest wing — on the real 462 m² wing
-    // that band + its 1.5 m spine (≈4.8 m of a 12.5 m cross-section, across the
-    // whole 37 m length) held ~9–11 rooms and cost the field ~20 desks. With
-    // `cap_d = 0` the band-pass fit check (`0.7·d ≤ cap_d`) rejects every room
-    // for these wings, `band_depths` stays 0, and `plan_region` emits no band and
-    // no spine — the whole inset rect packs desks. Rooms concentrate in the
-    // smaller wings instead (they lead the smallest-first `order`); a room that
-    // fits in no room-wing overflows to the pocket pass, whose field-region
-    // pocket is the now-empty band strip (zero width → never placed there), so
-    // overflow can never leak back into a reserved desk wing. `field_regions`
-    // already excludes the single-region case (that plate hosts every room in
-    // its one band).
+    // A measured band grant (depth sized by dry-running the desk grid) was
+    // TRIED here for the 50-room explicit brief and REVERTED on measurement:
+    // the granted depth (~1.6 m, all the field could spare at the desk target)
+    // was too shallow for any homeless room, so it bought a 44 m² spine and a
+    // desk-field shrink for zero rooms placed — circulation 16.3 % → 23.8 %
+    // NIA, breaching the registered 12–18 % falsifier. Room coverage comes
+    // from the second-chance wings + pocket reach instead.
     for i in 0..n {
         if field_regions[i] {
             cap_d[i] = 0.0;
@@ -633,6 +655,15 @@ pub(crate) fn plan_region(
     // single plates keep the full-cross pocket so their density-calibrated fill and
     // legitimate second band row are unchanged, and multi-region plates keep it for
     // their small non-field wings where rooms cluster (882 m² decomposition intact).
+    // Pocket cross-edges reach the BOUNDARY at `BAND_BACK_GAP`, not the desk
+    // facade gap: the pocket exists for ROOMS, rooms back onto walls exactly
+    // as band rooms do (0.1 m), and desks never needed the pocket's protection
+    // — every desk slot is held `FACADE_GAP` off the plate polygon by
+    // `slot_fits_plate` independently. The 0.9 m pocket inset was a desk-era
+    // leftover that permanently stranded a room-depth strip along every
+    // pocket's window edge (measured: 10 m² on the repro plate's east wing
+    // alone, typed Unassigned).
+    let pocket_edge = |e: Edge| if e.seam { e.inset } else { BAND_BACK_GAP };
     let pocket = if field_region || reserve_field {
         if !band_far {
             rect(a0, a1, c0 + e_lo.inset, band_front.max(c0 + e_lo.inset))
@@ -640,9 +671,9 @@ pub(crate) fn plan_region(
             rect(a0, a1, band_front.min(c1 - e_hi.inset), c1 - e_hi.inset)
         }
     } else if !band_far {
-        rect(a0, a1, band_base, c1 - e_hi.inset)
+        rect(a0, a1, band_base, c1 - pocket_edge(e_hi))
     } else {
-        rect(a0, a1, c0 + e_lo.inset, band_base)
+        rect(a0, a1, c0 + pocket_edge(e_lo), band_base)
     };
 
     // Entry connector: a spine-width strip from the entry point to the spine.

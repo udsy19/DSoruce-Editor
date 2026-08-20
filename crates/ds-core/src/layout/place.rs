@@ -258,9 +258,12 @@ pub(crate) fn place_in_pocket(
     'search: for plan in plans {
         let p = &plan.pocket;
         for (w, d) in [(job.w, job.d), (job.d, job.w)] {
-            let ww = snap_room_floor(w);
-            let hh = snap_room_floor(d);
-            if ww > p.width() + 1e-9 || hh > p.height() + 1e-9 || ww < 0.5 || hh < 0.5 {
+            // Clamp to the pocket exactly as the band pass clamps to its band:
+            // down to 70% of the ask still counts as fitting. Without this a
+            // room-scale wing 0.1 m shy of a cabin's depth hosted nothing.
+            let ww = snap_room_floor(w.min(p.width()));
+            let hh = snap_room_floor(d.min(p.height()));
+            if ww < 0.7 * w - 1e-9 || hh < 0.7 * d - 1e-9 || ww < 0.5 || hh < 0.5 {
                 continue;
             }
             let x_lo = p.x0 + ww / 2.0;
@@ -325,6 +328,129 @@ pub(crate) fn place_in_pocket(
                     if dist <= 0.3 {
                         break 'search; // adjacent to a corridor — take it
                     }
+                }
+            }
+        }
+    }
+    let Some((_, cx, cy, ww, hh)) = best else { return false };
+    let side = door_side_toward_circ(cx, cy, ww, hh, circ_rects);
+    emit_job(doc, job, cx, cy, ww, hh, side);
+    obstacles.push((cx, cy, ww, hh));
+    true
+}
+
+/// PASS D — a room into RESIDUAL ground: the free floor left after every band,
+/// pocket, anchor and desk pass has run. The free rectangles are re-derived
+/// from the document exactly the way the residual classifier will derive them
+/// (zones + components + keep-outs as holes), so a room placed here consumes
+/// floor that would otherwise be typed Unassigned — the repro plate carried
+/// 166 m² of it while 38 briefed rooms were dropped. Candidates are scanned
+/// inside each free rect (largest first, both orientations, the band pass's
+/// 70% clamp) through the same `room_slot_ok` every other pass uses, so the
+/// wall-or-passage invariant and circulation intrusion rules hold unchanged.
+/// Returns whether the room was placed.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn place_in_residual(
+    doc: &mut Document,
+    job: &RoomJob,
+    poly: &[Point],
+    holes: &[geometry::Rect],
+    iwalls: &[(Point, Point, f64)],
+    obstacles: &mut Vec<(f64, f64, f64, f64)>,
+    keepout_len: usize,
+    frozen_len: usize,
+    circ_rects: &[geometry::Rect],
+    clear: f64,
+    // The workspace-trim VOIDS — floor cut away from field zones because no
+    // desk uses it. Scanned FIRST: it is interior, corridor-adjacent ground,
+    // exactly where a homeless room belongs.
+    extra: &[geometry::Rect],
+) -> bool {
+    // Free floor right now: every zone bbox + component AABB + keep-out is a
+    // hole. Re-derived per call — rooms placed by earlier calls are zones
+    // already, so the ground never goes stale.
+    let mut used: Vec<geometry::Rect> = holes.to_vec();
+    for z in &doc.zones {
+        let (x0, y0, x1, y1) = z.shape.bbox();
+        used.push(geometry::Rect { x0, y0, x1, y1 });
+    }
+    for c in &doc.components {
+        let (ww, wh) = world_extents(c.w, c.h, c.rotation);
+        used.push(geometry::Rect {
+            x0: c.x - ww / 2.0,
+            y0: c.y - wh / 2.0,
+            x1: c.x + ww / 2.0,
+            y1: c.y + wh / 2.0,
+        });
+    }
+    let rooms = room_rects(doc);
+    let mut free: Vec<geometry::Rect> = extra.to_vec();
+    free.extend(geometry::decompose_plate(poly, 0.5, 1.0, 2.0, &used));
+    let mut best: Option<(f64, f64, f64, f64, f64)> = None;
+    'rects: for r in &free {
+        for (w, d) in [(job.w, job.d), (job.d, job.w)] {
+            let ww = snap_room_floor(w.min(r.width()));
+            let hh = snap_room_floor(d.min(r.height()));
+            if ww < 0.7 * w - 1e-9 || hh < 0.7 * d - 1e-9 || ww < 0.5 || hh < 0.5 {
+                continue;
+            }
+            let x_lo = r.x0 + ww / 2.0;
+            let x_hi = r.x1 - ww / 2.0;
+            let y_lo = r.y0 + hh / 2.0;
+            let y_hi = r.y1 - hh / 2.0;
+            let nx = ((x_hi - x_lo) / POCKET_STEP).floor().max(0.0) as i64;
+            let ny = ((y_hi - y_lo) / POCKET_STEP).floor().max(0.0) as i64;
+            // Scan grid + the same FLUSH-SNAP candidates the pocket pass uses,
+            // so consecutive residual rooms pack shoulder-to-shoulder instead
+            // of stranding 1.5 m slivers between themselves.
+            let mut cands: Vec<(f64, f64)> = Vec::new();
+            for iy in 0..=ny {
+                for ix in 0..=nx {
+                    cands.push((
+                        snap_module(x_lo + ix as f64 * POCKET_STEP),
+                        snap_module(y_lo + iy as f64 * POCKET_STEP),
+                    ));
+                }
+            }
+            for rr in &rooms {
+                let xs = [rr.x0 - ROOM_GAP - ww / 2.0, rr.x1 + ROOM_GAP + ww / 2.0];
+                let ys = [rr.y0 - ROOM_GAP - hh / 2.0, rr.y1 + ROOM_GAP + hh / 2.0];
+                let x_aligns = [rr.x0 + ww / 2.0, rr.x1 - ww / 2.0, (rr.x0 + rr.x1) / 2.0];
+                let y_aligns = [rr.y0 + hh / 2.0, rr.y1 - hh / 2.0, (rr.y0 + rr.y1) / 2.0];
+                for &cx in &xs {
+                    for &cy in &y_aligns {
+                        cands.push((snap_module(cx), snap_module(cy)));
+                    }
+                }
+                for &cy in &ys {
+                    for &cx in &x_aligns {
+                        cands.push((snap_module(cx), snap_module(cy)));
+                    }
+                }
+            }
+            for (cx, cy) in cands {
+                if cx - ww / 2.0 < r.x0 - 1e-9
+                    || cx + ww / 2.0 > r.x1 + 1e-9
+                    || cy - hh / 2.0 < r.y0 - 1e-9
+                    || cy + hh / 2.0 > r.y1 + 1e-9
+                {
+                    continue;
+                }
+                if !room_slot_ok(
+                    Some(poly), iwalls, obstacles, keepout_len, frozen_len, circ_rects,
+                    &rooms, clear, cx, cy, ww, hh,
+                ) {
+                    continue;
+                }
+                let dist = circ_rects
+                    .iter()
+                    .map(|c| rect_gap(cx, cy, ww, hh, c))
+                    .fold(f64::INFINITY, f64::min);
+                if best.is_none_or(|b| dist < b.0) {
+                    best = Some((dist, cx, cy, ww, hh));
+                }
+                if dist <= 0.3 {
+                    break 'rects; // door onto a corridor — take it
                 }
             }
         }

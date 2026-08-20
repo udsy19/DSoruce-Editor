@@ -106,6 +106,37 @@ pub(crate) use self::seed::*;
 /// that find no band slot fall back to interior clear pockets (both
 /// orientations), and any remaining shortfall is reported honestly through
 /// `LayoutScore::program_fit` rather than silently dropped.
+/// `outer ∖ inner` as up to four disjoint rects (exact — the workspace-trim
+/// bookkeeping must conserve floor area to the module, so no raster is
+/// involved). Empty when `inner` covers `outer`.
+fn subtract_rect(outer: geometry::Rect, inner: geometry::Rect) -> Vec<geometry::Rect> {
+    let i = geometry::Rect {
+        x0: inner.x0.max(outer.x0),
+        y0: inner.y0.max(outer.y0),
+        x1: inner.x1.min(outer.x1),
+        y1: inner.y1.min(outer.y1),
+    };
+    if i.x1 <= i.x0 || i.y1 <= i.y0 {
+        return vec![outer];
+    }
+    let mut out = Vec::new();
+    let mut push = |x0: f64, y0: f64, x1: f64, y1: f64| {
+        if x1 - x0 > 1e-9 && y1 - y0 > 1e-9 {
+            out.push(geometry::Rect { x0, y0, x1, y1 });
+        }
+    };
+    push(outer.x0, outer.y0, outer.x1, i.y0); // below
+    push(outer.x0, i.y1, outer.x1, outer.y1); // above
+    push(outer.x0, i.y0, i.x0, i.y1); // left band
+    push(i.x1, i.y0, outer.x1, i.y1); // right band
+    out
+}
+
+/// Alias with hole semantics for the void bookkeeping loop.
+fn subtract_rect_hole(base: geometry::Rect, hole: geometry::Rect) -> Vec<geometry::Rect> {
+    subtract_rect(base, hole)
+}
+
 pub fn generate(
     doc: &mut Document,
     program: &Program,
@@ -273,6 +304,30 @@ pub fn generate(
     let use_oriented_field =
         !is_rectangular && plate_area > 0.0 && axis_cover < ORIENTED_COVER_FRAC * plate_area;
     let single_region = regions.is_empty();
+    // SECOND-CHANCE wings: re-decompose the residue at ROOM scale and append
+    // the claims as regions, so room-scale pockets the desk-field floor
+    // (`REGION_MIN_DIM`) rejected still get bands/pockets/desk allocation
+    // through the machinery that already exists — on the repro plate the
+    // primary tiling stranded 135 m² this way while 38 briefed rooms dropped.
+    // Axis-aligned multi-region plates only: the oriented path fills the whole
+    // polygon itself, and its gate (`axis_cover`, computed ABOVE from the
+    // primary decomposition alone) must not be flipped by wing crumbs along a
+    // diagonal facade. `primary_n` marks where the wings start — secondary
+    // regions take room-scale insets (`region_insets`).
+    let primary_n = regions.len();
+    if !single_region && !use_oriented_field {
+        if let Some(poly) = plate.as_deref() {
+            let mut claimed = holes.clone();
+            claimed.extend(regions.iter().copied());
+            regions.extend(geometry::decompose_plate(
+                poly,
+                REGION_CELL,
+                WING_MIN_DIM,
+                WING_MIN_AREA,
+                &claimed,
+            ));
+        }
+    }
     diag.plate_area = plate_area;
     diag.bbox_area = bbox_area;
     diag.is_rectangular = is_rectangular;
@@ -303,7 +358,7 @@ pub fn generate(
         vec![Insets::boundary()]
     } else {
         (0..regions.len())
-            .map(|i| region_insets(&regions, i, corridor))
+            .map(|i| region_insets(&regions, i, corridor, i >= primary_n))
             .collect()
     };
 
@@ -528,20 +583,18 @@ pub fn generate(
         }
     }
     // --- Pass B: leftover rooms hunt interior clear pockets (both
-    // orientations, nearest-to-circulation candidate wins). A room that fits
-    // nowhere is a shortfall `program_fit` reports — never a silent drop.
+    // orientations, nearest-to-circulation candidate wins). A room that still
+    // fits nowhere is kept for PASS D below — the residual-ground pass that
+    // runs after the desks, so a briefed room gets one more chance at the
+    // floor nothing else claimed before that floor is written off.
+    let mut homeless: Vec<RoomJob> = Vec::new();
     for job in overflow {
         let ok = place_in_pocket(
             doc, &plans, &job, plate.as_deref(), &iwalls, &mut obstacles,
             keepout_len, frozen_len, &circ_rects, clear,
         );
-        // A room that fits in no band and no pocket is DROPPED. It already
-        // surfaces as a `program_fit` shortfall in the score, but a score is a
-        // scalar: it says the plan is short without saying of what. Naming them
-        // is the difference between "the derive did not ask for it" and "the
-        // derive asked and placement refused", and those have different fixes.
         if !ok {
-            diag.rooms_unplaced.push(job.label.clone());
+            homeless.push(job);
         }
     }
 
@@ -613,6 +666,146 @@ pub fn generate(
                 pack_desks_oriented(doc, program, poly, remaining_desks, &iwalls, &mut obstacles, clear);
             }
         }
+
+    // --- Workspace zones shrink to the desks they actually seat --------------
+    // A region's Workspace zone is emitted over its WHOLE field rect before a
+    // single desk lands, but the desk target caps what the field seats — on
+    // the repro plate the dominant field billed ~100 m² of desk-less void as
+    // "Open Workspace" while 33 briefed rooms were homeless. Trim each field
+    // zone to the hull of its own desks plus one clearance aisle (a zone that
+    // seats nothing is removed outright); the cut-away floor is kept as VOID
+    // rects — ground for PASS D below — and after that pass every void piece
+    // no room took is emitted as a residual-provisional zone by EXACT
+    // rectangle subtraction, so not a square centimetre leaves the NIA (the
+    // 930.1/906 plate yardsticks are pinned). Same gate as the residual
+    // machinery (the oriented path's spanning zone is its own regime).
+    let mut voids: Vec<geometry::Rect> = Vec::new();
+    if !use_oriented_field {
+        let desk_hulls: Vec<(f64, f64, f64, f64)> = doc
+            .components
+            .iter()
+            .filter(|c| c.category == "Desk")
+            .map(|c| {
+                let (ww, wh) = world_extents(c.w, c.h, c.rotation);
+                (c.x - ww / 2.0, c.y - wh / 2.0, c.x + ww / 2.0, c.y + wh / 2.0)
+            })
+            .collect();
+        let mut kept_voids: Vec<geometry::Rect> = Vec::new();
+        doc.zones.retain_mut(|z| {
+            if z.zone_type != ZoneType::Workspace {
+                return true;
+            }
+            let ZoneShape::Rect { x, y, w, h } = z.shape else { return true };
+            let outer = geometry::Rect {
+                x0: x - w / 2.0,
+                y0: y - h / 2.0,
+                x1: x + w / 2.0,
+                y1: y + h / 2.0,
+            };
+            let mut hull: Option<(f64, f64, f64, f64)> = None;
+            for &(dx0, dy0, dx1, dy1) in &desk_hulls {
+                let (cx, cy) = ((dx0 + dx1) / 2.0, (dy0 + dy1) / 2.0);
+                if cx >= outer.x0 && cx <= outer.x1 && cy >= outer.y0 && cy <= outer.y1 {
+                    hull = Some(match hull {
+                        None => (dx0, dy0, dx1, dy1),
+                        Some((a, b, c, d)) => (a.min(dx0), b.min(dy0), c.max(dx1), d.max(dy1)),
+                    });
+                }
+            }
+            let Some((hx0, hy0, hx1, hy1)) = hull else {
+                kept_voids.push(outer); // seats nothing: the whole rect is void
+                return false;
+            };
+            let trimmed = geometry::Rect {
+                x0: snap_module((hx0 - clear).max(outer.x0)),
+                y0: snap_module((hy0 - clear).max(outer.y0)),
+                x1: snap_module((hx1 + clear).min(outer.x1)),
+                y1: snap_module((hy1 + clear).min(outer.y1)),
+            };
+            kept_voids.extend(subtract_rect(outer, trimmed));
+            z.shape = ZoneShape::Rect {
+                x: (trimmed.x0 + trimmed.x1) / 2.0,
+                y: (trimmed.y0 + trimmed.y1) / 2.0,
+                w: trimmed.width(),
+                h: trimmed.height(),
+            };
+            true
+        });
+        voids = kept_voids;
+    }
+
+    // --- PASS D: homeless rooms take residual ground -------------------------
+    // After every band, pocket, anchor and DESK pass: a briefed room that
+    // still has no home hunts the free floor the residual pass is about to
+    // write off. Runs BEFORE that pass so a placed room is architecture and
+    // the leftover is honestly typed around it; a room that fails even here is
+    // a shortfall `program_fit` reports — never a silent drop. Naming the
+    // survivors is the difference between "the derive did not ask for it" and
+    // "the derive asked and placement refused", and those have different
+    // fixes. Gated exactly like the residual pass: the oriented path's
+    // spanning Workspace zone covers the floor, so there is no residual ground
+    // to take there.
+    for job in homeless {
+        let placed = !use_oriented_field
+            && plate.as_deref().is_some_and(|poly| {
+                place_in_residual(
+                    doc, &job, poly, &holes, &iwalls, &mut obstacles, keepout_len, frozen_len,
+                    &circ_rects, clear, &voids,
+                )
+            });
+        if !placed {
+            diag.rooms_unplaced.push(job.label.clone());
+        }
+    }
+    // Every void piece no room took goes BACK to Workspace by EXACT
+    // subtraction of the room zones that landed in it — no raster, no
+    // half-cell shaving, so the field's floor re-enters the NIA to the module
+    // with its original billing. The trim exists to hand rooms the desk-less
+    // ground, not to relitigate how an under-filled field is billed: typed as
+    // residual instead, the whole void merely moved from the Workspace column
+    // to Unassigned (measured: 156.7 m² vs 113.5) while the yardsticked NIA
+    // shed raster dust — strictly worse on both `phase0` pins.
+    {
+        let room_holes: Vec<geometry::Rect> = doc
+            .zones
+            .iter()
+            .filter(|z| {
+                !matches!(z.zone_type, ZoneType::Circulation | ZoneType::Workspace | ZoneType::Core)
+            })
+            .map(|z| {
+                let (x0, y0, x1, y1) = z.shape.bbox();
+                geometry::Rect { x0, y0, x1, y1 }
+            })
+            .collect();
+        let mut pieces: Vec<geometry::Rect> = Vec::new();
+        for v in &voids {
+            let mut frontier = vec![*v];
+            for h in &room_holes {
+                let mut next = Vec::new();
+                for f in frontier {
+                    next.extend(subtract_rect_hole(f, *h));
+                }
+                frontier = next;
+            }
+            pieces.extend(frontier);
+        }
+        for p in pieces {
+            if p.width() < 0.02 || p.height() < 0.02 {
+                continue; // sub-module dust
+            }
+            push_zone(
+                doc,
+                ZoneType::Workspace,
+                ZoneShape::Rect {
+                    x: (p.x0 + p.x1) / 2.0,
+                    y: (p.y0 + p.y1) / 2.0,
+                    w: p.width(),
+                    h: p.height(),
+                },
+                "Open Workspace",
+            );
+        }
+    }
 
         // --- Whole-plate leftover fill (irregular multi-region plates) ---------
         // The per-region packer fills each wing's inscribed desk RECTANGLE, but
