@@ -481,7 +481,8 @@
         "added": [
           "tests::pax_area_arm_never_captions_a_seated_zone"
         ],
-        "removed": []      }
+        "removed": []
+      }
     },
     {
       "when": "2026-08-12",
@@ -494,6 +495,20 @@
       },
       "rust": {
         "added": [],
+        "removed": []
+      }
+    },
+    {
+      "when": "2026-08-20",
+      "why": "W4 fix/g14-generator: chairs_project_only_into_circulation_and_only_to_tuck_depth added (Ruling 1 chair-bound invariant, sabotage-proven in a scratch worktree)",
+      "js": {
+        "added": [],
+        "removed": []
+      },
+      "rust": {
+        "added": [
+          "layout::tests::chairs_project_only_into_circulation_and_only_to_tuck_depth"
+        ],
         "removed": []
       }
     }
@@ -604,6 +619,7 @@
     "layout::tests::boundary_walls_are_not_packing_obstacles": "initial pin — the F1 roster, established from a green tree at 56af276",
     "layout::tests::briefed_room_seats_match_the_brief": "initial pin — the F1 roster, established from a green tree at 56af276",
     "layout::tests::capacity_is_partial_when_room_too_small": "initial pin — the F1 roster, established from a green tree at 56af276",
+    "layout::tests::chairs_project_only_into_circulation_and_only_to_tuck_depth": "W4 fix/g14-generator: chairs_project_only_into_circulation_and_only_to_tuck_depth added (Ruling 1 chair-bound invariant, sabotage-proven in a scratch worktree)",
     "layout::tests::circulation_conforms_to_a_diagonal_wall": "initial pin — the F1 roster, established from a green tree at 56af276",
     "layout::tests::circulation_network_reaches_entry_with_no_dead_ends": "initial pin — the F1 roster, established from a green tree at 56af276",
     "layout::tests::compactness_measures_shape_not_tracing_resolution": "initial pin — the F1 roster, established from a green tree at 56af276",
