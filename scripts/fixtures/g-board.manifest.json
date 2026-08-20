@@ -1,0 +1,167 @@
+{
+  "provenance": {
+    "capturedAt": "2026-08-20T21:55:01.109Z",
+    "commit": "d868ec3850859627fe37a15f791569e6ecd0a6a3",
+    "claim": "Captured from a boards-green tree (G1-G11 board PASS on artifacts built via the sanctioned path in this worktree) — a population explicitly verified clean, per .claude/rules/gate-independence.md. Re-capture ONLY from a green board, and only after reading what changed.",
+    "method": "Static extraction of every Gate.check(...) call site in the eleven gate files: python via ast (msg argument source segment), .mjs via the string/template/regex-aware scanner in sg5-board-integrity.mjs. Identity = whitespace-normalized msg-argument source text; compared as a MULTISET, both directions. Runtime check identities are not emitted on a green run (gatelib surfaces msg only on failure), which is why the pin is on source call sites."
+  },
+  "gates": {
+    "G1": {
+      "file": "scripts/gates/g1-sheet-structure.py",
+      "checkSites": [
+        "f\"sheet order wrong: {names}\"",
+        "f\"gridlines still on for '{n}'\"",
+        "f\"no logo image on '{n}'\"",
+        "f\"Plan has {len(imgs)} image(s), need >=2 (logo + master plan)\"",
+        "f\"Plan has no image >=1000px wide (widths={widths}); \" \"the master plan PNG must be embedded at full resolution\"",
+        "f\"legend label '{lab}' not found in Plan Q/R region\"",
+        "\"legend header 'Wall type' not found in Plan Q/R region\"",
+        "f\"'{sheet}' row {row} missing header '{want}' (got {vals[:12]})\"",
+        "f\"'Inventory' row 4 missing header '{want}' (got {vals[:14]})\""
+      ]
+    },
+    "G2": {
+      "file": "scripts/gates/g2-formula-liveness.py",
+      "checkSites": [
+        "f\"'{sheet}' has no body rows\"",
+        "f\"'{sheet}' only {pct:.1f}% of body cells in B-E,H-I are formulas \" f\"({s_live}/{s_total}), need >={min_pct:.0f}%\"",
+        "\"no body cells found across Main Summary + BOM sheets\"",
+        "f\"overall formula density {overall:.1f}% ({live}/{total}), need >={min_pct:.0f}%\"",
+        "f\"'{sheet}' Total Price column not all {tcol}=<qty>*<price>: \" + \"; \".join(bad[:3]) + (f\" (+{len(bad)-3})\" if len(bad) > 3 else \"\")",
+        "f\"recalc dead: setting {price_ref} +{delta:g} moved the Main Summary \" f\"total by {moved:.4f}, expected {expected:.4f} \" f\"(qty {' x '.join(parts)} = {qty:g}, tol {tol:g}). \" \"The workbook is not formula-wired.\""
+      ]
+    },
+    "G3": {
+      "file": "scripts/gates/g3-quantity-truth.py",
+      "checkSites": [
+        "f\"ground truth missing required key '{k}'\"",
+        "f\"wall '{wt}' length {got[wt]:.4f} m vs truth {want_m:.4f} m \" f\"(off by {d*100:.2f} cm, tol {wall_tol*100:.0f} cm)\"",
+        "f\"workbook has wall type '{wt}' not in ground truth\"",
+        "f\"door type '{dt}' count {got.get(dt)!r} vs truth {int(want)} (must be exact)\"",
+        "f\"total door count {sum(got.values())} vs truth {gt['doorCount']}\"",
+        "f\"Inventory header row 4 missing '{n}' (saw {sorted(cm)})\"",
+        "f\"Inventory has {len(rows)} body rows, ground truth has {len(gt['rooms'])} rooms\"",
+        "f\"room {key} area {float(m2):.4f} m2 vs truth {float(t['areaM2']):.4f} \" f\"(off {d:.4f}, tol {area_tol})\"",
+        "f\"room {key} sqf {float(sqf):.4f} != m2 x {sqf_factor} = {want_sqf:.4f} \" f\"(off {d2:.4f}, tol {tol2:.4f})\"",
+        "f\"Room IDs duplicated in Inventory: {dupes[:6]}\"",
+        "f\"ground-truth rooms missing from Inventory: {absent[:6]}\"",
+        "f\"Room ID {key} appears {n}x in the plan label list (must be exactly 1)\"",
+        "f\"plan labels with no Inventory row: {orphan[:6]}\""
+      ]
+    },
+    "G4": {
+      "file": "scripts/gates/g4-plan-graphic.py",
+      "checkSites": [
+        "f\"plan width {W} outside {want_w} +/-{dim_tol*100:.0f}%\"",
+        "f\"plan height {H} outside {want_h} +/-{dim_tol*100:.0f}%\"",
+        "\"plan plate bounding box is empty\"",
+        "f\"circulation band covers {pct_circ:.2f}% of the plate \" f\"({n_circ}px of {plate_area}), need >{min_circ}% — \" f\"expected hue {pal['circulation']} (reference: 12.86%)\"",
+        "f\"no drywall pixels ({pal['drywall']}) in the plan\"",
+        "f\"no glass pixels ({pal['glass']}) in the plan \" \"(pass --no-glass if this plan genuinely has no glazed partitions)\"",
+        "f\"{os.path.relpath(gtp)} carries no `walls` block, so there is no billed \" \"wall length to check the plan's facade against — the plan graphic would \" \"be unfalsifiable\"",
+        "f\"the model bills {lengths[key]:.2f} m of '{name}' and the plan draws \" f\"NONE of it: 0 px of {pal[key]} inside the plate. This page is the \" \"drawing of that facade — billing a wall type the drawing does not \" \"contain is the D4/D5 contradiction on the deliverable's most visible \" \"page\"",
+        "f\"the model bills no '{name}' at all, yet the plan draws {drawn[key]} px \" f\"of {pal[key]}: the legend colour and the takeoff disagree about whether \" \"this wall type exists\"",
+        "f\"the plan draws {got * 100:.1f}% of its perimeter as windows \" f\"({n_pwin} of {total_px} px) but the model bills \" f\"{want * 100:.1f}% ({lengths['perimeter_windows']:.2f} of {total_m:.2f} m) — \" f\"outside +-{PERIMETER_SHARE_TOL * 100:.0f} pts. The facade in the drawing is \" \"not the facade in the takeoff\"",
+        "f\"legend chip {cell} ('{label}') fill is {got!r}, \" f\"palette.json plan.{key} is {want!r} — must match exactly\"",
+        "f\"plan render is NOT deterministic: {os.path.basename(planp)} sha {h1[:12]} \" f\"!= {os.path.basename(plan2p)} sha {h2[:12]}\""
+      ]
+    },
+    "G5": {
+      "file": "scripts/gates/g5-thumbnails.py",
+      "checkSites": [
+        "\"Inventory row 4 has no 'Room ID' header\"",
+        "\"Inventory has no body rows\"",
+        "f\"{len(off_col)} thumbnail(s) anchored outside column B: {off_col[:4]}\"",
+        "f\"Inventory row {r} (Room ID {rid}) has {len(imgs)} thumbnail(s) \" \"in column B, need exactly 1\"",
+        "f\"row {r} thumbnail is {w}x{h}, want ~{tw}x{th} (+/-{tol*100:.0f}%)\"",
+        "f\"row {r} height is {rh!r}, need >={min_rh} so the thumbnail is visible\"",
+        "f\"column-B thumbnails on non-body rows: {extra[:6]}\""
+      ]
+    },
+    "G6": {
+      "file": "scripts/gates/g6-renders.py",
+      "checkSites": [
+        "\"ground truth carries no rooms[] — there is no Inventory floor \" \"vocabulary to check the renders against\"",
+        "f\"ground truth declares {len(entries)} render(s), need 4 — the \" \"`renders` block is mandatory, a still cannot opt out of being checked\"",
+        "f\"render '{name}' is {W}x{H}, need >={min_w}x{min_h}\"",
+        "f\"render '{name}' mean luminance {mean:.3f} outside [{lo}, {hi}] \" \"(black / blown / empty frame?)\"",
+        "f\"render '{name}' stddev {sd:.3f} < {min_sd} — the frame is flat, \" \"probably an empty or single-colour image\"",
+        "f\"render '{name}' declares roomId {rid!r}, which is not a room in \" \"ground-truth rooms[] — the still cannot be tied to a takeoff row\"",
+        "f\"render '{name}' declares no floorMaterial. Every still must \" \"evidence the Inventory floor finish of the room it photographs; \" \"a shot that cannot show its own floor is a framing defect to be \" \"fixed in the renderer, not a check to be skipped\"",
+        "f\"render '{name}' claims floor {fm!r} but the Inventory (and the \" f\"workbook's Floor Material column) says {inv!r} for room {rid} — \" \"renders and takeoff must name the same finish\"",
+        "f\"render '{name}': floor material {fm!r} resolves to palette family \" f\"'{key}', which palette.json does not define \" f\"(known: {sorted(mats)})\"",
+        "f\"render '{name}' shows {ground * 100:.1f}% of frame of ground plane \" f\"(need >= {GROUND_MIN_AREA * 100:.0f}%): the gate found too little \" \"surface connected to the bottom of this frame to be a room floor at \" \"eye height (real renders measure 21-49%), so whatever fills the rest \" \"of the picture is unmeasured — the still cannot evidence any finish\"",
+        "f\"render '{name}': the ground plane the gate can reach covers only \" f\"{band_cov * 100:.0f}% of the frame rows below the horizon \" f\"(need >= {GROUND_BAND_COVERAGE * 100:.0f}%; real renders measure \" f\"80-100%). The floor of an eye-height interior camera recedes up the \" \"picture; this one stops, so the gate is being asked to certify a \" \"still from a strip of it and the surface above that edge is not the \" \"floor it segmented\"",
+        "f\"render '{name}': the gate segmented {ground * 100:.1f}% of frame of ground \" f\"plane and {len(foreign)} surface(s) on it match NO material in palette.json, \" f\"even allowing +-{TOL_H} hue / +-{TOL_S} sat and any amount of shadow: \" f\"{'; '.join(foreign)}. Nothing in this design is that colour — the floor of \" \"this still has been painted over or replaced\"",
+        "f\"render '{name}' claims floor {fm!r} -> palette '{key}' but the gate found \" f\"none of it on the ground plane and did find {'; '.join(wrong_floor)} — the \" \"still is photographing a different floor finish from the one its Inventory \" \"row bills\"",
+        "f\"renders '{na}' and '{nb}' are the same picture (dHash Hamming {d} <= \" f\"{MIN_RENDER_HAMMING}; distinct rooms measure 23-40). The pack must show \" f\"{len(fingerprints)} different rooms — a duplicated still bills one room's \" \"finishes against another room's photograph, and it would RAISE the \" \"evidence count while doing it\"",
+        "f\"only {evidenced} of {len(entries)} renders show the floor material their \" f\"Inventory row claims; the render<->takeoff cross-check must hold for at \" f\"least {min_evidenced} rooms (see the notes above for each sample)\""
+      ]
+    },
+    "G7": {
+      "file": "scripts/gates/g7-video.py",
+      "checkSites": [
+        "\"no video stream in the mp4\"",
+        "f\"codec is {vs.get('codec_name')!r}, need {tgt['codec']!r}\"",
+        "f\"resolution {vs.get('width')}x{vs.get('height')}, \" f\"need {tgt['width']}x{tgt['height']}\"",
+        "f\"frame rate {fps:.2f} fps, need >={tgt['minFps']}\"",
+        "f\"duration {dur:.2f}s outside [{d0}, {d1}]s\"",
+        "f\"{label} frame (t={t:.2f}s) mean luminance {mean:.3f} \" f\"outside [{lo}, {hi}] — empty or blown frame\"",
+        "f\"{label} frame (t={t:.2f}s) stddev {sd:.3f} < {min_sd} — flat frame\"",
+        "f\"{la} and {lb} frames are perceptually identical \" f\"(dHash Hamming {d} <= {thr}) — the camera is not moving\"",
+        "f\"frame at t={worst_hi[1]:.1f}s mean luminance {worst_hi[0]:.3f} > {hi} — \" \"blown out (the 3-frame sample would have missed this)\"",
+        "f\"frame at t={worst_lo[1]:.1f}s mean luminance {worst_lo[0]:.3f} < {lo} — \" \"dead/black stretch (the 3-frame sample would have missed this)\"",
+        "f\"frame at t={worst_sd[1]:.1f}s stddev {worst_sd[0]:.3f} < {min_sd} — \" \"flat stretch (the 3-frame sample would have missed this)\"",
+        "f\"title-card frame stddev {sd:.3f} > \" f\"{br.get('titleCardMaxStdDev', 0.22)} — t=0 does not look like a \" \"flat branded card (set target.branding.mode to 'in_scene' if \" \"DSource deliberately has no title card)\"",
+        "f\"title-card frame has only {pct:.3f}% accent pixels \" f\"({br.get('accentHex')}), need >={br.get('minAccentPixelPct', 0.05)}% \" \"— the logo is not detectable\""
+      ]
+    },
+    "G8": {
+      "file": "scripts/gates/g8-web-viewer.mjs",
+      "checkSites": [
+        "`GET ${url} returned ${res.status}, need 200`",
+        "`share route content-type is ${ctype!== '' ? ctype : '(none)'}, need text/html`",
+        "`share route returned ${html.length} bytes of HTML, looks empty`",
+        "'no <canvas> element on the share page'",
+        "'the <canvas> has no WebGL context — the 3D viewer never initialised'",
+        "`canvas is ${canvasInfo.w}x${canvasInfo.h}, too small to be the viewer`",
+        "`viewer canvas is ${(ink * 100).toFixed(2)}% non-background, need >${minInk * 100}% — ` + `the scene is empty (screenshot: ${shot})`",
+        "`walk toggle did not change state on click (still ${String(before)}) — ` + 'expose the mode via aria-pressed or data-active'",
+        "`page threw ${errors.length} JS error(s): ${errors.slice(0, 2).join(' | ')}`"
+      ]
+    },
+    "G9": {
+      "file": "scripts/gates/g9-roundtrip.py",
+      "checkSites": [
+        "f\"[{label}] LibreOffice reported repair warnings: {warns[:2]}\"",
+        "f\"[{label}] after LibreOffice round-trip the workbook has \" f\"{len(wb.sheetnames)} sheets, expected 12\"",
+        "f\"[{name}] case artifacts are STALE: the oldest is \" f\"{(src_mtime - oldest) / 60:.1f} min older than {src_path}, so this \" f\"round-trip grades a workbook a PREVIOUS generator wrote. Regenerate \" f\"with `node scripts/export-pack.mjs` (run-all.sh does it for you)\"",
+        "f\"[{name}] {line}\""
+      ]
+    },
+    "G10": {
+      "file": "scripts/gates/g10-one-action.mjs",
+      "checkSites": [
+        "`${clicks.length} controls match ${selector} — the action must be unambiguous`",
+        "`after one click, ${pending.length} artifact(s) were never complete within ` + `${Math.round(timeout / 1000)}s: ` + pending.map(([[n, p], why]) => `${n} (${path.basename(p)}: ${why})`).join(', ')",
+        "`${what} (${path.basename(p)}) is not a complete file: ${incompleteReason(p)}`",
+        "'share.json has neither \"url\" nor \"planId\" — the pack has no viewer link'",
+        "`walkthrough.mp4 ${dur.error}`",
+        "`walkthrough.mp4 decodes to ${dur.seconds.toFixed(2)}s, outside the spec range ${dlo}-${dhi}s`"
+      ]
+    },
+    "G11": {
+      "file": "scripts/gates/g11-furniture-agreement.py",
+      "checkSites": [
+        "\"workbook has no 'Furniture Inventory' sheet to check the plan against\"",
+        "f\"Furniture Inventory header row 4 missing {want!r} (saw {sorted(hdr)})\"",
+        "\"Furniture Inventory bills no furniture at all\"",
+        "f\"room {rid} '{desc}': the workbook bills {b}, the model places {d} — \" \"the takeoff and the plan are not the same document\"",
+        "f\"the gate's re-derived world->canvas transform projects furniture outside the \" f\"{W}x{H} plan ({min(xs):.0f}..{max(xs):.0f}, {min(ys):.0f}..{max(ys):.0f}) — \" \"the renderer's fit and this gate's have diverged; every measurement below \" \"would be meaningless\"",
+        "\"no room-label ink (pure-neutral dark pixels) found anywhere on the plan — \" \"either the labels are gone or they no longer use palette.json \" \"plan.room_label_text, and this gate can no longer tell label ink from \" \"furniture ink\"",
+        "\"not one billed furniture footprint contains any furniture line-work ink — \" \"either the plan draws no furniture at all, or PRINT_STROKE/PRINT_DETAIL \" \"changed hue and this gate is measuring the wrong pixels\"",
+        "f\"room {rid}: the workbook bills '{desc}' and the plan does not show it — \" f\"its footprint holds {ratio:.2f} ink px per px of symbol outline \" f\"(floor {min_ink:.2f}; label ink + halo covers {cov * 100:.0f}% of it). \" \"Billed but invisible is the same contradiction as billed but undrawn\""
+      ]
+    }
+  }
+}
