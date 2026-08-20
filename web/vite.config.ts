@@ -380,7 +380,13 @@ function buildProvenance(): Plugin {
       return ''
     }
   }
-  const commit = run('git rev-parse HEAD') || 'unknown'
+  // GIT_SHA wins over the git call. A container build has no `.git` — it is
+  // excluded from the build context on purpose (it is the largest thing in the
+  // tree and none of it is needed) — so `git rev-parse` returns '' and every
+  // production image would otherwise be stamped 'unknown'. That is precisely the
+  // state this stamp exists to prevent: a served bundle you cannot trace to a
+  // commit. The Dockerfile passes GIT_SHA as a build arg.
+  const commit = process.env.GIT_SHA || run('git rev-parse HEAD') || 'unknown'
   const root = run('git rev-parse --show-toplevel') || process.cwd()
   return {
     name: 'build-provenance',

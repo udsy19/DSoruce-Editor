@@ -1,0 +1,81 @@
+# DSource Studio on Fly.io.
+#
+# Deploy:  fly deploy --build-arg GIT_SHA=$(git rev-parse HEAD)
+# Runbook: deploy/FLY.md — read it before the first deploy; the volume and the
+#          secrets both have to exist first, and neither failure is obvious.
+
+app = "dsource-studio"
+
+# Mumbai. The product targets Indian GCC fit-outs, so the users, the material
+# bank and (if it is ever required) the data residency answer all point here.
+primary_region = "bom"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  # HOST is the one that matters. The server defaults to 127.0.0.1 — correct
+  # behind Caddy on a VPS, unreachable inside a container. The Dockerfile sets
+  # it too; repeated here so it is visible where someone changing ports looks.
+  HOST = "0.0.0.0"
+  PORT = "8080"
+  STATIC_DIR = "/app/dist"
+  PLANS_DIR = "/data/plans"
+  PACK_OUT_DIR = "/data/out"
+
+  # Only the ORIGIN of the deployed app. This is defence in depth, not the gate —
+  # an Origin header is trivially forged outside a browser, and the bearer token
+  # is what actually authorises. Update it when the domain changes, or the app
+  # will 403 its own frontend.
+  ALLOWED_ORIGINS = "https://dsource-studio.fly.dev"
+
+  # API_AUTH is deliberately NOT set. `apiCore.guard()` fails closed: with
+  # SUPABASE_URL configured it requires auth unless explicitly disabled, so
+  # leaving this unset is the safe state. Setting it to "off" here would open
+  # /api/claude and /api/agent to the internet on your Anthropic key.
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+
+  # A SINGLE MACHINE, deliberately — see the volume note below. auto_stop lets
+  # it sleep when idle; min_machines_running = 1 keeps one warm, because a cold
+  # start on the first request of a client demo is a bad first impression and
+  # this app is demoed live.
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "15s"
+    timeout = "3s"
+    method = "GET"
+    path = "/api/health"
+    # Unauthenticated on purpose: a platform health check carries no credentials,
+    # and gating it would make every deploy roll back. It reports liveness only —
+    # never whether a key is configured.
+
+# Durable storage for the plan store, published share bundles, and deliverable
+# packs. Without it those three routes lose their data on every deploy, because
+# a machine's root filesystem is ephemeral.
+#
+# ⚠️ A Fly volume is attached to ONE machine and is not shared. That is why this
+# app is pinned to a single machine above: adding a second would give it its own
+# empty volume, and plans would appear and disappear depending on which machine
+# answered. Horizontal scale requires moving these three stores off local disk
+# first — `/api/plans` is already superseded by Supabase (cloud/supabaseProvider),
+# and share/pack want object storage. Until then, one machine is the correct
+# configuration, not a limitation to work around.
+[mounts]
+  source = "dsource_data"
+  destination = "/data"
+  initial_size = "3gb"
+
+[[vm]]
+  # The heavy work — the solver, renders, the walkthrough encode — all happens in
+  # the user's browser, so this machine only proxies, serves static files, and
+  # shells out to LibreDWG. 1GB is sized for that DWG conversion spike rather
+  # than for steady state; start here and read actual metrics before changing it.
+  size = "shared-cpu-1x"
+  memory = "1gb"

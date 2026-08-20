@@ -1,0 +1,46 @@
+# Keep the build context small and, more importantly, keep secrets and stale
+# build output from ever entering an image layer.
+
+# Secrets. `.env.local` holds ANTHROPIC_API_KEY in local dev; on Fly every one of
+# these arrives via `fly secrets set`, never baked in. A key in a layer survives
+# `docker rm` and is readable by anyone who can pull the image.
+.env
+.env.*
+!.env.example
+deploy/env
+
+# Rust. The image deliberately builds no Rust — web/src/wasm/ is committed. This
+# is the single largest thing in the tree and none of it is needed.
+target/
+crates/
+
+# Dependencies and build output: reinstalled and rebuilt inside the image.
+# Copying a host node_modules is how a macOS binary ends up in a Linux image.
+**/node_modules/
+web/dist/
+deploy/dist-server/
+web/.dev-plans/
+
+# Version control and CI.
+.git/
+.github/
+.githooks/
+
+# Test, gate and audit apparatus. None of it runs in the image; the battery runs
+# before the deploy, not inside it.
+scripts/
+bench/
+reports/
+docs/
+research/
+samples/
+out/
+graphify-out/
+**/*.test.mjs
+supabase/tests/
+
+# Local noise.
+.DS_Store
+*.png
+*.log
+.claude/

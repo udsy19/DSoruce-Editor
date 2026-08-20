@@ -460,6 +460,22 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const gate = await guard(req.headers)
     if (!gate.ok) return sendJson(res, gate.deny.status, gate.deny.json)
   }
+  // Liveness/readiness. Deliberately BEFORE the guard-protected routes and
+  // deliberately unauthenticated: a platform health check has no credentials,
+  // and gating it would make every deploy roll back. It answers only whether
+  // this process can serve — never a secret, never a count, and in particular
+  // never whether a key is configured. `/api/claude` already publishes that to
+  // signed-in callers; repeating it here would hand an unauthenticated prober a
+  // map of which integrations are live.
+  if (p === '/api/health') {
+    return sendJson(res, 200, {
+      ok: true,
+      // Present so a bad deploy is visible in the check itself rather than
+      // needing a log dig. Set by the image build; absent locally.
+      revision: process.env.FLY_MACHINE_VERSION ?? process.env.GIT_SHA ?? 'dev',
+      uptime_s: Math.round(process.uptime()),
+    })
+  }
   if (p === '/api/agent') return handleAgent(req, res)
   if (p === '/api/claude') return handleClaude(req, res)
   if (p === '/api/dwg') return handleDwg(req, res)
@@ -489,3 +505,35 @@ const server: Server = http.createServer((req, res) => {
 server.listen(PORT, HOST, () => {
   console.log(`dsource-api listening on http://${HOST}:${PORT} (static: ${STATIC_DIR}, plans: ${PLANS_DIR})`)
 })
+
+// Graceful shutdown. Fly sends SIGTERM to the old machine on every deploy and
+// SIGKILLs it after a grace period; systemd does the same on restart. Without
+// this the process dies mid-request, and the failure a user sees is a truncated
+// response on a perfectly healthy deploy — the kind of error that gets blamed on
+// the network because it only happens during releases.
+//
+// `server.close()` stops accepting NEW connections and lets in-flight ones
+// finish. The timer is the backstop for a request that never finishes (a slow
+// upstream model call is the obvious candidate here): after it, exiting is the
+// honest outcome, and it must not itself hold the process open — hence unref().
+let shuttingDown = false
+for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+  process.on(signal, () => {
+    if (shuttingDown) return // a second signal must not race the first
+    shuttingDown = true
+    console.log(`${signal} received — draining`)
+    const forced = setTimeout(() => {
+      console.error('drain timed out after 25s — exiting with requests still open')
+      process.exit(1)
+    }, 25_000)
+    forced.unref()
+    server.close((err) => {
+      if (err) {
+        console.error(`drain failed: ${err.message}`)
+        process.exit(1)
+      }
+      console.log('drained cleanly')
+      process.exit(0)
+    })
+  })
+}
