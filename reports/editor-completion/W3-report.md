@@ -182,6 +182,14 @@ SG6–SG8, the digest test — is green. (The earlier SG5 red on the interim
 board additionally had `GATE_BASE` unset, so its inner board died on the
 foreign-server preflight for port 5173 — also not a content failure.)
 
+**Control run, measured:** the same `run-all.sh G10` at BASE `d868ec3` (scratch
+worktree, its own vite on port 5399, W3's changes absent) is also RED —
+`0/1 passing`, only 3/10 pack artifacts complete inside the 300 s window
+(`FINAL ARTIFACTS INCOMPLETE — artifact missing: ground-truth.json`). The base
+tree fails the same stopwatch on this machine today, before any W3 code
+exists. Scope of the claim: this machine, this session, under the leftovers
+loop's four parallel worktree missions.
+
 `drawing-set.test.mjs` PASS 293. SG8: 0 crossing + 0 outside on all 12 plan
 sheets. Web-side tests exercising the changed modules: publishedArea 3764
 checks green, printLabels / roomrefs / legendParity / report / workbook /
