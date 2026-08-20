@@ -141,6 +141,9 @@ const RUNNERS = [
   'scripts/gates/plan-quality/run-all.mjs',
   'package.json',
   '.githooks/pre-commit',
+  // deploy.sh is a runner: its closing step invokes scripts/gates/deploy-gate.mjs,
+  // the independent post-deploy gate (served bytes vs the dist just deployed).
+  'deploy/deploy.sh',
 ].map((r) => path.join(ROOT, r))
 
 /**

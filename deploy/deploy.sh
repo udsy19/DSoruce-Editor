@@ -66,4 +66,12 @@ sleep 2
 curl -fsS -o /dev/null -w "    GET /            -> %{http_code}\n" "https://$APP_HOST/"
 printf "    GET /api/claude  -> %s\n" "$(curl -fsS "https://$APP_HOST/api/claude")"
 printf "    GET /api/plans   -> %s\n" "$(curl -fsS "https://$APP_HOST/api/plans" | head -c 200)"
+echo "==> [8/8] Independent deploy gate (scripts/gates/deploy-gate.mjs)"
+# The smoke checks above are the producer grading itself; this gate re-derives
+# ground truth from the served bytes vs the web/dist just deployed. It is the
+# LAST command run bare (no pipe) under this script's `set -euo pipefail`, so
+# its exit code is the script's exit code — the 2026-08-12 false green (rsync
+# failed, pipeline printed 0) cannot recur silently.
+node scripts/gates/deploy-gate.mjs --origin "https://$APP_HOST" --dist web/dist
+
 echo "==> Deployed: https://$APP_HOST/"
