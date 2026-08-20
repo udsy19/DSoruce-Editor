@@ -402,6 +402,7 @@ pub(crate) fn allocate_desks(
 ) -> (Vec<u32>, Vec<u32>) {
     let n = plans.len();
     let mut desk_cap = vec![0u32; n];
+    let mut grids: Vec<FieldGrid> = Vec::with_capacity(n);
     for (i, plan) in plans.iter().enumerate() {
         // NO depth pre-filter. It used to zero capacity for any field shallower
         // than one packer BLOCK (`min_viable_field_depth`), on the argument that
@@ -419,7 +420,11 @@ pub(crate) fn allocate_desks(
         // over-allocation removed the shortfall and with it the top-up, and the
         // far-wing desk went with it — until capacity stopped lying in the other
         // direction too. One model, both directions.
-        desk_cap[i] = field_free_slots(program, plan, plate, iwalls, obstacles, lat, clear, choices.cluster_cols);
+        let grid = FieldGrid::build(
+            program, plan, plate, iwalls, obstacles, lat, clear, choices.cluster_cols, &[],
+        );
+        desk_cap[i] = grid.capacity();
+        grids.push(grid);
     }
 
     let total_cap: u32 = desk_cap.iter().sum();
@@ -448,6 +453,44 @@ pub(crate) fn allocate_desks(
                 if d_alloc[i] < desk_cap[i] {
                     d_alloc[i] += 1;
                     left -= 1;
+                    progressed = true;
+                }
+            }
+            if !progressed {
+                break;
+            }
+        }
+        // Neighbourhood resolution: clamp each region's allocation to the
+        // largest take its OWN grid can realise under the segment take rule
+        // (`FieldGrid::resolve_take` — the identical walk `pack_desks` will
+        // run on the identical grid). Without this, an allocation whose tail
+        // lands 1–5 desks into a fresh segment would be unplaceable without a
+        // runt, and `placed == allocated` — the one-model invariant the
+        // capacity battery enforces — would silently become aspirational. The
+        // trimmed desks flow to the OTHER regions' remaining quantized
+        // headroom, largest first, so the plate-level target is still met
+        // wherever the geometry allows it.
+        loop {
+            let mut freed = 0u32;
+            for i in 0..n {
+                let q = grids[i].resolve_take(d_alloc[i]);
+                freed += d_alloc[i] - q;
+                d_alloc[i] = q;
+            }
+            if freed == 0 {
+                break;
+            }
+            let mut progressed = false;
+            for &(_, i) in &rema {
+                if freed == 0 {
+                    break;
+                }
+                // Realizable takes jump by whole neighbourhoods, so offer the
+                // whole freed budget and let the resolver keep what lands.
+                let q = grids[i].resolve_take(d_alloc[i] + freed);
+                if q > d_alloc[i] {
+                    freed -= q - d_alloc[i];
+                    d_alloc[i] = q;
                     progressed = true;
                 }
             }

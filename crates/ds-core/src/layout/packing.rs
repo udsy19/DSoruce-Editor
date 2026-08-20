@@ -4,6 +4,17 @@
 use super::*;
 use super::diag::DeskRejects;
 
+/// Minimum desks a contiguous bench-pair segment must seat to be packed at all —
+/// the NEIGHBOURHOOD floor. The professional-feel rubric (§1.1.2, the same
+/// source PQ1's 6–12 band pins) reads an open field as neighbourhoods of ~6–12
+/// desks; a 1-, 2- or 4-desk fragment stranded beside an obstacle reads as
+/// furniture left behind, not as a workplace. Measured on the demo plate before
+/// this floor existed: 63 desks fell into neighbourhoods
+/// [16, 12, 8, 8, 4, 4, 4, 4, 2, 1] — seven of ten outside the band, every one
+/// under it a fragment (an obstacle-cut row segment, the unpaired trailing
+/// lattice line, or a target-exhaustion tail).
+pub(crate) const NEIGHBOURHOOD_MIN: u32 = 6;
+
 /// Pack one region's desk field on the GLOBAL lattice `lat`, skipping any cell
 /// that collides with an obstacle (rooms, keep-outs, frozen items, connector).
 /// Emits the Workspace zone(s) — segmented at the secondary aisles / crossing
@@ -93,7 +104,12 @@ pub(crate) struct FieldGrid {
     block: f64,
     clear: f64,
     cluster_cols: u32,
-    max_aisles: u32,
+    /// Neighbourhood discipline is ON: bench pairing with at least one
+    /// full-size segment, so the segment floor and the take rule apply. See
+    /// [`NEIGHBOURHOOD_MIN`]. Off (non-bench, or a field too small to hold one
+    /// proper neighbourhood) the packer behaves as before — a tiny office
+    /// seats its four desks rather than nobody.
+    pub(crate) neighbourhoods: bool,
     pub(crate) inner_n: i64,
     pub(crate) outer_n: i64,
     pub(crate) field_depth: f64,
@@ -160,7 +176,7 @@ impl FieldGrid {
             block: 0.0,
             clear,
             cluster_cols: cluster_cols.max(1),
-            max_aisles: 0,
+            neighbourhoods: false,
             inner_n: 0,
             outer_n: 0,
             field_depth: depth,
@@ -205,11 +221,20 @@ impl FieldGrid {
         g.outer_desk = o_desk;
         g.outer_pitch = o_pitch;
         // Under bench pairing rows come back-to-back in PAIRS:
-        //   [desk | SPINE_GAP | desk(rotated π) | clear aisle] repeating,
-        // block = 2·desk + SPINE_GAP + clear — DENSER than 2·(desk+clear) single
-        // rows, which is exactly why real plans pair. Pairs anchor to global BLOCK
-        // lines so stacked wings still share pair lines.
-        g.block = 2.0 * o_desk + SPINE_GAP + clear;
+        //   [desk | SPINE_GAP | desk(rotated π) | aisle] repeating,
+        // block = 2·desk + SPINE_GAP + aisle — DENSER than 2·(desk+clearance)
+        // single rows, which is exactly why real plans pair. Pairs anchor to
+        // global BLOCK lines so stacked wings still share pair lines.
+        //
+        // The aisle between two pair-blocks is a WALKABLE cross-aisle between
+        // desk neighbourhoods, so it is floored at `SECONDARY_W` (1.15 m, IBC —
+        // that constant's own documented meaning), not at the per-desk
+        // maintenance clearance (0.9 m). At 0.9 m two adjacent pair-blocks fuse
+        // into one un-walkable 4-row mat — the [16]-desk super-cluster on the
+        // demo plate — and the field packs past the density a person can move
+        // through (zone 680 at 4.29 m²/pax on the repro plate). A program whose
+        // clearance already exceeds the IBC aisle keeps it.
+        g.block = 2.0 * o_desk + SPINE_GAP + clear.max(SECONDARY_W);
         // Pairs start at the first PITCH-aligned line clearing the inset (not the
         // coarser block line — that wasted up to a full block at each region's
         // near edge). Two regions sharing the outer range resolve the same start.
@@ -236,12 +261,14 @@ impl FieldGrid {
             g.outer_n = g.outer_n.max(0);
             return g;
         }
-        // Cluster aisles accrue on the INNER axis only, capped to what the inner
-        // slack absorbs so a bench aisle never costs a whole row (utilization
-        // wins; the perimeter/seam corridors carry egress).
-        let inner_tight = (g.inner_n - 1).max(0) as f64 * i_pitch + i_size;
-        let inner_span = i_hi - (inner_first - i_half);
-        g.max_aisles = ((inner_span - inner_tight).max(0.0) / clear).floor().max(0.0) as u32;
+        // Cluster aisles accrue on the INNER axis, one per `cluster_cols`
+        // columns, UNCONDITIONALLY. They used to be capped to whatever slack
+        // the inner span happened to have left ("utilization wins"), which is
+        // how eight columns fused into the demo plate's [16]-desk super-cluster:
+        // the third aisle never opened, and the neighbourhood boundary the
+        // cluster rhythm exists to draw simply was not drawn. An aisle-shifted
+        // slot that no longer fits the field is a bounds rejection like any
+        // other — the aisle is structure, not a luxury of leftover space.
 
         // The single occupancy walk. Every candidate is classified once, by the
         // same predicates in the same order the packer used to apply them —
@@ -291,7 +318,146 @@ impl FieldGrid {
             }
             g.free.push(line);
         }
+
+        // ---- The NEIGHBOURHOOD floor (bench pairing only) -------------------
+        //
+        // A bench unit's free slots partition into contiguous COLUMN SEGMENTS
+        // (runs of consecutive columns inside one aisle block with at least one
+        // free line) — and a segment IS a neighbourhood: within it every desk
+        // is < 1.1 m from a neighbour, across a segment break (an aisle, a
+        // missing column, a pair gap at SECONDARY_W) nothing is. A segment that
+        // cannot seat NEIGHBOURHOOD_MIN desks would pack as a stray fragment,
+        // so its slots are not free at all — counted under `rejects.runt`, so
+        // capacity and placement (both reads of THIS enumeration) agree that
+        // they do not exist.
+        //
+        // Non-bench fields are exempt: single rows connect across the outer
+        // axis, so their neighbourhoods span rows and a per-unit floor would be
+        // measuring the wrong unit. So is a field whose LARGEST segment is
+        // under the floor — a plate that can only ever hold one small cluster
+        // (a 4-desk studio) should seat people, not nobody.
+        if g.bench {
+            let mut any_full = false;
+            for u in 0..g.units_avail() {
+                for (_, _, slots) in g.segments(u) {
+                    if slots >= NEIGHBOURHOOD_MIN {
+                        any_full = true;
+                    }
+                }
+            }
+            if any_full {
+                g.neighbourhoods = true;
+                for u in 0..g.units_avail() {
+                    for (c0, c1, slots) in g.segments(u) {
+                        if slots >= NEIGHBOURHOOD_MIN {
+                            continue;
+                        }
+                        for o in g.unit_lines(u) {
+                            let line = &mut g.free[o as usize];
+                            let before = line.len();
+                            line.retain(|&i| i < c0 || i > c1);
+                            g.rejects.runt += (before - line.len()) as u32;
+                        }
+                    }
+                }
+            }
+        }
         g
+    }
+
+    /// Column segments of bench unit `u`: `(col0, col1, free_slots)` for each
+    /// maximal run of consecutive columns that (a) stays inside one cluster
+    /// aisle block and (b) has at least one free line per column. The
+    /// neighbourhood partition — used by the floor above, the take rule in
+    /// [`pack_desks`] and [`FieldGrid::resolve_take`], so all three are one
+    /// model.
+    fn segments(&self, u: i64) -> Vec<(i64, i64, u32)> {
+        let lines = self.unit_lines(u);
+        let mut per = vec![0u32; self.inner_n.max(0) as usize];
+        for &o in &lines {
+            for &i in &self.free[o as usize] {
+                per[i as usize] += 1;
+            }
+        }
+        let mut out = Vec::new();
+        let mut start: Option<i64> = None;
+        let mut slots = 0u32;
+        for i in 0..self.inner_n {
+            let breaks = per[i as usize] == 0
+                || start.is_some_and(|s| {
+                    s as u32 / self.cluster_cols != i as u32 / self.cluster_cols
+                });
+            if breaks {
+                if let Some(s) = start.take() {
+                    out.push((s, i - 1, slots));
+                }
+                slots = 0;
+            }
+            if per[i as usize] > 0 {
+                if start.is_none() {
+                    start = Some(i);
+                }
+                slots += per[i as usize];
+            }
+        }
+        if let Some(s) = start {
+            out.push((s, self.inner_n - 1, slots));
+        }
+        out
+    }
+
+    /// The slots of one segment, column-major (both lines of a column before
+    /// the next column), which is the order the packer takes a partial
+    /// segment in — a `k`-desk take covers `ceil(k/2)` adjacent columns, so a
+    /// truncated neighbourhood is still a compact block.
+    fn segment_slots(&self, u: i64, c0: i64, c1: i64) -> Vec<(i64, i64)> {
+        let lines = self.unit_lines(u);
+        let mut out = Vec::new();
+        for i in c0..=c1 {
+            for &o in &lines {
+                if self.free[o as usize].binary_search(&i).is_ok() {
+                    out.push((o, i));
+                }
+            }
+        }
+        out
+    }
+
+    /// How many desks a walk with target `t` would actually place, under the
+    /// spread and the neighbourhood take rule (no collisions can occur before
+    /// placement, so this is exact for the pass that runs on this grid).
+    fn walk_take(&self, t: u32) -> u32 {
+        let units = if self.neighbourhoods { self.spread_for(t) } else { return t.min(self.capacity()) };
+        let mut placed = 0u32;
+        'walk: for &u in &units {
+            for (_, _, slots) in self.segments(u) {
+                let remaining = t - placed;
+                if remaining == 0 {
+                    break 'walk;
+                }
+                if remaining < NEIGHBOURHOOD_MIN && slots > remaining {
+                    break 'walk; // a runt tail is not placed at all
+                }
+                placed += slots.min(remaining);
+            }
+        }
+        placed
+    }
+
+    /// The largest achievable take ≤ `target` under the neighbourhood rule —
+    /// the fixpoint of [`FieldGrid::walk_take`] (each iteration only shrinks,
+    /// so it terminates). `allocate_desks` clamps each region's allocation
+    /// through THIS, and `pack_desks` walks the same rule on the same grid, so
+    /// `placed == allocated` stays an invariant rather than an aspiration.
+    pub(crate) fn resolve_take(&self, target: u32) -> u32 {
+        let mut t = target.min(self.capacity());
+        loop {
+            let k = self.walk_take(t);
+            if k >= t {
+                return t;
+            }
+            t = k;
+        }
     }
 
     fn outer_center(&self, o: i64) -> f64 {
@@ -324,7 +490,7 @@ impl FieldGrid {
             self.outer_pitch,
             self.base_rot,
         );
-        let aisle = ((i as u32 / self.cluster_cols).min(self.max_aisles)) as f64 * self.clear;
+        let aisle = (i as u32 / self.cluster_cols) as f64 * self.clear;
         let ic = self.inner_first + i as f64 * self.inner_pitch + aisle;
         let (cx, cy) = if self.column_major { (oc, ic) } else { (ic, oc) };
         (snap_module(cx), snap_module(cy), rot)
@@ -393,27 +559,6 @@ impl FieldGrid {
         }
         (0..avail).collect()
     }
-}
-
-/// How many desks a region's field can ACTUALLY take, against the obstacles that
-/// are already down. A thin read of [`FieldGrid`] — the same object `pack_desks`
-/// places out of, so the two cannot disagree about a slot: there is only one
-/// enumeration and one obstacle set.
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn field_free_slots(
-    program: &Program,
-    plan: &RegionPlan,
-    plate: Option<&[Point]>,
-    iwalls: &[(Point, Point, f64)],
-    obstacles: &[(f64, f64, f64, f64)],
-    lat: Lattice,
-    clear: f64,
-    cluster_cols: u32,
-) -> u32 {
-    // `&[]`: allocation measures REGION fields, whose rect is the zone rect —
-    // a would-be straddler is already a bounds rejection there.
-    FieldGrid::build(program, plan, plate, iwalls, obstacles, lat, clear, cluster_cols, &[])
-        .capacity()
 }
 
 pub(crate) fn pack_desks(
@@ -543,11 +688,25 @@ pub(crate) fn pack_desks(
         let same_grid_pad = if program.bench_pairs { SPINE_GAP * 0.5 - 1e-6 } else { clear * 0.5 };
         let grid_start = obstacles.len();
 
+        // The walk takes whole SEGMENTS (neighbourhoods) in spread order —
+        // the same partition and take rule as `FieldGrid::resolve_take`, which
+        // is what the allocation was clamped through, so the two agree by
+        // construction. A remaining target below `NEIGHBOURHOOD_MIN` at a
+        // segment boundary is NOT placed: a 1–5 desk tail stranded beside a
+        // proper neighbourhood is exactly the fragment the floor exists to
+        // prevent (the demo plate's trailing `[4, 4, 1]`).
         'grid: for u in units {
-            for o in grid.unit_lines(u) {
-                for &i in &grid.free[o as usize] {
+            for (c0, c1, slots) in grid.segments(u) {
+                let remaining = desk_target - desks_here;
+                if remaining == 0 {
+                    break 'grid;
+                }
+                if grid.neighbourhoods && remaining < NEIGHBOURHOOD_MIN && slots > remaining {
+                    break 'grid;
+                }
+                for (o, i) in grid.segment_slots(u, c0, c1) {
                     if desks_here >= desk_target {
-                        break 'grid;
+                        break;
                     }
                     let (fx, fy, rot) = grid.slot_center(o, i);
                     if footprint_overlaps(&obstacles[grid_start..], fx, fy, grid.fw, grid.fh, same_grid_pad)

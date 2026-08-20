@@ -645,13 +645,18 @@ fn keep_confirmed_freezes_components_and_packs_around_them() {
         assert_eq!(kept.decision, DecisionState::Confirmed);
         // No other component overlaps this frozen footprint — except the task
         // chair `seat_desk_chairs` seats AT it, which tucks under the worktop by
-        // design (same exemption as `assert_no_overlaps`).
+        // design (same exemption as `assert_no_overlaps`). TOUCHING is legal —
+        // a bench pair's two desks share the spine at SPINE_GAP == 0, and since
+        // the column-major take order the first two desks (the ones this test
+        // freezes) ARE such a pair — so genuine interpenetration is overlap
+        // beyond float dust, not a strict `<` on coordinates that subtract to
+        // 0.7999999999999998.
         for c in &doc.components {
             if c.id == *id || c.category == "Chair" {
                 continue;
             }
-            let overlaps = (c.x - x).abs() < (c.w + program.desk_w) / 2.0
-                && (c.y - y).abs() < (c.h + program.desk_h) / 2.0;
+            let overlaps = (c.x - x).abs() < (c.w + program.desk_w) / 2.0 - 1e-9
+                && (c.y - y).abs() < (c.h + program.desk_h) / 2.0 - 1e-9;
             assert!(!overlaps, "{} overlaps a frozen desk", c.label);
         }
     }

@@ -92,6 +92,11 @@ pub struct DeskRejects {
     /// boundary" defect, Workstream E). Only the fill pass supplies the zone
     /// rects, so this stays 0 on the per-region passes by construction.
     pub straddle: u32,
+    /// Member of a bench-pair segment too small to seat a NEIGHBOURHOOD
+    /// (`packing::NEIGHBOURHOOD_MIN`): the slot is geometrically free but
+    /// packing it would strand a 1–5 desk fragment, so the enumeration
+    /// withholds it from `free` (capacity and placement agree it is not there).
+    pub runt: u32,
 }
 
 /// Everything one `generate` call decided.
