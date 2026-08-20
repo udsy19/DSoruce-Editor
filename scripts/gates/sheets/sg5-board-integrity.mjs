@@ -34,16 +34,18 @@
 // captured from that green run's tree (`--capture-g-manifest`), i.e. from a
 // population explicitly verified clean, immediately after the board above.
 //
-// The closing sabotage pair is REGISTERED HERE BEFORE BEING RUN, in scratch
-// worktrees off d868ec3 (never in the real tree):
+// The closing sabotage pair was registered before being run, then RUN AND
+// MEASURED, in scratch worktrees off d868ec3 (never in the real tree), each
+// with its own server on the tree it graded:
 //   * SWAP (g8, one check replaced by a different assertion, runtime count flat
-//     at 9): OLD SG5 (d868ec3) must stay green — the recorded standing
-//     weakness — NEW SG5 must go red naming the swapped check.
+//     at 9): OLD SG5 (d868ec3) `SG5 PASS (32 checks)` — the recorded standing
+//     weakness, demonstrated — NEW SG5 `FAIL (67 checks, 2 failing)`, naming
+//     the swapped check in both directions and nothing else.
 //   * VANISH (g5, one once-executing check removed, count padded flat with a
-//     verbatim duplicate of an already-pinned check): OLD green, NEW red naming
-//     the vanished check AND the duplicate surplus — multiset, not set.
-// Measured transcripts: reports/editor-completion/w2-sg5-identity-manifests.md
-// (a claim of results that predates that file's transcripts is a stale record).
+//     verbatim duplicate of an already-pinned check): OLD `PASS (32)`, NEW
+//     `FAIL (67, 2 failing)` naming the vanished check AND the duplicate
+//     surplus — multiset, not set.
+// Transcripts: reports/editor-completion/w2-sg5-identity-manifests.md.
 // ---------------------------------------------------------------------------
 
 import path from 'node:path'
