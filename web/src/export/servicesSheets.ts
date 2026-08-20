@@ -375,6 +375,22 @@ function roomLabelBoxes(
         chosen = form
         break
       }
+      // D3's damage ordering, applied to THIS ladder under W3: displacement is
+      // free (a displaced label is leader-backed and stays one full-size glyph
+      // run), shrinking is not — so before any smaller form is considered, the
+      // FULL name gets the wide candidate sweep. Measured red first: three dwg
+      // labels sat at the ladder's floor (PRINT POINT 1 at 5.25 pt, MEETING
+      // ROOM 2 / PRINT POINT 2 at 6.375 pt, on both A.03 and A.04) while
+      // legal full-size spots existed a few rings out. Strict-only: the soft
+      // margin strips still block every candidate, so a services label can
+      // never buy its way outside the building (D-Q stays 0 here).
+      if (form === forms[0]) {
+        pos = tryPlaceNear(occ, c.x, c.y, box.w + PLACE_SLACK, box.h + PLACE_SLACK, bounds, false, true)
+        if (pos) {
+          chosen = form
+          break
+        }
+      }
     }
     const probe = haloBox(chosen.lines, chosen.size, chosen.width, c.x, c.y)
     // Every rung collided everywhere: take the least-overlapping spot for the

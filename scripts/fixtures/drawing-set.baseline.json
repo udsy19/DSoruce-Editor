@@ -40,12 +40,12 @@
         },
         {
           "sheet": 4,
-          "text": 278,
-          "line": 897,
+          "text": 284,
+          "line": 927,
           "rect": 81,
           "image": 2,
-          "md5": "7215f367a6b9c522039f0b0817f90e86",
-          "why": "D-P fix (workstream B): the plan sheet's annotation occupancy is now seeded with the base raster's ink before any label is placed (sheetSet.ts seedBaseInk/seedOutsideMargin; SG8 87->0 across the 12 plan sheets, D-Q total 37->26). THIS sheet: text 281->278 and line 909->897 — the three missing T ops are three '3.00 m' room-dim strings roomDims' PRE-EXISTING declutter guard now suppresses because their label boxes land on seeded wall bands (each dim carries its 4 tick/extension L ops: -12); every other delta is label/dim displacement plus leaders. SG8 seeded/A02 4->0. Leader set re-pinned: +CABIN 2, CABIN 3, FOCUS ROOM 1, PANTRY, WELLNESS ROOM; -MEETING ROOM 1/2/4 (drawing-set.manifest.json, same commit)."
+          "md5": "787aedf778fecbe1234b45b2bce2ff27",
+          "why": "W3 D-Q: CABIN 1 + FOCUS ROOM 1 blocks (4 strings) moved from the top margin to inside the footprint; 6 dims returned via the displacement rung (2x 2.40 m, 2x 3.00 m, 4.20 m, 38.20 m: +6 text/+30 line ops); opening tags re-nudged around the moved blocks"
         },
         {
           "sheet": 5,
@@ -147,35 +147,35 @@
           "line": 35,
           "rect": 7,
           "image": 2,
-          "md5": "d850ca0b7c19b054c8a0e0d5c6b53a62",
-          "why": "E no_straddle: A.01 Demolition Plan drops the 8 pocket rooms' name + 1.0 m2 area labels and their leaders (-16 text, -6 line); nothing else moved (base==A dumps byte-identical)."
+          "md5": "4ccff44bda5a09fa082bf8530e00d16a",
+          "why": "W3 D-Q: OPEN WORKSPACE (4) + 6.6 m2 moved from the left margin (80,182) to inside over the soft demolition hatch (319,211), leader redrawn; op counts unchanged"
         },
         {
           "sheet": 4,
-          "text": 278,
-          "line": 794,
+          "text": 280,
+          "line": 804,
           "rect": 84,
           "image": 2,
-          "md5": "c5f062bc49d5d54a21c7914c17002c7b",
-          "why": "E no_straddle: A.02 Construction & Furnishing Plan drops 8 pocket-room labels + 9 area lines and re-tags/repositions wall+window tags (W3...) after the wrapper partitions vanished and 127 components moved."
+          "md5": "a19dfa86550c587faab226037a85457a",
+          "why": "W3 D-Q: OPEN WORKSPACE (4), MEETING ROOM 2, PHONE BOOTH 1 blocks (6 strings) moved from left/right margins to inside; 2 dims returned (14.40 m, 8.30 m: +2 text/+10 line ops); tags re-nudged"
         },
         {
           "sheet": 5,
           "text": 104,
-          "line": 1857,
+          "line": 1854,
           "rect": 752,
           "image": 2,
-          "md5": "f9d7afbac022dd7315fe9db3d2aa92c9",
-          "why": "E no_straddle: A.03 Reflected Ceiling Plan re-lays fixtures over the moved desks and drops the 8 pocket-room labels (-8 text, -189 line, -56 rect: luminaire/diffuser grid follows the furniture)."
+          "md5": "55d63f8da5eb2937bf15e3b5d26cd70c",
+          "why": "W3 services wide rung: MEETING ROOM 2 6.375->7.5 pt, PRINT POINT 1 5.25->7.5 pt, PRINT POINT 2 6.375->7.5 pt at full size with leaders; exit/E glyphs, LC tags and circuit polylines re-nudged around the new label boxes (1857->1854 line ops)"
         },
         {
           "sheet": 6,
           "text": 60,
-          "line": 2396,
+          "line": 2397,
           "rect": 259,
           "image": 2,
-          "md5": "bf0106f84a9ab7eb825efb8bea4bceec",
-          "why": "E no_straddle: A.04 Power & Data Plan drops the 8 pocket-room labels and re-routes outlets/circuits to the moved desks (-8 text, -5 line, -8 rect)."
+          "md5": "7605546cb4f699ba108554949f778899",
+          "why": "W3 services wide rung: same three labels to 7.5 pt full size on the power plan (+1 leader line, 2396->2397 line ops)"
         },
         {
           "sheet": 7,
