@@ -1,0 +1,3940 @@
+{
+ "provenance": {
+  "instrument": "scripts/zone-dump.mjs (three-surface; every value carries its surface prefix)",
+  "path": "wizard → Property → Space (samples/furniture-plan.dwg, boundary confirmed) → Program defaults → Generate → candidate A → Open in editor",
+  "port": 5314,
+  "git_head": "2e278b714ea1ce0302490e5af545e099289c19e2",
+  "wasm_mtime": "2026-08-21T00:24:09.226Z",
+  "captured_at": "2026-08-21T00:50:06.583Z",
+  "program_summary_text": "Program summary50enclosed rooms84desks121room seats555 of 930 m² used · 5,972 of 10,011 sfOffices, meetings and desks are placed by the generator; circulation is added around them, so occupied area stays well below usable.",
+  "page_errors": []
+ },
+ "totals": {
+  "zones": 81,
+  "walls": 246,
+  "components": 302,
+  "sum_raw_area_m2": 902.42
+ },
+ "byType_raw": {
+  "ClosedOffice": {
+   "count": 16,
+   "area": 85.6
+  },
+  "Meeting": {
+   "count": 8,
+   "area": 109.84
+  },
+  "Amenity": {
+   "count": 6,
+   "area": 38.26
+  },
+  "Collaboration": {
+   "count": 1,
+   "area": 4.32
+  },
+  "Circulation": {
+   "count": 25,
+   "area": 148.7
+  },
+  "Workspace": {
+   "count": 9,
+   "area": 357.71
+  },
+  "Unassigned": {
+   "count": 13,
+   "area": 105.49
+  },
+  "Core": {
+   "count": 3,
+   "area": 52.51
+  }
+ },
+ "byType_published": {
+  "ClosedOffice": {
+   "count": 16,
+   "area": 85.6
+  },
+  "Meeting": {
+   "count": 8,
+   "area": 109.84
+  },
+  "Amenity": {
+   "count": 6,
+   "area": 38.26
+  },
+  "Collaboration": {
+   "count": 1,
+   "area": 4.32
+  },
+  "Circulation": {
+   "count": 38,
+   "area": 254.18
+  },
+  "Workspace": {
+   "count": 9,
+   "area": 357.71
+  },
+  "Core": {
+   "count": 3,
+   "area": 52.51
+  }
+ },
+ "perZone": [
+  {
+   "id": 1666,
+   "doc_label": "Cabin",
+   "doc_zone_type": "ClosedOffice",
+   "doc_origin": "Drawn",
+   "raw_label": "Cabin",
+   "raw_zone_type": "ClosedOffice",
+   "pub_label": "Cabin",
+   "pub_zone_type": "ClosedOffice",
+   "raw_area_m2": 18
+  },
+  {
+   "id": 1675,
+   "doc_label": "Boardroom",
+   "doc_zone_type": "Meeting",
+   "doc_origin": "Drawn",
+   "raw_label": "Boardroom",
+   "raw_zone_type": "Meeting",
+   "pub_label": "Boardroom",
+   "pub_zone_type": "Meeting",
+   "raw_area_m2": 26.550000000000068
+  },
+  {
+   "id": 1695,
+   "doc_label": "Reception",
+   "doc_zone_type": "Amenity",
+   "doc_origin": "Drawn",
+   "raw_label": "Reception",
+   "raw_zone_type": "Amenity",
+   "pub_label": "Reception",
+   "pub_zone_type": "Amenity",
+   "raw_area_m2": 12.799999999999955
+  },
+  {
+   "id": 1704,
+   "doc_label": "Team Room 1",
+   "doc_zone_type": "Meeting",
+   "doc_origin": "Drawn",
+   "raw_label": "Team Room 1",
+   "raw_zone_type": "Meeting",
+   "pub_label": "Team Room 1",
+   "pub_zone_type": "Meeting",
+   "raw_area_m2": 7.929782608695689
+  },
+  {
+   "id": 1716,
+   "doc_label": "Storage",
+   "doc_zone_type": "Amenity",
+   "doc_origin": "Drawn",
+   "raw_label": "Storage",
+   "raw_zone_type": "Amenity",
+   "pub_label": "Storage",
+   "pub_zone_type": "Amenity",
+   "raw_area_m2": 4.200000000000003
+  },
+  {
+   "id": 1723,
+   "doc_label": "Phone Booth 1",
+   "doc_zone_type": "ClosedOffice",
+   "doc_origin": "Drawn",
+   "raw_label": "Phone Booth 1",
+   "raw_zone_type": "ClosedOffice",
+   "pub_label": "Phone Booth 1",
+   "pub_zone_type": "ClosedOffice",
+   "raw_area_m2": 1.4299999999999997
+  },
+  {
+   "id": 1731,
+   "doc_label": "Team Room",
+   "doc_zone_type": "Meeting",
+   "doc_origin": "Drawn",
+   "raw_label": "Team Room",
+   "raw_zone_type": "Meeting",
+   "pub_label": "Team Room",
+   "pub_zone_type": "Meeting",
+   "raw_area_m2": 13.440000000000001
+  },
+  {
+   "id": 1747,
+   "doc_label": "Meeting Room 1",
+   "doc_zone_type": "Meeting",
+   "doc_origin": "Drawn",
+   "raw_label": "Meeting Room 1",
+   "raw_zone_type": "Meeting",
+   "pub_label": "Meeting Room 1",
+   "pub_zone_type": "Meeting",
+   "raw_area_m2": 8.279999999999987
+  },
+  {
+   "id": 1761,
+   "doc_label": "Meeting Room 2",
+   "doc_zone_type": "Meeting",
+   "doc_origin": "Drawn",
+   "raw_label": "Meeting Room 2",
+   "raw_zone_type": "Meeting",
+   "pub_label": "Meeting Room 2",
+   "pub_zone_type": "Meeting",
+   "raw_area_m2": 8.280000000000001
+  },
+  {
+   "id": 1775,
+   "doc_label": "Wellness Room",
+   "doc_zone_type": "Amenity",
+   "doc_origin": "Drawn",
+   "raw_label": "Wellness Room",
+   "raw_zone_type": "Amenity",
+   "pub_label": "Wellness Room",
+   "pub_zone_type": "Amenity",
+   "raw_area_m2": 4.759999999999998
+  },
+  {
+   "id": 1776,
+   "doc_label": "Collab 1",
+   "doc_zone_type": "Collaboration",
+   "doc_origin": "Drawn",
+   "raw_label": "Collab 1",
+   "raw_zone_type": "Collaboration",
+   "pub_label": "Collab 1",
+   "pub_zone_type": "Collaboration",
+   "raw_area_m2": 4.32
+  },
+  {
+   "id": 1786,
+   "doc_label": "Focus Room 1",
+   "doc_zone_type": "ClosedOffice",
+   "doc_origin": "Drawn",
+   "raw_label": "Focus Room 1",
+   "raw_zone_type": "ClosedOffice",
+   "pub_label": "Focus Room 1",
+   "pub_zone_type": "ClosedOffice",
+   "raw_area_m2": 4.319999999999993
+  },
+  {
+   "id": 1795,
+   "doc_label": "Focus Room 2",
+   "doc_zone_type": "ClosedOffice",
+   "doc_origin": "Drawn",
+   "raw_label": "Focus Room 2",
+   "raw_zone_type": "ClosedOffice",
+   "pub_label": "Focus Room 2",
+   "pub_zone_type": "ClosedOffice",
+   "raw_area_m2": 4.320000000000022
+  },
+  {
+   "id": 1804,
+   "doc_label": "Focus Room 3",
+   "doc_zone_type": "ClosedOffice",
+   "doc_origin": "Drawn",
+   "raw_label": "Focus Room 3",
+   "raw_zone_type": "ClosedOffice",
+   "pub_label": "Focus Room 3",
+   "pub_zone_type": "ClosedOffice",
+   "raw_area_m2": 4.32000000000005
+  },
+  {
+   "id": 1813,
+   "doc_label": "Focus Room 4",
+   "doc_zone_type": "ClosedOffice",
+   "doc_origin": "Drawn",
+   "raw_label": "Focus Room 4",
+   "raw_zone_type": "ClosedOffice",
+   "pub_label": "Focus Room 4",
+   "pub_zone_type": "ClosedOffice",
+   "raw_area_m2": 4.320000000000003
+  },
+  {
+   "id": 1822,
+   "doc_label": "Phone Booth 2",
+   "doc_zone_type": "ClosedOffice",
+   "doc_origin": "Drawn",
+   "raw_label": "Phone Booth 2",
+   "raw_zone_type": "ClosedOffice",
+   "pub_label": "Phone Booth 2",
+   "pub_zone_type": "ClosedOffice",
+   "raw_area_m2": 1.4300000000000637
+  },
+  {
+   "id": 1831,
+   "doc_label": "Phone Booth 3",
+   "doc_zone_type": "ClosedOffice",
+   "doc_origin": "Drawn",
+   "raw_label": "Phone Booth 3",
+   "raw_zone_type": "ClosedOffice",
+   "pub_label": "Phone Booth 3",
+   "pub_zone_type": "ClosedOffice",
+   "raw_area_m2": 1.4300000000000068
+  },
+  {
+   "id": 1840,
+   "doc_label": "Phone Booth 4",
+   "doc_zone_type": "ClosedOffice",
+   "doc_origin": "Drawn",
+   "raw_label": "Phone Booth 4",
+   "raw_zone_type": "ClosedOffice",
+   "pub_label": "Phone Booth 4",
+   "pub_zone_type": "ClosedOffice",
+   "raw_area_m2": 1.4300000000000637
+  },
+  {
+   "id": 1848,
+   "doc_label": "Phone Booth 5",
+   "doc_zone_type": "ClosedOffice",
+   "doc_origin": "Drawn",
+   "raw_label": "Phone Booth 5",
+   "raw_zone_type": "ClosedOffice",
+   "pub_label": "Phone Booth 5",
+   "pub_zone_type": "ClosedOffice",
+   "raw_area_m2": 1.4299999999999997
+  },
+  {
+   "id": 1857,
+   "doc_label": "Phone Booth 6",
+   "doc_zone_type": "ClosedOffice",
+   "doc_origin": "Drawn",
+   "raw_label": "Phone Booth 6",
+   "raw_zone_type": "ClosedOffice",
+   "pub_label": "Phone Booth 6",
+   "pub_zone_type": "ClosedOffice",
+   "raw_area_m2": 1.4299999999999997
+  },
+  {
+   "id": 1865,
+   "doc_label": "Phone Booth 7",
+   "doc_zone_type": "ClosedOffice",
+   "doc_origin": "Drawn",
+   "raw_label": "Phone Booth 7",
+   "raw_zone_type": "ClosedOffice",
+   "pub_label": "Phone Booth 7",
+   "pub_zone_type": "ClosedOffice",
+   "raw_area_m2": 1.4299999999999997
+  },
+  {
+   "id": 1874,
+   "doc_label": "Phone Booth 8",
+   "doc_zone_type": "ClosedOffice",
+   "doc_origin": "Drawn",
+   "raw_label": "Phone Booth 8",
+   "raw_zone_type": "ClosedOffice",
+   "pub_label": "Phone Booth 8",
+   "pub_zone_type": "ClosedOffice",
+   "raw_area_m2": 1.4300000000000033
+  },
+  {
+   "id": 1876,
+   "doc_label": "Print Point 1",
+   "doc_zone_type": "Amenity",
+   "doc_origin": "Drawn",
+   "raw_label": "Print Point 1",
+   "raw_zone_type": "Amenity",
+   "pub_label": "Print Point 1",
+   "pub_zone_type": "Amenity",
+   "raw_area_m2": 3
+  },
+  {
+   "id": 1878,
+   "doc_label": "Print Point 2",
+   "doc_zone_type": "Amenity",
+   "doc_origin": "Drawn",
+   "raw_label": "Print Point 2",
+   "raw_zone_type": "Amenity",
+   "pub_label": "Print Point 2",
+   "pub_zone_type": "Amenity",
+   "raw_area_m2": 2.6999999999999957
+  },
+  {
+   "id": 1880,
+   "doc_label": "Corridor",
+   "doc_zone_type": "Circulation",
+   "doc_origin": "Drawn",
+   "raw_label": "Corridor",
+   "raw_zone_type": "Circulation",
+   "pub_label": "Corridor",
+   "pub_zone_type": "Circulation",
+   "raw_area_m2": 18.300000000000068
+  },
+  {
+   "id": 1881,
+   "doc_label": "Corridor",
+   "doc_zone_type": "Circulation",
+   "doc_origin": "Drawn",
+   "raw_label": "Corridor",
+   "raw_zone_type": "Circulation",
+   "pub_label": "Corridor",
+   "pub_zone_type": "Circulation",
+   "raw_area_m2": 18.299999999999955
+  },
+  {
+   "id": 1882,
+   "doc_label": "Corridor",
+   "doc_zone_type": "Circulation",
+   "doc_origin": "Drawn",
+   "raw_label": "Corridor",
+   "raw_zone_type": "Circulation",
+   "pub_label": "Corridor",
+   "pub_zone_type": "Circulation",
+   "raw_area_m2": 8.879999999999988
+  },
+  {
+   "id": 1883,
+   "doc_label": "Corridor",
+   "doc_zone_type": "Circulation",
+   "doc_origin": "Drawn",
+   "raw_label": "Corridor",
+   "raw_zone_type": "Circulation",
+   "pub_label": "Corridor",
+   "pub_zone_type": "Circulation",
+   "raw_area_m2": 8.879999999999995
+  },
+  {
+   "id": 1884,
+   "doc_label": "Corridor",
+   "doc_zone_type": "Circulation",
+   "doc_origin": "Drawn",
+   "raw_label": "Corridor",
+   "raw_zone_type": "Circulation",
+   "pub_label": "Corridor",
+   "pub_zone_type": "Circulation",
+   "raw_area_m2": 15
+  },
+  {
+   "id": 1885,
+   "doc_label": "Aisle",
+   "doc_zone_type": "Circulation",
+   "doc_origin": "Drawn",
+   "raw_label": "Aisle",
+   "raw_zone_type": "Circulation",
+   "pub_label": "Aisle",
+   "pub_zone_type": "Circulation",
+   "raw_area_m2": 2.184999999999974
+  },
+  {
+   "id": 1886,
+   "doc_label": "Corridor",
+   "doc_zone_type": "Circulation",
+   "doc_origin": "Drawn",
+   "raw_label": "Corridor",
+   "raw_zone_type": "Circulation",
+   "pub_label": "Corridor",
+   "pub_zone_type": "Circulation",
+   "raw_area_m2": 6
+  },
+  {
+   "id": 1887,
+   "doc_label": "Corridor",
+   "doc_zone_type": "Circulation",
+   "doc_origin": "Drawn",
+   "raw_label": "Corridor",
+   "raw_zone_type": "Circulation",
+   "pub_label": "Corridor",
+   "pub_zone_type": "Circulation",
+   "raw_area_m2": 6.539999999999992
+  },
+  {
+   "id": 1888,
+   "doc_label": "Corridor",
+   "doc_zone_type": "Circulation",
+   "doc_origin": "Drawn",
+   "raw_label": "Corridor",
+   "raw_zone_type": "Circulation",
+   "pub_label": "Corridor",
+   "pub_zone_type": "Circulation",
+   "raw_area_m2": 9.299999999999955
+  },
+  {
+   "id": 1889,
+   "doc_label": "Aisle",
+   "doc_zone_type": "Circulation",
+   "doc_origin": "Drawn",
+   "raw_label": "Aisle",
+   "raw_zone_type": "Circulation",
+   "pub_label": "Aisle",
+   "pub_zone_type": "Circulation",
+   "raw_area_m2": 2.300000000000068
+  },
+  {
+   "id": 1890,
+   "doc_label": "Corridor",
+   "doc_zone_type": "Circulation",
+   "doc_origin": "Drawn",
+   "raw_label": "Corridor",
+   "raw_zone_type": "Circulation",
+   "pub_label": "Corridor",
+   "pub_zone_type": "Circulation",
+   "raw_area_m2": 4.7999999999999545
+  },
+  {
+   "id": 1891,
+   "doc_label": "Corridor",
+   "doc_zone_type": "Circulation",
+   "doc_origin": "Drawn",
+   "raw_label": "Corridor",
+   "raw_zone_type": "Circulation",
+   "pub_label": "Corridor",
+   "pub_zone_type": "Circulation",
+   "raw_area_m2": 12.75000000000001
+  },
+  {
+   "id": 1892,
+   "doc_label": "Entry",
+   "doc_zone_type": "Circulation",
+   "doc_origin": "Drawn",
+   "raw_label": "Entry",
+   "raw_zone_type": "Circulation",
+   "pub_label": "Entry",
+   "pub_zone_type": "Circulation",
+   "raw_area_m2": 1.7950285153083385
+  },
+  {
+   "id": 1893,
+   "doc_label": "Aisle",
+   "doc_zone_type": "Circulation",
+   "doc_origin": "Drawn",
+   "raw_label": "Aisle",
+   "raw_zone_type": "Circulation",
+   "pub_label": "Aisle",
+   "pub_zone_type": "Circulation",
+   "raw_area_m2": 2.1850000000000023
+  },
+  {
+   "id": 1894,
+   "doc_label": "Corridor",
+   "doc_zone_type": "Circulation",
+   "doc_origin": "Drawn",
+   "raw_label": "Corridor",
+   "raw_zone_type": "Circulation",
+   "pub_label": "Corridor",
+   "pub_zone_type": "Circulation",
+   "raw_area_m2": 3.3000000000000114
+  },
+  {
+   "id": 1895,
+   "doc_label": "Corridor",
+   "doc_zone_type": "Circulation",
+   "doc_origin": "Drawn",
+   "raw_label": "Corridor",
+   "raw_zone_type": "Circulation",
+   "pub_label": "Corridor",
+   "pub_zone_type": "Circulation",
+   "raw_area_m2": 5.6399999999999935
+  },
+  {
+   "id": 1896,
+   "doc_label": "Corridor",
+   "doc_zone_type": "Circulation",
+   "doc_origin": "Drawn",
+   "raw_label": "Corridor",
+   "raw_zone_type": "Circulation",
+   "pub_label": "Corridor",
+   "pub_zone_type": "Circulation",
+   "raw_area_m2": 2.1000000000000014
+  },
+  {
+   "id": 1897,
+   "doc_label": "Corridor",
+   "doc_zone_type": "Circulation",
+   "doc_origin": "Drawn",
+   "raw_label": "Corridor",
+   "raw_zone_type": "Circulation",
+   "pub_label": "Corridor",
+   "pub_zone_type": "Circulation",
+   "raw_area_m2": 3.5400000000000063
+  },
+  {
+   "id": 1898,
+   "doc_label": "Corridor",
+   "doc_zone_type": "Circulation",
+   "doc_origin": "Drawn",
+   "raw_label": "Corridor",
+   "raw_zone_type": "Circulation",
+   "pub_label": "Corridor",
+   "pub_zone_type": "Circulation",
+   "raw_area_m2": 2.1000000000000014
+  },
+  {
+   "id": 1899,
+   "doc_label": "Corridor",
+   "doc_zone_type": "Circulation",
+   "doc_origin": "Drawn",
+   "raw_label": "Corridor",
+   "raw_zone_type": "Circulation",
+   "pub_label": "Corridor",
+   "pub_zone_type": "Circulation",
+   "raw_area_m2": 1.8000000000000114
+  },
+  {
+   "id": 1900,
+   "doc_label": "Corridor",
+   "doc_zone_type": "Circulation",
+   "doc_origin": "Drawn",
+   "raw_label": "Corridor",
+   "raw_zone_type": "Circulation",
+   "pub_label": "Corridor",
+   "pub_zone_type": "Circulation",
+   "raw_area_m2": 2.6399999999999864
+  },
+  {
+   "id": 1901,
+   "doc_label": "Corridor",
+   "doc_zone_type": "Circulation",
+   "doc_origin": "Drawn",
+   "raw_label": "Corridor",
+   "raw_zone_type": "Circulation",
+   "pub_label": "Corridor",
+   "pub_zone_type": "Circulation",
+   "raw_area_m2": 1.5
+  },
+  {
+   "id": 1902,
+   "doc_label": "Corridor",
+   "doc_zone_type": "Circulation",
+   "doc_origin": "Drawn",
+   "raw_label": "Corridor",
+   "raw_zone_type": "Circulation",
+   "pub_label": "Corridor",
+   "pub_zone_type": "Circulation",
+   "raw_area_m2": 2.9399999999999977
+  },
+  {
+   "id": 1903,
+   "doc_label": "Corridor",
+   "doc_zone_type": "Circulation",
+   "doc_origin": "Drawn",
+   "raw_label": "Corridor",
+   "raw_zone_type": "Circulation",
+   "pub_label": "Corridor",
+   "pub_zone_type": "Circulation",
+   "raw_area_m2": 2.3999999999999995
+  },
+  {
+   "id": 1904,
+   "doc_label": "Open Workspace (1)",
+   "doc_zone_type": "Workspace",
+   "doc_origin": "Drawn",
+   "raw_label": "Open Workspace (1)",
+   "raw_zone_type": "Workspace",
+   "pub_label": "Open Workspace (1)",
+   "pub_zone_type": "Workspace",
+   "raw_area_m2": 338.6
+  },
+  {
+   "id": 1977,
+   "doc_label": "Open Workspace (2)",
+   "doc_zone_type": "Workspace",
+   "doc_origin": "Drawn",
+   "raw_label": "Open Workspace (2)",
+   "raw_zone_type": "Workspace",
+   "pub_label": "Open Workspace (2)",
+   "pub_zone_type": "Workspace",
+   "raw_area_m2": 5.3149999999999125
+  },
+  {
+   "id": 1978,
+   "doc_label": "Open Workspace (3)",
+   "doc_zone_type": "Workspace",
+   "doc_origin": "Drawn",
+   "raw_label": "Open Workspace (3)",
+   "raw_zone_type": "Workspace",
+   "pub_label": "Open Workspace (3)",
+   "pub_zone_type": "Workspace",
+   "raw_area_m2": 4.349999999999795
+  },
+  {
+   "id": 1979,
+   "doc_label": "Open Workspace (4)",
+   "doc_zone_type": "Workspace",
+   "doc_origin": "Drawn",
+   "raw_label": "Open Workspace (4)",
+   "raw_zone_type": "Workspace",
+   "pub_label": "Open Workspace (4)",
+   "pub_zone_type": "Workspace",
+   "raw_area_m2": 5.354999999999986
+  },
+  {
+   "id": 1980,
+   "doc_label": "Open Workspace (5)",
+   "doc_zone_type": "Workspace",
+   "doc_origin": "Drawn",
+   "raw_label": "Open Workspace (5)",
+   "raw_zone_type": "Workspace",
+   "pub_label": "Open Workspace (5)",
+   "pub_zone_type": "Workspace",
+   "raw_area_m2": 0.40000000000000213
+  },
+  {
+   "id": 1981,
+   "doc_label": "Open Workspace (6)",
+   "doc_zone_type": "Workspace",
+   "doc_origin": "Drawn",
+   "raw_label": "Open Workspace (6)",
+   "raw_zone_type": "Workspace",
+   "pub_label": "Open Workspace (6)",
+   "pub_zone_type": "Workspace",
+   "raw_area_m2": 0
+  },
+  {
+   "id": 1982,
+   "doc_label": "Open Workspace (7)",
+   "doc_zone_type": "Workspace",
+   "doc_origin": "Drawn",
+   "raw_label": "Open Workspace (7)",
+   "raw_zone_type": "Workspace",
+   "pub_label": "Open Workspace (7)",
+   "pub_zone_type": "Workspace",
+   "raw_area_m2": 1.6099999999999994
+  },
+  {
+   "id": 1983,
+   "doc_label": "Open Workspace (8)",
+   "doc_zone_type": "Workspace",
+   "doc_origin": "Drawn",
+   "raw_label": "Open Workspace (8)",
+   "raw_zone_type": "Workspace",
+   "pub_label": "Open Workspace (8)",
+   "pub_zone_type": "Workspace",
+   "raw_area_m2": 1.6199999999999903
+  },
+  {
+   "id": 1984,
+   "doc_label": "Open Workspace (9)",
+   "doc_zone_type": "Workspace",
+   "doc_origin": "Drawn",
+   "raw_label": "Open Workspace (9)",
+   "raw_zone_type": "Workspace",
+   "pub_label": "Open Workspace (9)",
+   "pub_zone_type": "Workspace",
+   "raw_area_m2": 0.4599999999999991
+  },
+  {
+   "id": 2003,
+   "doc_label": "Team Room 1",
+   "doc_zone_type": "Meeting",
+   "doc_origin": "Drawn",
+   "raw_label": "Team Room 1",
+   "raw_zone_type": "Meeting",
+   "pub_label": "Team Room 1",
+   "pub_zone_type": "Meeting",
+   "raw_area_m2": 15.120000000000005
+  },
+  {
+   "id": 2017,
+   "doc_label": "Team Room 2",
+   "doc_zone_type": "Meeting",
+   "doc_origin": "Drawn",
+   "raw_label": "Team Room 2",
+   "raw_zone_type": "Meeting",
+   "pub_label": "Team Room 2",
+   "pub_zone_type": "Meeting",
+   "raw_area_m2": 15.120000000000005
+  },
+  {
+   "id": 2031,
+   "doc_label": "Team Room 3",
+   "doc_zone_type": "Meeting",
+   "doc_origin": "Drawn",
+   "raw_label": "Team Room 3",
+   "raw_zone_type": "Meeting",
+   "pub_label": "Team Room 3",
+   "pub_zone_type": "Meeting",
+   "raw_area_m2": 15.120000000000005
+  },
+  {
+   "id": 2045,
+   "doc_label": "Cabin 1",
+   "doc_zone_type": "ClosedOffice",
+   "doc_origin": "Drawn",
+   "raw_label": "Cabin 1",
+   "raw_zone_type": "ClosedOffice",
+   "pub_label": "Cabin 1",
+   "pub_zone_type": "ClosedOffice",
+   "raw_area_m2": 12.959999999999923
+  },
+  {
+   "id": 2054,
+   "doc_label": "Cabin 2",
+   "doc_zone_type": "ClosedOffice",
+   "doc_origin": "Drawn",
+   "raw_label": "Cabin 2",
+   "raw_zone_type": "ClosedOffice",
+   "pub_label": "Cabin 2",
+   "pub_zone_type": "ClosedOffice",
+   "raw_area_m2": 12.95999999999998
+  },
+  {
+   "id": 2063,
+   "doc_label": "Cabin 3",
+   "doc_zone_type": "ClosedOffice",
+   "doc_origin": "Drawn",
+   "raw_label": "Cabin 3",
+   "raw_zone_type": "ClosedOffice",
+   "pub_label": "Cabin 3",
+   "pub_zone_type": "ClosedOffice",
+   "raw_area_m2": 12.960000000000036
+  },
+  {
+   "id": 2072,
+   "doc_label": "Pantry",
+   "doc_zone_type": "Amenity",
+   "doc_origin": "Drawn",
+   "raw_label": "Pantry",
+   "raw_zone_type": "Amenity",
+   "pub_label": "Pantry",
+   "pub_zone_type": "Amenity",
+   "raw_area_m2": 10.800000000000011
+  },
+  {
+   "id": 2076,
+   "doc_label": "Unassigned",
+   "doc_zone_type": "Unassigned",
+   "doc_origin": "Residual",
+   "raw_label": "Unassigned",
+   "raw_zone_type": "Unassigned",
+   "pub_label": "Circulation",
+   "pub_zone_type": "Circulation",
+   "raw_area_m2": 7.191988031914889
+  },
+  {
+   "id": 2081,
+   "doc_label": "Unassigned",
+   "doc_zone_type": "Unassigned",
+   "doc_origin": "Residual",
+   "raw_label": "Unassigned",
+   "raw_zone_type": "Unassigned",
+   "pub_label": "Circulation",
+   "pub_zone_type": "Circulation",
+   "raw_area_m2": 3.75
+  },
+  {
+   "id": 2100,
+   "doc_label": "Core 1",
+   "doc_zone_type": "Core",
+   "doc_origin": "Drawn",
+   "raw_label": "Core 1",
+   "raw_zone_type": "Core",
+   "pub_label": "Core 1",
+   "pub_zone_type": "Core",
+   "raw_area_m2": 40.69304705520085
+  },
+  {
+   "id": 2101,
+   "doc_label": "Core 2",
+   "doc_zone_type": "Core",
+   "doc_origin": "Drawn",
+   "raw_label": "Core 2",
+   "raw_zone_type": "Core",
+   "pub_label": "Core 2",
+   "pub_zone_type": "Core",
+   "raw_area_m2": 6.1875
+  },
+  {
+   "id": 2102,
+   "doc_label": "Core 3",
+   "doc_zone_type": "Core",
+   "doc_origin": "Drawn",
+   "raw_label": "Core 3",
+   "raw_zone_type": "Core",
+   "pub_label": "Core 3",
+   "pub_zone_type": "Core",
+   "raw_area_m2": 5.625
+  },
+  {
+   "id": 2108,
+   "doc_label": "Circulation",
+   "doc_zone_type": "Circulation",
+   "doc_origin": "Residual",
+   "raw_label": "Circulation",
+   "raw_zone_type": "Circulation",
+   "pub_label": "Circulation",
+   "pub_zone_type": "Circulation",
+   "raw_area_m2": 3.5225954979536147
+  },
+  {
+   "id": 2109,
+   "doc_label": "Unassigned",
+   "doc_zone_type": "Unassigned",
+   "doc_origin": "Residual",
+   "raw_label": "Unassigned",
+   "raw_zone_type": "Unassigned",
+   "pub_label": "Circulation",
+   "pub_zone_type": "Circulation",
+   "raw_area_m2": 4.8125
+  },
+  {
+   "id": 2110,
+   "doc_label": "Unassigned",
+   "doc_zone_type": "Unassigned",
+   "doc_origin": "Residual",
+   "raw_label": "Unassigned",
+   "raw_zone_type": "Unassigned",
+   "pub_label": "Circulation",
+   "pub_zone_type": "Circulation",
+   "raw_area_m2": 2.181046721734642
+  },
+  {
+   "id": 2111,
+   "doc_label": "Unassigned",
+   "doc_zone_type": "Unassigned",
+   "doc_origin": "Residual",
+   "raw_label": "Unassigned",
+   "raw_zone_type": "Unassigned",
+   "pub_label": "Circulation",
+   "pub_zone_type": "Circulation",
+   "raw_area_m2": 0
+  },
+  {
+   "id": 2112,
+   "doc_label": "Unassigned",
+   "doc_zone_type": "Unassigned",
+   "doc_origin": "Residual",
+   "raw_label": "Unassigned",
+   "raw_zone_type": "Unassigned",
+   "pub_label": "Circulation",
+   "pub_zone_type": "Circulation",
+   "raw_area_m2": 4.740629535558785
+  },
+  {
+   "id": 2113,
+   "doc_label": "Unassigned",
+   "doc_zone_type": "Unassigned",
+   "doc_origin": "Residual",
+   "raw_label": "Unassigned",
+   "raw_zone_type": "Unassigned",
+   "pub_label": "Circulation",
+   "pub_zone_type": "Circulation",
+   "raw_area_m2": 8.173076923076934
+  },
+  {
+   "id": 2114,
+   "doc_label": "Unassigned",
+   "doc_zone_type": "Unassigned",
+   "doc_origin": "Residual",
+   "raw_label": "Unassigned",
+   "raw_zone_type": "Unassigned",
+   "pub_label": "Circulation",
+   "pub_zone_type": "Circulation",
+   "raw_area_m2": 19.567875971143167
+  },
+  {
+   "id": 2115,
+   "doc_label": "Unassigned",
+   "doc_zone_type": "Unassigned",
+   "doc_origin": "Residual",
+   "raw_label": "Unassigned",
+   "raw_zone_type": "Unassigned",
+   "pub_label": "Circulation",
+   "pub_zone_type": "Circulation",
+   "raw_area_m2": 13.956785077288941
+  },
+  {
+   "id": 2116,
+   "doc_label": "Unassigned",
+   "doc_zone_type": "Unassigned",
+   "doc_origin": "Residual",
+   "raw_label": "Unassigned",
+   "raw_zone_type": "Unassigned",
+   "pub_label": "Circulation",
+   "pub_zone_type": "Circulation",
+   "raw_area_m2": 3.9375
+  },
+  {
+   "id": 2117,
+   "doc_label": "Unassigned",
+   "doc_zone_type": "Unassigned",
+   "doc_origin": "Residual",
+   "raw_label": "Unassigned",
+   "raw_zone_type": "Unassigned",
+   "pub_label": "Circulation",
+   "pub_zone_type": "Circulation",
+   "raw_area_m2": 11.538555992141482
+  },
+  {
+   "id": 2118,
+   "doc_label": "Unassigned",
+   "doc_zone_type": "Unassigned",
+   "doc_origin": "Residual",
+   "raw_label": "Unassigned",
+   "raw_zone_type": "Unassigned",
+   "pub_label": "Circulation",
+   "pub_zone_type": "Circulation",
+   "raw_area_m2": 18.355323708751744
+  },
+  {
+   "id": 2119,
+   "doc_label": "Unassigned",
+   "doc_zone_type": "Unassigned",
+   "doc_origin": "Residual",
+   "raw_label": "Unassigned",
+   "raw_zone_type": "Unassigned",
+   "pub_label": "Circulation",
+   "pub_zone_type": "Circulation",
+   "raw_area_m2": 7.281460170956507
+  }
+ ],
+ "surfaces": {
+  "document": [
+   {
+    "id": 1666,
+    "doc_label": "Cabin",
+    "doc_zone_type": "ClosedOffice",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 29.85,
+     "y": 13,
+     "w": 4.5,
+     "h": 4
+    },
+    "doc_component_count": 3,
+    "doc_group": null
+   },
+   {
+    "id": 1675,
+    "doc_label": "Boardroom",
+    "doc_zone_type": "Meeting",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 34.45,
+     "y": 13.95,
+     "w": 4.5,
+     "h": 5.9
+    },
+    "doc_component_count": 14,
+    "doc_group": null
+   },
+   {
+    "id": 1695,
+    "doc_label": "Reception",
+    "doc_zone_type": "Amenity",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 13.9,
+     "y": 40.7,
+     "w": 4,
+     "h": 3.2
+    },
+    "doc_component_count": 3,
+    "doc_group": null
+   },
+   {
+    "id": 1704,
+    "doc_label": "Team Room 1",
+    "doc_zone_type": "Meeting",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Poly",
+    "doc_shape": {
+     "kind": "Poly",
+     "pts": [
+      [
+       16,
+       39.1
+      ],
+      [
+       18.1,
+       39.1
+      ],
+      [
+       18.1,
+       42.78478260869565
+      ],
+      [
+       17.90225564708259,
+       42.801977769818905
+      ],
+      [
+       16,
+       42.96739130434783
+      ]
+     ]
+    },
+    "doc_component_count": 6,
+    "doc_group": null
+   },
+   {
+    "id": 1716,
+    "doc_label": "Storage",
+    "doc_zone_type": "Amenity",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 8.9,
+     "y": 9.2,
+     "w": 3,
+     "h": 1.4000000000000001
+    },
+    "doc_component_count": 1,
+    "doc_group": null
+   },
+   {
+    "id": 1723,
+    "doc_label": "Phone Booth 1",
+    "doc_zone_type": "ClosedOffice",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 6.65,
+     "y": 9.05,
+     "w": 1.3,
+     "h": 1.1
+    },
+    "doc_component_count": 2,
+    "doc_group": null
+   },
+   {
+    "id": 1731,
+    "doc_label": "Team Room",
+    "doc_zone_type": "Meeting",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 17.3,
+     "y": 2.5,
+     "w": 4.800000000000001,
+     "h": 2.8000000000000003
+    },
+    "doc_component_count": 0,
+    "doc_group": null
+   },
+   {
+    "id": 1747,
+    "doc_label": "Meeting Room 1",
+    "doc_zone_type": "Meeting",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 30,
+     "y": 5.25,
+     "w": 3.6,
+     "h": 2.3000000000000003
+    },
+    "doc_component_count": 8,
+    "doc_group": null
+   },
+   {
+    "id": 1761,
+    "doc_label": "Meeting Room 2",
+    "doc_zone_type": "Meeting",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 2.9000000000000004,
+     "y": 2.75,
+     "w": 3.6,
+     "h": 2.3000000000000003
+    },
+    "doc_component_count": 8,
+    "doc_group": null
+   },
+   {
+    "id": 1775,
+    "doc_label": "Wellness Room",
+    "doc_zone_type": "Amenity",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 9.75,
+     "y": 2.5,
+     "w": 1.7000000000000002,
+     "h": 2.8000000000000003
+    },
+    "doc_component_count": 0,
+    "doc_group": null
+   },
+   {
+    "id": 1776,
+    "doc_label": "Collab 1",
+    "doc_zone_type": "Collaboration",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 24.1,
+     "y": 3,
+     "w": 2.4000000000000004,
+     "h": 1.8
+    },
+    "doc_component_count": 3,
+    "doc_group": null
+   },
+   {
+    "id": 1786,
+    "doc_label": "Focus Room 1",
+    "doc_zone_type": "ClosedOffice",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 28.8,
+     "y": 8.5,
+     "w": 2.4000000000000004,
+     "h": 1.8
+    },
+    "doc_component_count": 3,
+    "doc_group": null
+   },
+   {
+    "id": 1795,
+    "doc_label": "Focus Room 2",
+    "doc_zone_type": "ClosedOffice",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 34.800000000000004,
+     "y": 8.5,
+     "w": 2.4000000000000004,
+     "h": 1.8
+    },
+    "doc_component_count": 3,
+    "doc_group": null
+   },
+   {
+    "id": 1804,
+    "doc_label": "Focus Room 3",
+    "doc_zone_type": "ClosedOffice",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 13.100000000000001,
+     "y": 36.5,
+     "w": 2.4000000000000004,
+     "h": 1.8
+    },
+    "doc_component_count": 3,
+    "doc_group": null
+   },
+   {
+    "id": 1813,
+    "doc_label": "Focus Room 4",
+    "doc_zone_type": "ClosedOffice",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 3.1,
+     "y": 6,
+     "w": 2.4000000000000004,
+     "h": 1.8
+    },
+    "doc_component_count": 3,
+    "doc_group": null
+   },
+   {
+    "id": 1822,
+    "doc_label": "Phone Booth 2",
+    "doc_zone_type": "ClosedOffice",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 30.75,
+     "y": 8.85,
+     "w": 1.3,
+     "h": 1.1
+    },
+    "doc_component_count": 3,
+    "doc_group": null
+   },
+   {
+    "id": 1831,
+    "doc_label": "Phone Booth 3",
+    "doc_zone_type": "ClosedOffice",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 36.75,
+     "y": 8.85,
+     "w": 1.3,
+     "h": 1.1
+    },
+    "doc_component_count": 3,
+    "doc_group": null
+   },
+   {
+    "id": 1840,
+    "doc_label": "Phone Booth 4",
+    "doc_zone_type": "ClosedOffice",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 16.650000000000002,
+     "y": 36.85,
+     "w": 1.1,
+     "h": 1.3
+    },
+    "doc_component_count": 2,
+    "doc_group": null
+   },
+   {
+    "id": 1848,
+    "doc_label": "Phone Booth 5",
+    "doc_zone_type": "ClosedOffice",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 7.95,
+     "y": 6.25,
+     "w": 1.3,
+     "h": 1.1
+    },
+    "doc_component_count": 3,
+    "doc_group": null
+   },
+   {
+    "id": 1857,
+    "doc_label": "Phone Booth 6",
+    "doc_zone_type": "ClosedOffice",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 5.25,
+     "y": 9.05,
+     "w": 1.3,
+     "h": 1.1
+    },
+    "doc_component_count": 2,
+    "doc_group": null
+   },
+   {
+    "id": 1865,
+    "doc_label": "Phone Booth 7",
+    "doc_zone_type": "ClosedOffice",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 9.35,
+     "y": 6.25,
+     "w": 1.3,
+     "h": 1.1
+    },
+    "doc_component_count": 3,
+    "doc_group": null
+   },
+   {
+    "id": 1874,
+    "doc_label": "Phone Booth 8",
+    "doc_zone_type": "ClosedOffice",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 4.95,
+     "y": 5.75,
+     "w": 1.1,
+     "h": 1.3
+    },
+    "doc_component_count": 2,
+    "doc_group": null
+   },
+   {
+    "id": 1876,
+    "doc_label": "Print Point 1",
+    "doc_zone_type": "Amenity",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 28.6,
+     "y": 15.850000000000001,
+     "w": 2,
+     "h": 1.5
+    },
+    "doc_component_count": 1,
+    "doc_group": null
+   },
+   {
+    "id": 1878,
+    "doc_label": "Print Point 2",
+    "doc_zone_type": "Amenity",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 22.05,
+     "y": 3,
+     "w": 1.5,
+     "h": 1.8
+    },
+    "doc_component_count": 1,
+    "doc_group": null
+   },
+   {
+    "id": 1880,
+    "doc_label": "Corridor",
+    "doc_zone_type": "Circulation",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 11.3,
+     "y": 19.75,
+     "w": 0.5999999999999996,
+     "h": 30.5
+    },
+    "doc_component_count": 0,
+    "doc_group": null
+   },
+   {
+    "id": 1881,
+    "doc_label": "Corridor",
+    "doc_zone_type": "Circulation",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 26.7,
+     "y": 19.75,
+     "w": 0.6000000000000014,
+     "h": 30.5
+    },
+    "doc_component_count": 0,
+    "doc_group": null
+   },
+   {
+    "id": 1882,
+    "doc_label": "Corridor",
+    "doc_zone_type": "Circulation",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 19,
+     "y": 4.8,
+     "w": 14.799999999999999,
+     "h": 0.5999999999999996
+    },
+    "doc_component_count": 0,
+    "doc_group": null
+   },
+   {
+    "id": 1883,
+    "doc_label": "Corridor",
+    "doc_zone_type": "Circulation",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 19,
+     "y": 34.7,
+     "w": 14.799999999999999,
+     "h": 0.6000000000000014
+    },
+    "doc_component_count": 0,
+    "doc_group": null
+   },
+   {
+    "id": 1884,
+    "doc_label": "Corridor",
+    "doc_zone_type": "Circulation",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 32.6,
+     "y": 10.25,
+     "w": 10,
+     "h": 1.5
+    },
+    "doc_component_count": 0,
+    "doc_group": null
+   },
+   {
+    "id": 1885,
+    "doc_label": "Aisle",
+    "doc_zone_type": "Circulation",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 32.6,
+     "y": 8.55,
+     "w": 1.1500000000000057,
+     "h": 1.9000000000000004
+    },
+    "doc_component_count": 0,
+    "doc_group": null
+   },
+   {
+    "id": 1886,
+    "doc_label": "Corridor",
+    "doc_zone_type": "Circulation",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 27.3,
+     "y": 12,
+     "w": 0.6000000000000014,
+     "h": 10
+    },
+    "doc_component_count": 0,
+    "doc_group": null
+   },
+   {
+    "id": 1887,
+    "doc_label": "Corridor",
+    "doc_zone_type": "Circulation",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 33.05,
+     "y": 7.3,
+     "w": 10.899999999999999,
+     "h": 0.5999999999999996
+    },
+    "doc_component_count": 0,
+    "doc_group": null
+   },
+   {
+    "id": 1888,
+    "doc_label": "Corridor",
+    "doc_zone_type": "Circulation",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 15,
+     "y": 38.35,
+     "w": 6.200000000000001,
+     "h": 1.5
+    },
+    "doc_component_count": 0,
+    "doc_group": null
+   },
+   {
+    "id": 1889,
+    "doc_label": "Aisle",
+    "doc_zone_type": "Circulation",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 15,
+     "y": 36.6,
+     "w": 1.1499999999999986,
+     "h": 2
+    },
+    "doc_component_count": 0,
+    "doc_group": null
+   },
+   {
+    "id": 1890,
+    "doc_label": "Corridor",
+    "doc_zone_type": "Circulation",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 15,
+     "y": 35.3,
+     "w": 8,
+     "h": 0.6000000000000014
+    },
+    "doc_component_count": 0,
+    "doc_group": null
+   },
+   {
+    "id": 1891,
+    "doc_label": "Corridor",
+    "doc_zone_type": "Circulation",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 6.15,
+     "y": 7.75,
+     "w": 8.5,
+     "h": 1.5
+    },
+    "doc_component_count": 0,
+    "doc_group": null
+   },
+   {
+    "id": 1892,
+    "doc_label": "Entry",
+    "doc_zone_type": "Circulation",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 3.8499999999999996,
+     "y": 9.09834283843611,
+     "w": 1.4999999999999996,
+     "h": 1.196685676872221
+    },
+    "doc_component_count": 0,
+    "doc_group": null
+   },
+   {
+    "id": 1893,
+    "doc_label": "Aisle",
+    "doc_zone_type": "Circulation",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 6.15,
+     "y": 6.05,
+     "w": 1.1500000000000004,
+     "h": 1.9000000000000004
+    },
+    "doc_component_count": 0,
+    "doc_group": null
+   },
+   {
+    "id": 1894,
+    "doc_label": "Corridor",
+    "doc_zone_type": "Circulation",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 10.7,
+     "y": 7.25,
+     "w": 0.5999999999999996,
+     "h": 5.5
+    },
+    "doc_component_count": 0,
+    "doc_group": null
+   },
+   {
+    "id": 1895,
+    "doc_label": "Corridor",
+    "doc_zone_type": "Circulation",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 5.7,
+     "y": 4.8,
+     "w": 9.4,
+     "h": 0.5999999999999996
+    },
+    "doc_component_count": 0,
+    "doc_group": null
+   },
+   {
+    "id": 1896,
+    "doc_label": "Corridor",
+    "doc_zone_type": "Circulation",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 20.2,
+     "y": 2.75,
+     "w": 0.6000000000000014,
+     "h": 3.5
+    },
+    "doc_component_count": 0,
+    "doc_group": null
+   },
+   {
+    "id": 1897,
+    "doc_label": "Corridor",
+    "doc_zone_type": "Circulation",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 16.95,
+     "y": 4.2,
+     "w": 5.899999999999999,
+     "h": 0.6000000000000001
+    },
+    "doc_component_count": 0,
+    "doc_group": null
+   },
+   {
+    "id": 1898,
+    "doc_label": "Corridor",
+    "doc_zone_type": "Circulation",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 9.75,
+     "y": 4.2,
+     "w": 3.5,
+     "h": 0.6000000000000001
+    },
+    "doc_component_count": 0,
+    "doc_group": null
+   },
+   {
+    "id": 1899,
+    "doc_label": "Corridor",
+    "doc_zone_type": "Circulation",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 27.3,
+     "y": 5.5,
+     "w": 0.6000000000000014,
+     "h": 3
+    },
+    "doc_component_count": 0,
+    "doc_group": null
+   },
+   {
+    "id": 1900,
+    "doc_label": "Corridor",
+    "doc_zone_type": "Circulation",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 29.8,
+     "y": 6.7,
+     "w": 4.399999999999999,
+     "h": 0.5999999999999996
+    },
+    "doc_component_count": 0,
+    "doc_group": null
+   },
+   {
+    "id": 1901,
+    "doc_label": "Corridor",
+    "doc_zone_type": "Circulation",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 20.8,
+     "y": 3.25,
+     "w": 0.6000000000000014,
+     "h": 2.5
+    },
+    "doc_component_count": 0,
+    "doc_group": null
+   },
+   {
+    "id": 1902,
+    "doc_label": "Corridor",
+    "doc_zone_type": "Circulation",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 23.55,
+     "y": 4.2,
+     "w": 4.899999999999999,
+     "h": 0.6000000000000001
+    },
+    "doc_component_count": 0,
+    "doc_group": null
+   },
+   {
+    "id": 1903,
+    "doc_label": "Corridor",
+    "doc_zone_type": "Circulation",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 3,
+     "y": 4.2,
+     "w": 4,
+     "h": 0.6000000000000001
+    },
+    "doc_component_count": 0,
+    "doc_group": null
+   },
+   {
+    "id": 1904,
+    "doc_label": "Open Workspace (1)",
+    "doc_zone_type": "Workspace",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 19,
+     "y": 19.75,
+     "w": 14.799999999999999,
+     "h": 29.299999999999997
+    },
+    "doc_component_count": 168,
+    "doc_group": null
+   },
+   {
+    "id": 1977,
+    "doc_label": "Open Workspace (2)",
+    "doc_zone_type": "Workspace",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 32.6,
+     "y": 8.55,
+     "w": 10,
+     "h": 1.9000000000000004
+    },
+    "doc_component_count": 0,
+    "doc_group": null
+   },
+   {
+    "id": 1978,
+    "doc_label": "Open Workspace (3)",
+    "doc_zone_type": "Workspace",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 15,
+     "y": 36.6,
+     "w": 6.200000000000001,
+     "h": 2
+    },
+    "doc_component_count": 0,
+    "doc_group": null
+   },
+   {
+    "id": 1979,
+    "doc_label": "Open Workspace (4)",
+    "doc_zone_type": "Workspace",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 6.15,
+     "y": 6.05,
+     "w": 8.5,
+     "h": 1.9000000000000004
+    },
+    "doc_component_count": 0,
+    "doc_group": null
+   },
+   {
+    "id": 1980,
+    "doc_label": "Open Workspace (5)",
+    "doc_zone_type": "Workspace",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 17.4,
+     "y": 2.9,
+     "w": 4.999999999999998,
+     "h": 2
+    },
+    "doc_component_count": 10,
+    "doc_group": null
+   },
+   {
+    "id": 1981,
+    "doc_label": "Open Workspace (6)",
+    "doc_zone_type": "Workspace",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 9.75,
+     "y": 2.9,
+     "w": 1.6999999999999993,
+     "h": 2
+    },
+    "doc_component_count": 1,
+    "doc_group": null
+   },
+   {
+    "id": 1982,
+    "doc_label": "Open Workspace (7)",
+    "doc_zone_type": "Workspace",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 29.75,
+     "y": 5.25,
+     "w": 4.299999999999997,
+     "h": 2.3000000000000007
+    },
+    "doc_component_count": 0,
+    "doc_group": null
+   },
+   {
+    "id": 1983,
+    "doc_label": "Open Workspace (8)",
+    "doc_zone_type": "Workspace",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 23.5,
+     "y": 3,
+     "w": 4.799999999999997,
+     "h": 1.7999999999999998
+    },
+    "doc_component_count": 0,
+    "doc_group": null
+   },
+   {
+    "id": 1984,
+    "doc_label": "Open Workspace (9)",
+    "doc_zone_type": "Workspace",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 3,
+     "y": 2.75,
+     "w": 3.8000000000000003,
+     "h": 2.3
+    },
+    "doc_component_count": 0,
+    "doc_group": null
+   },
+   {
+    "id": 2003,
+    "doc_label": "Team Room 1",
+    "doc_zone_type": "Meeting",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 24.1,
+     "y": 7.6000000000000005,
+     "w": 3.6,
+     "h": 4.2
+    },
+    "doc_component_count": 8,
+    "doc_group": null
+   },
+   {
+    "id": 2017,
+    "doc_label": "Team Room 2",
+    "doc_zone_type": "Meeting",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 24.1,
+     "y": 11.600000000000001,
+     "w": 4.2,
+     "h": 3.6
+    },
+    "doc_component_count": 8,
+    "doc_group": null
+   },
+   {
+    "id": 2031,
+    "doc_label": "Team Room 3",
+    "doc_zone_type": "Meeting",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 24.1,
+     "y": 15.3,
+     "w": 4.2,
+     "h": 3.6
+    },
+    "doc_component_count": 8,
+    "doc_group": null
+   },
+   {
+    "id": 2045,
+    "doc_label": "Cabin 1",
+    "doc_zone_type": "ClosedOffice",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 23.5,
+     "y": 32.5,
+     "w": 3.6,
+     "h": 3.6
+    },
+    "doc_component_count": 3,
+    "doc_group": null
+   },
+   {
+    "id": 2054,
+    "doc_label": "Cabin 2",
+    "doc_zone_type": "ClosedOffice",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 24.400000000000002,
+     "y": 19,
+     "w": 3.6,
+     "h": 3.6
+    },
+    "doc_component_count": 3,
+    "doc_group": null
+   },
+   {
+    "id": 2063,
+    "doc_label": "Cabin 3",
+    "doc_zone_type": "ClosedOffice",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 23.5,
+     "y": 28.8,
+     "w": 3.6,
+     "h": 3.6
+    },
+    "doc_component_count": 3,
+    "doc_group": null
+   },
+   {
+    "id": 2072,
+    "doc_label": "Pantry",
+    "doc_zone_type": "Amenity",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 24.400000000000002,
+     "y": 22.400000000000002,
+     "w": 3.6,
+     "h": 3
+    },
+    "doc_component_count": 2,
+    "doc_group": null
+   },
+   {
+    "id": 2076,
+    "doc_label": "Unassigned",
+    "doc_zone_type": "Unassigned",
+    "doc_origin": "Residual",
+    "doc_shape_kind": "Poly",
+    "doc_shape": {
+     "kind": "Poly",
+     "pts": [
+      [
+       11.625,
+       35.875
+      ],
+      [
+       11.625,
+       43.226063829787236
+      ],
+      [
+       9,
+       43.170212765957444
+      ],
+      [
+       9,
+       42.75
+      ],
+      [
+       10.15,
+       42.75
+      ],
+      [
+       10.75,
+       42.75
+      ],
+      [
+       10.75,
+       42.15
+      ],
+      [
+       10.75,
+       35.875
+      ]
+     ]
+    },
+    "doc_component_count": 0,
+    "doc_group": null
+   },
+   {
+    "id": 2081,
+    "doc_label": "Unassigned",
+    "doc_zone_type": "Unassigned",
+    "doc_origin": "Residual",
+    "doc_shape_kind": "Poly",
+    "doc_shape": {
+     "kind": "Poly",
+     "pts": [
+      [
+       29.875,
+       18.875
+      ],
+      [
+       29.875,
+       15.125
+      ],
+      [
+       31.875,
+       15.125
+      ],
+      [
+       31.875,
+       17
+      ],
+      [
+       29.875,
+       17
+      ],
+      [
+       29.875,
+       18.875
+      ]
+     ]
+    },
+    "doc_component_count": 0,
+    "doc_group": null
+   },
+   {
+    "id": 2100,
+    "doc_label": "Core 1",
+    "doc_zone_type": "Core",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 22.510221116491266,
+     "y": 38.151204039635104,
+     "w": 7.020442232982532,
+     "h": 5.802408079270435
+    },
+    "doc_component_count": 0,
+    "doc_group": null
+   },
+   {
+    "id": 2101,
+    "doc_label": "Core 2",
+    "doc_zone_type": "Core",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 6.125,
+     "y": 2.875,
+     "w": 2.25,
+     "h": 2.75
+    },
+    "doc_component_count": 0,
+    "doc_group": null
+   },
+   {
+    "id": 2102,
+    "doc_label": "Core 3",
+    "doc_zone_type": "Core",
+    "doc_origin": "Drawn",
+    "doc_shape_kind": "Rect",
+    "doc_shape": {
+     "kind": "Rect",
+     "x": 12.875,
+     "y": 3,
+     "w": 2.25,
+     "h": 2.5
+    },
+    "doc_component_count": 0,
+    "doc_group": null
+   },
+   {
+    "id": 2108,
+    "doc_label": "Circulation",
+    "doc_zone_type": "Circulation",
+    "doc_origin": "Residual",
+    "doc_shape_kind": "Poly",
+    "doc_shape": {
+     "kind": "Poly",
+     "pts": [
+      [
+       8.75,
+       1
+      ],
+      [
+       8.75,
+       3.75
+      ],
+      [
+       7.75,
+       3.75
+      ],
+      [
+       7.75,
+       4.25
+      ],
+      [
+       7.5,
+       4.25
+      ],
+      [
+       7.482946793997272,
+       1.019781718963165
+      ],
+      [
+       5.991132332878581,
+       1.130286493860846
+      ]
+     ]
+    },
+    "doc_component_count": 0,
+    "doc_group": null
+   },
+   {
+    "id": 2109,
+    "doc_label": "Unassigned",
+    "doc_zone_type": "Unassigned",
+    "doc_origin": "Residual",
+    "doc_shape_kind": "Poly",
+    "doc_shape": {
+     "kind": "Poly",
+     "pts": [
+      [
+       10.75,
+       1
+      ],
+      [
+       14.75,
+       1
+      ],
+      [
+       14.75,
+       3.75
+      ],
+      [
+       14.25,
+       3.75
+      ],
+      [
+       14.25,
+       1.5
+      ],
+      [
+       11.5,
+       1.5
+      ],
+      [
+       11.5,
+       3.75
+      ],
+      [
+       10.75,
+       3.75
+      ]
+     ]
+    },
+    "doc_component_count": 0,
+    "doc_group": null
+   },
+   {
+    "id": 2110,
+    "doc_label": "Unassigned",
+    "doc_zone_type": "Unassigned",
+    "doc_origin": "Residual",
+    "doc_shape_kind": "Poly",
+    "doc_shape": {
+     "kind": "Poly",
+     "pts": [
+      [
+       20.74244966442953,
+       1.042785234899329
+      ],
+      [
+       25.51923076923077,
+       1.9038461538461537
+      ],
+      [
+       21.25,
+       2
+      ],
+      [
+       21.25,
+       1.75
+      ],
+      [
+       20.75,
+       1.75
+      ]
+     ]
+    },
+    "doc_component_count": 0,
+    "doc_group": null
+   },
+   {
+    "id": 2111,
+    "doc_label": "Unassigned",
+    "doc_zone_type": "Unassigned",
+    "doc_origin": "Residual",
+    "doc_shape_kind": "Poly",
+    "doc_shape": {
+     "kind": "Poly",
+     "pts": [
+      [
+       4.747953615279672,
+       1.2223738062755798
+      ],
+      [
+       4.729536152796726,
+       1.223738062755798
+      ],
+      [
+       2.7404502046384724,
+       1.3710777626193724
+      ]
+     ]
+    },
+    "doc_component_count": 0,
+    "doc_group": null
+   },
+   {
+    "id": 2112,
+    "doc_label": "Unassigned",
+    "doc_zone_type": "Unassigned",
+    "doc_origin": "Residual",
+    "doc_shape_kind": "Poly",
+    "doc_shape": {
+     "kind": "Poly",
+     "pts": [
+      [
+       26.1,
+       2.2
+      ],
+      [
+       26.25,
+       2.5
+      ],
+      [
+       27.5,
+       2.5
+      ],
+      [
+       27.75,
+       3
+      ],
+      [
+       31.025471698113208,
+       3.6141509433962264
+      ],
+      [
+       31.923076923076923,
+       3.865384615384615
+      ],
+      [
+       32.03846153846154,
+       3.9423076923076916
+      ],
+      [
+       27.75,
+       4
+      ],
+      [
+       27.75,
+       3.75
+      ],
+      [
+       26.75,
+       3.75
+      ],
+      [
+       26.75,
+       4.25
+      ],
+      [
+       26.25,
+       4.25
+      ],
+      [
+       26.25,
+       3.75
+      ],
+      [
+       26,
+       3.75
+      ]
+     ]
+    },
+    "doc_component_count": 0,
+    "doc_group": null
+   },
+   {
+    "id": 2113,
+    "doc_label": "Unassigned",
+    "doc_zone_type": "Unassigned",
+    "doc_origin": "Residual",
+    "doc_shape_kind": "Poly",
+    "doc_shape": {
+     "kind": "Poly",
+     "pts": [
+      [
+       32.03846153846154,
+       3.9423076923076916
+      ],
+      [
+       33.07692307692307,
+       4.634615384615385
+      ],
+      [
+       34.5,
+       4.75
+      ],
+      [
+       34.75,
+       5.5
+      ],
+      [
+       37,
+       6
+      ],
+      [
+       37.25,
+       6.75
+      ],
+      [
+       32.25,
+       6.75
+      ],
+      [
+       32.25,
+       6.25
+      ],
+      [
+       32,
+       6.25
+      ]
+     ]
+    },
+    "doc_component_count": 0,
+    "doc_group": null
+   },
+   {
+    "id": 2114,
+    "doc_label": "Unassigned",
+    "doc_zone_type": "Unassigned",
+    "doc_origin": "Residual",
+    "doc_shape_kind": "Poly",
+    "doc_shape": {
+     "kind": "Poly",
+     "pts": [
+      [
+       1,
+       5.25
+      ],
+      [
+       1.75,
+       5.25
+      ],
+      [
+       1.75,
+       8.75
+      ],
+      [
+       3,
+       8.75
+      ],
+      [
+       3,
+       9.75
+      ],
+      [
+       7.25,
+       9.75
+      ],
+      [
+       7.25,
+       10
+      ],
+      [
+       10.25,
+       10
+      ],
+      [
+       10.242230854605992,
+       10.483074361820199
+      ],
+      [
+       11,
+       10.25
+      ],
+      [
+       10.75,
+       34.75
+      ],
+      [
+       10.75,
+       10.5
+      ],
+      [
+       3.25,
+       10.25
+      ],
+      [
+       3,
+       16.5
+      ],
+      [
+       2,
+       16.5
+      ],
+      [
+       2,
+       10.5
+      ],
+      [
+       1,
+       10.25
+      ]
+     ]
+    },
+    "doc_component_count": 0,
+    "doc_group": null
+   },
+   {
+    "id": 2115,
+    "doc_label": "Unassigned",
+    "doc_zone_type": "Unassigned",
+    "doc_origin": "Residual",
+    "doc_shape_kind": "Poly",
+    "doc_shape": {
+     "kind": "Poly",
+     "pts": [
+      [
+       36.75,
+       11.25
+      ],
+      [
+       37.75,
+       11.25
+      ],
+      [
+       37.75,
+       7.75
+      ],
+      [
+       38.524375743162906,
+       7.749405469678954
+      ],
+      [
+       38.75,
+       17
+      ],
+      [
+       36.75,
+       17
+      ]
+     ]
+    },
+    "doc_component_count": 0,
+    "doc_group": null
+   },
+   {
+    "id": 2116,
+    "doc_label": "Unassigned",
+    "doc_zone_type": "Unassigned",
+    "doc_origin": "Residual",
+    "doc_shape_kind": "Poly",
+    "doc_shape": {
+     "kind": "Poly",
+     "pts": [
+      [
+       29.75,
+       17
+      ],
+      [
+       29.75,
+       15.25
+      ],
+      [
+       32,
+       15.25
+      ],
+      [
+       32,
+       17
+      ],
+      [
+       27.75,
+       17
+      ]
+     ]
+    },
+    "doc_component_count": 0,
+    "doc_group": null
+   },
+   {
+    "id": 2117,
+    "doc_label": "Unassigned",
+    "doc_zone_type": "Unassigned",
+    "doc_origin": "Residual",
+    "doc_shape_kind": "Poly",
+    "doc_shape": {
+     "kind": "Poly",
+     "pts": [
+      [
+       26.25,
+       35.25
+      ],
+      [
+       27.25,
+       35.25
+      ],
+      [
+       27.25,
+       38.25
+      ],
+      [
+       30.5,
+       38.5
+      ],
+      [
+       30.75,
+       39.75
+      ],
+      [
+       26.273575638506877,
+       40.84626719056975
+      ]
+     ]
+    },
+    "doc_component_count": 0,
+    "doc_group": null
+   },
+   {
+    "id": 2118,
+    "doc_label": "Unassigned",
+    "doc_zone_type": "Unassigned",
+    "doc_origin": "Residual",
+    "doc_shape_kind": "Poly",
+    "doc_shape": {
+     "kind": "Poly",
+     "pts": [
+      [
+       1.3,
+       42.85
+      ],
+      [
+       2,
+       42.5
+      ],
+      [
+       2,
+       38
+      ],
+      [
+       3,
+       38
+      ],
+      [
+       3.25,
+       42.75
+      ],
+      [
+       10.75,
+       42.75
+      ],
+      [
+       10.75,
+       35.75
+      ],
+      [
+       11.75,
+       35.75
+      ],
+      [
+       11.75,
+       42.5
+      ],
+      [
+       15.75,
+       42.5
+      ],
+      [
+       15.74906191369606,
+       42.98921200750469
+      ],
+      [
+       14.23874296435272,
+       43.120544090056285
+      ],
+      [
+       6.747398190045248,
+       43.1222850678733
+      ],
+      [
+       1.2498868778280543,
+       43.00531674208145
+      ]
+     ]
+    },
+    "doc_component_count": 0,
+    "doc_group": null
+   },
+   {
+    "id": 2119,
+    "doc_label": "Unassigned",
+    "doc_zone_type": "Unassigned",
+    "doc_origin": "Residual",
+    "doc_shape_kind": "Poly",
+    "doc_shape": {
+     "kind": "Poly",
+     "pts": [
+      [
+       18.25,
+       35.75
+      ],
+      [
+       18.75,
+       35.75
+      ],
+      [
+       18.75,
+       41.25
+      ],
+      [
+       24.035363457760315,
+       41.394400785854614
+      ],
+      [
+       18.97170923379175,
+       42.63447937131631
+      ],
+      [
+       18.25187617260788,
+       42.77157598499062
+      ]
+     ]
+    },
+    "doc_component_count": 0,
+    "doc_group": null
+   }
+  ],
+  "stats_raw": [
+   {
+    "id": 1666,
+    "raw_label": "Cabin",
+    "raw_zone_type": "ClosedOffice",
+    "raw_area_m2": 18,
+    "raw_capacity": 2,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 1.9946373160493702
+   },
+   {
+    "id": 1675,
+    "raw_label": "Boardroom",
+    "raw_zone_type": "Meeting",
+    "raw_area_m2": 26.550000000000068,
+    "raw_capacity": 12,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 2.942090041172828
+   },
+   {
+    "id": 1695,
+    "raw_label": "Reception",
+    "raw_zone_type": "Amenity",
+    "raw_area_m2": 12.799999999999955,
+    "raw_capacity": 4,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 1.418408758079547
+   },
+   {
+    "id": 1704,
+    "raw_label": "Team Room 1",
+    "raw_zone_type": "Meeting",
+    "raw_area_m2": 7.929782608695689,
+    "raw_capacity": 4,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 0.878724461081319
+   },
+   {
+    "id": 1716,
+    "raw_label": "Storage",
+    "raw_zone_type": "Amenity",
+    "raw_area_m2": 4.200000000000003,
+    "raw_capacity": 1,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 0.4654153737448533
+   },
+   {
+    "id": 1723,
+    "raw_label": "Phone Booth 1",
+    "raw_zone_type": "ClosedOffice",
+    "raw_area_m2": 1.4299999999999997,
+    "raw_capacity": 0,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 0.1584628534416999
+   },
+   {
+    "id": 1731,
+    "raw_label": "Team Room",
+    "raw_zone_type": "Meeting",
+    "raw_area_m2": 13.440000000000001,
+    "raw_capacity": 5,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 1.4893291959835298
+   },
+   {
+    "id": 1747,
+    "raw_label": "Meeting Room 1",
+    "raw_zone_type": "Meeting",
+    "raw_area_m2": 8.279999999999987,
+    "raw_capacity": 6,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 0.9175331653827088
+   },
+   {
+    "id": 1761,
+    "raw_label": "Meeting Room 2",
+    "raw_zone_type": "Meeting",
+    "raw_area_m2": 8.280000000000001,
+    "raw_capacity": 6,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 0.9175331653827103
+   },
+   {
+    "id": 1775,
+    "raw_label": "Wellness Room",
+    "raw_zone_type": "Amenity",
+    "raw_area_m2": 4.759999999999998,
+    "raw_capacity": 1,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 0.5274707569108331
+   },
+   {
+    "id": 1776,
+    "raw_label": "Collab 1",
+    "raw_zone_type": "Collaboration",
+    "raw_area_m2": 4.32,
+    "raw_capacity": 1,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 0.47871295585184886
+   },
+   {
+    "id": 1786,
+    "raw_label": "Focus Room 1",
+    "raw_zone_type": "ClosedOffice",
+    "raw_area_m2": 4.319999999999993,
+    "raw_capacity": 2,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 0.4787129558518481
+   },
+   {
+    "id": 1795,
+    "raw_label": "Focus Room 2",
+    "raw_zone_type": "ClosedOffice",
+    "raw_area_m2": 4.320000000000022,
+    "raw_capacity": 2,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 0.4787129558518512
+   },
+   {
+    "id": 1804,
+    "raw_label": "Focus Room 3",
+    "raw_zone_type": "ClosedOffice",
+    "raw_area_m2": 4.32000000000005,
+    "raw_capacity": 2,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 0.4787129558518543
+   },
+   {
+    "id": 1813,
+    "raw_label": "Focus Room 4",
+    "raw_zone_type": "ClosedOffice",
+    "raw_area_m2": 4.320000000000003,
+    "raw_capacity": 2,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 0.47871295585184914
+   },
+   {
+    "id": 1822,
+    "raw_label": "Phone Booth 2",
+    "raw_zone_type": "ClosedOffice",
+    "raw_area_m2": 1.4300000000000637,
+    "raw_capacity": 0,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 0.15846285344170702
+   },
+   {
+    "id": 1831,
+    "raw_label": "Phone Booth 3",
+    "raw_zone_type": "ClosedOffice",
+    "raw_area_m2": 1.4300000000000068,
+    "raw_capacity": 0,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 0.15846285344170072
+   },
+   {
+    "id": 1840,
+    "raw_label": "Phone Booth 4",
+    "raw_zone_type": "ClosedOffice",
+    "raw_area_m2": 1.4300000000000637,
+    "raw_capacity": 0,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 0.15846285344170702
+   },
+   {
+    "id": 1848,
+    "raw_label": "Phone Booth 5",
+    "raw_zone_type": "ClosedOffice",
+    "raw_area_m2": 1.4299999999999997,
+    "raw_capacity": 0,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 0.1584628534416999
+   },
+   {
+    "id": 1857,
+    "raw_label": "Phone Booth 6",
+    "raw_zone_type": "ClosedOffice",
+    "raw_area_m2": 1.4299999999999997,
+    "raw_capacity": 0,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 0.1584628534416999
+   },
+   {
+    "id": 1865,
+    "raw_label": "Phone Booth 7",
+    "raw_zone_type": "ClosedOffice",
+    "raw_area_m2": 1.4299999999999997,
+    "raw_capacity": 0,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 0.1584628534416999
+   },
+   {
+    "id": 1874,
+    "raw_label": "Phone Booth 8",
+    "raw_zone_type": "ClosedOffice",
+    "raw_area_m2": 1.4300000000000033,
+    "raw_capacity": 0,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 0.15846285344170033
+   },
+   {
+    "id": 1876,
+    "raw_label": "Print Point 1",
+    "raw_zone_type": "Amenity",
+    "raw_area_m2": 3,
+    "raw_capacity": 0,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 0.332439552674895
+   },
+   {
+    "id": 1878,
+    "raw_label": "Print Point 2",
+    "raw_zone_type": "Amenity",
+    "raw_area_m2": 2.6999999999999957,
+    "raw_capacity": 0,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 0.29919559740740503
+   },
+   {
+    "id": 1880,
+    "raw_label": "Corridor",
+    "raw_zone_type": "Circulation",
+    "raw_area_m2": 18.300000000000068,
+    "raw_capacity": 0,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 2.027881271316867
+   },
+   {
+    "id": 1881,
+    "raw_label": "Corridor",
+    "raw_zone_type": "Circulation",
+    "raw_area_m2": 18.299999999999955,
+    "raw_capacity": 0,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 2.0278812713168546
+   },
+   {
+    "id": 1882,
+    "raw_label": "Corridor",
+    "raw_zone_type": "Circulation",
+    "raw_area_m2": 8.879999999999988,
+    "raw_capacity": 0,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 0.984021075917688
+   },
+   {
+    "id": 1883,
+    "raw_label": "Corridor",
+    "raw_zone_type": "Circulation",
+    "raw_area_m2": 8.879999999999995,
+    "raw_capacity": 0,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 0.9840210759176888
+   },
+   {
+    "id": 1884,
+    "raw_label": "Corridor",
+    "raw_zone_type": "Circulation",
+    "raw_area_m2": 15,
+    "raw_capacity": 0,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 1.6621977633744751
+   },
+   {
+    "id": 1885,
+    "raw_label": "Aisle",
+    "raw_zone_type": "Circulation",
+    "raw_area_m2": 2.184999999999974,
+    "raw_capacity": 0,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 0.24212680753154564
+   },
+   {
+    "id": 1886,
+    "raw_label": "Corridor",
+    "raw_zone_type": "Circulation",
+    "raw_area_m2": 6,
+    "raw_capacity": 0,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 0.66487910534979
+   },
+   {
+    "id": 1887,
+    "raw_label": "Corridor",
+    "raw_zone_type": "Circulation",
+    "raw_area_m2": 6.539999999999992,
+    "raw_capacity": 0,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 0.7247182248312702
+   },
+   {
+    "id": 1888,
+    "raw_label": "Corridor",
+    "raw_zone_type": "Circulation",
+    "raw_area_m2": 9.299999999999955,
+    "raw_capacity": 0,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 1.0305626132921695
+   },
+   {
+    "id": 1889,
+    "raw_label": "Aisle",
+    "raw_zone_type": "Circulation",
+    "raw_area_m2": 2.300000000000068,
+    "raw_capacity": 0,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 0.25487032371742707
+   },
+   {
+    "id": 1890,
+    "raw_label": "Corridor",
+    "raw_zone_type": "Circulation",
+    "raw_area_m2": 4.7999999999999545,
+    "raw_capacity": 0,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 0.531903284279827
+   },
+   {
+    "id": 1891,
+    "raw_label": "Corridor",
+    "raw_zone_type": "Circulation",
+    "raw_area_m2": 12.75000000000001,
+    "raw_capacity": 0,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 1.412868098868305
+   },
+   {
+    "id": 1892,
+    "raw_label": "Entry",
+    "raw_zone_type": "Circulation",
+    "raw_area_m2": 1.7950285153083385,
+    "raw_capacity": 0,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 0.19891282555592835
+   },
+   {
+    "id": 1893,
+    "raw_label": "Aisle",
+    "raw_zone_type": "Circulation",
+    "raw_area_m2": 2.1850000000000023,
+    "raw_capacity": 0,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 0.2421268075315488
+   },
+   {
+    "id": 1894,
+    "raw_label": "Corridor",
+    "raw_zone_type": "Circulation",
+    "raw_area_m2": 3.3000000000000114,
+    "raw_capacity": 0,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 0.3656835079423858
+   },
+   {
+    "id": 1895,
+    "raw_label": "Corridor",
+    "raw_zone_type": "Circulation",
+    "raw_area_m2": 5.6399999999999935,
+    "raw_capacity": 0,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 0.624986359028802
+   },
+   {
+    "id": 1896,
+    "raw_label": "Corridor",
+    "raw_zone_type": "Circulation",
+    "raw_area_m2": 2.1000000000000014,
+    "raw_capacity": 0,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 0.23270768687242666
+   },
+   {
+    "id": 1897,
+    "raw_label": "Corridor",
+    "raw_zone_type": "Circulation",
+    "raw_area_m2": 3.5400000000000063,
+    "raw_capacity": 0,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 0.3922786721563768
+   },
+   {
+    "id": 1898,
+    "raw_label": "Corridor",
+    "raw_zone_type": "Circulation",
+    "raw_area_m2": 2.1000000000000014,
+    "raw_capacity": 0,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 0.23270768687242666
+   },
+   {
+    "id": 1899,
+    "raw_label": "Corridor",
+    "raw_zone_type": "Circulation",
+    "raw_area_m2": 1.8000000000000114,
+    "raw_capacity": 0,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 0.1994637316049383
+   },
+   {
+    "id": 1900,
+    "raw_label": "Corridor",
+    "raw_zone_type": "Circulation",
+    "raw_area_m2": 2.6399999999999864,
+    "raw_capacity": 0,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 0.29254680635390606
+   },
+   {
+    "id": 1901,
+    "raw_label": "Corridor",
+    "raw_zone_type": "Circulation",
+    "raw_area_m2": 1.5,
+    "raw_capacity": 0,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 0.1662197763374475
+   },
+   {
+    "id": 1902,
+    "raw_label": "Corridor",
+    "raw_zone_type": "Circulation",
+    "raw_area_m2": 2.9399999999999977,
+    "raw_capacity": 0,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 0.32579076162139686
+   },
+   {
+    "id": 1903,
+    "raw_label": "Corridor",
+    "raw_zone_type": "Circulation",
+    "raw_area_m2": 2.3999999999999995,
+    "raw_capacity": 0,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 0.26595164213991596
+   },
+   {
+    "id": 1904,
+    "raw_label": "Open Workspace (1)",
+    "raw_zone_type": "Workspace",
+    "raw_area_m2": 338.6,
+    "raw_capacity": 84,
+    "raw_seated": 84,
+    "raw_pct_of_nia": 37.52134417857315
+   },
+   {
+    "id": 1977,
+    "raw_label": "Open Workspace (2)",
+    "raw_zone_type": "Workspace",
+    "raw_area_m2": 5.3149999999999125,
+    "raw_capacity": 0,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 0.5889720741556793
+   },
+   {
+    "id": 1978,
+    "raw_label": "Open Workspace (3)",
+    "raw_zone_type": "Workspace",
+    "raw_area_m2": 4.349999999999795,
+    "raw_capacity": 0,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 0.4820373513785751
+   },
+   {
+    "id": 1979,
+    "raw_label": "Open Workspace (4)",
+    "raw_zone_type": "Workspace",
+    "raw_area_m2": 5.354999999999986,
+    "raw_capacity": 0,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 0.5934046015246861
+   },
+   {
+    "id": 1980,
+    "raw_label": "Open Workspace (5)",
+    "raw_zone_type": "Workspace",
+    "raw_area_m2": 0.40000000000000213,
+    "raw_capacity": 10,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 0.04432527368998624
+   },
+   {
+    "id": 1981,
+    "raw_label": "Open Workspace (6)",
+    "raw_zone_type": "Workspace",
+    "raw_area_m2": 0,
+    "raw_capacity": 0,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 0
+   },
+   {
+    "id": 1982,
+    "raw_label": "Open Workspace (7)",
+    "raw_zone_type": "Workspace",
+    "raw_area_m2": 1.6099999999999994,
+    "raw_capacity": 0,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 0.1784092266021936
+   },
+   {
+    "id": 1983,
+    "raw_label": "Open Workspace (8)",
+    "raw_zone_type": "Workspace",
+    "raw_area_m2": 1.6199999999999903,
+    "raw_capacity": 0,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 0.17951735844444222
+   },
+   {
+    "id": 1984,
+    "raw_label": "Open Workspace (9)",
+    "raw_zone_type": "Workspace",
+    "raw_area_m2": 0.4599999999999991,
+    "raw_capacity": 0,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 0.0509740647434838
+   },
+   {
+    "id": 2003,
+    "raw_label": "Team Room 1",
+    "raw_zone_type": "Meeting",
+    "raw_area_m2": 15.120000000000005,
+    "raw_capacity": 6,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 1.6754953454814714
+   },
+   {
+    "id": 2017,
+    "raw_label": "Team Room 2",
+    "raw_zone_type": "Meeting",
+    "raw_area_m2": 15.120000000000005,
+    "raw_capacity": 6,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 1.6754953454814714
+   },
+   {
+    "id": 2031,
+    "raw_label": "Team Room 3",
+    "raw_zone_type": "Meeting",
+    "raw_area_m2": 15.120000000000005,
+    "raw_capacity": 6,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 1.6754953454814714
+   },
+   {
+    "id": 2045,
+    "raw_label": "Cabin 1",
+    "raw_zone_type": "ClosedOffice",
+    "raw_area_m2": 12.959999999999923,
+    "raw_capacity": 2,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 1.4361388675555378
+   },
+   {
+    "id": 2054,
+    "raw_label": "Cabin 2",
+    "raw_zone_type": "ClosedOffice",
+    "raw_area_m2": 12.95999999999998,
+    "raw_capacity": 2,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 1.4361388675555442
+   },
+   {
+    "id": 2063,
+    "raw_label": "Cabin 3",
+    "raw_zone_type": "ClosedOffice",
+    "raw_area_m2": 12.960000000000036,
+    "raw_capacity": 2,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 1.4361388675555504
+   },
+   {
+    "id": 2072,
+    "raw_label": "Pantry",
+    "raw_zone_type": "Amenity",
+    "raw_area_m2": 10.800000000000011,
+    "raw_capacity": 8,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 1.1967823896296232
+   },
+   {
+    "id": 2076,
+    "raw_label": "Unassigned",
+    "raw_zone_type": "Unassigned",
+    "raw_area_m2": 7.191988031914889,
+    "raw_capacity": 0,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 0.796967094724328
+   },
+   {
+    "id": 2081,
+    "raw_label": "Unassigned",
+    "raw_zone_type": "Unassigned",
+    "raw_area_m2": 3.75,
+    "raw_capacity": 0,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 0.4155494408436188
+   },
+   {
+    "id": 2100,
+    "raw_label": "Core 1",
+    "raw_zone_type": "Core",
+    "raw_area_m2": 40.69304705520085,
+    "raw_capacity": 0,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 4.509326120003141
+   },
+   {
+    "id": 2101,
+    "raw_label": "Core 2",
+    "raw_zone_type": "Core",
+    "raw_area_m2": 6.1875,
+    "raw_capacity": 0,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 0.685656577391971
+   },
+   {
+    "id": 2102,
+    "raw_label": "Core 3",
+    "raw_zone_type": "Core",
+    "raw_area_m2": 5.625,
+    "raw_capacity": 0,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 0.6233241612654282
+   },
+   {
+    "id": 2108,
+    "raw_label": "Circulation",
+    "raw_zone_type": "Circulation",
+    "raw_area_m2": 3.5225954979536147,
+    "raw_capacity": 0,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 0.39035002386476625
+   },
+   {
+    "id": 2109,
+    "raw_label": "Unassigned",
+    "raw_zone_type": "Unassigned",
+    "raw_area_m2": 4.8125,
+    "raw_capacity": 0,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 0.5332884490826441
+   },
+   {
+    "id": 2110,
+    "raw_label": "Unassigned",
+    "raw_zone_type": "Unassigned",
+    "raw_area_m2": 2.181046721734642,
+    "raw_capacity": 0,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 0.24168873217883688
+   },
+   {
+    "id": 2111,
+    "raw_label": "Unassigned",
+    "raw_zone_type": "Unassigned",
+    "raw_area_m2": 0,
+    "raw_capacity": 0,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 0
+   },
+   {
+    "id": 2112,
+    "raw_label": "Unassigned",
+    "raw_zone_type": "Unassigned",
+    "raw_area_m2": 4.740629535558785,
+    "raw_capacity": 0,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 0.5253242540661859
+   },
+   {
+    "id": 2113,
+    "raw_label": "Unassigned",
+    "raw_zone_type": "Unassigned",
+    "raw_area_m2": 8.173076923076934,
+    "raw_capacity": 0,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 0.9056846787617345
+   },
+   {
+    "id": 2114,
+    "raw_label": "Unassigned",
+    "raw_zone_type": "Unassigned",
+    "raw_area_m2": 19.567875971143167,
+    "raw_capacity": 0,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 2.1683786448815536
+   },
+   {
+    "id": 2115,
+    "raw_label": "Unassigned",
+    "raw_zone_type": "Unassigned",
+    "raw_area_m2": 13.956785077288941,
+    "raw_capacity": 0,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 1.5465957959578618
+   },
+   {
+    "id": 2116,
+    "raw_label": "Unassigned",
+    "raw_zone_type": "Unassigned",
+    "raw_area_m2": 3.9375,
+    "raw_capacity": 0,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 0.43632691288579967
+   },
+   {
+    "id": 2117,
+    "raw_label": "Unassigned",
+    "raw_zone_type": "Unassigned",
+    "raw_area_m2": 11.538555992141482,
+    "raw_capacity": 0,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 1.278624130847248
+   },
+   {
+    "id": 2118,
+    "raw_label": "Unassigned",
+    "raw_zone_type": "Unassigned",
+    "raw_area_m2": 18.355323708751744,
+    "raw_capacity": 0,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 2.034011867646775
+   },
+   {
+    "id": 2119,
+    "raw_label": "Unassigned",
+    "raw_zone_type": "Unassigned",
+    "raw_area_m2": 7.281460170956507,
+    "raw_capacity": 0,
+    "raw_seated": 0,
+    "raw_pct_of_nia": 0.8068817873509486
+   }
+  ],
+  "stats_published": [
+   {
+    "id": 1666,
+    "pub_label": "Cabin",
+    "pub_zone_type": "ClosedOffice",
+    "pub_area_m2": 18
+   },
+   {
+    "id": 1675,
+    "pub_label": "Boardroom",
+    "pub_zone_type": "Meeting",
+    "pub_area_m2": 26.550000000000068
+   },
+   {
+    "id": 1695,
+    "pub_label": "Reception",
+    "pub_zone_type": "Amenity",
+    "pub_area_m2": 12.799999999999955
+   },
+   {
+    "id": 1704,
+    "pub_label": "Team Room 1",
+    "pub_zone_type": "Meeting",
+    "pub_area_m2": 7.929782608695689
+   },
+   {
+    "id": 1716,
+    "pub_label": "Storage",
+    "pub_zone_type": "Amenity",
+    "pub_area_m2": 4.200000000000003
+   },
+   {
+    "id": 1723,
+    "pub_label": "Phone Booth 1",
+    "pub_zone_type": "ClosedOffice",
+    "pub_area_m2": 1.4299999999999997
+   },
+   {
+    "id": 1731,
+    "pub_label": "Team Room",
+    "pub_zone_type": "Meeting",
+    "pub_area_m2": 13.440000000000001
+   },
+   {
+    "id": 1747,
+    "pub_label": "Meeting Room 1",
+    "pub_zone_type": "Meeting",
+    "pub_area_m2": 8.279999999999987
+   },
+   {
+    "id": 1761,
+    "pub_label": "Meeting Room 2",
+    "pub_zone_type": "Meeting",
+    "pub_area_m2": 8.280000000000001
+   },
+   {
+    "id": 1775,
+    "pub_label": "Wellness Room",
+    "pub_zone_type": "Amenity",
+    "pub_area_m2": 4.759999999999998
+   },
+   {
+    "id": 1776,
+    "pub_label": "Collab 1",
+    "pub_zone_type": "Collaboration",
+    "pub_area_m2": 4.32
+   },
+   {
+    "id": 1786,
+    "pub_label": "Focus Room 1",
+    "pub_zone_type": "ClosedOffice",
+    "pub_area_m2": 4.319999999999993
+   },
+   {
+    "id": 1795,
+    "pub_label": "Focus Room 2",
+    "pub_zone_type": "ClosedOffice",
+    "pub_area_m2": 4.320000000000022
+   },
+   {
+    "id": 1804,
+    "pub_label": "Focus Room 3",
+    "pub_zone_type": "ClosedOffice",
+    "pub_area_m2": 4.32000000000005
+   },
+   {
+    "id": 1813,
+    "pub_label": "Focus Room 4",
+    "pub_zone_type": "ClosedOffice",
+    "pub_area_m2": 4.320000000000003
+   },
+   {
+    "id": 1822,
+    "pub_label": "Phone Booth 2",
+    "pub_zone_type": "ClosedOffice",
+    "pub_area_m2": 1.4300000000000637
+   },
+   {
+    "id": 1831,
+    "pub_label": "Phone Booth 3",
+    "pub_zone_type": "ClosedOffice",
+    "pub_area_m2": 1.4300000000000068
+   },
+   {
+    "id": 1840,
+    "pub_label": "Phone Booth 4",
+    "pub_zone_type": "ClosedOffice",
+    "pub_area_m2": 1.4300000000000637
+   },
+   {
+    "id": 1848,
+    "pub_label": "Phone Booth 5",
+    "pub_zone_type": "ClosedOffice",
+    "pub_area_m2": 1.4299999999999997
+   },
+   {
+    "id": 1857,
+    "pub_label": "Phone Booth 6",
+    "pub_zone_type": "ClosedOffice",
+    "pub_area_m2": 1.4299999999999997
+   },
+   {
+    "id": 1865,
+    "pub_label": "Phone Booth 7",
+    "pub_zone_type": "ClosedOffice",
+    "pub_area_m2": 1.4299999999999997
+   },
+   {
+    "id": 1874,
+    "pub_label": "Phone Booth 8",
+    "pub_zone_type": "ClosedOffice",
+    "pub_area_m2": 1.4300000000000033
+   },
+   {
+    "id": 1876,
+    "pub_label": "Print Point 1",
+    "pub_zone_type": "Amenity",
+    "pub_area_m2": 3
+   },
+   {
+    "id": 1878,
+    "pub_label": "Print Point 2",
+    "pub_zone_type": "Amenity",
+    "pub_area_m2": 2.6999999999999957
+   },
+   {
+    "id": 1880,
+    "pub_label": "Corridor",
+    "pub_zone_type": "Circulation",
+    "pub_area_m2": 18.300000000000068
+   },
+   {
+    "id": 1881,
+    "pub_label": "Corridor",
+    "pub_zone_type": "Circulation",
+    "pub_area_m2": 18.299999999999955
+   },
+   {
+    "id": 1882,
+    "pub_label": "Corridor",
+    "pub_zone_type": "Circulation",
+    "pub_area_m2": 8.879999999999988
+   },
+   {
+    "id": 1883,
+    "pub_label": "Corridor",
+    "pub_zone_type": "Circulation",
+    "pub_area_m2": 8.879999999999995
+   },
+   {
+    "id": 1884,
+    "pub_label": "Corridor",
+    "pub_zone_type": "Circulation",
+    "pub_area_m2": 15
+   },
+   {
+    "id": 1885,
+    "pub_label": "Aisle",
+    "pub_zone_type": "Circulation",
+    "pub_area_m2": 2.184999999999974
+   },
+   {
+    "id": 1886,
+    "pub_label": "Corridor",
+    "pub_zone_type": "Circulation",
+    "pub_area_m2": 6
+   },
+   {
+    "id": 1887,
+    "pub_label": "Corridor",
+    "pub_zone_type": "Circulation",
+    "pub_area_m2": 6.539999999999992
+   },
+   {
+    "id": 1888,
+    "pub_label": "Corridor",
+    "pub_zone_type": "Circulation",
+    "pub_area_m2": 9.299999999999955
+   },
+   {
+    "id": 1889,
+    "pub_label": "Aisle",
+    "pub_zone_type": "Circulation",
+    "pub_area_m2": 2.300000000000068
+   },
+   {
+    "id": 1890,
+    "pub_label": "Corridor",
+    "pub_zone_type": "Circulation",
+    "pub_area_m2": 4.7999999999999545
+   },
+   {
+    "id": 1891,
+    "pub_label": "Corridor",
+    "pub_zone_type": "Circulation",
+    "pub_area_m2": 12.75000000000001
+   },
+   {
+    "id": 1892,
+    "pub_label": "Entry",
+    "pub_zone_type": "Circulation",
+    "pub_area_m2": 1.7950285153083385
+   },
+   {
+    "id": 1893,
+    "pub_label": "Aisle",
+    "pub_zone_type": "Circulation",
+    "pub_area_m2": 2.1850000000000023
+   },
+   {
+    "id": 1894,
+    "pub_label": "Corridor",
+    "pub_zone_type": "Circulation",
+    "pub_area_m2": 3.3000000000000114
+   },
+   {
+    "id": 1895,
+    "pub_label": "Corridor",
+    "pub_zone_type": "Circulation",
+    "pub_area_m2": 5.6399999999999935
+   },
+   {
+    "id": 1896,
+    "pub_label": "Corridor",
+    "pub_zone_type": "Circulation",
+    "pub_area_m2": 2.1000000000000014
+   },
+   {
+    "id": 1897,
+    "pub_label": "Corridor",
+    "pub_zone_type": "Circulation",
+    "pub_area_m2": 3.5400000000000063
+   },
+   {
+    "id": 1898,
+    "pub_label": "Corridor",
+    "pub_zone_type": "Circulation",
+    "pub_area_m2": 2.1000000000000014
+   },
+   {
+    "id": 1899,
+    "pub_label": "Corridor",
+    "pub_zone_type": "Circulation",
+    "pub_area_m2": 1.8000000000000114
+   },
+   {
+    "id": 1900,
+    "pub_label": "Corridor",
+    "pub_zone_type": "Circulation",
+    "pub_area_m2": 2.6399999999999864
+   },
+   {
+    "id": 1901,
+    "pub_label": "Corridor",
+    "pub_zone_type": "Circulation",
+    "pub_area_m2": 1.5
+   },
+   {
+    "id": 1902,
+    "pub_label": "Corridor",
+    "pub_zone_type": "Circulation",
+    "pub_area_m2": 2.9399999999999977
+   },
+   {
+    "id": 1903,
+    "pub_label": "Corridor",
+    "pub_zone_type": "Circulation",
+    "pub_area_m2": 2.3999999999999995
+   },
+   {
+    "id": 1904,
+    "pub_label": "Open Workspace (1)",
+    "pub_zone_type": "Workspace",
+    "pub_area_m2": 338.6
+   },
+   {
+    "id": 1977,
+    "pub_label": "Open Workspace (2)",
+    "pub_zone_type": "Workspace",
+    "pub_area_m2": 5.3149999999999125
+   },
+   {
+    "id": 1978,
+    "pub_label": "Open Workspace (3)",
+    "pub_zone_type": "Workspace",
+    "pub_area_m2": 4.349999999999795
+   },
+   {
+    "id": 1979,
+    "pub_label": "Open Workspace (4)",
+    "pub_zone_type": "Workspace",
+    "pub_area_m2": 5.354999999999986
+   },
+   {
+    "id": 1980,
+    "pub_label": "Open Workspace (5)",
+    "pub_zone_type": "Workspace",
+    "pub_area_m2": 0.40000000000000213
+   },
+   {
+    "id": 1981,
+    "pub_label": "Open Workspace (6)",
+    "pub_zone_type": "Workspace",
+    "pub_area_m2": 0
+   },
+   {
+    "id": 1982,
+    "pub_label": "Open Workspace (7)",
+    "pub_zone_type": "Workspace",
+    "pub_area_m2": 1.6099999999999994
+   },
+   {
+    "id": 1983,
+    "pub_label": "Open Workspace (8)",
+    "pub_zone_type": "Workspace",
+    "pub_area_m2": 1.6199999999999903
+   },
+   {
+    "id": 1984,
+    "pub_label": "Open Workspace (9)",
+    "pub_zone_type": "Workspace",
+    "pub_area_m2": 0.4599999999999991
+   },
+   {
+    "id": 2003,
+    "pub_label": "Team Room 1",
+    "pub_zone_type": "Meeting",
+    "pub_area_m2": 15.120000000000005
+   },
+   {
+    "id": 2017,
+    "pub_label": "Team Room 2",
+    "pub_zone_type": "Meeting",
+    "pub_area_m2": 15.120000000000005
+   },
+   {
+    "id": 2031,
+    "pub_label": "Team Room 3",
+    "pub_zone_type": "Meeting",
+    "pub_area_m2": 15.120000000000005
+   },
+   {
+    "id": 2045,
+    "pub_label": "Cabin 1",
+    "pub_zone_type": "ClosedOffice",
+    "pub_area_m2": 12.959999999999923
+   },
+   {
+    "id": 2054,
+    "pub_label": "Cabin 2",
+    "pub_zone_type": "ClosedOffice",
+    "pub_area_m2": 12.95999999999998
+   },
+   {
+    "id": 2063,
+    "pub_label": "Cabin 3",
+    "pub_zone_type": "ClosedOffice",
+    "pub_area_m2": 12.960000000000036
+   },
+   {
+    "id": 2072,
+    "pub_label": "Pantry",
+    "pub_zone_type": "Amenity",
+    "pub_area_m2": 10.800000000000011
+   },
+   {
+    "id": 2076,
+    "pub_label": "Circulation",
+    "pub_zone_type": "Circulation",
+    "pub_area_m2": 7.191988031914889
+   },
+   {
+    "id": 2081,
+    "pub_label": "Circulation",
+    "pub_zone_type": "Circulation",
+    "pub_area_m2": 3.75
+   },
+   {
+    "id": 2100,
+    "pub_label": "Core 1",
+    "pub_zone_type": "Core",
+    "pub_area_m2": 40.69304705520085
+   },
+   {
+    "id": 2101,
+    "pub_label": "Core 2",
+    "pub_zone_type": "Core",
+    "pub_area_m2": 6.1875
+   },
+   {
+    "id": 2102,
+    "pub_label": "Core 3",
+    "pub_zone_type": "Core",
+    "pub_area_m2": 5.625
+   },
+   {
+    "id": 2108,
+    "pub_label": "Circulation",
+    "pub_zone_type": "Circulation",
+    "pub_area_m2": 3.5225954979536147
+   },
+   {
+    "id": 2109,
+    "pub_label": "Circulation",
+    "pub_zone_type": "Circulation",
+    "pub_area_m2": 4.8125
+   },
+   {
+    "id": 2110,
+    "pub_label": "Circulation",
+    "pub_zone_type": "Circulation",
+    "pub_area_m2": 2.181046721734642
+   },
+   {
+    "id": 2111,
+    "pub_label": "Circulation",
+    "pub_zone_type": "Circulation",
+    "pub_area_m2": 0
+   },
+   {
+    "id": 2112,
+    "pub_label": "Circulation",
+    "pub_zone_type": "Circulation",
+    "pub_area_m2": 4.740629535558785
+   },
+   {
+    "id": 2113,
+    "pub_label": "Circulation",
+    "pub_zone_type": "Circulation",
+    "pub_area_m2": 8.173076923076934
+   },
+   {
+    "id": 2114,
+    "pub_label": "Circulation",
+    "pub_zone_type": "Circulation",
+    "pub_area_m2": 19.567875971143167
+   },
+   {
+    "id": 2115,
+    "pub_label": "Circulation",
+    "pub_zone_type": "Circulation",
+    "pub_area_m2": 13.956785077288941
+   },
+   {
+    "id": 2116,
+    "pub_label": "Circulation",
+    "pub_zone_type": "Circulation",
+    "pub_area_m2": 3.9375
+   },
+   {
+    "id": 2117,
+    "pub_label": "Circulation",
+    "pub_zone_type": "Circulation",
+    "pub_area_m2": 11.538555992141482
+   },
+   {
+    "id": 2118,
+    "pub_label": "Circulation",
+    "pub_zone_type": "Circulation",
+    "pub_area_m2": 18.355323708751744
+   },
+   {
+    "id": 2119,
+    "pub_label": "Circulation",
+    "pub_zone_type": "Circulation",
+    "pub_area_m2": 7.281460170956507
+   }
+  ]
+ }
+}

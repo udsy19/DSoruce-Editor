@@ -67,11 +67,17 @@ if (selected('PQ0')) {
   const r = spawnSync(process.execPath, [path.join(HERE, 'falsify.mjs')], { encoding: 'utf8' })
   const ok = r.status === 0 && /FALSIFY PASS/.test(r.stdout ?? '')
   if (!ok) failed++
-  const summary = (r.stdout ?? '').split('\n').filter((l) => /FAIL/.test(l)).join('; ')
+  // Count the rows the falsifier actually printed — a hardcoded "(12 checks)"
+  // here went stale the day the round grew, which is the tooling-layer rule in
+  // miniature (a summary restating a count its subject owns).
+  const rows = (r.stdout ?? '').split('\n').filter((l) => /^  (ok {2}|FAIL)/.test(l))
+  const sab = rows.filter((l) => /S\d/.test(l)).length
+  const fals = rows.length - sab
+  const summary = rows.filter((l) => /^ {2}FAIL/.test(l)).join('; ')
   console.log(
-    `PQ0 ${ok ? 'PASS' : 'FAIL'} (12 checks): ` +
+    `PQ0 ${ok ? 'PASS' : 'FAIL'} (${rows.length} checks): ` +
       (ok
-        ? 'sabotage round holds — 6 producer hints corrupted then deleted, verdict identical; 6 falsifications fire'
+        ? `sabotage round holds — ${sab} producer hints corrupted then deleted, verdict identical; ${fals} falsifications fire`
         : `sabotage round BROKEN — ${summary || 'no FALSIFY PASS line'}`),
   )
 }

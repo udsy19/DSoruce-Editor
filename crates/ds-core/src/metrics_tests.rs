@@ -2333,13 +2333,42 @@ fn the_area_basis_clips_each_zone_to_the_plate_polygon() {
 /// `golden_generate_output_is_frozen` without correcting a published figure.
 #[test]
 fn the_published_seat_count_reads_the_area_the_row_bills() {
-    let doc = fixtures::build("F1").expect("F1 builds");
-    let i = doc.zones.iter().position(|z| z.id == 244).expect("F1 carries zone 244");
+    // RE-PLANTED (W4). The original pin rode F1's zone 244 — a 35 m² Workspace
+    // whose basis was 8 m² because rooms were carved out of it. The W4
+    // workspace-trim stopped the generator emitting field zones over their own
+    // rooms, so that population no longer arises from generation — a strict
+    // improvement that would have left this E5 guard riding a vanished
+    // fixture. The state is still REAL (any user-drawn workspace over
+    // existing rooms produces it), so it is planted the way fixtures.rs
+    // plants unconformed states: push the zone directly and re-bucket.
+    let mut doc = fixtures::build("F1").expect("F1 builds");
+    // A 7×5 = 35 m² Workspace laid over an existing enclosed room, sized so
+    // the SHAPE estimate (floor(35/6) = 5) and the BASIS capacity disagree.
+    let (rx, ry, room_area) = doc
+        .zones
+        .iter()
+        .find(|z| z.zone_type == ZoneType::ClosedOffice || z.zone_type == ZoneType::Meeting)
+        .map(|z| {
+            let (x0, y0, x1, y1) = z.shape.bbox();
+            ((x0 + x1) / 2.0, (y0 + y1) / 2.0, z.shape.area())
+        })
+        .expect("F1 carries an enclosed room");
+    assert!(room_area > 3.0, "the carve must be material, room is {room_area:.2} m²");
+    let id = doc.alloc_id();
+    doc.zones.push(crate::zone::Zone {
+        id,
+        zone_type: ZoneType::Workspace,
+        shape: ZoneShape::Rect { x: rx, y: ry, w: 7.0, h: 5.0 },
+        label: "Planted Workspace".into(),
+        origin: crate::zone::ZoneOrigin::Drawn,
+        component_ids: Vec::new(),
+        group: None,
+    });
+    doc.reassign_components();
+    let i = doc.zones.iter().position(|z| z.id == id).unwrap();
     let z = &doc.zones[i];
-    assert_eq!(z.zone_type, ZoneType::Workspace);
-    assert_eq!(z.label, "Open Workspace (2)");
 
-    // The RAW shape — 35 m², and still exactly what the ordering estimate reads.
+    // The RAW shape — 35 m², and exactly what the ordering estimate reads.
     assert!((z.area() - 35.0).abs() < 1e-6, "the shape is {:.6} m²", z.area());
     assert_eq!(
         z.seat_estimate_for_ordering(),
@@ -2347,26 +2376,39 @@ fn the_published_seat_count_reads_the_area_the_row_bills() {
         "the generation/ranking estimate is deliberately untouched by this change"
     );
 
-    // The basis — 8 m², a quarter of the shape, and what BOTH surfaces bill.
+    // The basis — the shape MINUS the room carved out of it (plus any other
+    // non-Workspace floor it overlaps), and what BOTH surfaces bill.
     let basis_area = crate::area_basis(&doc).areas[i];
-    assert!((basis_area - 8.0).abs() < 1e-6, "the basis bills {basis_area:.6} m²");
+    assert!(
+        basis_area < z.area() - room_area + 1e-6,
+        "the basis ({basis_area:.3}) must carve out at least the {room_area:.3} m² room"
+    );
+    let basis_cap = z.capacity_from_area(basis_area);
+    assert!(
+        basis_cap < 5,
+        "capacity {basis_cap} from a {basis_area:.3} m² basis — the carve must be visible in \
+         the published seat count or this test cannot see E5"
+    );
 
     let rooms = crate::quantity::quantities(&doc).rooms;
-    let r = rooms.iter().find(|r| r.room_id == 244).expect("the takeoff bills zone 244");
+    let r = rooms.iter().find(|r| r.room_id == id).expect("the takeoff bills the planted zone");
     assert!((r.area_m2 - basis_area).abs() < 1e-9);
-    assert_eq!(r.capacity, 1, "the workbook billed 5 pax against this 8 m² before E5");
+    assert_eq!(r.capacity, basis_cap, "the workbook must bill the basis, not the 35 m² shape");
 
     let rows = crate::Editor::for_test(doc.clone()).zone_rows_for_test(false);
-    let row = rows.iter().find(|r| r.id == 244).expect("the panel bills zone 244");
+    let row = rows.iter().find(|r| r.id == id).expect("the panel bills the planted zone");
     assert!((row.area - basis_area).abs() < 1e-9);
-    assert_eq!(row.capacity, 1, "the canvas tag read \"5 pax\" over 8.0 m² before E5");
+    assert_eq!(row.capacity, basis_cap, "the canvas tag must read the basis capacity");
 
-    // And the correction is not cosmetic at the plan level: F1's published
-    // takeoff headcount moves by the six seats the two mis-measured Workspace
-    // rooms were inventing.
+    // And the correction is not cosmetic at the plan level: the published
+    // takeoff seat total sits BELOW the raw shape-estimate total by at least
+    // the seats the carve removed from the planted zone alone.
     let published: u32 = rooms.iter().map(|r| r.capacity).sum();
     let raw: u32 = doc.zones.iter().map(|z| z.seat_estimate_for_ordering()).sum();
-    assert_eq!((raw, published), (121, 115));
+    assert!(
+        raw >= published + (5 - basis_cap),
+        "raw {raw} vs published {published} — the shape-vs-basis divergence vanished"
+    );
 }
 
 #[test]
@@ -2706,6 +2748,26 @@ fn retyping_every_zone_cannot_produce_an_impossible_efficiency() {
     for id in ids {
         doc.set_zone_type(id, ZoneType::Workspace).expect("zone exists");
     }
+
+    // PLANT the over-cover. F4 used to carry it naturally (Σ 953.030 over a
+    // 930.063 floor); the W4 workspace-trim made the generated partition tile
+    // without that overlap, so the state this test exists for stopped arising
+    // from generation — a strict improvement in the product that would have
+    // left this guard vacuous. The population is still REAL (any restored
+    // pre-trim .dsource, any user resize) and is planted the way fixtures.rs
+    // plants F3/F4's unconformed states: write the shape directly, then
+    // re-bucket, bypassing conform-on-edit exactly as `restore` does.
+    if let Some(z) = doc.zones.iter_mut().max_by(|a, b| {
+        a.shape.area().partial_cmp(&b.shape.area()).unwrap_or(std::cmp::Ordering::Equal)
+    }) {
+        if let ZoneShape::Rect { w, h, .. } = &mut z.shape {
+            *w *= 1.3;
+            *h *= 1.3;
+        } else {
+            panic!("F4's largest zone is no longer a Rect — replant the over-cover");
+        }
+    }
+    doc.reassign_components();
 
     // Non-vacuity: this case only tests the clamp while the raw sum really does
     // exceed the traced floor. If de-overlap ever makes it tile exactly, the

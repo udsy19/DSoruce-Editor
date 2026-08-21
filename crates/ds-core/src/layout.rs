@@ -106,16 +106,133 @@ pub(crate) use self::seed::*;
 /// that find no band slot fall back to interior clear pockets (both
 /// orientations), and any remaining shortfall is reported honestly through
 /// `LayoutScore::program_fit` rather than silently dropped.
+/// `outer ∖ inner` as up to four disjoint rects (exact — the workspace-trim
+/// bookkeeping must conserve floor area to the module, so no raster is
+/// involved). Empty when `inner` covers `outer`.
+fn subtract_rect(outer: geometry::Rect, inner: geometry::Rect) -> Vec<geometry::Rect> {
+    let i = geometry::Rect {
+        x0: inner.x0.max(outer.x0),
+        y0: inner.y0.max(outer.y0),
+        x1: inner.x1.min(outer.x1),
+        y1: inner.y1.min(outer.y1),
+    };
+    if i.x1 <= i.x0 || i.y1 <= i.y0 {
+        return vec![outer];
+    }
+    let mut out = Vec::new();
+    let mut push = |x0: f64, y0: f64, x1: f64, y1: f64| {
+        if x1 - x0 > 1e-9 && y1 - y0 > 1e-9 {
+            out.push(geometry::Rect { x0, y0, x1, y1 });
+        }
+    };
+    push(outer.x0, outer.y0, outer.x1, i.y0); // below
+    push(outer.x0, i.y1, outer.x1, outer.y1); // above
+    push(outer.x0, i.y0, i.x0, i.y1); // left band
+    push(i.x1, i.y0, outer.x1, i.y1); // right band
+    out
+}
+
 pub fn generate(
     doc: &mut Document,
     program: &Program,
     seed: u64,
     keep_confirmed: bool,
 ) -> LayoutDiag {
+    // Pass 1: no field reserve.
+    let diag = generate_once(doc, program, seed, keep_confirmed, 0.0);
+    // THE FIELD-RESERVE RETRY (W4b, pre-registered). When pass 1 leaves briefed
+    // rooms homeless on the multi-region axis path, regenerate ONCE with the
+    // trailing outer units of each dominant field region withheld as room
+    // ground (sized by the largest unplaced room's min dimension). The retry is
+    // kept only if BOTH guards hold — it strictly reduces the homeless count,
+    // and the drawn Circulation share stays inside the registered 12–18 % NIA
+    // falsifier band — otherwise pass 1 is regenerated verbatim (deterministic,
+    // so the fallback is byte-identical to the first run): the mechanism can
+    // never trade one red for another.
+    if diag.rooms_unplaced.is_empty() || diag.single_region || diag.use_oriented_field {
+        return diag;
+    }
+    // Seats a run plans, by the core's own estimator: workstations counted
+    // directly, plus every enclosed room's area-rate seat estimate
+    // (`Zone::seat_estimate_for_ordering` — one owner, `m2_per_seat`).
+    // Symmetric across both runs, so the comparison cannot be gamed by either.
+    let seats_of = |doc: &Document| -> f64 {
+        let desks = doc.components.iter().filter(|c| c.category == "Desk").count() as f64;
+        let rooms: u32 = doc
+            .zones
+            .iter()
+            .filter(|z| {
+                matches!(
+                    z.zone_type,
+                    ZoneType::Meeting
+                        | ZoneType::ClosedOffice
+                        | ZoneType::Amenity
+                        | ZoneType::Collaboration
+                )
+            })
+            .map(|z| z.seat_estimate_for_ordering())
+            .sum();
+        desks + rooms as f64
+    };
+    let unplaced_before = diag.rooms_unplaced.len();
+    let seats_before = seats_of(doc);
+    let reserve = diag.unplaced_max_depth + BAND_BACK_GAP;
+    if reserve <= BAND_BACK_GAP {
+        return diag;
+    }
+    let retry = generate_once(doc, program, seed, keep_confirmed, reserve);
+    // Third guard, added on measurement (W4b closing record): SEAT ACCOUNTING.
+    // The trade must GAIN planned seats — the rooms the reserve houses must be
+    // worth strictly more, on the core's own seat estimator, than the
+    // workstations it costs. Three forms were measured before this one was
+    // chosen: no guard housed 2 rooms on the golden real plate for 29 desks
+    // (83 → 54, rooms outnumbering workstations — the inversion spec §1
+    // forbids); strict desk-neutrality refused the fixture plate's
+    // obviously-right trade (8 rooms ≈ 30 seats for 1 desk); a 1-seat-per-room
+    // floor still refused 8 rooms for 8 desks. Seats, both sides, one
+    // estimator, settles all three.
+    let rehoused = unplaced_before.saturating_sub(retry.rooms_unplaced.len());
+    if rehoused > 0
+        && seats_of(doc) > seats_before
+        && circulation_share(doc) <= CIRC_SHARE_MAX
+    {
+        return retry;
+    }
+    generate_once(doc, program, seed, keep_confirmed, 0.0)
+}
+
+/// Drawn `Circulation` share of the total zoned floor — the retry's guard on
+/// the registered 12–18 % NIA falsifier (an approximation over shape areas;
+/// the honest post-hoc number still comes from the metrics surface).
+fn circulation_share(doc: &Document) -> f64 {
+    let (mut circ, mut total) = (0.0f64, 0.0f64);
+    for z in &doc.zones {
+        let a = z.shape.area();
+        total += a;
+        if z.zone_type == ZoneType::Circulation {
+            circ += a;
+        }
+    }
+    if total > 0.0 { circ / total } else { 0.0 }
+}
+
+/// Upper bound the retry may push the drawn-circulation share to — the
+/// registered falsifier band's ceiling (phase 0: honest circulation stays
+/// within 12–18 % NIA on the repro plate).
+const CIRC_SHARE_MAX: f64 = 0.18;
+
+fn generate_once(
+    doc: &mut Document,
+    program: &Program,
+    seed: u64,
+    keep_confirmed: bool,
+    field_reserve_m: f64,
+) -> LayoutDiag {
     // The generator's own account of what it decided — see `diag.rs`. Returned
     // rather than stored, and returning it is source-compatible: every existing
     // caller uses `generate(..)` in statement position.
     let mut diag = LayoutDiag::default();
+    diag.field_reserve_m = field_reserve_m;
     // Generated walls (room partitions/glass fronts) are OUTPUT of a previous
     // run: clear them FIRST — and only them, never user-drawn/imported walls —
     // so the plate trace, wall bbox and interior-wall snapshot below see the
@@ -273,6 +390,30 @@ pub fn generate(
     let use_oriented_field =
         !is_rectangular && plate_area > 0.0 && axis_cover < ORIENTED_COVER_FRAC * plate_area;
     let single_region = regions.is_empty();
+    // SECOND-CHANCE wings: re-decompose the residue at ROOM scale and append
+    // the claims as regions, so room-scale pockets the desk-field floor
+    // (`REGION_MIN_DIM`) rejected still get bands/pockets/desk allocation
+    // through the machinery that already exists — on the repro plate the
+    // primary tiling stranded 135 m² this way while 38 briefed rooms dropped.
+    // Axis-aligned multi-region plates only: the oriented path fills the whole
+    // polygon itself, and its gate (`axis_cover`, computed ABOVE from the
+    // primary decomposition alone) must not be flipped by wing crumbs along a
+    // diagonal facade. `primary_n` marks where the wings start — secondary
+    // regions take room-scale insets (`region_insets`).
+    let primary_n = regions.len();
+    if !single_region && !use_oriented_field {
+        if let Some(poly) = plate.as_deref() {
+            let mut claimed = holes.clone();
+            claimed.extend(regions.iter().copied());
+            regions.extend(geometry::decompose_plate(
+                poly,
+                REGION_CELL,
+                WING_MIN_DIM,
+                WING_MIN_AREA,
+                &claimed,
+            ));
+        }
+    }
     diag.plate_area = plate_area;
     diag.bbox_area = bbox_area;
     diag.is_rectangular = is_rectangular;
@@ -303,7 +444,7 @@ pub fn generate(
         vec![Insets::boundary()]
     } else {
         (0..regions.len())
-            .map(|i| region_insets(&regions, i, corridor))
+            .map(|i| region_insets(&regions, i, corridor, i >= primary_n))
             .collect()
     };
 
@@ -528,20 +669,18 @@ pub fn generate(
         }
     }
     // --- Pass B: leftover rooms hunt interior clear pockets (both
-    // orientations, nearest-to-circulation candidate wins). A room that fits
-    // nowhere is a shortfall `program_fit` reports — never a silent drop.
+    // orientations, nearest-to-circulation candidate wins). A room that still
+    // fits nowhere is kept for PASS D below — the residual-ground pass that
+    // runs after the desks, so a briefed room gets one more chance at the
+    // floor nothing else claimed before that floor is written off.
+    let mut homeless: Vec<RoomJob> = Vec::new();
     for job in overflow {
         let ok = place_in_pocket(
             doc, &plans, &job, plate.as_deref(), &iwalls, &mut obstacles,
             keepout_len, frozen_len, &circ_rects, clear,
         );
-        // A room that fits in no band and no pocket is DROPPED. It already
-        // surfaces as a `program_fit` shortfall in the score, but a score is a
-        // scalar: it says the plan is short without saying of what. Naming them
-        // is the difference between "the derive did not ask for it" and "the
-        // derive asked and placement refused", and those have different fixes.
         if !ok {
-            diag.rooms_unplaced.push(job.label.clone());
+            homeless.push(job);
         }
     }
 
@@ -560,9 +699,12 @@ pub fn generate(
         // Capacity measured against what is ALREADY placed (rooms, keep-outs,
         // corridor strips), so a wing the rooms have consumed is allocated zero
         // instead of being handed desks it cannot seat.
+        let field_reserve: Vec<f64> = (0..plans.len())
+            .map(|i| if field_regions[i] { field_reserve_m } else { 0.0 })
+            .collect();
         let (d_alloc, d_cap) = allocate_desks(
             program, &plans, clear, remaining_desks, plate.as_deref(), &iwalls, &obstacles, lat,
-            choices,
+            choices, &field_reserve,
         );
         for (i, plan) in plans.iter().enumerate() {
             let region_no = if single_region { None } else { Some((i + 1) as u32) };
@@ -576,6 +718,7 @@ pub fn generate(
             let got = pack_desks(
                 doc, program, plan, d_alloc[i], region_no, /*emit_zones=*/ true,
                 plate.as_deref(), &iwalls, &mut obstacles, lat, clear, choices, &[],
+                field_reserve[i],
                 Some(&mut diag.region_desks[i]),
             );
             diag.region_desks[i].placed = got;
@@ -595,6 +738,7 @@ pub fn generate(
                 let got = pack_desks(
                     doc, program, plan, shortfall, region_no, /*emit_zones=*/ false,
                     plate.as_deref(), &iwalls, &mut obstacles, lat, clear, choices, &[],
+                    field_reserve[i],
                     None,
                 );
                 diag.region_desks[i].topped_up += got;
@@ -614,6 +758,94 @@ pub fn generate(
             }
         }
 
+    // --- The desk-less VOID of each field zone, measured ---------------------
+    // A region's Workspace zone is emitted over its WHOLE field rect before a
+    // single desk lands, but the desk target caps what the field seats — on
+    // the repro plate the dominant field held ~100 m² of desk-less void while
+    // 33 briefed rooms were homeless. Measure each field zone's void (the
+    // complement of its desks' hull plus one clearance aisle; the whole rect
+    // when it seats nothing) and hand it to PASS D as room ground. The ZONE
+    // ITSELF IS NOT TOUCHED: a room placed in the void nests inside the field
+    // zone, and `effective_zone_areas`' workspace de-overlap already bills the
+    // field as background-minus-rooms — the proven machinery for exactly this
+    // nesting. (Splitting the zone into trimmed-rect + complement pieces was
+    // TRIED and reverted on measurement: the pieces became dozens of sliver
+    // "Open Workspace" schedule rows, two of whose labels crossed wall ink —
+    // SG8 red — while NIA shed raster dust against the 906 yardstick.)
+    let mut voids: Vec<geometry::Rect> = Vec::new();
+    if !single_region && !use_oriented_field {
+        let desk_hulls: Vec<(f64, f64, f64, f64)> = doc
+            .components
+            .iter()
+            .filter(|c| c.category == "Desk")
+            .map(|c| {
+                let (ww, wh) = world_extents(c.w, c.h, c.rotation);
+                (c.x - ww / 2.0, c.y - wh / 2.0, c.x + ww / 2.0, c.y + wh / 2.0)
+            })
+            .collect();
+        for z in &doc.zones {
+            if z.zone_type != ZoneType::Workspace {
+                continue;
+            }
+            let ZoneShape::Rect { x, y, w, h } = z.shape else { continue };
+            let outer = geometry::Rect {
+                x0: x - w / 2.0,
+                y0: y - h / 2.0,
+                x1: x + w / 2.0,
+                y1: y + h / 2.0,
+            };
+            let mut hull: Option<(f64, f64, f64, f64)> = None;
+            for &(dx0, dy0, dx1, dy1) in &desk_hulls {
+                let (cx, cy) = ((dx0 + dx1) / 2.0, (dy0 + dy1) / 2.0);
+                if cx >= outer.x0 && cx <= outer.x1 && cy >= outer.y0 && cy <= outer.y1 {
+                    hull = Some(match hull {
+                        None => (dx0, dy0, dx1, dy1),
+                        Some((a, b, c, d)) => (a.min(dx0), b.min(dy0), c.max(dx1), d.max(dy1)),
+                    });
+                }
+            }
+            match hull {
+                None => voids.push(outer), // seats nothing: the whole rect is void
+                Some((hx0, hy0, hx1, hy1)) => {
+                    let hullr = geometry::Rect {
+                        x0: snap_module((hx0 - clear).max(outer.x0)),
+                        y0: snap_module((hy0 - clear).max(outer.y0)),
+                        x1: snap_module((hx1 + clear).min(outer.x1)),
+                        y1: snap_module((hy1 + clear).min(outer.y1)),
+                    };
+                    voids.extend(subtract_rect(outer, hullr));
+                }
+            }
+        }
+        // Only room-scale void pieces are worth scanning.
+        voids.retain(|v| v.width() >= 1.0 && v.height() >= 1.0);
+    }
+
+    // --- PASS D: homeless rooms take residual ground -------------------------
+    // After every band, pocket, anchor and DESK pass: a briefed room that
+    // still has no home hunts the free floor the residual pass is about to
+    // write off. Runs BEFORE that pass so a placed room is architecture and
+    // the leftover is honestly typed around it; a room that fails even here is
+    // a shortfall `program_fit` reports — never a silent drop. Naming the
+    // survivors is the difference between "the derive did not ask for it" and
+    // "the derive asked and placement refused", and those have different
+    // fixes. Gated exactly like the residual pass: the oriented path's
+    // spanning Workspace zone covers the floor, so there is no residual ground
+    // to take there.
+    for job in homeless {
+        let placed = !single_region
+            && !use_oriented_field
+            && plate.as_deref().is_some_and(|poly| {
+                place_in_residual(
+                    doc, &job, poly, &holes, &iwalls, &mut obstacles, keepout_len, frozen_len,
+                    &circ_rects, clear, &voids,
+                )
+            });
+        if !placed {
+            diag.unplaced_max_depth = diag.unplaced_max_depth.max(job.w.min(job.d));
+            diag.rooms_unplaced.push(job.label.clone());
+        }
+    }
         // --- Whole-plate leftover fill (irregular multi-region plates) ---------
         // The per-region packer fills each wing's inscribed desk RECTANGLE, but
         // the maximal-rectangle decomposition of a notched/irregular plate leaves
@@ -696,6 +928,7 @@ pub fn generate(
                     doc, program, &fp, budget, None, /*emit_zones=*/ false,
                     plate.as_deref(), &iwalls, &mut obstacles, lat, clear, choices,
                     &ws_edges,
+                    0.0, // the fill fills leftovers AFTER Pass D took the reserve
                     None,
                 );
                 diag.fill_placed = (doc.components.len() - before) as u32;

@@ -92,6 +92,14 @@ pub struct DeskRejects {
     /// boundary" defect, Workstream E). Only the fill pass supplies the zone
     /// rects, so this stays 0 on the per-region passes by construction.
     pub straddle: u32,
+    /// Member of a bench-pair segment too small to seat a NEIGHBOURHOOD
+    /// (`packing::NEIGHBOURHOOD_MIN`): the slot is geometrically free but
+    /// packing it would strand a 1–5 desk fragment, so the enumeration
+    /// withholds it from `free` (capacity and placement agree it is not there).
+    pub runt: u32,
+    /// Withheld by the FIELD RESERVE retry (W4b): the slot sits on an outer
+    /// unit reserved as room ground for briefed rooms pass 1 left homeless.
+    pub reserved: u32,
 }
 
 /// Everything one `generate` call decided.
@@ -132,4 +140,9 @@ pub struct LayoutDiag {
     /// is what `program_fit` reports as a shortfall; naming them makes the
     /// difference between "not requested" and "requested and impossible".
     pub rooms_unplaced: Vec<String>,
+    /// Largest MIN-dimension among the unplaced rooms — what the field-reserve
+    /// retry sizes its void from.
+    pub unplaced_max_depth: f64,
+    /// The field reserve (m) THIS run was generated with (0.0 = pass 1).
+    pub field_reserve_m: f64,
 }

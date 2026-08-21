@@ -645,13 +645,18 @@ fn keep_confirmed_freezes_components_and_packs_around_them() {
         assert_eq!(kept.decision, DecisionState::Confirmed);
         // No other component overlaps this frozen footprint — except the task
         // chair `seat_desk_chairs` seats AT it, which tucks under the worktop by
-        // design (same exemption as `assert_no_overlaps`).
+        // design (same exemption as `assert_no_overlaps`). TOUCHING is legal —
+        // a bench pair's two desks share the spine at SPINE_GAP == 0, and since
+        // the column-major take order the first two desks (the ones this test
+        // freezes) ARE such a pair — so genuine interpenetration is overlap
+        // beyond float dust, not a strict `<` on coordinates that subtract to
+        // 0.7999999999999998.
         for c in &doc.components {
             if c.id == *id || c.category == "Chair" {
                 continue;
             }
-            let overlaps = (c.x - x).abs() < (c.w + program.desk_w) / 2.0
-                && (c.y - y).abs() < (c.h + program.desk_h) / 2.0;
+            let overlaps = (c.x - x).abs() < (c.w + program.desk_w) / 2.0 - 1e-9
+                && (c.y - y).abs() < (c.h + program.desk_h) / 2.0 - 1e-9;
             assert!(!overlaps, "{} overlaps a frozen desk", c.label);
         }
     }
@@ -3668,8 +3673,13 @@ fn irregular_plate_is_filled_wall_to_wall_not_a_central_column() {
 
         // (b) The whole-plate fill adds real desks past the bare per-region
         // baseline (76 on this plate) — the field spreads, not just relabels.
+        // RECALIBRATED 80 → 78 (W4, registered): walkable neighbourhood
+        // structure costs slots — pair blocks separate at SECONDARY_W (1.15 m)
+        // instead of the 0.9 m desk clearance, and runt segments (< 6 desks)
+        // are withheld rather than packed as fragments. Measured across seeds
+        // 1–6 post-change: 83·81·78·80·78·85 (was 85 flat).
         let desks = doc.components.iter().filter(|c| c.category == "Desk").count();
-        assert!(desks >= 80, "seed {seed}: only {desks} desks — the fill did not spread the field");
+        assert!(desks >= 78, "seed {seed}: only {desks} desks — the fill did not spread the field");
 
         // Track how far the field reaches; at professional density (meetings=5)
         // the near wing fills with desks and the deep far pockets become
@@ -3935,7 +3945,51 @@ fn golden_fingerprint(doc: &Document, program: &Program) -> String {
 /// (`support_spaces = false`), and an EXPLICIT `rooms` program, over a plain
 /// rectangle, the L plate and the user's real multi-wing plate.
 ///
-/// PROVENANCE. Last re-captured ONCE on the editor-completion MERGE of
+/// PROVENANCE. Re-captured for the **W4b FIELD-RESERVE RETRY** (pre-registered
+/// in reports/editor-completion/W4-g14-preregistration.md §W4b). Four cases
+/// moved, two mechanisms, both intended:
+///   * default/real_plate seeds 1–3 — EVERY count and the score total are
+///     IDENTICAL; only the digest moved. These plates trigger the retry and
+///     the seat-accounting guard REJECTS it (2 rooms ≈ 8 seats for 29 desks),
+///     so the emitted plan is the deterministic pass-1 fallback — whose wall
+///     list sits at the glaze fixed point in a different EMISSION ORDER than a
+///     virgin single pass. The digest pins emission order on purpose; the
+///     geometry is the same plan.
+///   * explicit_rooms/l_plate/seed3 — the retry FIRED and was ACCEPTED
+///     (c62→63 w33→43 z10→12: one briefed room rehoused with its shell;
+///     desks 24→18, out-earned on the core's own seat estimator, which is the
+///     guard's exact criterion).
+/// rect20x14 and no_support cases: byte-identical (single-region / no
+/// homeless rooms — the registered nulls).
+///
+/// PROVENANCE (previous). Re-captured ONCE for the **W4 G14 GENERATOR MISSION**
+/// (fix/g14-generator; pre-registration in
+/// reports/editor-completion/W4-g14-preregistration.md). Four registered
+/// mechanisms move geometry, every one deliberate:
+/// neighbourhood discipline in `FieldGrid` (structural cluster aisles ·
+/// SECONDARY_W pair-block separation · the runt-segment floor + take rule),
+/// the wall-or-passage room invariant (`place.rs`), second-chance room-scale
+/// wings + pocket boundary reach, and the workspace trim + PASS D
+/// (homeless rooms onto residual ground, untaken void floor returned to
+/// Workspace by exact subtraction). Per-case shape of the move:
+///   * rect20x14 seeds 1–3: walls and ZONES IDENTICAL (w52 z11); only the
+///     desk field moved — desks 21·25·20 → 10·15·14, the measured cost of
+///     walkable 1.15 m pair aisles and of not seating runt fragments (the
+///     trailing single lattice line seats < 6 and is withheld). The m²/person
+///     professional-band assertions stay green (seats include rooms).
+///   * default/real_plate seeds 1–3: desks 88 → 83·82·78; walls 155 → 170
+///     (wing rooms bring shells); zones 34 → 59 (wing corridors + PASS-D rooms; the field zones
+///     are NOT split — rooms nest and the workspace de-overlap bills them). More program on
+///     the same plate: rooms that used to drop are now placed.
+///   * no_support/real_plate/seed2: EVERY COUNT IDENTICAL (c192 w101 desks88);
+///     zones 38 → 43 (coverage zones only) — the mechanics-only program has
+///     no rooms to gain, which is exactly the scoped null expected.
+///   * explicit_rooms cases: c209→207/c63→62, desks 88→87/24→24, zones 26→47/10→10 —
+///     same mechanisms at explicit-program scale.
+/// Every count delta above is explained by a registered mechanism; nothing
+/// was relaxed.
+///
+/// PROVENANCE (previous). Re-captured ONCE on the editor-completion MERGE of
 /// Workstreams A and E. On the merged tree, relative to A's single-fix capture,
 /// EXACTLY E's three straddle-red cases moved (`default/real_plate/seed1`,
 /// `default/real_plate/seed3`, `explicit_rooms/real_plate/seed1`) and no other;
@@ -4120,16 +4174,16 @@ fn golden_generate_output_is_frozen() {
     let mut cases = golden_cases();
 
     const EXPECTED: [&str; 10] = [
-"default/rect20x14/seed1 = c72 w52 z11 desks21 total87876523 #1a0244c3d88eeb3c",
-            "default/rect20x14/seed2 = c80 w52 z11 desks25 total89274625 #1fca633eeb04543f",
-            "default/rect20x14/seed3 = c70 w52 z11 desks20 total86967629 #52556c4029d00bfc",
-            "default/real_plate/seed1 = c222 w155 z34 desks88 total89910954 #4acc63b55bccf543",
-            "default/real_plate/seed2 = c222 w155 z34 desks88 total89620654 #5b0bf78347437043",
-            "default/real_plate/seed3 = c222 w155 z34 desks88 total89870633 #a01beecb9f1a851c",
-            "no_support/rect20x14/seed1 = c68 w22 z4 desks26 total92565832 #991c040294e31e67",
-            "no_support/real_plate/seed2 = c192 w101 z38 desks88 total93369582 #249089d09f47c486",
-            "explicit_rooms/real_plate/seed1 = c209 w125 z26 desks88 total87773821 #ac7987ede6d87c36",
-            "explicit_rooms/l_plate/seed3 = c63 w33 z10 desks24 total87841010 #2c4c9d19abba5d0b",
+            "default/rect20x14/seed1 = c50 w52 z11 desks10 total73828991 #0c4eeedd5b9bd36d",
+            "default/rect20x14/seed2 = c60 w52 z11 desks15 total81094936 #139f4d72d85eb93d",
+            "default/rect20x14/seed3 = c58 w52 z11 desks14 total79908436 #a42d5e9dafdc79b4",
+            "default/real_plate/seed1 = c216 w170 z59 desks83 total92837733 #6e6fa1d3eb627770",
+            "default/real_plate/seed2 = c214 w170 z59 desks82 total92741249 #4501e3372c5c9645",
+            "default/real_plate/seed3 = c206 w170 z59 desks78 total93014407 #f62fc4a465e960fe",
+            "no_support/rect20x14/seed1 = c64 w22 z4 desks24 total94638978 #dc46c073111bc173",
+            "no_support/real_plate/seed2 = c192 w101 z43 desks88 total94493225 #5c59efc00ebeaa7d",
+            "explicit_rooms/real_plate/seed1 = c207 w125 z47 desks87 total89301904 #da47618c89f72a62",
+            "explicit_rooms/l_plate/seed3 = c63 w43 z12 desks18 total81971929 #5d0fa58323820216",
     ];
     assert_eq!(cases.len(), EXPECTED.len(), "case list and expectations must line up");
 
@@ -4294,6 +4348,232 @@ fn placed_desks_and_tables_stay_inside_their_zone_on_the_golden_cases() {
         failures.len(),
         failures.join("\n")
     );
+}
+
+/// CHAIR-BOUND invariant — Ruling 1 (phase 0, 2026-08-20, Udaya): a task
+/// chair may project past its own zone's edge into adjacent CIRCULATION (or
+/// ground, or open Workspace floor) by at most its tuck depth
+/// (`emit::CHAIR_PROJECT`), and NEVER into an enclosed room's zone
+/// (Meeting / ClosedOffice / Amenity / Collaboration).
+///
+/// Ground truth is re-derived from document geometry alone — the chair's home
+/// zone by the same `zone_index_at` replication the containment gate uses,
+/// its footprint by the same rotated boundary sampling, the overhang by
+/// point-to-shape distance — never from `component_ids`
+/// (.claude/rules/gate-independence.md).
+///
+/// GREEN AT INTRODUCTION by measurement (the ruling codifies existing
+/// behaviour: chairs tuck ≤ 0.20 m over the field edge into drawn corridor),
+/// so non-vacuity is proven by SABOTAGE in a scratch worktree — raising a
+/// chair's projection past the bound, and planting a chair inside a
+/// neighbouring room zone, must each produce exactly one red. Results
+/// recorded in the W4 final report. Golden output is untouched by this test.
+#[test]
+fn chairs_project_only_into_circulation_and_only_to_tuck_depth() {
+    fn room_zone_at(doc: &Document, x: f64, y: f64) -> Option<usize> {
+        let mut chosen: Option<(usize, f64)> = None;
+        let mut found_room = false;
+        for (i, z) in doc.zones.iter().enumerate() {
+            if !z.shape.contains(x, y) {
+                continue;
+            }
+            let ground = crate::is_ground_zone(z.zone_type);
+            if ground && found_room {
+                continue;
+            }
+            let area = z.shape.area();
+            if !ground && !found_room {
+                found_room = true;
+                chosen = Some((i, area));
+            } else if chosen.is_none_or(|(_, best)| area < best) {
+                chosen = Some((i, area));
+            }
+        }
+        let (i, _) = chosen?;
+        if crate::is_ground_zone(doc.zones[i].zone_type) {
+            None
+        } else {
+            Some(i)
+        }
+    }
+
+    fn footprint_samples(c: &crate::model::Component) -> Vec<(f64, f64)> {
+        let (s, co) = c.rotation.sin_cos();
+        let corners: Vec<(f64, f64)> = [
+            (-c.w / 2.0, -c.h / 2.0),
+            (c.w / 2.0, -c.h / 2.0),
+            (c.w / 2.0, c.h / 2.0),
+            (-c.w / 2.0, c.h / 2.0),
+        ]
+        .iter()
+        .map(|(lx, ly)| (c.x + lx * co - ly * s, c.y + lx * s + ly * co))
+        .collect();
+        let mut out = Vec::new();
+        for i in 0..4 {
+            let (ax, ay) = corners[i];
+            let (bx, by) = corners[(i + 1) % 4];
+            let len = ((bx - ax).powi(2) + (by - ay).powi(2)).sqrt();
+            let n = ((len / 0.05).ceil() as usize).max(1);
+            for k in 0..n {
+                let t = k as f64 / n as f64;
+                let (px, py) = (ax + t * (bx - ax), ay + t * (by - ay));
+                let (dx, dy) = (c.x - px, c.y - py);
+                let d = (dx * dx + dy * dy).sqrt().max(1e-12);
+                out.push((px + dx / d * 1e-9, py + dy / d * 1e-9));
+            }
+        }
+        out
+    }
+
+    /// Distance from a point OUTSIDE `shape` to its boundary (0 when inside).
+    fn dist_to_shape(shape: &ZoneShape, px: f64, py: f64) -> f64 {
+        if shape.contains(px, py) {
+            return 0.0;
+        }
+        match shape {
+            ZoneShape::Rect { x, y, w, h } => {
+                let dx = ((px - x).abs() - w / 2.0).max(0.0);
+                let dy = ((py - y).abs() - h / 2.0).max(0.0);
+                (dx * dx + dy * dy).sqrt()
+            }
+            ZoneShape::Poly { pts } => {
+                let mut best = f64::INFINITY;
+                for i in 0..pts.len() {
+                    let a = pts[i];
+                    let b = pts[(i + 1) % pts.len()];
+                    let (vx, vy) = (b[0] - a[0], b[1] - a[1]);
+                    let l2 = vx * vx + vy * vy;
+                    let t = if l2 > 0.0 {
+                        (((px - a[0]) * vx + (py - a[1]) * vy) / l2).clamp(0.0, 1.0)
+                    } else {
+                        0.0
+                    };
+                    let (qx, qy) = (a[0] + t * vx, a[1] + t * vy);
+                    best = best.min(((px - qx).powi(2) + (py - qy).powi(2)).sqrt());
+                }
+                best
+            }
+            ZoneShape::RectRing { .. } => f64::INFINITY, // never a chair home
+        }
+    }
+
+    let enclosed = |t: ZoneType| {
+        matches!(
+            t,
+            ZoneType::Meeting | ZoneType::ClosedOffice | ZoneType::Amenity | ZoneType::Collaboration
+        )
+    };
+
+    let mut chairs = 0usize;
+    let mut overhangs = 0usize;
+    let mut failures: Vec<String> = Vec::new();
+    for (name, mut doc, program, seed) in golden_cases() {
+        generate(&mut doc, &program, seed, false);
+        for c in &doc.components {
+            if c.reference || c.category != "Chair" {
+                continue;
+            }
+            chairs += 1;
+            let home = room_zone_at(&doc, c.x, c.y);
+            let mut seen_overhang = false;
+            for (px, py) in footprint_samples(c) {
+                let inside_home = home.is_some_and(|zi| doc.zones[zi].shape.contains(px, py));
+                if inside_home {
+                    continue;
+                }
+                seen_overhang = true;
+                // Never inside an ENCLOSED room's zone that is not home.
+                for (zi, z) in doc.zones.iter().enumerate() {
+                    if Some(zi) != home && enclosed(z.zone_type) && z.shape.contains(px, py) {
+                        failures.push(format!(
+                            "  {name}: Chair #{} at ({:.2}, {:.2}) intrudes into {:?} \"{}\" \
+                             (zone {}) at ({:.3}, {:.3})",
+                            c.id, c.x, c.y, z.zone_type, z.label, z.id, px, py
+                        ));
+                        break;
+                    }
+                }
+                // Bounded: at most the tuck depth past the home zone's edge.
+                if let Some(zi) = home {
+                    let d = dist_to_shape(&doc.zones[zi].shape, px, py);
+                    if d > CHAIR_PROJECT + 1e-6 {
+                        failures.push(format!(
+                            "  {name}: Chair #{} at ({:.2}, {:.2}) projects {:.3} m past zone \
+                             {} \"{}\" — the tuck bound is {CHAIR_PROJECT} m",
+                            c.id, c.x, c.y, d, doc.zones[zi].id, doc.zones[zi].label
+                        ));
+                        break;
+                    }
+                }
+            }
+            if seen_overhang {
+                overhangs += 1;
+            }
+        }
+    }
+    // Vacuity floors: the population must exist, and the BOUND half must have
+    // been exercised by at least one genuinely overhanging chair (the tucked
+    // regime the ruling legislates). If generation ever stops producing any
+    // overhang, the bound is unmeasured and this gate must say so rather than
+    // pass over nothing.
+    assert!(chairs >= 100, "chair gate went vacuous: only {chairs} generated chairs");
+    assert!(
+        overhangs >= 1,
+        "no chair overhangs any zone edge across all ten golden cases — the tuck bound was \
+         never exercised (population change? re-establish the measured regime before trusting \
+         this gate)"
+    );
+    println!("chair gate: {chairs} chairs, {overhangs} overhanging, bound {CHAIR_PROJECT} m");
+    assert!(
+        failures.is_empty(),
+        "{} chair-bound violation(s):\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
+}
+
+/// W4b — the FIELD-RESERVE RETRY rehouses the fixture plate's homeless rooms.
+///
+/// Watched RED first: before the retry existed, every fixture dropped the same
+/// eight briefed rooms (3 meetings, 2 cabins, collab, pantry, wellness) whose
+/// old homes were the sub-minimum slivers the wall-or-passage invariant
+/// outlawed, and the deadspace battery step read 13.5–15.2 % against its 10 %
+/// self-ratchet. The retry reserves the trailing field units as room ground
+/// and is kept only when the seat-accounting and circulation guards hold —
+/// this pins the ACCEPTED outcome on the fixture plate, so a regression that
+/// silently flips the guards (or starves the reserve) reds here by name.
+#[test]
+fn field_reserve_retry_rehouses_the_fixture_plates_homeless_rooms() {
+    let doc = crate::fixtures::build("F1").expect("F1 builds");
+    let diag = crate::fixtures::diag_for("F1").expect("F1 diag");
+    assert!(
+        diag.rooms_unplaced.is_empty(),
+        "F1 drops {} briefed room(s) again: {:?} — the field-reserve retry was \
+         rejected or under-sized (reserve {} m)",
+        diag.rooms_unplaced.len(),
+        diag.rooms_unplaced,
+        diag.field_reserve_m
+    );
+    assert!(
+        diag.field_reserve_m > 0.0,
+        "F1 placed everything WITHOUT the retry — the homeless population this \
+         test exists for is gone; re-establish it or retire this pin deliberately"
+    );
+    // The guards' other side, pinned so the trade stays a trade: the accepted
+    // retry still seats a real desk field (F1 measured 79 of a 90 target at
+    // acceptance) and the drawn circulation share stays inside the falsifier
+    // band ceiling.
+    let desks = doc.components.iter().filter(|c| c.category == "Desk").count();
+    assert!(desks >= 70, "F1 retry left only {desks} desks — the reserve is eating the field");
+    let (mut circ, mut total) = (0.0f64, 0.0f64);
+    for z in &doc.zones {
+        let a = z.shape.area();
+        total += a;
+        if z.zone_type == ZoneType::Circulation {
+            circ += a;
+        }
+    }
+    assert!(circ / total <= 0.18 + 1e-9, "F1 circulation share {:.3} breached the ceiling", circ / total);
 }
 
     /// A room briefed for N people is furnished with a table seating exactly N.
@@ -4880,13 +5160,22 @@ fn reclassification_moves_no_workstations() {
     program.meeting_rooms = 5;
     program.meeting_w = 3.0;
     program.meeting_h = 3.0;
+    // RE-PINNED 85-flat → per-seed (W4, registered): the walkable
+    // neighbourhood discipline (SECONDARY_W pair aisles + the runt-segment
+    // floor) legitimately moved the desk counts, and they now vary by seed
+    // (the aisle phase interacts with the segment floor). The property this
+    // test guards is unchanged and still guarded: for a FIXED generator, the
+    // count is a constant of the seed — so a reclassification change that
+    // steals a desk still trips the exact pin.
+    const EXPECTED: [usize; 6] = [83, 81, 78, 80, 78, 85];
     for seed in 1u64..=6 {
         let mut doc = real_plate_doc();
         generate(&mut doc, &program, seed, false);
         let desks = doc.components.iter().filter(|c| c.category == "Desk").count();
         assert_eq!(
-            desks, 85,
-            "seed {seed}: {desks} desks — the pre-Phase-1 baseline was 85 on every seed. \
+            desks,
+            EXPECTED[(seed - 1) as usize],
+            "seed {seed}: {desks} desks — the pinned per-seed baseline moved. \
              Reclassifying leftover floor must not move furniture."
         );
     }
@@ -5573,6 +5862,41 @@ fn gate_a2_bounded_width_on_captured_shapes() {
         !conform::path_shaped(&z833),
         "zone 833 (80 m² wall-following ribbon, {w833:.2} m clearing) is still path-shaped — \
          the wing reads as circulation again"
+    );
+
+    // Zone 311 — PINNED VERDICT (Ruling 2, phase 0 2026-08-20, delegated-
+    // blessed): real_plate's 63.5 m² residual, a 3.25 m clearing at the
+    // north-east arm. Room-scale by the same 2×SPINE_W NBC-anchored bound that
+    // defines the conjunct — a corridor is thin everywhere, and 311 is not —
+    // so its verdict is **Unassigned**, registered as a fixture rather than
+    // left incidental. The polygon was captured from the UNMODIFIED generator
+    // (seed-stable across seeds 1–3, recorded in
+    // reports/editor-completion/W4-g14-preregistration.md §5), so later
+    // generator changes cannot move this pin; reversal is this one block plus
+    // a bound re-registration, should Udaya overrule.
+    let z311: Vec<Point> = [
+        (24.248529411764707, 21.019117647058824),
+        (27.25, 21.25),
+        (27.25, 39.0),
+        (28.02027027027027, 39.12837837837838),
+        (28.961206896551722, 39.15948275862069),
+        (30.5, 38.5),
+        (30.75, 39.75),
+        (24.27121807465619, 41.33664047151277),
+    ]
+    .iter()
+    .map(|&(x, y)| Point::new(x, y))
+    .collect();
+    let w311 = conform::max_inscribed_width(&z311);
+    assert!(
+        w311 > bound,
+        "zone 311's registered 3.25 m clearing has vanished (measured {w311:.2} m) — the \
+         measurement moved, not the verdict"
+    );
+    assert!(
+        !conform::path_shaped(&z311),
+        "zone 311 (63.5 m², {w311:.2} m clearing) is path-shaped again — the ruling pinned \
+         it Unassigned"
     );
 
     // Zone 794 — the genuinely corridor-shaped residual (1.90 m everywhere).
