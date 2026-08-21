@@ -3961,13 +3961,13 @@ fn golden_fingerprint(doc: &Document, program: &Program) -> String {
 ///     trailing single lattice line seats < 6 and is withheld). The m²/person
 ///     professional-band assertions stay green (seats include rooms).
 ///   * default/real_plate seeds 1–3: desks 88 → 83·82·78; walls 155 → 170
-///     (wing rooms bring shells); zones 34 → 75·77·74 (wing corridors, the
-///     trimmed field's returned void pieces, PASS-D rooms). More program on
+///     (wing rooms bring shells); zones 34 → 59 (wing corridors + PASS-D rooms; the field zones
+///     are NOT split — rooms nest and the workspace de-overlap bills them). More program on
 ///     the same plate: rooms that used to drop are now placed.
 ///   * no_support/real_plate/seed2: EVERY COUNT IDENTICAL (c192 w101 desks88);
-///     zones 38 → 56 (coverage zones only) — the mechanics-only program has
+///     zones 38 → 43 (coverage zones only) — the mechanics-only program has
 ///     no rooms to gain, which is exactly the scoped null expected.
-///   * explicit_rooms cases: c209→207/c63→62, desks 88→87/24→24, zones up —
+///   * explicit_rooms cases: c209→207/c63→62, desks 88→87/24→24, zones 26→47/10→10 —
 ///     same mechanisms at explicit-program scale.
 /// Every count delta above is explained by a registered mechanism; nothing
 /// was relaxed.
@@ -4160,13 +4160,13 @@ fn golden_generate_output_is_frozen() {
             "default/rect20x14/seed1 = c50 w52 z11 desks10 total73828991 #0c4eeedd5b9bd36d",
             "default/rect20x14/seed2 = c60 w52 z11 desks15 total81094936 #139f4d72d85eb93d",
             "default/rect20x14/seed3 = c58 w52 z11 desks14 total79908436 #a42d5e9dafdc79b4",
-            "default/real_plate/seed1 = c216 w170 z75 desks83 total92837733 #e57d9c08a1d2c31f",
-            "default/real_plate/seed2 = c214 w170 z77 desks82 total92741249 #115fecdd2d23dabb",
-            "default/real_plate/seed3 = c206 w170 z74 desks78 total93014407 #e55f468abe0a3afd",
+            "default/real_plate/seed1 = c216 w170 z59 desks83 total92837733 #4dfd181b1747bbac",
+            "default/real_plate/seed2 = c214 w170 z59 desks82 total92741249 #20bdd307b39674a3",
+            "default/real_plate/seed3 = c206 w170 z59 desks78 total93014407 #cbcae3ddc3cc67bb",
             "no_support/rect20x14/seed1 = c64 w22 z4 desks24 total94638978 #dc46c073111bc173",
-            "no_support/real_plate/seed2 = c192 w101 z56 desks88 total94493225 #33f8b580ffebbd63",
-            "explicit_rooms/real_plate/seed1 = c207 w125 z57 desks87 total89301904 #061264d70b31ef78",
-            "explicit_rooms/l_plate/seed3 = c62 w33 z15 desks24 total87769896 #9aeaf55da36cf861",
+            "no_support/real_plate/seed2 = c192 w101 z43 desks88 total94493225 #5c59efc00ebeaa7d",
+            "explicit_rooms/real_plate/seed1 = c207 w125 z47 desks87 total89301904 #da47618c89f72a62",
+            "explicit_rooms/l_plate/seed3 = c62 w33 z10 desks24 total87769896 #e6194644869358fe",
     ];
     assert_eq!(cases.len(), EXPECTED.len(), "case list and expectations must line up");
 

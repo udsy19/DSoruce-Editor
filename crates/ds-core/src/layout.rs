@@ -132,43 +132,6 @@ fn subtract_rect(outer: geometry::Rect, inner: geometry::Rect) -> Vec<geometry::
     out
 }
 
-/// Alias with hole semantics for the void bookkeeping loop.
-fn subtract_rect_hole(base: geometry::Rect, hole: geometry::Rect) -> Vec<geometry::Rect> {
-    subtract_rect(base, hole)
-}
-
-/// Merge rects that share a full edge back into single rects, to a fixpoint.
-/// The guillotine subtraction above fragments a void into slivers; emitting
-/// each as its own zone put 0.02 m² "Open Workspace" rows into the delivered
-/// room schedule. Exact — a merge changes no covered area.
-fn coalesce_rects(mut rects: Vec<geometry::Rect>) -> Vec<geometry::Rect> {
-    let eq = |a: f64, b: f64| (a - b).abs() < 1e-9;
-    loop {
-        let mut merged = false;
-        'outer: for i in 0..rects.len() {
-            for j in (i + 1)..rects.len() {
-                let (a, b) = (rects[i], rects[j]);
-                let joined = if eq(a.y0, b.y0) && eq(a.y1, b.y1) && (eq(a.x1, b.x0) || eq(b.x1, a.x0)) {
-                    Some(geometry::Rect { x0: a.x0.min(b.x0), y0: a.y0, x1: a.x1.max(b.x1), y1: a.y1 })
-                } else if eq(a.x0, b.x0) && eq(a.x1, b.x1) && (eq(a.y1, b.y0) || eq(b.y1, a.y0)) {
-                    Some(geometry::Rect { x0: a.x0, y0: a.y0.min(b.y0), x1: a.x1, y1: a.y1.max(b.y1) })
-                } else {
-                    None
-                };
-                if let Some(r) = joined {
-                    rects[i] = r;
-                    rects.swap_remove(j);
-                    merged = true;
-                    break 'outer;
-                }
-            }
-        }
-        if !merged {
-            return rects;
-        }
-    }
-}
-
 pub fn generate(
     doc: &mut Document,
     program: &Program,
@@ -699,18 +662,20 @@ pub fn generate(
             }
         }
 
-    // --- Workspace zones shrink to the desks they actually seat --------------
+    // --- The desk-less VOID of each field zone, measured ---------------------
     // A region's Workspace zone is emitted over its WHOLE field rect before a
     // single desk lands, but the desk target caps what the field seats — on
-    // the repro plate the dominant field billed ~100 m² of desk-less void as
-    // "Open Workspace" while 33 briefed rooms were homeless. Trim each field
-    // zone to the hull of its own desks plus one clearance aisle (a zone that
-    // seats nothing is removed outright); the cut-away floor is kept as VOID
-    // rects — ground for PASS D below — and after that pass every void piece
-    // no room took is emitted as a residual-provisional zone by EXACT
-    // rectangle subtraction, so not a square centimetre leaves the NIA (the
-    // 930.1/906 plate yardsticks are pinned). Same gate as the residual
-    // machinery (the oriented path's spanning zone is its own regime).
+    // the repro plate the dominant field held ~100 m² of desk-less void while
+    // 33 briefed rooms were homeless. Measure each field zone's void (the
+    // complement of its desks' hull plus one clearance aisle; the whole rect
+    // when it seats nothing) and hand it to PASS D as room ground. The ZONE
+    // ITSELF IS NOT TOUCHED: a room placed in the void nests inside the field
+    // zone, and `effective_zone_areas`' workspace de-overlap already bills the
+    // field as background-minus-rooms — the proven machinery for exactly this
+    // nesting. (Splitting the zone into trimmed-rect + complement pieces was
+    // TRIED and reverted on measurement: the pieces became dozens of sliver
+    // "Open Workspace" schedule rows, two of whose labels crossed wall ink —
+    // SG8 red — while NIA shed raster dust against the 906 yardstick.)
     let mut voids: Vec<geometry::Rect> = Vec::new();
     if !single_region && !use_oriented_field {
         let desk_hulls: Vec<(f64, f64, f64, f64)> = doc
@@ -722,12 +687,11 @@ pub fn generate(
                 (c.x - ww / 2.0, c.y - wh / 2.0, c.x + ww / 2.0, c.y + wh / 2.0)
             })
             .collect();
-        let mut kept_voids: Vec<geometry::Rect> = Vec::new();
-        doc.zones.retain_mut(|z| {
+        for z in &doc.zones {
             if z.zone_type != ZoneType::Workspace {
-                return true;
+                continue;
             }
-            let ZoneShape::Rect { x, y, w, h } = z.shape else { return true };
+            let ZoneShape::Rect { x, y, w, h } = z.shape else { continue };
             let outer = geometry::Rect {
                 x0: x - w / 2.0,
                 y0: y - h / 2.0,
@@ -744,26 +708,21 @@ pub fn generate(
                     });
                 }
             }
-            let Some((hx0, hy0, hx1, hy1)) = hull else {
-                kept_voids.push(outer); // seats nothing: the whole rect is void
-                return false;
-            };
-            let trimmed = geometry::Rect {
-                x0: snap_module((hx0 - clear).max(outer.x0)),
-                y0: snap_module((hy0 - clear).max(outer.y0)),
-                x1: snap_module((hx1 + clear).min(outer.x1)),
-                y1: snap_module((hy1 + clear).min(outer.y1)),
-            };
-            kept_voids.extend(subtract_rect(outer, trimmed));
-            z.shape = ZoneShape::Rect {
-                x: (trimmed.x0 + trimmed.x1) / 2.0,
-                y: (trimmed.y0 + trimmed.y1) / 2.0,
-                w: trimmed.width(),
-                h: trimmed.height(),
-            };
-            true
-        });
-        voids = kept_voids;
+            match hull {
+                None => voids.push(outer), // seats nothing: the whole rect is void
+                Some((hx0, hy0, hx1, hy1)) => {
+                    let hullr = geometry::Rect {
+                        x0: snap_module((hx0 - clear).max(outer.x0)),
+                        y0: snap_module((hy0 - clear).max(outer.y0)),
+                        x1: snap_module((hx1 + clear).min(outer.x1)),
+                        y1: snap_module((hy1 + clear).min(outer.y1)),
+                    };
+                    voids.extend(subtract_rect(outer, hullr));
+                }
+            }
+        }
+        // Only room-scale void pieces are worth scanning.
+        voids.retain(|v| v.width() >= 1.0 && v.height() >= 1.0);
     }
 
     // --- PASS D: homeless rooms take residual ground -------------------------
@@ -790,57 +749,6 @@ pub fn generate(
             diag.rooms_unplaced.push(job.label.clone());
         }
     }
-    // Every void piece no room took goes BACK to Workspace by EXACT
-    // subtraction of the room zones that landed in it — no raster, no
-    // half-cell shaving, so the field's floor re-enters the NIA to the module
-    // with its original billing. The trim exists to hand rooms the desk-less
-    // ground, not to relitigate how an under-filled field is billed: typed as
-    // residual instead, the whole void merely moved from the Workspace column
-    // to Unassigned (measured: 156.7 m² vs 113.5) while the yardsticked NIA
-    // shed raster dust — strictly worse on both `phase0` pins.
-    {
-        let room_holes: Vec<geometry::Rect> = doc
-            .zones
-            .iter()
-            .filter(|z| {
-                !matches!(z.zone_type, ZoneType::Circulation | ZoneType::Workspace | ZoneType::Core)
-            })
-            .map(|z| {
-                let (x0, y0, x1, y1) = z.shape.bbox();
-                geometry::Rect { x0, y0, x1, y1 }
-            })
-            .collect();
-        let mut pieces: Vec<geometry::Rect> = Vec::new();
-        for v in &voids {
-            let mut frontier = vec![*v];
-            for h in &room_holes {
-                let mut next = Vec::new();
-                for f in frontier {
-                    next.extend(subtract_rect_hole(f, *h));
-                }
-                frontier = next;
-            }
-            pieces.extend(frontier);
-        }
-        let pieces = coalesce_rects(pieces);
-        for p in pieces {
-            if p.width() < 0.02 || p.height() < 0.02 {
-                continue; // sub-module dust
-            }
-            push_zone(
-                doc,
-                ZoneType::Workspace,
-                ZoneShape::Rect {
-                    x: (p.x0 + p.x1) / 2.0,
-                    y: (p.y0 + p.y1) / 2.0,
-                    w: p.width(),
-                    h: p.height(),
-                },
-                "Open Workspace",
-            );
-        }
-    }
-
         // --- Whole-plate leftover fill (irregular multi-region plates) ---------
         // The per-region packer fills each wing's inscribed desk RECTANGLE, but
         // the maximal-rectangle decomposition of a notched/irregular plate leaves
