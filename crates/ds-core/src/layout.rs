@@ -138,10 +138,101 @@ pub fn generate(
     seed: u64,
     keep_confirmed: bool,
 ) -> LayoutDiag {
+    // Pass 1: no field reserve.
+    let diag = generate_once(doc, program, seed, keep_confirmed, 0.0);
+    // THE FIELD-RESERVE RETRY (W4b, pre-registered). When pass 1 leaves briefed
+    // rooms homeless on the multi-region axis path, regenerate ONCE with the
+    // trailing outer units of each dominant field region withheld as room
+    // ground (sized by the largest unplaced room's min dimension). The retry is
+    // kept only if BOTH guards hold — it strictly reduces the homeless count,
+    // and the drawn Circulation share stays inside the registered 12–18 % NIA
+    // falsifier band — otherwise pass 1 is regenerated verbatim (deterministic,
+    // so the fallback is byte-identical to the first run): the mechanism can
+    // never trade one red for another.
+    if diag.rooms_unplaced.is_empty() || diag.single_region || diag.use_oriented_field {
+        return diag;
+    }
+    // Seats a run plans, by the core's own estimator: workstations counted
+    // directly, plus every enclosed room's area-rate seat estimate
+    // (`Zone::seat_estimate_for_ordering` — one owner, `m2_per_seat`).
+    // Symmetric across both runs, so the comparison cannot be gamed by either.
+    let seats_of = |doc: &Document| -> f64 {
+        let desks = doc.components.iter().filter(|c| c.category == "Desk").count() as f64;
+        let rooms: u32 = doc
+            .zones
+            .iter()
+            .filter(|z| {
+                matches!(
+                    z.zone_type,
+                    ZoneType::Meeting
+                        | ZoneType::ClosedOffice
+                        | ZoneType::Amenity
+                        | ZoneType::Collaboration
+                )
+            })
+            .map(|z| z.seat_estimate_for_ordering())
+            .sum();
+        desks + rooms as f64
+    };
+    let unplaced_before = diag.rooms_unplaced.len();
+    let seats_before = seats_of(doc);
+    let reserve = diag.unplaced_max_depth + BAND_BACK_GAP;
+    if reserve <= BAND_BACK_GAP {
+        return diag;
+    }
+    let retry = generate_once(doc, program, seed, keep_confirmed, reserve);
+    // Third guard, added on measurement (W4b closing record): SEAT ACCOUNTING.
+    // The trade must GAIN planned seats — the rooms the reserve houses must be
+    // worth strictly more, on the core's own seat estimator, than the
+    // workstations it costs. Three forms were measured before this one was
+    // chosen: no guard housed 2 rooms on the golden real plate for 29 desks
+    // (83 → 54, rooms outnumbering workstations — the inversion spec §1
+    // forbids); strict desk-neutrality refused the fixture plate's
+    // obviously-right trade (8 rooms ≈ 30 seats for 1 desk); a 1-seat-per-room
+    // floor still refused 8 rooms for 8 desks. Seats, both sides, one
+    // estimator, settles all three.
+    let rehoused = unplaced_before.saturating_sub(retry.rooms_unplaced.len());
+    if rehoused > 0
+        && seats_of(doc) > seats_before
+        && circulation_share(doc) <= CIRC_SHARE_MAX
+    {
+        return retry;
+    }
+    generate_once(doc, program, seed, keep_confirmed, 0.0)
+}
+
+/// Drawn `Circulation` share of the total zoned floor — the retry's guard on
+/// the registered 12–18 % NIA falsifier (an approximation over shape areas;
+/// the honest post-hoc number still comes from the metrics surface).
+fn circulation_share(doc: &Document) -> f64 {
+    let (mut circ, mut total) = (0.0f64, 0.0f64);
+    for z in &doc.zones {
+        let a = z.shape.area();
+        total += a;
+        if z.zone_type == ZoneType::Circulation {
+            circ += a;
+        }
+    }
+    if total > 0.0 { circ / total } else { 0.0 }
+}
+
+/// Upper bound the retry may push the drawn-circulation share to — the
+/// registered falsifier band's ceiling (phase 0: honest circulation stays
+/// within 12–18 % NIA on the repro plate).
+const CIRC_SHARE_MAX: f64 = 0.18;
+
+fn generate_once(
+    doc: &mut Document,
+    program: &Program,
+    seed: u64,
+    keep_confirmed: bool,
+    field_reserve_m: f64,
+) -> LayoutDiag {
     // The generator's own account of what it decided — see `diag.rs`. Returned
     // rather than stored, and returning it is source-compatible: every existing
     // caller uses `generate(..)` in statement position.
     let mut diag = LayoutDiag::default();
+    diag.field_reserve_m = field_reserve_m;
     // Generated walls (room partitions/glass fronts) are OUTPUT of a previous
     // run: clear them FIRST — and only them, never user-drawn/imported walls —
     // so the plate trace, wall bbox and interior-wall snapshot below see the
@@ -608,9 +699,12 @@ pub fn generate(
         // Capacity measured against what is ALREADY placed (rooms, keep-outs,
         // corridor strips), so a wing the rooms have consumed is allocated zero
         // instead of being handed desks it cannot seat.
+        let field_reserve: Vec<f64> = (0..plans.len())
+            .map(|i| if field_regions[i] { field_reserve_m } else { 0.0 })
+            .collect();
         let (d_alloc, d_cap) = allocate_desks(
             program, &plans, clear, remaining_desks, plate.as_deref(), &iwalls, &obstacles, lat,
-            choices,
+            choices, &field_reserve,
         );
         for (i, plan) in plans.iter().enumerate() {
             let region_no = if single_region { None } else { Some((i + 1) as u32) };
@@ -624,6 +718,7 @@ pub fn generate(
             let got = pack_desks(
                 doc, program, plan, d_alloc[i], region_no, /*emit_zones=*/ true,
                 plate.as_deref(), &iwalls, &mut obstacles, lat, clear, choices, &[],
+                field_reserve[i],
                 Some(&mut diag.region_desks[i]),
             );
             diag.region_desks[i].placed = got;
@@ -643,6 +738,7 @@ pub fn generate(
                 let got = pack_desks(
                     doc, program, plan, shortfall, region_no, /*emit_zones=*/ false,
                     plate.as_deref(), &iwalls, &mut obstacles, lat, clear, choices, &[],
+                    field_reserve[i],
                     None,
                 );
                 diag.region_desks[i].topped_up += got;
@@ -746,6 +842,7 @@ pub fn generate(
                 )
             });
         if !placed {
+            diag.unplaced_max_depth = diag.unplaced_max_depth.max(job.w.min(job.d));
             diag.rooms_unplaced.push(job.label.clone());
         }
     }
@@ -831,6 +928,7 @@ pub fn generate(
                     doc, program, &fp, budget, None, /*emit_zones=*/ false,
                     plate.as_deref(), &iwalls, &mut obstacles, lat, clear, choices,
                     &ws_edges,
+                    0.0, // the fill fills leftovers AFTER Pass D took the reserve
                     None,
                 );
                 diag.fill_placed = (doc.components.len() - before) as u32;

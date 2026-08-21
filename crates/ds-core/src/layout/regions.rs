@@ -421,6 +421,9 @@ pub(crate) fn allocate_desks(
     // `FieldGrid` the packer places out of, and the aisle moves slot positions —
     // so it is an input to capacity, not a placement-only detail.
     choices: SeedChoices,
+    // Per-region field reserve (m) — the W4b retry's withheld room ground.
+    // Measured through the SAME grid, or `placed == allocated` dies.
+    field_reserve: &[f64],
 ) -> (Vec<u32>, Vec<u32>) {
     let n = plans.len();
     let mut desk_cap = vec![0u32; n];
@@ -444,6 +447,7 @@ pub(crate) fn allocate_desks(
         // direction too. One model, both directions.
         let grid = FieldGrid::build(
             program, plan, plate, iwalls, obstacles, lat, clear, choices.cluster_cols, &[],
+            field_reserve.get(i).copied().unwrap_or(0.0),
         );
         desk_cap[i] = grid.capacity();
         grids.push(grid);

@@ -161,6 +161,13 @@ const CAPPED = new Set([
   'F4 · retype every zone to Unassigned',
   'F4 · retype every zone to Workspace, then overlap them',
   'F5 · retype every zone to Workspace, then overlap them',
+  // W4b: the field-reserve retry rehouses F5's eight dropped rooms INSIDE the
+  // field zone (nested, de-overlapped by the basis) — so any blanket retype
+  // now removes that de-overlap and genuinely overflows, exactly as
+  // F1/F2/F4's plain retypes always have. F5 joins them on all three.
+  'F5 · retype every zone to Workspace',
+  'F5 · retype every zone to Circulation',
+  'F5 · retype every zone to Unassigned',
 ])
 
 /**
@@ -319,7 +326,7 @@ function assertPanelIsRenderable(key, ed, tally) {
 
   // ---- THE ERROR SURFACE, EXACTLY.
   //
-  // R10 AXES: the CAP (13 capped states and 22 clean ones, so both sides carry
+  // R10 AXES: the CAP (16 capped states and 19 clean ones, so both sides carry
   // load), the PLATE STATE (F3 is unresolved and therefore cannot cap however
   // far its zones overflow — 993.549 m² of zones on a 1594.938 m² bbox and no
   // error, correctly), and the EDIT (type, count, overlap and plate all vary the

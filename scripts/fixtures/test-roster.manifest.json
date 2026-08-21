@@ -511,6 +511,20 @@
         ],
         "removed": []
       }
+    },
+    {
+      "when": "2026-08-21",
+      "why": "W4b: field_reserve_retry_rehouses_the_fixture_plates_homeless_rooms added (retry outcome pinned; watched red pre-mechanism at 8 dropped rooms per fixture)",
+      "js": {
+        "added": [],
+        "removed": []
+      },
+      "rust": {
+        "added": [
+          "layout::tests::field_reserve_retry_rehouses_the_fixture_plates_homeless_rooms"
+        ],
+        "removed": []
+      }
     }
   ],
   "js": {
@@ -640,6 +654,7 @@
     "layout::tests::explicit_placement_biases_window_toward_facade": "initial pin — the F1 roster, established from a green tree at 56af276",
     "layout::tests::explicit_program_overrides_strategy_counts": "initial pin — the F1 roster, established from a green tree at 56af276",
     "layout::tests::explicit_rooms_replace_derived_program_and_honor_counts": "initial pin — the F1 roster, established from a green tree at 56af276",
+    "layout::tests::field_reserve_retry_rehouses_the_fixture_plates_homeless_rooms": "W4b: field_reserve_retry_rehouses_the_fixture_plates_homeless_rooms added (retry outcome pinned; watched red pre-mechanism at 8 dropped rooms per fixture)",
     "layout::tests::fixture_circulation_holds_above_55": "initial pin — the F1 roster, established from a green tree at 56af276",
     "layout::tests::focus_rooms_hug_the_facade_nearer_than_meetings": "initial pin — the F1 roster, established from a green tree at 56af276",
     "layout::tests::gate_a1_residual_type_expresses_classifier_verdict": "Workstream A (fix/wing-classifier): the residual-classifier gates land with the bounded-local-width conjunct. gate_a2_bounded_width_on_captured_shapes pins the discriminant's registered verdicts on the committed three-surface dump's polygons (833 rejected, 794 + sixteen drawn corridors kept, L-corridor mask control); gate_a2_no_room_scale_clearing_is_typed_circulation pins the end-to-end property over rect/real_plate/F1 generates (red pre-fix on F1 zone 282 and real_plate zone 311); gate_a1_residual_type_expresses_classifier_verdict pins that residual facets express the classifier's verdict, labels derive from types, and the sweep is idempotent on fresh generates. All three watched red-or-vacuity-checked before the fix per reports/editor-completion/A-preregistration.md.",

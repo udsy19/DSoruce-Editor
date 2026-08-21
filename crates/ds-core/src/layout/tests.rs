@@ -3945,7 +3945,24 @@ fn golden_fingerprint(doc: &Document, program: &Program) -> String {
 /// (`support_spaces = false`), and an EXPLICIT `rooms` program, over a plain
 /// rectangle, the L plate and the user's real multi-wing plate.
 ///
-/// PROVENANCE. Last re-captured ONCE for the **W4 G14 GENERATOR MISSION**
+/// PROVENANCE. Re-captured for the **W4b FIELD-RESERVE RETRY** (pre-registered
+/// in reports/editor-completion/W4-g14-preregistration.md §W4b). Four cases
+/// moved, two mechanisms, both intended:
+///   * default/real_plate seeds 1–3 — EVERY count and the score total are
+///     IDENTICAL; only the digest moved. These plates trigger the retry and
+///     the seat-accounting guard REJECTS it (2 rooms ≈ 8 seats for 29 desks),
+///     so the emitted plan is the deterministic pass-1 fallback — whose wall
+///     list sits at the glaze fixed point in a different EMISSION ORDER than a
+///     virgin single pass. The digest pins emission order on purpose; the
+///     geometry is the same plan.
+///   * explicit_rooms/l_plate/seed3 — the retry FIRED and was ACCEPTED
+///     (c62→63 w33→43 z10→12: one briefed room rehoused with its shell;
+///     desks 24→18, out-earned on the core's own seat estimator, which is the
+///     guard's exact criterion).
+/// rect20x14 and no_support cases: byte-identical (single-region / no
+/// homeless rooms — the registered nulls).
+///
+/// PROVENANCE (previous). Re-captured ONCE for the **W4 G14 GENERATOR MISSION**
 /// (fix/g14-generator; pre-registration in
 /// reports/editor-completion/W4-g14-preregistration.md). Four registered
 /// mechanisms move geometry, every one deliberate:
@@ -4160,13 +4177,13 @@ fn golden_generate_output_is_frozen() {
             "default/rect20x14/seed1 = c50 w52 z11 desks10 total73828991 #0c4eeedd5b9bd36d",
             "default/rect20x14/seed2 = c60 w52 z11 desks15 total81094936 #139f4d72d85eb93d",
             "default/rect20x14/seed3 = c58 w52 z11 desks14 total79908436 #a42d5e9dafdc79b4",
-            "default/real_plate/seed1 = c216 w170 z59 desks83 total92837733 #4dfd181b1747bbac",
-            "default/real_plate/seed2 = c214 w170 z59 desks82 total92741249 #20bdd307b39674a3",
-            "default/real_plate/seed3 = c206 w170 z59 desks78 total93014407 #cbcae3ddc3cc67bb",
+            "default/real_plate/seed1 = c216 w170 z59 desks83 total92837733 #6e6fa1d3eb627770",
+            "default/real_plate/seed2 = c214 w170 z59 desks82 total92741249 #4501e3372c5c9645",
+            "default/real_plate/seed3 = c206 w170 z59 desks78 total93014407 #f62fc4a465e960fe",
             "no_support/rect20x14/seed1 = c64 w22 z4 desks24 total94638978 #dc46c073111bc173",
             "no_support/real_plate/seed2 = c192 w101 z43 desks88 total94493225 #5c59efc00ebeaa7d",
             "explicit_rooms/real_plate/seed1 = c207 w125 z47 desks87 total89301904 #da47618c89f72a62",
-            "explicit_rooms/l_plate/seed3 = c62 w33 z10 desks24 total87769896 #e6194644869358fe",
+            "explicit_rooms/l_plate/seed3 = c63 w43 z12 desks18 total81971929 #5d0fa58323820216",
     ];
     assert_eq!(cases.len(), EXPECTED.len(), "case list and expectations must line up");
 
@@ -4513,6 +4530,50 @@ fn chairs_project_only_into_circulation_and_only_to_tuck_depth() {
         failures.len(),
         failures.join("\n")
     );
+}
+
+/// W4b — the FIELD-RESERVE RETRY rehouses the fixture plate's homeless rooms.
+///
+/// Watched RED first: before the retry existed, every fixture dropped the same
+/// eight briefed rooms (3 meetings, 2 cabins, collab, pantry, wellness) whose
+/// old homes were the sub-minimum slivers the wall-or-passage invariant
+/// outlawed, and the deadspace battery step read 13.5–15.2 % against its 10 %
+/// self-ratchet. The retry reserves the trailing field units as room ground
+/// and is kept only when the seat-accounting and circulation guards hold —
+/// this pins the ACCEPTED outcome on the fixture plate, so a regression that
+/// silently flips the guards (or starves the reserve) reds here by name.
+#[test]
+fn field_reserve_retry_rehouses_the_fixture_plates_homeless_rooms() {
+    let doc = crate::fixtures::build("F1").expect("F1 builds");
+    let diag = crate::fixtures::diag_for("F1").expect("F1 diag");
+    assert!(
+        diag.rooms_unplaced.is_empty(),
+        "F1 drops {} briefed room(s) again: {:?} — the field-reserve retry was \
+         rejected or under-sized (reserve {} m)",
+        diag.rooms_unplaced.len(),
+        diag.rooms_unplaced,
+        diag.field_reserve_m
+    );
+    assert!(
+        diag.field_reserve_m > 0.0,
+        "F1 placed everything WITHOUT the retry — the homeless population this \
+         test exists for is gone; re-establish it or retire this pin deliberately"
+    );
+    // The guards' other side, pinned so the trade stays a trade: the accepted
+    // retry still seats a real desk field (F1 measured 79 of a 90 target at
+    // acceptance) and the drawn circulation share stays inside the falsifier
+    // band ceiling.
+    let desks = doc.components.iter().filter(|c| c.category == "Desk").count();
+    assert!(desks >= 70, "F1 retry left only {desks} desks — the reserve is eating the field");
+    let (mut circ, mut total) = (0.0f64, 0.0f64);
+    for z in &doc.zones {
+        let a = z.shape.area();
+        total += a;
+        if z.zone_type == ZoneType::Circulation {
+            circ += a;
+        }
+    }
+    assert!(circ / total <= 0.18 + 1e-9, "F1 circulation share {:.3} breached the ceiling", circ / total);
 }
 
     /// A room briefed for N people is furnished with a table seating exactly N.

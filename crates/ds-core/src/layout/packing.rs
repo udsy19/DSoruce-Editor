@@ -143,6 +143,12 @@ impl FieldGrid {
         // top-up passes pass `&[]`: their field rect IS the zone rect, so a
         // straddler is already a bounds rejection there.
         no_straddle: &[geometry::Rect],
+        // FIELD RESERVE (m, W4b): withhold the LAST ceil(reserve/block) outer
+        // units as room ground for briefed rooms pass 1 left homeless. 0.0 on
+        // pass 1 and on every non-field region; the withheld slots are counted
+        // under `rejects.reserved`, INSIDE this enumeration, so capacity,
+        // allocation, spread and take all agree the ground does not exist.
+        reserve_m: f64,
     ) -> FieldGrid {
         let f = plan.field;
         let column_major = plan.portrait;
@@ -317,6 +323,25 @@ impl FieldGrid {
                 line.push(i);
             }
             g.free.push(line);
+        }
+
+        // ---- The FIELD RESERVE (W4b retry) ---------------------------------
+        // Empty the free lists of the reserved trailing units before the
+        // neighbourhood floor runs, so reserved slots neither count as
+        // capacity nor prop up a segment.
+        if reserve_m > 0.0 {
+            let unit_depth = if g.bench { g.block } else { g.outer_pitch };
+            if unit_depth > 0.0 {
+                let k = (reserve_m / unit_depth).ceil() as i64;
+                let avail = g.units_avail();
+                for u in (avail - k).max(0)..avail {
+                    for o in g.unit_lines(u) {
+                        let line = &mut g.free[o as usize];
+                        g.rejects.reserved += line.len() as u32;
+                        line.clear();
+                    }
+                }
+            }
         }
 
         // ---- The NEIGHBOURHOOD floor (bench pairing only) -------------------
@@ -578,6 +603,9 @@ pub(crate) fn pack_desks(
     // Zone rects a slot may not straddle — see `FieldGrid::build`. `&[]` on
     // every pass except the whole-plate fill.
     no_straddle: &[geometry::Rect],
+    // Field reserve (m) — see `FieldGrid::build`. Nonzero only on the W4b
+    // retry, for dominant field regions.
+    reserve_m: f64,
     // Why slots were turned down, and the grid actually walked. `None` on the
     // passes whose rejections are not diagnostic (the top-up re-walks ground the
     // primary pass already covered, so its rejections are mostly "occupied").
@@ -621,7 +649,7 @@ pub(crate) fn pack_desks(
         // is a subset of `grid.free`. There is no second enumeration to drift.
         let grid = FieldGrid::build(
             program, plan, plate, iwalls, &obstacles[..], lat, clear, choices.cluster_cols,
-            no_straddle,
+            no_straddle, reserve_m,
         );
         if let Some(d) = diag.as_deref_mut() {
             d.grid_outer = grid.outer_n;
