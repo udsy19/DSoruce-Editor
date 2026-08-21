@@ -76,7 +76,17 @@ const BASELINE = {
   G8: 9,
   G9: 24,
   G10: 14,
-  G11: 56,
+  // 56 → 58 at integration-2 (editor-completion-2): G11's emission loop runs
+  // one equality check per distinct (room, item) pair in the seeded document,
+  // and the W4 generator's regrown demo doc carries 32 pairs where the
+  // 1a2b8d5 document carried 30 — measured with the gate's OWN zone_at /
+  // item_description over core_state('seeded') in both trees (net +2; zone ids
+  // renumber, the multiset re-derivation is in
+  // reports/editor-completion/integration-2-reconcile.md). Document-driven
+  // growth in a data-driven loop with the call-site manifest unchanged is the
+  // exact case this count exists to be read alongside the manifest for; the
+  // manifest held, so the pin moves WITH its attribution, never silently.
+  G11: 58,
 }
 /** The closing integrity pass's own count, printed as `PASS  (12 checks)`. */
 const BASELINE_INTEGRITY = 12
