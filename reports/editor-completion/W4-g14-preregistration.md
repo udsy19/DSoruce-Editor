@@ -208,3 +208,24 @@ placement invariant itself) reds — STOP and report the either/or to Udaya. If 
 circ guard rejects the retry on the fixtures, deadspace stays red —
 RED-WITH-ROOT-CAUSE with this design as the record. The 10 % ratchet and the PQ band
 edges do not move in any branch.
+
+## W4b closing record (appended at mission end)
+
+| gate | registered | measured |
+|---|---|---|
+| F1–F5 unplaced | 8 → ≤2 | **8 → 0** (retry accepted; reserve 4.3 m; desks 89→79, seats up ~+20 on the core's estimator) |
+| deadspace F1/F2/F4 | ≤10 % | **3.3 %** (was 13.5; pre-W4 baseline 9.4; ratchet unmoved) |
+| deadspace F5 | ≤10 % | **4.9 %** (was 15.2) |
+| golden real_plate 1–3 | 0 unplaced expected | retry REJECTED by the seat-accounting guard (2 rooms ≈ 8 seats for 29 desks is a losing trade); plans identical to pass 1 — only the wall emission order at the glaze fixed point moved the digest. The 2 named homeless rooms (Collab, Pantry) stand, honestly, on that plate. |
+| rect20x14 + no_support goldens | byte-identical | byte-identical ✓ |
+| candidate A | either, reported | retry ACCEPTED: enclosed program 97→238 m², unplaced 29→~24, desks 84 (=target), circ 16.5 %, Unassigned 105.49 m² |
+| PQ/G14/fences | green | `G14 PASS (3 checks)`; 217/217; SG8 PASS (0 crossings); verify-all **62/63 + 1 named env skip**, deadspace step GREEN |
+
+Guard amendment, recorded: the pre-registered acceptance guards (fewer homeless +
+circulation ≤18 %) gained a third on measurement — SEAT ACCOUNTING (planned seats must
+strictly rise, one estimator both sides) — after the unguarded retry traded 29 desks for
+2 rooms on the golden real plate. Three candidate forms measured; the chosen one is the
+only one that decides all three observed cases correctly.
+
+Healed by this mechanism, beyond the target: `composition.mjs` (qbiq programme-mix
+contract) left reconcile.mjs quarantine GREEN; D-Q 29 → 27.
