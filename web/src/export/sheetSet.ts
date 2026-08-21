@@ -584,24 +584,35 @@ function extendedCandidates(w: number, h: number): [number, number][] {
 }
 
 /**
- * The THIRD candidate tier: a full ±3-column × ±6-row lattice, nearest first,
- * minus the two tiers above. It exists for one measured shape of plate — the
+ * The THIRD candidate tier: a full ±6-column × ±10-row lattice, nearest first,
+ * minus the two tiers above. It exists for two measured shapes of plate — the
  * dwg A.02 corner where eight ~90 pt label blocks are anchored 9 pt apart, so
- * the eight interleaved 33-candidate stacks exhaust each other — and it is
+ * the eight interleaved 33-candidate stacks exhaust each other; and the merged
+ * W3×W4 A.02 (31 rooms + seeded base ink + footprint confinement), where the
+ * original ±3×±6 reach exhausted for "OPEN WORKSPACE (7)" and the ladder fell
+ * through to the abbreviation rung — `OWS (7)` at 5.6 pt, drawn-once red, the
+ * exact D3 damage the ordering exists to avoid. It is
  * reached only by callers that PRESERVE the name while they search: the room
  * ladder's wide-displacement rung (a displaced label is leader-backed, so
  * distance stays attributable; a wrapped or abbreviated one is no longer one
  * recoverable glyph run — the D3 ordering, displacement before damage) and the
  * always-yields last rung ({@link settleLabel}). Ordered by squared distance
- * with a fixed tie-break, so layouts stay deterministic.
+ * with a fixed tie-break, so layouts stay deterministic. The added candidates
+ * can interleave with the old grid's outer members in distance order, so a
+ * label that settled DEEP in the old grid may legally take a nearer new spot;
+ * labels that placed in the first two tiers keep their spots unless a
+ * re-placed wide-tier neighbour changes the occupancy they see (the normal
+ * sequential cascade). Measured at the change (integration-2): the seeded pack
+ * is byte-identical; every moved dwg string is a wide-tier settler or its
+ * cascade, all annotation ink.
  */
 function wideCandidates(w: number, h: number): [number, number][] {
   const dv = h + 3
   const dh = w * 0.55 + 6
   const seen = new Set([...placeCandidates(w, h), ...extendedCandidates(w, h)].map(([x, y]) => `${x},${y}`))
   const grid: [number, number][] = []
-  for (let i = -3; i <= 3; i++) {
-    for (let j = -6; j <= 6; j++) {
+  for (let i = -6; i <= 6; i++) {
+    for (let j = -10; j <= 10; j++) {
       const c: [number, number] = [i * dh, j * dv]
       if (seen.has(`${c[0]},${c[1]}`)) continue
       grid.push(c)

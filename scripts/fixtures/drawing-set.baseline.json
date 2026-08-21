@@ -32,38 +32,38 @@
         {
           "sheet": 3,
           "text": 74,
-          "line": 21,
+          "line": 23,
           "rect": 7,
           "image": 2,
-          "md5": "c00d702ab8a0998aed97abd6c049e34b",
-          "why": "D-P fix (workstream B): the plan sheet's annotation occupancy is now seeded with the base raster's ink before any label is placed (sheetSet.ts seedBaseInk/seedOutsideMargin; SG8 87->0 across the 12 plan sheets, D-Q total 37->26). THIS sheet: op counts IDENTICAL (74 T / 21 L / 7 R); op-level dump-diff shows exactly one label pair moved — FOCUS ROOM 1 + its 4.3 m² translated 44 pt left (T 734.4->690.4 / 755.0->711.0) off a seeded existing-wall band. Nothing else on the sheet moved."
+          "md5": "4b5238e35ee70fd231201edc2c821062",
+          "why": "W4 doc: seeded program regrown (rooms renamed/added: Focus/Print Point/Phone Booth family), demolition labels re-laid"
         },
         {
           "sheet": 4,
           "text": 284,
-          "line": 927,
+          "line": 925,
           "rect": 81,
           "image": 2,
-          "md5": "787aedf778fecbe1234b45b2bce2ff27",
-          "why": "W3 D-Q: CABIN 1 + FOCUS ROOM 1 blocks (4 strings) moved from the top margin to inside the footprint; 6 dims returned via the displacement rung (2x 2.40 m, 2x 3.00 m, 4.20 m, 38.20 m: +6 text/+30 line ops); opening tags re-nudged around the moved blocks"
+          "md5": "506d8e829d9db8f3f1b02105e52d93bb",
+          "why": "composition: W4 desk neighbourhoods [8,8,8,8,6,6,6,6,6] + rooms; W3 rungs re-place labels/dims/tags in-building (+6 returned dims)"
         },
         {
           "sheet": 5,
           "text": 101,
-          "line": 1105,
+          "line": 1102,
           "rect": 468,
           "image": 2,
-          "md5": "5d3843874e10ffe0e0e1f08c61e8331d",
-          "why": "D-P fix (workstream B): the plan sheet's annotation occupancy is now seeded with the base raster's ink before any label is placed (sheetSet.ts seedBaseInk/seedOutsideMargin; SG8 87->0 across the 12 plan sheets, D-Q total 37->26). THIS sheet: content-level dump-diff EMPTY (no string appeared or vanished, 101 T unchanged); line 1096->1105, +9 leader L ops for labels the seeded wall ink displaced. SG8 seeded/A03 4->0 (FOCUS ROOM 1/2, PHONE BOOTH 3, WELLNESS ROOM were the wall hits)."
+          "md5": "8743e079d8f4f025e21d885095a5d44d",
+          "why": "composition: W3 services wide rung holds labels at 7.5 pt on W4 doc; LC tags + circuits re-nudged"
         },
         {
           "sheet": 6,
           "text": 62,
-          "line": 1902,
-          "rect": 234,
+          "line": 1923,
+          "rect": 230,
           "image": 2,
-          "md5": "4ac75bfb2827746194ffd73ebadde0bb",
-          "why": "D-P fix (workstream B): the plan sheet's annotation occupancy is now seeded with the base raster's ink before any label is placed (sheetSet.ts seedBaseInk/seedOutsideMargin; SG8 87->0 across the 12 plan sheets, D-Q total 37->26). THIS sheet: content-level dump-diff EMPTY; line 1894->1902, +8 leader L ops. SG8 seeded/A04 6->0 (incl. the IT / SERVER, STORAGE and WELLNESS ROOM swing-arc hits)."
+          "md5": "bee38f723da09c7026a05c2045f16f28",
+          "why": "composition: W3 services wide rung at full size on W4 doc; DB tag + circuits re-nudged"
         },
         {
           "sheet": 7,
@@ -85,12 +85,12 @@
         },
         {
           "sheet": 9,
-          "text": 95,
-          "line": 25,
-          "rect": 37,
+          "text": 104,
+          "line": 26,
+          "rect": 41,
           "image": 1,
-          "md5": "85eb8f45ad1f085bd4f32f82bea91846",
-          "why": "Unmoved since 46908c6, the commit that last recorded this baseline. Verified: at base HEAD 49502e5 this sheet's digest still matched the recorded md5, so nothing in the 73 intervening commits touched it."
+          "md5": "70112704982172e515ee2cdf8f230938",
+          "why": "W4 doc: furniture counts moved (chairs 111, desks 62) on the F&F cards"
         },
         {
           "sheet": 10,
@@ -107,8 +107,8 @@
           "line": 40,
           "rect": 18,
           "image": 1,
-          "md5": "a68b0c149e6a246f6d55c38c16a0eff3",
-          "why": "R17 area fix: A.09's AREA m2 column prints the CORE basis. One text op: 668.5 -> 550.6. This is the 4.4x/1.21x divergence SG7 was written to catch."
+          "md5": "b7452a23c8404627d1a40e8fac113176",
+          "why": "W4 doc: finish schedule re-rowed for the regrown room set"
         },
         {
           "sheet": 12,
@@ -116,8 +116,8 @@
           "line": 87,
           "rect": 16,
           "image": 1,
-          "md5": "f4d685ce8e618a033332e3e00fc89256",
-          "why": "Unmoved since 46908c6, the commit that last recorded this baseline. Verified: at base HEAD 49502e5 this sheet's digest still matched the recorded md5, so nothing in the 73 intervening commits touched it."
+          "md5": "d2597d4595a2b980a23c30dbc6ea9f78",
+          "why": "W4 doc: opening set changed with the new walls (W15-W24 cont rows)"
         }
       ]
     },
@@ -134,48 +134,48 @@
         },
         {
           "sheet": 2,
-          "text": 27,
-          "line": 12,
+          "text": 29,
+          "line": 13,
           "rect": 0,
           "image": 0,
-          "md5": "169597d9e62661e6dbb1811cd2ac3bdd",
-          "why": "Unmoved since 46908c6, the commit that last recorded this baseline. Verified: at base HEAD 49502e5 this sheet's digest still matched the recorded md5, so nothing in the 73 intervening commits touched it."
+          "md5": "a37493cd0c5deb36c3caf4ab2af24a2e",
+          "why": "W4 doc: contents grew A.10 Room Finish Schedule continuation (13-sheet set)"
         },
         {
           "sheet": 3,
-          "text": 70,
-          "line": 35,
+          "text": 92,
+          "line": 40,
           "rect": 7,
           "image": 2,
-          "md5": "4ccff44bda5a09fa082bf8530e00d16a",
-          "why": "W3 D-Q: OPEN WORKSPACE (4) + 6.6 m2 moved from the left margin (80,182) to inside over the soft demolition hatch (319,211), leader redrawn; op counts unchanged"
+          "md5": "cfea94f10532a6cd1e79787fe5c38b05",
+          "why": "composition: W4 rooms 20->31 on A.01; W3 inward displacement + integration wide-tier reach (±6×±10) place all labels in-building, leader-backed"
         },
         {
           "sheet": 4,
-          "text": 280,
-          "line": 804,
-          "rect": 84,
+          "text": 317,
+          "line": 1043,
+          "rect": 98,
           "image": 2,
-          "md5": "a19dfa86550c587faab226037a85457a",
-          "why": "W3 D-Q: OPEN WORKSPACE (4), MEETING ROOM 2, PHONE BOOTH 1 blocks (6 strings) moved from left/right margins to inside; 2 dims returned (14.40 m, 8.30 m: +2 text/+10 line ops); tags re-nudged"
+          "md5": "46482c3e6a021c38e67845670fbfb7ab",
+          "why": "composition: W4 rooms+desks on A.02; W3 rungs + wide-tier reach restore OPEN WORKSPACE (7) to its full name at 8 pt in-building (was OWS (7) 5.6 pt abbreviated, drawn-once red at merge)"
         },
         {
           "sheet": 5,
-          "text": 104,
-          "line": 1854,
-          "rect": 752,
+          "text": 140,
+          "line": 2239,
+          "rect": 797,
           "image": 2,
-          "md5": "55d63f8da5eb2937bf15e3b5d26cd70c",
-          "why": "W3 services wide rung: MEETING ROOM 2 6.375->7.5 pt, PRINT POINT 1 5.25->7.5 pt, PRINT POINT 2 6.375->7.5 pt at full size with leaders; exit/E glyphs, LC tags and circuit polylines re-nudged around the new label boxes (1857->1854 line ops)"
+          "md5": "2e1a7c145a057996f327d382efe10a4e",
+          "why": "composition: W4 doc RCP re-laid (31 rooms); W3 wide rung holds service labels full-size; E glyphs/LC tags/circuits re-nudged"
         },
         {
           "sheet": 6,
-          "text": 60,
-          "line": 2397,
-          "rect": 259,
+          "text": 71,
+          "line": 2042,
+          "rect": 240,
           "image": 2,
-          "md5": "7605546cb4f699ba108554949f778899",
-          "why": "W3 services wide rung: same three labels to 7.5 pt full size on the power plan (+1 leader line, 2396->2397 line ops)"
+          "md5": "84899cd56f16c7fb5bc303f00dc105b6",
+          "why": "composition: W4 doc power/data re-routed; W3 wide rung full-size labels; tags re-nudged"
         },
         {
           "sheet": 7,
@@ -197,12 +197,12 @@
         },
         {
           "sheet": 9,
-          "text": 95,
-          "line": 25,
-          "rect": 37,
+          "text": 104,
+          "line": 26,
+          "rect": 41,
           "image": 1,
-          "md5": "bc3782034e0e6063af39aac3b8be177b",
-          "why": "Unmoved since 46908c6, the commit that last recorded this baseline. Verified: at base HEAD 49502e5 this sheet's digest still matched the recorded md5, so nothing in the 73 intervening commits touched it."
+          "md5": "bf9e2410924341166a4598a25da159f7",
+          "why": "W4 doc: furniture counts moved (chairs 118, desks 69) on the F&F cards"
         },
         {
           "sheet": 10,
@@ -215,21 +215,30 @@
         },
         {
           "sheet": 11,
-          "text": 240,
-          "line": 38,
-          "rect": 17,
+          "text": 322,
+          "line": 47,
+          "rect": 21,
           "image": 1,
-          "md5": "488ba55d317a4d042e75ef5bb85c4164",
-          "why": "E no_straddle: A.09 Room Finish Schedule loses the 8 'Open Workspace (5)'..'(12)' rows (ids 258-265) — micro-rooms of 1.0 m2 that were one straddling fill desk each; the schedule now bills 20 real rooms."
+          "md5": "f6f229bfe25cd3d884d615f21afa83fc",
+          "why": "W4 doc: 31 rooms re-row A.09 (29 rows + 2 overflow)"
         },
         {
           "sheet": 12,
-          "text": 94,
-          "line": 108,
-          "rect": 19,
+          "text": 79,
+          "line": 20,
+          "rect": 8,
           "image": 1,
-          "md5": "f420a36ebc4be415212e3a13997823a4",
-          "why": "Unmoved since 46908c6, the commit that last recorded this baseline. Verified: at base HEAD 49502e5 this sheet's digest still matched the recorded md5, so nothing in the 73 intervening commits touched it."
+          "md5": "e4a9e79d2585c983e316f410c0453183",
+          "why": "W4 doc: NEW sheet kind exercised - ROOM FINISH SCHEDULE (CONT.) with the 2 overflow rows (Core 2/3); D&W cont moves to sheet 13"
+        },
+        {
+          "sheet": 13,
+          "text": 164,
+          "line": 206,
+          "rect": 33,
+          "image": 1,
+          "md5": "012b2a18af2811b5e01302da34be170e",
+          "why": "W4 doc: DOOR & WINDOW SCHEDULE (CONT.) now sheet 13 (W15-W41 rows)"
         }
       ]
     }
