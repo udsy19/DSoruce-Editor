@@ -21,45 +21,50 @@
 // Its falsification is the opposite of the other five: it fails if the sheet
 // work moves something it must not move.
 //
-// THE RECORD THAT USED TO SIT HERE WAS STALE, IN BOTH ITS NUMBERS. It read
-// `SG5 PASS (27 checks) … and drawing-set 252, all matching` while the constant
-// below said 329 and the gate ran 29 checks — a FAIL-FIRST record describing a
-// state two re-pins in the past. A stale record of a green run is worth less
-// than none: it reads as evidence. Measured, not copied forward:
+// Measured, not copied forward (W2, leftovers loop, 2026-08-20, this tree):
 //
-//   $ node scripts/gates/sheets/sg5-board-integrity.mjs      (i6, integration b9ec338)
-//   SG5 FAIL (32 checks, 25 failing)
+//   $ GATE_BASE=http://localhost:5312 bash scripts/gates/run-all.sh G1..G11
+//   11/11 passing · ALL GATES GREEN.        (pack built fresh in THIS worktree)
+//   $ GATE_BASE=http://localhost:5312 node scripts/gates/sheets/sg5-board-integrity.mjs
+//   SG5 PASS (67 checks)
 //
-// **and 32/25 is not a regression — it is this worktree having no deliverable
-// pack.** `out/` is empty, so all eleven gates produce no scoreboard line and
-// 22 rows + integrity + board-green + GSELF fail for want of artifacts, not for
-// want of correctness. The 7 checks that do not depend on the pack — the rules
-// file, drawing-set's result and colour, and the four manifest checks below —
-// all PASS. 29 -> 32 is this change: one count assertion retired, four manifest
-// assertions added.
+// 32 -> 67 is this change: the eleven count pins each gained an identity-
+// manifest trio (pinned-file-is-invoked-file, no-vanished, no-unpinned = 33)
+// plus the pin-file presence + coverage pair (2). The G-board manifest was
+// captured from that green run's tree (`--capture-g-manifest`), i.e. from a
+// population explicitly verified clean, immediately after the board above.
 //
-// A GREEN SG5 IS NOT CLAIMED HERE. Claiming one would need `out/` built first,
-// and this round did not build it.
+// The closing sabotage pair was registered before being run, then RUN AND
+// MEASURED, in scratch worktrees off d868ec3 (never in the real tree), each
+// with its own server on the tree it graded:
+//   * SWAP (g8, one check replaced by a different assertion, runtime count flat
+//     at 9): OLD SG5 (d868ec3) `SG5 PASS (32 checks)` — the recorded standing
+//     weakness, demonstrated — NEW SG5 `FAIL (67 checks, 2 failing)`, naming
+//     the swapped check in both directions and nothing else.
+//   * VANISH (g5, one once-executing check removed, count padded flat with a
+//     verbatim duplicate of an already-pinned check): OLD `PASS (32)`, NEW
+//     `FAIL (67, 2 failing)` naming the vanished check AND the duplicate
+//     surplus — multiset, not set.
+// Transcripts: reports/editor-completion/w2-sg5-identity-manifests.md.
 // ---------------------------------------------------------------------------
 
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
-import { statSync, readFileSync, mkdtempSync, rmSync } from 'node:fs'
+import { statSync, readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { REPO, runGate, GateError } from './lib/sheetlib.mjs'
 
 /** The board at `1a2b8d5`: gate id → check count.
  *
- *  STILL COUNTS, AND THEREFORE STILL CARRYING THE WEAKNESS R23 CLOSED BELOW.
- *  The drawing-set pin became a manifest because its count was measured masking
- *  29 vanished checks. These eleven are the same shape of pin and nothing has
- *  measured them for the same defect — a gate that drops one assertion and adds
- *  another reports an unchanged number here exactly as drawing-set did.
- *
- *  Not converted in this round, deliberately and with the reason stated rather
- *  than left implicit: a manifest needs the members to be NAMED at their call
- *  sites, drawing-set's naming was a 14-site change in one file, and eleven
- *  gates is a different size of job. Recorded as open, not as done. */
+ *  COUNTS, KEPT — but no longer the only pin. The R23 weakness these carried
+ *  (a count stays flat while checks swap identity, exactly as drawing-set's
+ *  count masked 29 vanished checks) is closed by the G-BOARD IDENTITY MANIFEST
+ *  below (`scripts/fixtures/g-board.manifest.json`): every `g.check(...)` call
+ *  site in the eleven gate files is pinned BY NAME. The counts stay because
+ *  the two pins watch different populations — the manifest pins call sites in
+ *  the SOURCE, the counts pin EXECUTIONS at runtime — and a data-driven loop
+ *  that iterates fewer rows moves the count without touching any call site.
+ *  A manifest plus a count is strictly stronger than either. */
 const BASELINE = {
   G1: 59,
   G2: 17,
@@ -112,6 +117,255 @@ const BASELINE_INTEGRITY = 12
  *  manifest says which. */
 const MANIFEST_PIN = path.join(REPO, 'scripts/fixtures/drawing-set.manifest.json')
 
+/** THE ELEVEN G-BOARD PINS, AS MANIFESTS (closing the R23 residue).
+ *
+ *  WHY SOURCE CALL SITES AND NOT EMITTED CHECK LINES. G1-G11 do not emit
+ *  per-check identity on a green run — `Gate.check(cond, msg)` (both
+ *  lib/gatelib.py and lib/gatelib.mjs) surfaces `msg` only on FAILURE, and
+ *  `finish()` prints one scoreboard line. So on the board this gate watches,
+ *  runtime check identity is structurally unparseable, for all eleven gates
+ *  alike, and editing the gates to emit it is outside this gate's remit. What
+ *  IS parseable without touching them: the `g.check(...)` CALL SITES in each
+ *  gate's source bytes. The identity pinned per site is the whitespace-
+ *  normalized source text of the msg argument — the same string the gate would
+ *  print on failure, before interpolation — which changes exactly when someone
+ *  edits what the check asserts or says.
+ *
+ *  Re-derived from the gate source bytes on every run (never from any gate's
+ *  output), compared to the pin as a MULTISET in both directions: a vanished
+ *  site is coverage silently left, an unexpected one is coverage arrived
+ *  unexamined, and a duplicated one is a compensation trick (padding the count
+ *  with a repeat of an existing check) — the multiset names all three.
+ *
+ *  Stated limitation, on the record: a swap of WHICH FILE run-all.sh invokes
+ *  for a gate id would dodge a source pin keyed on the pinned file path; the
+ *  runtime count + board-green checks still watch that surface.
+ *
+ *  Re-pin deliberately (after looking at what changed) with:
+ *    node scripts/gates/sheets/sg5-board-integrity.mjs --capture-g-manifest
+ */
+const G_MANIFEST_PIN = path.join(REPO, 'scripts/fixtures/g-board.manifest.json')
+
+/** gate id → source file, mirroring run-all.sh's CMDS for G1-G11. */
+const GATE_FILES = {
+  G1: 'scripts/gates/g1-sheet-structure.py',
+  G2: 'scripts/gates/g2-formula-liveness.py',
+  G3: 'scripts/gates/g3-quantity-truth.py',
+  G4: 'scripts/gates/g4-plan-graphic.py',
+  G5: 'scripts/gates/g5-thumbnails.py',
+  G6: 'scripts/gates/g6-renders.py',
+  G7: 'scripts/gates/g7-video.py',
+  G8: 'scripts/gates/g8-web-viewer.mjs',
+  G9: 'scripts/gates/g9-roundtrip.py',
+  G10: 'scripts/gates/g10-one-action.mjs',
+  G11: 'scripts/gates/g11-furniture-agreement.py',
+}
+
+// Exact extraction for the python gates: ast finds every `<x>.check(...)` call
+// and returns the msg argument's source segment, whitespace-normalized, in
+// line order. Passed to `python3 -c`, so it ships inside this file — SG5 owns
+// its own instrument.
+const PY_SITES = `
+import ast, json, re, sys
+src = open(sys.argv[1]).read()
+out = []
+for node in ast.walk(ast.parse(src)):
+    if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+            and node.func.attr == 'check'):
+        msg = node.args[1] if len(node.args) >= 2 else next(
+            (k.value for k in node.keywords if k.arg == 'msg'), None)
+        seg = ast.get_source_segment(src, msg if msg is not None else node) or ''
+        out.append((node.lineno, re.sub(r'\\s+', ' ', seg).strip()))
+print(json.dumps([s for _, s in sorted(out, key=lambda t: t[0])]))
+`
+
+/** Extraction for the two .mjs gates: a single-pass scanner that understands
+ *  strings, template literals (with nested \${}), comments and (heuristically)
+ *  regex literals, so a `.check(` inside any of those never counts and parens
+ *  inside them never unbalance the argument scan. Identity = the source text
+ *  after the first top-level comma of the argument list (the msg expression),
+ *  whitespace-normalized. */
+function jsCheckSites(src) {
+  const sites = []
+  let i = 0
+  const n = src.length
+  let lastSig = ''
+  function skipQuoted(q) { // src[i] === q; also used for whole template literals
+    i++
+    while (i < n) {
+      if (src[i] === '\\') { i += 2; continue }
+      if (src[i] === q) { i++; return }
+      i++
+    }
+  }
+  function scanArgs(start) { // src[start] === '('
+    let depth = 0
+    let j = start
+    let firstComma = -1
+    let last = ''
+    while (j < n) {
+      const c = src[j]
+      if (c === '/' && src[j + 1] === '/') { while (j < n && src[j] !== '\n') j++; continue }
+      if (c === '/' && src[j + 1] === '*') { j = src.indexOf('*/', j + 2); j = j < 0 ? n : j + 2; continue }
+      if (c === "'" || c === '"') {
+        j++
+        while (j < n) { if (src[j] === '\\') j += 2; else if (src[j] === c) { j++; break } else j++ }
+        last = c; continue
+      }
+      if (c === '`') {
+        j++
+        while (j < n) {
+          if (src[j] === '\\') { j += 2; continue }
+          if (src[j] === '`') { j++; break }
+          if (src[j] === '$' && src[j + 1] === '{') {
+            let d = 1; j += 2
+            while (j < n && d > 0) {
+              if (src[j] === '\\') { j += 2; continue }
+              if (src[j] === "'" || src[j] === '"') { const q = src[j]; j++; while (j < n) { if (src[j] === '\\') j += 2; else if (src[j] === q) { j++; break } else j++ } continue }
+              if (src[j] === '`') { let dd = 1; j++; while (j < n && dd > 0) { if (src[j] === '\\') j += 2; else if (src[j] === '`') { dd--; j++ } else j++ } continue }
+              if (src[j] === '{') d++
+              else if (src[j] === '}') d--
+              j++
+            }
+            continue
+          }
+          j++
+        }
+        last = '`'; continue
+      }
+      if (c === '/' && !/[\w$)\]]/.test(last)) { // regex literal
+        const k = j
+        j++
+        let inClass = false
+        while (j < n) {
+          if (src[j] === '\\') { j += 2; continue }
+          if (src[j] === '[') inClass = true
+          else if (src[j] === ']') inClass = false
+          else if (src[j] === '/' && !inClass) { j++; while (j < n && /[a-z]/i.test(src[j])) j++; break }
+          else if (src[j] === '\n') { j = k + 1; break } // was division after all
+          j++
+        }
+        last = '/'; continue
+      }
+      if (c === '(') { depth++; j++; last = '('; continue }
+      if (c === ')') {
+        depth--
+        if (depth === 0) return { end: j + 1, firstComma }
+        j++; last = ')'; continue
+      }
+      if (c === ',' && depth === 1 && firstComma < 0) firstComma = j
+      if (!/\s/.test(c)) last = c
+      j++
+    }
+    return null
+  }
+  const head = /([A-Za-z_$][\w$]*)\s*\.\s*check\s*\(/g
+  while (i < n) {
+    const c = src[i]
+    if (c === '/' && src[i + 1] === '/') { while (i < n && src[i] !== '\n') i++; continue }
+    if (c === '/' && src[i + 1] === '*') { i = src.indexOf('*/', i + 2); i = i < 0 ? n : i + 2; continue }
+    if (c === "'" || c === '"' || c === '`') { skipQuoted(c); lastSig = c; continue }
+    if (c === '/' && !/[\w$)\]]/.test(lastSig)) {
+      const k = i
+      i++
+      let inClass = false
+      while (i < n) {
+        if (src[i] === '\\') { i += 2; continue }
+        if (src[i] === '[') inClass = true
+        else if (src[i] === ']') inClass = false
+        else if (src[i] === '/' && !inClass) { i++; while (i < n && /[a-z]/i.test(src[i])) i++; break }
+        else if (src[i] === '\n') { i = k + 1; break }
+        i++
+      }
+      lastSig = '/'; continue
+    }
+    if (/[A-Za-z_$]/.test(c)) {
+      head.lastIndex = i
+      const m = head.exec(src)
+      if (m && m.index === i) {
+        const open = i + m[0].length - 1
+        const r = scanArgs(open)
+        if (r) {
+          const msg = r.firstComma >= 0 ? src.slice(r.firstComma + 1, r.end - 1) : src.slice(open + 1, r.end - 1)
+          sites.push(msg.replace(/\s+/g, ' ').trim())
+          i = r.end
+          lastSig = ')'
+          continue
+        }
+      }
+      while (i < n && /[\w$]/.test(src[i])) i++
+      lastSig = src[i - 1]
+      continue
+    }
+    if (!/\s/.test(c)) lastSig = c
+    i++
+  }
+  return sites
+}
+
+/** Re-derive the current check-site identities for one gate file. */
+function gateCheckSites(relFile) {
+  const abs = path.join(REPO, relFile)
+  if (relFile.endsWith('.py')) {
+    return JSON.parse(execFileSync('python3', ['-c', PY_SITES, abs], { encoding: 'utf8' }))
+  }
+  return jsCheckSites(readFileSync(abs, 'utf8'))
+}
+
+/** Multiset difference in both directions. */
+function multisetDiff(pinned, got) {
+  const bag = new Map()
+  for (const s of pinned) bag.set(s, (bag.get(s) || 0) + 1)
+  const gained = []
+  for (const s of got) {
+    const c = bag.get(s) || 0
+    if (c > 0) bag.set(s, c - 1)
+    else gained.push(s)
+  }
+  const lost = []
+  for (const [s, c] of bag) for (let k = 0; k < c; k++) lost.push(s)
+  return { lost, gained }
+}
+
+const clip = (s, w = 72) => (s.length > w ? s.slice(0, w - 1) + '…' : s)
+const nameList = (arr) =>
+  arr.slice(0, 4).map((s) => clip(s)).join(' · ') + (arr.length > 4 ? ` … +${arr.length - 4}` : '')
+
+// Deliberate re-pin: write the fixture from the CURRENT gate sources. Only for
+// a tree whose boards are verified green — the provenance block says so, and
+// the person running this is asserting it.
+if (process.argv.includes('--capture-g-manifest')) {
+  let head = 'unknown'
+  try { head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: REPO, encoding: 'utf8' }).trim() } catch { /* keep 'unknown' */ }
+  const gates = {}
+  for (const [id, file] of Object.entries(GATE_FILES)) {
+    gates[id] = { file, checkSites: gateCheckSites(file) }
+  }
+  const fixture = {
+    provenance: {
+      capturedAt: new Date().toISOString(),
+      commit: head,
+      claim:
+        'Captured from a boards-green tree (G1-G11 board PASS on artifacts built via the ' +
+        'sanctioned path in this worktree) — a population explicitly verified clean, per ' +
+        '.claude/rules/gate-independence.md. Re-capture ONLY from a green board, and only ' +
+        'after reading what changed.',
+      method:
+        'Static extraction of every Gate.check(...) call site in the eleven gate files: ' +
+        'python via ast (msg argument source segment), .mjs via the string/template/regex-aware ' +
+        'scanner in sg5-board-integrity.mjs. Identity = whitespace-normalized msg-argument ' +
+        'source text; compared as a MULTISET, both directions. Runtime check identities are ' +
+        'not emitted on a green run (gatelib surfaces msg only on failure), which is why the ' +
+        'pin is on source call sites.',
+    },
+    gates,
+  }
+  writeFileSync(G_MANIFEST_PIN, JSON.stringify(fixture, null, 2) + '\n')
+  console.log(`wrote ${path.relative(REPO, G_MANIFEST_PIN)}: ` +
+    Object.entries(gates).map(([id, g]) => `${id}=${g.checkSites.length}`).join(' '))
+  process.exit(0)
+}
+
 function run(cmd, args, env) {
   try {
     return execFileSync(cmd, args, {
@@ -141,6 +395,58 @@ async function main() {
         `${id} still runs ${want} checks`,
         Number(m[2]) === want,
         `${m[2]} checks now, ${want} at the 1a2b8d5 baseline — a check that appeared or vanished is a defect either way`,
+      )
+    }
+
+    // ---- the eleven pins, as IDENTITY MANIFESTS ----------------------------
+    // A MISSING SUBJECT IS A FAILURE, NEVER A SKIP: a gone pin file, a gate id
+    // absent from it, or an extraction error is red and named, because each of
+    // those hands somebody a veto over this test.
+    let gpin = null
+    try { gpin = JSON.parse(readFileSync(G_MANIFEST_PIN, 'utf8')).gates } catch { /* absent */ }
+    c.ok(
+      'the G-board check-site manifest pin is present and non-empty',
+      gpin != null && Object.keys(gpin).length > 0,
+      `${path.relative(REPO, G_MANIFEST_PIN)} is missing or malformed — without it the eleven ` +
+        'gates are pinned by count alone, the exact weakness this manifest closes',
+    )
+    c.ok(
+      'the manifest pins exactly the eleven baseline gates',
+      gpin != null &&
+        JSON.stringify(Object.keys(gpin).sort()) === JSON.stringify(Object.keys(BASELINE).sort()),
+      gpin ? `pinned: ${Object.keys(gpin).sort().join(' ')}` : 'no pin file',
+    )
+    for (const id of Object.keys(BASELINE)) {
+      const entry = gpin?.[id]
+      if (!entry || !Array.isArray(entry.checkSites) || !entry.file) {
+        c.ok(`${id}: check identities match the manifest pin`, false,
+          `${id} has no well-formed entry in the pin file`)
+        continue
+      }
+      c.ok(
+        `${id}: the pinned file is the file run-all.sh invokes`,
+        entry.file === GATE_FILES[id],
+        `pin says ${entry.file}, the board runs ${GATE_FILES[id]} — a pin on the wrong file pins nothing`,
+      )
+      let got = null
+      let err = ''
+      try { got = gateCheckSites(entry.file) } catch (e) { err = String(e?.message || e).slice(0, 160) }
+      if (!Array.isArray(got)) {
+        c.ok(`${id}: check identities match the manifest pin`, false,
+          `could not extract check sites from ${entry.file}: ${err}`)
+        continue
+      }
+      const { lost, gained } = multisetDiff(entry.checkSites, got)
+      c.ok(
+        `${id}: no pinned check has VANISHED (${entry.checkSites.length} sites pinned)`,
+        lost.length === 0,
+        `${lost.length} gone: ${nameList(lost)} — recover it, or re-pin deliberately with ` +
+          '--capture-g-manifest after reading what changed. Never drop it silently.',
+      )
+      c.ok(
+        `${id}: no UNPINNED check has appeared`,
+        gained.length === 0,
+        `${gained.length} new: ${nameList(gained)} — re-pin deliberately, having looked at what it asserts.`,
       )
     }
 
