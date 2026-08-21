@@ -138,12 +138,23 @@ const SHEET_TITLES = [
 ]
 const BASE_SHEETS = 11
 
-// The one CONDITIONAL sheet kind. A.02's legend panel measures its own capacity
+// The CONDITIONAL sheet kinds. A.02's legend panel measures its own capacity
 // (31 rows on A3) and paginates only the openings it cannot hold, so the number
 // of these is a function of the DOCUMENT — 41/48/44 tagged openings give one
 // each, 25 would give none. Asserting a flat 12 made this file, and the whole
 // sheet-gate suite, inoperable below that threshold (D-C).
-const CONT_TITLE = 'DOOR & WINDOW SCHEDULE (CONT.)'
+//
+// A.09 paginates the SAME way — its panel holds ~22 finish rows, so a document
+// with more rooms than that legitimately emits a ROOM FINISH SCHEDULE (CONT.)
+// sheet. That rung of the product was dormant until the W4 generator gave the
+// dwg case 31 rooms (integration-2, 2026-08-20): this file then reported "1
+// sheet carries the continuation banner for 2 pages past the unconditional 11"
+// — the drawing right and the test wrong, the D-C family exactly. The check
+// now recognises every continuation banner the product can emit, and still
+// asserts the arithmetic: EVERY page past the unconditional 11 carries exactly
+// one of these banners, and they are the last pages — so a swallowed sheet
+// builder (short set) or an unbannered extra page cannot pass.
+const CONT_TITLES = ['DOOR & WINDOW SCHEDULE (CONT.)', 'ROOM FINISH SCHEDULE (CONT.)']
 
 // ---------------------------------------------------------------------------
 // PDF reader — from the bytes, not from the producer's op list
@@ -623,12 +634,12 @@ async function runCase(name) {
   // the LAST pages — so a set that dropped a sheet and grew a continuation one
   // cannot pass by arithmetic.
   const contBanners = pages
-    .map((p, i) => (p.ops.text.some((t) => t.str === CONT_TITLE) ? i : -1))
+    .map((p, i) => (p.ops.text.some((t) => CONT_TITLES.includes(t.str)) ? i : -1))
     .filter((i) => i >= 0)
   ok(
     `structure/${name}/continuation-banners`,
     contBanners.length === Math.max(0, cont) && contBanners.every((i) => i >= BASE_SHEETS),
-    `${name}: ${contBanners.length} sheet(s) carry '${CONT_TITLE}' (at ${contBanners.map((i) => i + 1).join(',') || 'nowhere'}) ` +
+    `${name}: ${contBanners.length} sheet(s) carry a continuation banner (at ${contBanners.map((i) => i + 1).join(',') || 'nowhere'}) ` +
       `for ${cont} page(s) past the ${BASE_SHEETS} unconditional sheets`,
   )
 

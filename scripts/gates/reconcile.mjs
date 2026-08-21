@@ -141,6 +141,9 @@ const RUNNERS = [
   'scripts/gates/plan-quality/run-all.mjs',
   'package.json',
   '.githooks/pre-commit',
+  // deploy.sh is a runner: its closing step invokes scripts/gates/deploy-gate.mjs,
+  // the independent post-deploy gate (served bytes vs the dist just deployed).
+  'deploy/deploy.sh',
 ].map((r) => path.join(ROOT, r))
 
 /**
@@ -184,12 +187,11 @@ const NOT_A_BATTERY_GATE = {
  * lie it could tell is the one being caught.
  */
 const QUARANTINED = {
-  'scripts/gates/composition.mjs': {
-    why: 'programme-mix contract vs the qbiq reference: 10 violations across all 5 fixtures at HEAD ' +
-      '(desk runs of 7-8 rows against the reference\'s 5; 2.17-3.26 conf rooms per 100 open seats ' +
-      'against 8.6). A generator change, not a gate fix.',
-    cmd: ['scripts/gates/composition.mjs', '--gate'],
-  },
+  // scripts/gates/composition.mjs — RELEASED from quarantine (W4b): the
+  // field-reserve retry rehoused the fixture plates' dropped rooms and the
+  // programme-mix contract now HOLDS (COMPOSITION OK: conf 6-7 per 100 open
+  // seats vs the 8.6 reference tolerance, desk runs 2-3 rows). Its redness was
+  // 'a generator change, not a gate fix' — that generator change happened.
   'scripts/gates/cost-reconciliation.mjs': {
     why:
       'the two rupee formulas disagree TERM BY TERM at HEAD: cost.rs bills the base shell on GEA and ' +

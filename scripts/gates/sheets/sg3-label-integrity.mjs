@@ -108,6 +108,7 @@ import {
   rectsOverlap,
   runGate,
   GateError,
+  sheetsFor,
 } from './lib/sheetlib.mjs'
 
 /** The plan sheets that print room names, and each one's halo pad (pt): half of
@@ -210,7 +211,15 @@ async function main() {
       }
 
       // --- 3.4 the same string on every sheet --------------------------------
-      const schedWords = pageWords(pack, SCHEDULE.page)
+      // The schedule SURFACE is A.09 plus any Room Finish Schedule continuation
+      // sheets the delivered set carries (`sheetsFor`, kind `rfs`): A.09
+      // paginates past ~29 rooms, so on a 31-room document two rooms legally
+      // row on the continuation page and "found 0× on A.09" would be the test
+      // wrong and the drawing right (the D-C family; first exercised by the W4
+      // generator's dwg case, integration-2). The expected set still comes from
+      // CORE STATE alone; only the artifact surface it is matched against grew.
+      const schedPages = [SCHEDULE.page, ...sheetsFor(pack).filter((s) => s.cont === 'rfs').map((s) => s.page)]
+      const schedWords = schedPages.flatMap((p) => pageWords(pack, p))
       for (const r of rooms) {
         const onSchedule = findLabelRuns(
           schedWords,

@@ -138,10 +138,28 @@ export const BASE_SHEETS = [
   { file: 'A09', page: 11, no: 'A.09', title: 'Room Finish Schedule' },
 ]
 
-/** The title `scheduleContPage` gives every continuation sheet (sheetSet.ts) —
- *  spec, quoted, so SG1's title-block vocabulary knows it without reading the
- *  page's own `title` field out of geometry.json. */
-const CONT_TITLE = 'Door & Window Schedule (cont.)'
+/** The continuation-sheet KINDS the product can emit — spec, quoted from the
+ *  producers' own literals, so SG1's title-block vocabulary knows them without
+ *  reading any page's `title` field out of geometry.json (producer INPUT).
+ *
+ *  Two kinds exist, and WHICH one a page is is read from the page's own
+ *  delivered BANNER (the 15 pt headline at the sheet's top-left — artifact
+ *  bytes, via pdftotext), then held to this closed set: an unknown banner on a
+ *  page past A.09 is a hard failure, so deriving the kind does not let the
+ *  producer invent sheet kinds the gates have never seen.
+ *
+ *    - `dw`  — sheetSet.ts:1630 `DOOR & WINDOW SCHEDULE (CONT.)`, title-block
+ *      title `Door & Window Schedule (cont.)` (scheduleContPage).
+ *    - `rfs` — finishSchedule.ts:522-523 `ROOM FINISH SCHEDULE (CONT.)`,
+ *      title-block title `Room Finish Schedule` (schedulePage's tb call). This
+ *      rung of the product was dormant until a document exceeded A.09's panel
+ *      (~29 rows); the W4 generator's 31-room dwg case first exercised it
+ *      (integration-2, 2026-08-20).
+ */
+const CONT_KINDS = [
+  { cont: 'dw', banner: 'DOOR & WINDOW SCHEDULE (CONT.)', title: 'Door & Window Schedule (cont.)' },
+  { cont: 'rfs', banner: 'ROOM FINISH SCHEDULE (CONT.)', title: 'Room Finish Schedule' },
+]
 /** How many base sheets carry a number (A.01 … A.09) — where continuation
  *  numbering picks up (`scheduleContSheets`: `A.(startNo + i + 1)`). */
 const BASE_NUMBERED = BASE_SHEETS.filter((s) => s.no).length
@@ -182,7 +200,23 @@ export function sheetsFor(pack) {
     ...BASE_SHEETS,
     ...Array.from({ length: cont }, (_, i) => {
       const n = String(BASE_NUMBERED + 1 + i).padStart(2, '0')
-      return { file: `A${n}`, page: BASE_SHEETS.length + 1 + i, no: `A.${n}`, title: CONT_TITLE }
+      const page = BASE_SHEETS.length + 1 + i
+      // The page's own delivered banner names its kind; the closed CONT_KINDS
+      // set is the only vocabulary accepted. The banner is the largest headline
+      // on the page (15 pt), so an exact word-chain match against the spec
+      // strings is unambiguous.
+      const words = pageWords(pack, page).map((w) => w.text)
+      const kind = CONT_KINDS.find((k) => {
+        const toks = k.banner.split(' ')
+        return words.some((_, j) => toks.every((t, ti) => words[j + ti] === t))
+      })
+      if (!kind) {
+        throw new GateError(
+          `${pack}: page ${page} sits past the unconditional sheets but carries no known ` +
+            `continuation banner (expected one of: ${CONT_KINDS.map((k) => k.banner).join(' | ')})`,
+        )
+      }
+      return { file: `A${n}`, page, no: `A.${n}`, title: kind.title, cont: kind.cont }
     }),
   ]
   const wrong = sheets.filter((s, i) => numbers[i] !== s.no)

@@ -40,6 +40,18 @@ pub(crate) const FIELD_REGION_FRAC: f64 = 0.6;
 /// Raster cell size (m) for plate decomposition — 0.5 m keeps the grid at a few
 /// thousand cells (trivial cost) while resolving real wing geometry.
 pub(crate) const REGION_CELL: f64 = 0.5;
+
+/// SECOND-CHANCE ("wing") decomposition floors. The primary decomposition
+/// stops at `REGION_MIN_DIM` (a desk-field wing), which on the repro plate
+/// stranded 135 m² of ROOM-SCALE pockets — 7×3, 5.5×2.5, 5×3 — with no region,
+/// no band and no pocket scan, while 38 briefed rooms dropped unplaced. A
+/// second pass over the residue claims pockets down to room scale so the
+/// existing allocate/band/pocket machinery reaches them. The dims are derived,
+/// not tuned: a support room's 3.0 m module at the placement clamp's own 70%
+/// floor is 2.1 m, backed `BAND_BACK_GAP` onto the wall → 2.0 m; the area is
+/// that clamped room (2.1 × 2.31 ≈ 4.9 m²) plus its `ROOM_GAP` margins → 6 m².
+pub(crate) const WING_MIN_DIM: f64 = 2.0;
+pub(crate) const WING_MIN_AREA: f64 = 6.0;
 /// A decomposition region must be at least this wide/tall (m) — narrower slivers
 /// can't usefully hold a corridor-inset desk row, so they're discarded.
 pub(crate) const REGION_MIN_DIM: f64 = 3.0;
@@ -126,11 +138,27 @@ pub(crate) const SEAM_MIN_OVERLAP: f64 = 1.0;
 /// `corridor/2`, the two neighbours' halves meeting as ONE shared corridor)
 /// when another region abuts it co-linearly with ≥ `SEAM_MIN_OVERLAP` overlap;
 /// otherwise it is plate boundary with the facade gap.
-pub(crate) fn region_insets(regions: &[geometry::Rect], idx: usize, corridor: f64) -> Insets {
+///
+/// A SECONDARY (second-chance wing) region keeps only `BAND_BACK_GAP` at its
+/// boundary edges: its ground is room-scale, and rooms back onto walls the way
+/// band rooms do. Desks need no inset protection here — every desk slot is
+/// independently held `FACADE_GAP` off the plate polygon by
+/// `slot_fits_plate`, so the wing inset governs ROOM reach only.
+pub(crate) fn region_insets(
+    regions: &[geometry::Rect],
+    idx: usize,
+    corridor: f64,
+    secondary: bool,
+) -> Insets {
     let r = &regions[idx];
     let seam = Edge { inset: corridor / 2.0, seam: true };
     let eps = 1e-3;
-    let mut ins = Insets::boundary();
+    let mut ins = if secondary {
+        let e = Edge { inset: BAND_BACK_GAP, seam: false };
+        Insets { left: e, right: e, top: e, bottom: e }
+    } else {
+        Insets::boundary()
+    };
     for (j, o) in regions.iter().enumerate() {
         if j == idx {
             continue;
@@ -247,19 +275,13 @@ pub(crate) fn allocate_rooms(
     // Reserve the plate's dominant wing(s) as a PURE open desk field: zero band
     // capacity, so NO support room ever bands into them and their entire
     // cross-section stays workstations (spec §1: desks are the majority use).
-    // The old shallow-band cap (`FIELD_REGION_BAND_D`, one room deep) still ran a
-    // room band the full length of the biggest wing — on the real 462 m² wing
-    // that band + its 1.5 m spine (≈4.8 m of a 12.5 m cross-section, across the
-    // whole 37 m length) held ~9–11 rooms and cost the field ~20 desks. With
-    // `cap_d = 0` the band-pass fit check (`0.7·d ≤ cap_d`) rejects every room
-    // for these wings, `band_depths` stays 0, and `plan_region` emits no band and
-    // no spine — the whole inset rect packs desks. Rooms concentrate in the
-    // smaller wings instead (they lead the smallest-first `order`); a room that
-    // fits in no room-wing overflows to the pocket pass, whose field-region
-    // pocket is the now-empty band strip (zero width → never placed there), so
-    // overflow can never leak back into a reserved desk wing. `field_regions`
-    // already excludes the single-region case (that plate hosts every room in
-    // its one band).
+    // A measured band grant (depth sized by dry-running the desk grid) was
+    // TRIED here for the 50-room explicit brief and REVERTED on measurement:
+    // the granted depth (~1.6 m, all the field could spare at the desk target)
+    // was too shallow for any homeless room, so it bought a 44 m² spine and a
+    // desk-field shrink for zero rooms placed — circulation 16.3 % → 23.8 %
+    // NIA, breaching the registered 12–18 % falsifier. Room coverage comes
+    // from the second-chance wings + pocket reach instead.
     for i in 0..n {
         if field_regions[i] {
             cap_d[i] = 0.0;
@@ -399,9 +421,13 @@ pub(crate) fn allocate_desks(
     // `FieldGrid` the packer places out of, and the aisle moves slot positions —
     // so it is an input to capacity, not a placement-only detail.
     choices: SeedChoices,
+    // Per-region field reserve (m) — the W4b retry's withheld room ground.
+    // Measured through the SAME grid, or `placed == allocated` dies.
+    field_reserve: &[f64],
 ) -> (Vec<u32>, Vec<u32>) {
     let n = plans.len();
     let mut desk_cap = vec![0u32; n];
+    let mut grids: Vec<FieldGrid> = Vec::with_capacity(n);
     for (i, plan) in plans.iter().enumerate() {
         // NO depth pre-filter. It used to zero capacity for any field shallower
         // than one packer BLOCK (`min_viable_field_depth`), on the argument that
@@ -419,7 +445,12 @@ pub(crate) fn allocate_desks(
         // over-allocation removed the shortfall and with it the top-up, and the
         // far-wing desk went with it — until capacity stopped lying in the other
         // direction too. One model, both directions.
-        desk_cap[i] = field_free_slots(program, plan, plate, iwalls, obstacles, lat, clear, choices.cluster_cols);
+        let grid = FieldGrid::build(
+            program, plan, plate, iwalls, obstacles, lat, clear, choices.cluster_cols, &[],
+            field_reserve.get(i).copied().unwrap_or(0.0),
+        );
+        desk_cap[i] = grid.capacity();
+        grids.push(grid);
     }
 
     let total_cap: u32 = desk_cap.iter().sum();
@@ -448,6 +479,44 @@ pub(crate) fn allocate_desks(
                 if d_alloc[i] < desk_cap[i] {
                     d_alloc[i] += 1;
                     left -= 1;
+                    progressed = true;
+                }
+            }
+            if !progressed {
+                break;
+            }
+        }
+        // Neighbourhood resolution: clamp each region's allocation to the
+        // largest take its OWN grid can realise under the segment take rule
+        // (`FieldGrid::resolve_take` — the identical walk `pack_desks` will
+        // run on the identical grid). Without this, an allocation whose tail
+        // lands 1–5 desks into a fresh segment would be unplaceable without a
+        // runt, and `placed == allocated` — the one-model invariant the
+        // capacity battery enforces — would silently become aspirational. The
+        // trimmed desks flow to the OTHER regions' remaining quantized
+        // headroom, largest first, so the plate-level target is still met
+        // wherever the geometry allows it.
+        loop {
+            let mut freed = 0u32;
+            for i in 0..n {
+                let q = grids[i].resolve_take(d_alloc[i]);
+                freed += d_alloc[i] - q;
+                d_alloc[i] = q;
+            }
+            if freed == 0 {
+                break;
+            }
+            let mut progressed = false;
+            for &(_, i) in &rema {
+                if freed == 0 {
+                    break;
+                }
+                // Realizable takes jump by whole neighbourhoods, so offer the
+                // whole freed budget and let the resolver keep what lands.
+                let q = grids[i].resolve_take(d_alloc[i] + freed);
+                if q > d_alloc[i] {
+                    freed -= q - d_alloc[i];
+                    d_alloc[i] = q;
                     progressed = true;
                 }
             }
@@ -590,6 +659,15 @@ pub(crate) fn plan_region(
     // single plates keep the full-cross pocket so their density-calibrated fill and
     // legitimate second band row are unchanged, and multi-region plates keep it for
     // their small non-field wings where rooms cluster (882 m² decomposition intact).
+    // Pocket cross-edges reach the BOUNDARY at `BAND_BACK_GAP`, not the desk
+    // facade gap: the pocket exists for ROOMS, rooms back onto walls exactly
+    // as band rooms do (0.1 m), and desks never needed the pocket's protection
+    // — every desk slot is held `FACADE_GAP` off the plate polygon by
+    // `slot_fits_plate` independently. The 0.9 m pocket inset was a desk-era
+    // leftover that permanently stranded a room-depth strip along every
+    // pocket's window edge (measured: 10 m² on the repro plate's east wing
+    // alone, typed Unassigned).
+    let pocket_edge = |e: Edge| if e.seam { e.inset } else { BAND_BACK_GAP };
     let pocket = if field_region || reserve_field {
         if !band_far {
             rect(a0, a1, c0 + e_lo.inset, band_front.max(c0 + e_lo.inset))
@@ -597,9 +675,9 @@ pub(crate) fn plan_region(
             rect(a0, a1, band_front.min(c1 - e_hi.inset), c1 - e_hi.inset)
         }
     } else if !band_far {
-        rect(a0, a1, band_base, c1 - e_hi.inset)
+        rect(a0, a1, band_base, c1 - pocket_edge(e_hi))
     } else {
-        rect(a0, a1, c0 + e_lo.inset, band_base)
+        rect(a0, a1, c0 + pocket_edge(e_lo), band_base)
     };
 
     // Entry connector: a spine-width strip from the entry point to the spine.
@@ -668,8 +746,16 @@ pub(crate) fn plan_region(
     };
 
     // Seam strips: this region's drawn half of each shared corridor (the
-    // neighbour emits the other half — together exactly ONE corridor).
+    // neighbour emits the other half — together exactly ONE corridor). The
+    // HORIZONTAL strips yield their corner squares to the vertical ones: two
+    // seams of one region used to both claim the corner, a double-cover the
+    // partition-disjointness contract tolerates only while it is rare — the
+    // second-chance wings multiplied seam count and pushed the summed corner
+    // overlap past the 1% budget on the chamfer sweep. The corner floor stays
+    // covered (by exactly one strip), so no coverage hole opens.
     let mut seams = Vec::new();
+    let lx = if ins.left.seam { ins.left.inset } else { 0.0 };
+    let rx = if ins.right.seam { ins.right.inset } else { 0.0 };
     if ins.left.seam {
         seams.push(geometry::Rect { x0: outer.x0, y0: outer.y0, x1: outer.x0 + ins.left.inset, y1: outer.y1 });
     }
@@ -677,10 +763,10 @@ pub(crate) fn plan_region(
         seams.push(geometry::Rect { x0: outer.x1 - ins.right.inset, y0: outer.y0, x1: outer.x1, y1: outer.y1 });
     }
     if ins.bottom.seam {
-        seams.push(geometry::Rect { x0: outer.x0, y0: outer.y0, x1: outer.x1, y1: outer.y0 + ins.bottom.inset });
+        seams.push(geometry::Rect { x0: outer.x0 + lx, y0: outer.y0, x1: outer.x1 - rx, y1: outer.y0 + ins.bottom.inset });
     }
     if ins.top.seam {
-        seams.push(geometry::Rect { x0: outer.x0, y0: outer.y1 - ins.top.inset, x1: outer.x1, y1: outer.y1 });
+        seams.push(geometry::Rect { x0: outer.x0 + lx, y0: outer.y1 - ins.top.inset, x1: outer.x1 - rx, y1: outer.y1 });
     }
 
     RegionPlan {

@@ -120,6 +120,33 @@ function cleanDoc() {
   t('N2 one 0.50 m sliver -> PQ2 RED', !r2.ok && r2.rows.length === 1, r2.detail)
 }
 
+// N2b/N2c: UNEQUAL-SIZE rooms — the population the misread instrument was blind
+//     on. `ZoneShape::Rect` is center-origin; reading it corner-origin shifts
+//     each rect by (+w/2, +h/2), so a pair's measured gap is off by (Δw/2, Δh/2)
+//     and equal-size fixtures (every case above) cancel the error exactly. This
+//     is the calibration corollary in miniature: the round was green while the
+//     check misread every unequal pair on the real document (8 phantom rows, 4
+//     hidden real ones on the 2026-08-20 standing red). Both directions pinned:
+//     a TRUE 0.5 m sliver between unequal rooms must fire, and a TRUE 0.1 m
+//     shared wall between unequal rooms must not.
+{
+  const d = cleanDoc()
+  // A: 4×4 centered at (0,20) → spans [−2,2]. C: 5.2×4 centered at 4.7 →
+  // spans [2.1,7.3]: a TRUE 0.10 m shared wall. The corner misread measured
+  // 0.1 + (5.2−4)/2 = 0.70 m and flagged a PHANTOM sliver here.
+  d.zones[1] = { id: 902, zone_type: 'Meeting', label: 'C', shape: { kind: 'Rect', x: 4.7, y: 20, w: 5.2, h: 4 } }
+  const r2 = pq2(d)
+  t('N2b unequal sizes, true 0.10 m wall -> not flagged', r2.ok, r2.detail)
+}
+{
+  const d = cleanDoc()
+  // C: 6×4 centered at 5.5 → spans [2.5,8.5]: a TRUE 0.50 m dead sliver. The
+  // corner misread measured 0.5 + (6−4)/2 = 1.50 m and reported CLEAN.
+  d.zones[1] = { id: 903, zone_type: 'Meeting', label: 'C', shape: { kind: 'Rect', x: 5.5, y: 20, w: 6, h: 4 } }
+  const r2 = pq2(d)
+  t('N2c unequal sizes, true 0.50 m sliver -> PQ2 RED', !r2.ok && r2.rows.length === 1, r2.detail)
+}
+
 // N3: merge two neighbourhoods by closing their aisle to 0.5 m — PQ1 must catch
 //     the resulting 16-desk super-cluster.
 //

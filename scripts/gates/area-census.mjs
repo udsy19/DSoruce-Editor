@@ -208,10 +208,16 @@ const REGISTER = [
   // choice is visible in the source instead of hidden inside a method that
   // decided for every caller.
   {
-    key: 'crates/ds-core/src/layout.rs::generate',
+    key: 'crates/ds-core/src/layout.rs::generate_once',
     kind: 'estimate',
     count: 5,
-    why: 'Region `Rect` areas for wing/field selection + the residue diagnostic + the desk-field capacity estimate. All mid-generation.',
+    why: 'Region `Rect` areas for wing/field selection + the residue diagnostic + the desk-field capacity estimate. All mid-generation. (W4b: the body moved from `generate` into `generate_once` when the field-reserve retry wrapped it.)',
+  },
+  {
+    key: 'crates/ds-core/src/layout.rs::circulation_share',
+    kind: 'estimate',
+    count: 1,
+    why: "The W4b retry's circulation guard: a RATIO over provisional zone shapes deciding accept/fallback mid-generation. Publishes nothing; the honest share still comes from the metrics surface.",
   },
   {
     key: 'crates/ds-core/src/layout/conform.rs::fill_untyped_as_circulation',

@@ -132,6 +132,7 @@ import {
   must,
   runGate,
   GateError,
+  sheetsFor,
 } from './lib/sheetlib.mjs'
 
 const NAMED = [
@@ -231,8 +232,14 @@ async function main() {
       // --- the finish schedule, parsed once ---------------------------------
       // A.09 is the one delivered surface that carries ROOM ID beside ROOM NAME,
       // so it is where "what did the set decide to call room 246?" is readable.
+      // The schedule SURFACE is A.09 plus any Room Finish Schedule continuation
+      // sheets (`sheetsFor`, kind `rfs`): A.09 paginates past ~29 rooms, so a
+      // 31-room document legally rows two rooms on the continuation page — the
+      // expected set stays core-state-derived, only the delivered surface it is
+      // matched against grew (D-C family, first exercised by W4's dwg case).
       const gA09 = loadGeometry(pack, 'A09')
-      const rows = scheduleRows(pageWords(pack, SCHEDULE_PAGE), gA09.titleBlock.pt.y)
+      const schedPages = [SCHEDULE_PAGE, ...sheetsFor(pack).filter((s) => s.cont === 'rfs').map((s) => s.page)]
+      const rows = schedPages.flatMap((pg) => scheduleRows(pageWords(pack, pg), gA09.titleBlock.pt.y))
       const deliveredName = new Map(rows.map((r) => [r.id, r.name]))
 
       // --- 4.1 the disambiguation obligation, ON THE DELIVERED SET ----------
