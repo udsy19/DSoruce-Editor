@@ -155,3 +155,56 @@ overcrowding on record · components 268 → 294 · zones 53 → 78.
 
 Artifacts: `after/w4-wing-furnished.png` (provenance: verify-preflight + served-wasm≡disk-bytes),
 `zone-dump.three-surface.w4-postfix.json`.
+
+---
+
+# W4b pre-registration — the field-reserve retry (2026-08-20, before coding)
+
+Coordinator follow-up: close residual red #1 (deadspace) by rehousing the rooms the
+wall-or-passage invariant orphaned, without moving the 10 % ratchet and without
+re-creating slivers.
+
+## Measured drop populations (this branch, pre-W4b)
+
+- **F1–F5**: 8 unplaced each, identical set — Meeting Room 4/5/6 (4×4), Cabin 3/4
+  (3×3.3), Collab (4.8×4.2), Pantry (3.6×3), Wellness Room (3×2.4). ~75 m² of briefed
+  program; deadspace 13.5 / 13.5 / (F3 plate unresolved) / 13.5 / 15.2 % vs baseline
+  9.4–9.5 %, ratchet 10 %.
+- **Golden `default/real_plate` seeds 1–3**: 2 unplaced each (Collab, Pantry) — so the
+  retry WILL move these goldens (legitimate; re-captured once with justification).
+- **Candidate A (wizard)**: 29 unplaced (over-programmed brief; guards decide).
+
+## Mechanism (registered)
+
+Not a full compaction: a **field reserve**. When pass 1 leaves briefed rooms homeless
+(and the plate is the multi-region axis path), `generate` re-runs once with the LAST
+`ceil((max unplaced depth + BAND_BACK_GAP) / block)` outer units of each dominant
+FIELD region reserved — their slots withheld inside `FieldGrid` (new named reject
+class `reserved`), so capacity, allocation, spread and take all agree and
+`placed == allocated` survives. The strided spread keeps its ≤3 m gap property over
+the remaining units; the reserved strip surfaces as the Pass-D void, where the
+homeless rooms land through the SAME `room_slot_ok` (wall-or-passage invariant
+enforced — rooms can only come back legally). Acceptance guards, both encoded in the
+mechanism: the retry is kept only if it strictly reduces unplaced rooms AND the
+Circulation zone-area share stays ≤ 18 % (the registered falsifier band); otherwise
+pass 1 is regenerated verbatim.
+
+## Expectations (registered)
+
+| surface | now | expected post-fix |
+|---|---|---|
+| F1–F5 unplaced | 8 | **≤ 2**, survivors named (one ~29 m reserved row ≈ 30 m of needed frontage) |
+| deadspace F1/F2/F4 | 13.5 % | **≤ 10 %** (ratchet unmoved) |
+| deadspace F5 | 15.2 % | **≤ 10 %** |
+| golden real_plate 1–3 | 2 unplaced | 0; goldens move, per-case justification |
+| rect20x14 + no_support goldens | — | byte-identical (single-region / no support rooms → retry never fires) |
+| candidate A | 29 unplaced | fewer if guards accept; unchanged if the circ guard rejects — either reported with numbers |
+| PQ1/PQ2/G14, containment, A1/A2, chair, pax, capacity | green | green, quoted |
+
+## Falsifier
+
+If the rehoused rooms can only land by re-creating sub-minimum gaps, PQ2 (or the
+placement invariant itself) reds — STOP and report the either/or to Udaya. If the
+circ guard rejects the retry on the fixtures, deadspace stays red —
+RED-WITH-ROOT-CAUSE with this design as the record. The 10 % ratchet and the PQ band
+edges do not move in any branch.
