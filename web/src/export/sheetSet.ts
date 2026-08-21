@@ -926,12 +926,17 @@ export interface BaseInkLayers {
  * Returns the strips so A.02 can exempt its opening tags (a shell opening's
  * tag box legitimately overlaps the margin).
  */
-export function seedOutsideMargin(
-  occ: OccBox[],
+/**
+ * The building's wall bbox in sheet pt — THE footprint. One derivation, three
+ * consumers: the margin strips below price its outside, the room-label ladder
+ * confines its displacement rungs to its inside (D-Q), and the D-Q instrument
+ * (SG8 8.2) measures against the same bbox re-derived from core state.
+ * `null` on a wall-less document (nothing to be outside of).
+ */
+export function wallFootprintOnSheet(
   state: DocState,
   map: (x: number, y: number) => { x: number; y: number },
-  plate: OccBox,
-): OccBox[] {
+): OccBox | null {
   let minX = Infinity
   let minY = Infinity
   let maxX = -Infinity
@@ -944,15 +949,25 @@ export function seedOutsideMargin(
       maxY = Math.max(maxY, p.y)
     }
   }
-  if (minX === Infinity) return []
+  if (minX === Infinity) return null
   const a = map(minX, minY)
   const b = map(maxX, maxY)
-  const fp = {
+  return {
     x: Math.min(a.x, b.x),
     y: Math.min(a.y, b.y),
     w: Math.abs(b.x - a.x),
     h: Math.abs(b.y - a.y),
   }
+}
+
+export function seedOutsideMargin(
+  occ: OccBox[],
+  state: DocState,
+  map: (x: number, y: number) => { x: number; y: number },
+  plate: OccBox,
+): OccBox[] {
+  const fp = wallFootprintOnSheet(state, map)
+  if (!fp) return []
   const seeded: OccBox[] = []
   const strip = (x: number, y: number, w: number, h: number) => {
     if (w <= 0 || h <= 0) return
@@ -1151,6 +1166,25 @@ export function roomLabels(
   // says, so three zones the generator called "Open Workspace" can never reach
   // the reader as three identical labels (defect D4).
   const names = roomDisplayNames(state)
+  // D-Q: every displacement rung below is confined to the BUILDING FOOTPRINT
+  // (the wall bbox ∩ the plate), so a label displaces INWARD — never into the
+  // plate margin, which `seedOutsideMargin` prices soft and the allowSoft rung
+  // therefore used to buy (all 12 outside blocks at the W3 baseline took that
+  // exact path; reports/editor-completion/W3-preregistration.md §2). Only the
+  // terminal `settleLabel` escape keeps the full plate: a label with NO
+  // in-building spot at any form still goes to the margin, leader-backed, and
+  // SG8 8.2 reds so the instance is adjudicated by name rather than shipped
+  // silently.
+  const fp = wallFootprintOnSheet(state, map)
+  const fpBounds: OccBox | null | undefined = (() => {
+    if (!fp) return bounds
+    if (!bounds) return fp
+    const x = Math.max(fp.x, bounds.x)
+    const y = Math.max(fp.y, bounds.y)
+    const w = Math.min(fp.x + fp.w, bounds.x + bounds.w) - x
+    const h = Math.min(fp.y + fp.h, bounds.y + bounds.h) - y
+    return w > 0 && h > 0 ? { x, y, w, h } : bounds
+  })()
   let n = 0
   for (const z of state.zones ?? []) {
     if (isGroundZone(z.zone_type)) continue
@@ -1197,7 +1231,7 @@ export function roomLabels(
     // carries a leader; a wrapped one is damaged. Displacement before damage.
     const place = (f: (typeof forms)[number], soft: boolean, wideSweep = false) => {
       const b = { w: Math.max(f.width, areaW) + 4, h: 26 + (f.lines.length - 1) * 11 }
-      const at = tryPlaceNear(occ, pt.x, pt.y + 4, b.w, b.h, bounds, soft, wideSweep)
+      const at = tryPlaceNear(occ, pt.x, pt.y + 4, b.w, b.h, fpBounds, soft, wideSweep)
       if (at) {
         form = f
         box = b
@@ -1707,11 +1741,22 @@ function dimString(
   horizontal: boolean,
   ink: InkSink,
   occ: OccBox[],
+  /**
+   * Where the numeric label sits on its own dim line — the DISPLACEMENT RUNG
+   * per-room dims got under W3 (labels had it since D3; dims only had a binary
+   * skip). `t` is the fraction along a→b for the label anchor (default 0.5,
+   * today's centre); `flip` puts the label on the line's other side. Omitted →
+   * byte-identical to the pre-W3 geometry. The CALLER (`roomDims`) proves a
+   * spot is clear before choosing it; this only draws where it is told.
+   */
+  labelSpot?: { t?: number; flip?: boolean },
 ): void {
   const G = 0.4 // dim-line gray
   const W = 0.5 // dim-line width
   const EXT = { gray: 0.65, width: 0.3 } // extension-line style
   const label = `${meters.toFixed(2)} m`
+  const t = labelSpot?.t ?? 0.5
+  const flip = labelSpot?.flip ?? false
   /** Queue the label's glyphs and reserve the box they will occupy. */
   const put = (x: number, baseline: number, align: 'left' | 'center' | 'right') => {
     occ.push(textBoxAt(x, baseline, 7.5, label, align))
@@ -1724,7 +1769,7 @@ function dimString(
     p.line(a.x, y, b.x, y, { gray: G, width: W })
     p.line(a.x, y - 3, a.x, y + 3, { gray: G, width: W })
     p.line(b.x, y - 3, b.x, y + 3, { gray: G, width: W })
-    put((a.x + b.x) / 2, off >= 0 ? y + 11 : y - 4, 'center')
+    put(a.x + (b.x - a.x) * t, (off >= 0) !== flip ? y + 11 : y - 4, 'center')
   } else {
     const x = a.x + off
     p.line(a.x, a.y, x, a.y, EXT)
@@ -1733,7 +1778,9 @@ function dimString(
     p.line(x - 3, a.y, x + 3, a.y, { gray: G, width: W })
     p.line(x - 3, b.y, x + 3, b.y, { gray: G, width: W })
     if (off >= 0) {
-      put(x + 4, (a.y + b.y) / 2 + 3, 'left')
+      const by = a.y + (b.y - a.y) * t + 3
+      if (flip) put(x - 4, by, 'right')
+      else put(x + 4, by, 'left')
       return
     }
     // CONTAINMENT. Right-aligned at `x - 4` is the normal place for an outward
@@ -1788,6 +1835,25 @@ function dimStrings(
 const DIM_INSET = 12
 
 /**
+ * The dim label's displacement candidates, in order of least damage: the
+ * line's other side at centre first (still centred on the run), then slides
+ * toward the ends, nearest first, each side. `t` is the fraction along the
+ * line; `flip` is the other side. The centre-unflipped spot is not here — it
+ * is the guard's own first check, so an already-printing dim never moves.
+ */
+const DIM_LABEL_SPOTS: ReadonlyArray<{ t: number; flip: boolean }> = [
+  { t: 0.5, flip: true },
+  { t: 0.35, flip: false },
+  { t: 0.65, flip: false },
+  { t: 0.35, flip: true },
+  { t: 0.65, flip: true },
+  { t: 0.2, flip: false },
+  { t: 0.8, flip: false },
+  { t: 0.2, flip: true },
+  { t: 0.8, flip: true },
+]
+
+/**
  * Per-room internal dimension runs (construction plan). For every
  * non-circulation zone we draw its width along the bottom edge and its depth
  * along the left edge, each inset just INSIDE the room (so a run never spills
@@ -1795,6 +1861,19 @@ const DIM_INSET = 12
  * — one consistent L of dimensions per room, in the same style as the overall
  * perimeter via the shared `dimString` helper. A run is skipped when the room is
  * too small on the sheet for its label to read, keeping dense fits legible.
+ *
+ * THE LABEL HAS A DISPLACEMENT RUNG (W3). The guard used to be a binary skip:
+ * one fixed label box, and any overlap — after D-P seeded the walls and door
+ * swings into `occ`, typically a door-swing envelope crossing the room's
+ * bottom band — suppressed the whole run (13 dim strings across the three
+ * packs, 7 of them reading `3.00 m`, were suppressed by hard ink alone).
+ * D3's damage ordering applies to dims exactly as to names: displacement
+ * first, suppression only as the LAST rung. So the label now slides along its
+ * own dim line (and may take the line's other side), deterministic candidate
+ * order, nearest-the-centre first; the FIRST candidate is today's exact box,
+ * so a dim that already printed does not move. A candidate is accepted only
+ * when clear of EVERYTHING — hard ink and soft furniture alike; declutter is
+ * not relaxed, and a run whose every candidate is occupied is still skipped.
  * Rectangular rooms are dimensioned exactly; non-rectangular zones (RectRing
  * cores) are dimensioned by their bounding extents (outer w × h). Each drawn
  * label's box is recorded in `occ` — by `dimString` itself, from the baseline it
@@ -1823,16 +1902,44 @@ function roomDims(
     // room is too narrow for the label, or when the label box would land on an
     // already-placed dim label (declutters two rooms sharing a baseline, e.g. an
     // open field and a cellular room whose bottom edges coincide).
-    const wLabelW = textWidth(`${s.w.toFixed(2)} m`, 7.5)
+    const wLabel = `${s.w.toFixed(2)} m`
+    const wLabelW = textWidth(wLabel, 7.5)
     const wBox = { x: (bl.x + br.x) / 2 - wLabelW / 2, y: bl.y - DIM_INSET - 12, w: wLabelW, h: 12 }
-    if (Math.abs(br.x - bl.x) > wLabelW + 8 && !occ.some((b) => boxesOverlap(wBox, b))) {
-      dimString(p, bl, br, -DIM_INSET, s.w, true, ink, occ)
+    if (Math.abs(br.x - bl.x) > wLabelW + 8) {
+      if (!occ.some((b) => boxesOverlap(wBox, b))) {
+        dimString(p, bl, br, -DIM_INSET, s.w, true, ink, occ)
+      } else {
+        // Displacement rung. Candidate boxes are the EXACT boxes dimString's
+        // `put` will reserve (textBoxAt), so proving a spot clear here is
+        // proving the drawn glyph run clear. The label must stay on its line.
+        const lineY = bl.y - DIM_INSET
+        const spot = DIM_LABEL_SPOTS.find((c) => {
+          const lx = bl.x + (br.x - bl.x) * c.t
+          const box = textBoxAt(lx, c.flip ? lineY + 11 : lineY - 4, 7.5, wLabel, 'center')
+          if (box.x < Math.min(bl.x, br.x) || box.x + box.w > Math.max(bl.x, br.x)) return false
+          return !occ.some((b) => boxesOverlap(box, b))
+        })
+        if (spot) dimString(p, bl, br, -DIM_INSET, s.w, true, ink, occ, spot)
+      }
     }
-    // Depth along the left edge, inset rightward into the room (same guards).
-    const hLabelW = textWidth(`${s.h.toFixed(2)} m`, 7.5)
+    // Depth along the left edge, inset rightward into the room (same guards,
+    // same ladder; `flip` here is the line's left side, right-aligned).
+    const hLabel = `${s.h.toFixed(2)} m`
+    const hLabelW = textWidth(hLabel, 7.5)
     const hBox = { x: tl.x + DIM_INSET + 4, y: (tl.y + bl.y) / 2 - 5, w: hLabelW, h: 12 }
-    if (Math.abs(bl.y - tl.y) > 26 && !occ.some((b) => boxesOverlap(hBox, b))) {
-      dimString(p, tl, bl, DIM_INSET, s.h, false, ink, occ)
+    if (Math.abs(bl.y - tl.y) > 26) {
+      if (!occ.some((b) => boxesOverlap(hBox, b))) {
+        dimString(p, tl, bl, DIM_INSET, s.h, false, ink, occ)
+      } else {
+        const lineX = tl.x + DIM_INSET
+        const spot = DIM_LABEL_SPOTS.find((c) => {
+          const by = tl.y + (bl.y - tl.y) * c.t + 3
+          const box = textBoxAt(c.flip ? lineX - 4 : lineX + 4, by, 7.5, hLabel, c.flip ? 'right' : 'left')
+          if (box.y < Math.min(tl.y, bl.y) || box.y + box.h > Math.max(tl.y, bl.y)) return false
+          return !occ.some((b) => boxesOverlap(box, b))
+        })
+        if (spot) dimString(p, tl, bl, DIM_INSET, s.h, false, ink, occ, spot)
+      }
     }
   }
 }

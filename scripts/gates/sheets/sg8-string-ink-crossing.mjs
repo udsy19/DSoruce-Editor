@@ -39,11 +39,19 @@
 //       ink. Fail-first: at the frozen corpus this reads 107 across the twelve
 //       sheets (103 at 1a2b8d5 → 106 after S2/S3 → 107 after S6).
 //
-// NOTES (measured, not asserted — D-Q is a DIFFERENT defect, not this gate's):
-//
-//  * per-sheet D-Q count: room-name/area strings whose CENTRE falls outside the
-//    core-state WALL bbox (the `j2-outside.mjs` method). Workstream B must not
-//    let it increase; the number is printed so before/after can be diffed.
+//  8.2  Per plan sheet: ZERO room-name/area strings whose CENTRE falls outside
+//       the core-state WALL bbox (defect D-Q, the `j2-outside.mjs` method —
+//       dimensions are never candidates; the overall dim string legitimately
+//       lives outside). Was a measured note under Workstream B (whose guard
+//       was must-not-increase); promoted to an assertion by Workstream W3
+//       (reports/editor-completion/W3-preregistration.md). Fail-first: 26 at
+//       B's landing tree 547d4a0, 24 at W3's base d868ec3 (the delta is the
+//       dwg document moving under merged core work; instrument byte-identical
+//       — see the pre-registration §1). The counting rule is UNCHANGED from
+//       the note it replaces. A margin placement is legal for NO annotation
+//       family this counts: the terminal settleLabel escape may still take
+//       the margin on a document with no in-building spot, and doing so is a
+//       RED here to adjudicate by name, not a tolerated pattern.
 
 import {
   PACKS,
@@ -244,10 +252,10 @@ function isCandidate(text, bases) {
 }
 
 // ---------------------------------------------------------------------------
-// D-Q (note only): room-name/area strings whose centre is outside the walls
+// D-Q (assertion 8.2): room-name/area strings whose centre is outside the walls
 // ---------------------------------------------------------------------------
 
-function outsideFootprintCount(strings, state, map, bases) {
+function outsideFootprint(strings, state, map, bases) {
   let minX = Infinity
   let minY = Infinity
   let maxX = -Infinity
@@ -269,7 +277,7 @@ function outsideFootprintCount(strings, state, map, bases) {
     w: Math.abs(b.x - a.x),
     h: Math.abs(b.y - a.y),
   }
-  let n = 0
+  const out = []
   for (const s of strings) {
     // D-Q's j2-outside counted "room names / areas" — names and areas only,
     // never dimensions (the overall dim string legitimately lives outside).
@@ -277,9 +285,13 @@ function outsideFootprintCount(strings, state, map, bases) {
     if (!isName && !AREA_RE.test(s.text)) continue
     const cx = s.box.x + s.box.w / 2
     const cy = s.box.y + s.box.h / 2
-    if (cx < fp.x || cx > fp.x + fp.w || cy < fp.y || cy > fp.y + fp.h) n++
+    if (cx < fp.x || cx > fp.x + fp.w || cy < fp.y || cy > fp.y + fp.h) {
+      const dx = cx < fp.x ? fp.x - cx : cx > fp.x + fp.w ? cx - (fp.x + fp.w) : 0
+      const dy = cy < fp.y ? fp.y - cy : cy > fp.y + fp.h ? cy - (fp.y + fp.h) : 0
+      out.push({ ...s, ptOutside: Math.max(dx, dy) })
+    }
   }
-  return n
+  return out
 }
 
 // ---------------------------------------------------------------------------
@@ -357,10 +369,10 @@ async function main() {
         total += hits.length
         const nWall = hits.filter((h) => h.wallHit).length
         const nArc = hits.filter((h) => h.arcHit).length
-        const dqSheet = outsideFootprintCount(strings, state, map, bases)
-        dq += dqSheet
+        const dqHits = outsideFootprint(strings, state, map, bases)
+        dq += dqHits.length
         c.note(
-          `${pack}/${sheet.file}: ${hits.length} crossing (wall ${nWall}, arc ${nArc}); D-Q outside-footprint ${dqSheet}`,
+          `${pack}/${sheet.file}: ${hits.length} crossing (wall ${nWall}, arc ${nArc}); D-Q outside-footprint ${dqHits.length}`,
         )
         c.ok(
           `${pack}/${sheet.file} no string crosses wall or door-swing ink`,
@@ -374,10 +386,18 @@ async function main() {
             )
             .join(', ') + (hits.length > 8 ? ` … +${hits.length - 8} more` : ''),
         )
+        c.ok(
+          `${pack}/${sheet.file} no room-name/area string centred outside the building footprint (D-Q)`,
+          dqHits.length === 0,
+          dqHits
+            .slice(0, 12)
+            .map((h) => `"${h.text}"@(${h.box.x.toFixed(0)},${h.box.y.toFixed(0)}) ${h.ptOutside.toFixed(1)} pt out`)
+            .join(', ') + (dqHits.length > 12 ? ` … +${dqHits.length - 12} more` : ''),
+        )
       }
     }
     c.note(`TOTAL strings on wall/arc ink: ${total}   (frozen D-P corpus: 107)`)
-    c.note(`TOTAL D-Q outside-footprint strings: ${dq}   (must not increase across this workstream)`)
+    c.note(`TOTAL D-Q outside-footprint strings: ${dq}   (assertion 8.2 — fail-first 26 @ 547d4a0, 24 @ d868ec3)`)
   })
 }
 
